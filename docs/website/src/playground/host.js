@@ -15,6 +15,8 @@ import { loadFragmentColor, supports } from "../runtime.js";
 const BUILD_DELAY = 250;
 const SCRUB_DELAY = 40;
 const DPR_CAP = 2;
+// Clean frames in a row that forgive a program's earlier failed frames.
+const CLEAN_FRAMES = 60;
 
 let runtime;
 let instances = 0;
@@ -48,11 +50,13 @@ export function detectBackend() {
   return gpuCheck;
 }
 
-// FragmentColor 0.12.5 logs shader errors and returns a default shader; later
-// releases throw them and log only the GPU errors no error scope caught.
-// Capturing console.error covers both, and from 0.12.6 it keeps only GPU
-// errors, so a stray error elsewhere on the page can't fail a build.
-const isBuildError = supports("0.12.6") ? (text) => text.includes("==== GPU error") : () => true;
+// FragmentColor 0.12.5 logs shader errors and returns a default shader, and
+// later releases throw them. Capturing console.error covers both. From 0.12.6
+// it keeps only GPU errors, so a stray error elsewhere on the page can't fail a
+// build: 0.12.6 logs each under a "==== GPU error" banner, and 0.12.7 logs the
+// ones its error scopes catch as "Device error (kind) in 'label': ...".
+const GPU_ERROR = /==== GPU error|Device error \([^)]*\) in '/;
+const isBuildError = supports("0.12.6") ? (text) => GPU_ERROR.test(text) : () => true;
 
 async function capturing(run) {
   const errors = [];
@@ -738,12 +742,18 @@ export class Playground {
     this.resize();
     try {
       this.draw(program, now);
-      program.misses = 0;
+      // Only a run of clean frames forgives earlier misses,
+      // so an error that throws every other frame still adds up.
+      program.clean = (program.clean ?? 0) + 1;
+      if (program.clean >= CLEAN_FRAMES) program.misses = 0;
     } catch (err) {
       // A frame that throws after its build hands the canvas back to the build
-      // before it. With none to go back to, it takes three misses in a row.
+      // before it. With none to go back to, it takes three misses, unless the GPU
+      // refused the program's work: a DeviceError comes back every frame.
+      program.clean = 0;
       program.misses = (program.misses ?? 0) + 1;
-      if (!program.previous && program.misses < 3) return;
+      const refused = err?.name === "DeviceError";
+      if (!refused && !program.previous && program.misses < 3) return;
       program.failed = true;
       this.program = program.previous;
       this.showError(err, this.program ? "Back to the last version that drew." : "Drawing stopped.");

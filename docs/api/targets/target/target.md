@@ -12,7 +12,7 @@ It contains a GPU surface texture attached to a platform-specific window or an o
 
 ```rust
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-# let canvas = fragmentcolor::headless_window([800, 600]);
+# let canvas = fragmentcolor::HeadlessWindow::new([800, 600]);
 # /*[js]
 # const canvas = document.createElement("canvas");
 # */
@@ -68,7 +68,7 @@ let shader = Shader::default();
 renderer.render(&shader, &target)?;
 
 // Read back the rendered image (byte array of RGBA8 pixels)
-let image = target.get_image().await;
+let image = target.get_image().await?;
 
 # assert_eq!(image.len(), 64 * 64 * 4);
 # Ok(())

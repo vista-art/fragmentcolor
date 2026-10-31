@@ -62,6 +62,13 @@ from the host can suppress them with
 per-kind `no_default_camera` / `no_default_light`), or swap the stock values
 out with `set_default_camera` / `set_default_light`.
 
+## Depth
+
+Models in a pass hide each other by distance, whatever order you add them in.
+A pass that draws models and has no depth target gets a `Depth32Float` texture from the renderer,
+sized and sampled like the pass's color attachment, reused from frame to frame and cleared at the start of each pass.
+To read the depth in a later pass, create a texture with `Renderer::create_depth_texture` and set it with `Pass::set_depth_target`.
+
 ## Methods
 
 | name                 | what it does                                                |
@@ -96,13 +103,15 @@ let renderer = Renderer::new();
 let target = renderer.create_texture_target([256, 256]).await?;
 
 let mesh = Mesh::new();
-mesh.add_vertex(
+mesh.add_vertices([
     Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]),
-);
+    Vertex::pbr([-0.5, -0.5, 0.0]).set(Vertex::UV0, [0.0, 0.0]),
+    Vertex::pbr([0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]),
+]);
 let model = Model::new(mesh, Material::pbr().base_color([0.8, 0.3, 0.2, 1.0]));
 
-let camera = Camera::perspective(1.047, 1.0, 0.1, 100.0)
-    .look_at([0.0, 0.0, 3.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+let camera = Camera::perspective(1.047, 1.0, 0.1, 100.0)?
+    .look_at([0.0, 0.0, 3.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])?;
 let sun = Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]);
 
 let scene = Scene::new();

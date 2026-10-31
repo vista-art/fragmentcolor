@@ -1,6 +1,7 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use fragmentcolor::{Pass, Renderer, Shader, Target};
+use fragmentcolor::TextureError;
+use fragmentcolor::{InitializationError, Pass, Renderer, Shader, Target};
 
 const FILL: &str = r#"
 struct VertexOutput { @builtin(position) position: vec4<f32> }
@@ -53,7 +54,7 @@ fn renders_to_texture_and_reads_back() {
         renderer.render(&shader, &target).expect("render failed");
 
         // Assert
-        let img = target.get_image().await;
+        let img = target.get_image().await.expect("read back");
         assert!(!img.is_empty(), "image readback should not be empty");
     });
 }
@@ -75,14 +76,14 @@ fn pass_target_draws_into_resized_texture() {
         let fill = Shader::new(FILL).expect("fill shader failed");
         fill.set("color", [1.0, 0.0, 0.0, 1.0]).expect("set failed");
         let pass = Pass::new("fill");
-        pass.add_shader(&fill);
+        pass.add_shader(&fill).expect("add_shader failed");
         pass.set_target(&target).expect("set_target failed");
 
         renderer.render(&pass, &scratch).expect("render failed");
-        target.resize([32, 8]);
+        target.resize([32, 8]).expect("resize failed");
         renderer.render(&pass, &scratch).expect("render failed");
 
-        let img = target.get_image().await;
+        let img = target.get_image().await.expect("read back");
         assert_eq!(img.len(), 32 * 8 * 4, "readback should match the new size");
         assert!(
             img[0] > 200 && img[1] < 50 && img[3] == 255,
@@ -109,7 +110,7 @@ fn sampled_binding_reads_resized_texture() {
         let fill = Shader::new(FILL).expect("fill shader failed");
         fill.set("color", [1.0, 0.0, 0.0, 1.0]).expect("set failed");
         let draw = Pass::new("draw");
-        draw.add_shader(&fill);
+        draw.add_shader(&fill).expect("add_shader failed");
         draw.set_target(&target).expect("set_target failed");
 
         let post = Shader::new(SAMPLE_CENTER).expect("sample shader failed");
@@ -119,16 +120,115 @@ fn sampled_binding_reads_resized_texture() {
         renderer.render(&draw, &probe).expect("render failed");
 
         // repaint at a new size, then sample through the pre-resize binding
-        target.resize([24, 24]);
+        target.resize([24, 24]).expect("resize failed");
         fill.set("color", [0.0, 1.0, 0.0, 1.0]).expect("set failed");
         renderer.render(&draw, &probe).expect("render failed");
         renderer.render(&post, &probe).expect("render failed");
 
-        let img = probe.get_image().await;
+        let img = probe.get_image().await.expect("read back");
         assert!(
             img[1] > 200 && img[0] < 50,
             "sampled binding should see the repainted resized texture, got {:?}",
             &img[..4]
         );
+    });
+}
+
+// Story: resizing a target's texture() handle resizes the target itself.
+#[test]
+fn a_texture_handle_resizes_its_target() {
+    pollster::block_on(async move {
+        let renderer = Renderer::new();
+        let target = renderer
+            .create_texture_target([8, 8])
+            .await
+            .expect("create_texture_target failed");
+        target.texture().resize([24, 16]).expect("resize failed");
+        let size: [u32; 2] = target.size().into();
+        assert_eq!(size, [24, 16]);
+        let img = target.get_image().await.expect("read back");
+        assert_eq!(img.len(), 24 * 16 * 4);
+    });
+}
+
+// Story: a texture() handle and a clone of the target both follow a resize,
+// so they read the new size and the pixels drawn after it.
+#[test]
+fn handles_and_clones_follow_resize() {
+    pollster::block_on(async move {
+        let renderer = Renderer::new();
+        let mut target = renderer
+            .create_texture_target([8, 8])
+            .await
+            .expect("create_texture_target failed");
+        let handle = target.texture();
+        let copy = target.clone();
+
+        target.resize([24, 16]).expect("resize failed");
+        let fill = Shader::new(FILL).expect("fill shader failed");
+        fill.set("color", [1.0, 0.0, 0.0, 1.0]).expect("set failed");
+        renderer.render(&fill, &target).expect("render failed");
+
+        let size: [u32; 2] = handle.size().into();
+        assert_eq!(size, [24, 16], "the handle reads the new size");
+        let size: [u32; 2] = copy.size().into();
+        assert_eq!(size, [24, 16], "the clone reads the new size");
+        let img = handle.get_image().await.expect("read back");
+        assert_eq!(img.len(), 24 * 16 * 4, "the handle reads the new texture");
+        assert!(
+            img[0] > 200,
+            "the handle sees the fill, got {:?}",
+            &img[..4]
+        );
+    });
+}
+
+// Story: a texture target refuses a size with no area and keeps its own,
+// and the size it already has keeps its pixels.
+#[test]
+fn resize_refuses_an_empty_size_and_keeps_the_pixels() {
+    pollster::block_on(async move {
+        let renderer = Renderer::new();
+        let mut target = renderer
+            .create_texture_target([8, 8])
+            .await
+            .expect("create_texture_target failed");
+        let fill = Shader::new(FILL).expect("fill shader failed");
+        fill.set("color", [1.0, 0.0, 0.0, 1.0]).expect("set failed");
+        renderer.render(&fill, &target).expect("render failed");
+
+        let refused = target.resize([0, 8]);
+        assert!(refused.is_err(), "a width of zero is an error");
+        let size: [u32; 2] = target.size().into();
+        assert_eq!(size, [8, 8], "a refused resize keeps the size");
+
+        target.resize([8, 8]).expect("resize failed");
+        let img = target.get_image().await.expect("read back");
+        assert!(
+            img[0] > 200,
+            "the current size keeps the pixels, got {:?}",
+            &img[..4]
+        );
+    });
+}
+
+// Story: a texture target past the device limit, or with no area, is refused at
+// creation with the error resize returns, before it reaches wgpu.
+#[test]
+fn create_texture_target_checks_the_size() {
+    pollster::block_on(async move {
+        let renderer = Renderer::new();
+        for size in [[u32::MAX, 8, 1], [0, 8, 1], [8, 8, 0], [8, 8, 2]] {
+            let refused = renderer.create_texture_target(size).await;
+            assert!(
+                matches!(
+                    refused,
+                    Err(InitializationError::TextureError(
+                        TextureError::InvalidInput(_)
+                    ))
+                ),
+                "{size:?} should be refused"
+            );
+        }
     });
 }

@@ -4,12 +4,29 @@ import importlib
 from pathlib import Path
 import numpy as np
 from fragmentcolor import (
+    BindingError,
+    Camera,
+    CameraError,
     CompareFunction,
+    DeviceError,
+    EntryError,
+    ErrorKind,
+    FeatureError,
     FragmentColorError,
     Instance,
+    InvalidInputError,
+    Light,
+    LightError,
+    LightKind,
+    LimitError,
+    LogLevel,
     MalformedImageError,
+    Material,
+    MaterialError,
     Mesh,
+    OccludedSurfaceError,
     Mipmap,
+    Model,
     Pass,
     RenderCanvasTarget,
     Renderer,
@@ -20,7 +37,9 @@ from fragmentcolor import (
     Shader,
     Size,
     TextureFormat,
+    TextureSlot,
     TextureUsage,
+    Quad,
     Vertex,
     WindowTarget,
 )
@@ -116,14 +135,21 @@ def check_sampler_options(texture):
 
 def check_size(renderer, texture):
     """Size reads its fields, and every Size parameter takes a Size back."""
-    assert (texture.size.width, texture.size.height) == (2, 2)
+    assert (texture.size().width, texture.size().height) == (2, 2)
     target = renderer.create_texture_target([16, 8])
-    size = target.size
+    size = target.size()
     assert isinstance(size, Size)
-    assert (size.width, size.height, size.depth) == (16, 8, 1)
+    assert (size.width, size.height, size.depth) == (16, 8, None)
     size.width = 32
     target.resize(size)
-    assert (target.size.width, target.size.height) == (32, 8)
+    assert (target.size().width, target.size().height) == (32, 8)
+    # A size's fields come in any mapping, as the stub's Mapping hint says.
+    import collections
+    import types
+    for fields in ({"width": 8, "height": 4}, collections.UserDict(width=8, height=4),
+                   types.MappingProxyType({"width": 8, "height": 4, "depth": 1})):
+        target.resize(fields)
+        assert (target.size().width, target.size().height) == (8, 4), f"{type(fields).__name__} size"
     print("Size reads its fields and passes back in")
 
 
@@ -190,7 +216,7 @@ def check_image_layout(renderer):
     assert np.array_equal(texels, image), "Texture.get_image differs from TextureTarget.get_image"
 
     texture = renderer.create_texture(image, format=TextureFormat.Rgba)
-    assert (texture.size.width, texture.size.height) == (3, 2)
+    assert (texture.size().width, texture.size().height) == (3, 2)
     shader = Shader(LOAD_TEXELS_SHADER)
     shader.set("tex", texture)
     copy = renderer.create_texture_target([3, 2])
@@ -234,6 +260,37 @@ def check_error_types(renderer):
     raises("Texture.write with 4 of 16 bytes", lambda: texture.write(bytes(4)))
     renderer.unregister_texture(texture.id())
     raises("a second unregister_texture", lambda: renderer.unregister_texture(texture.id()))
+    # A hidden window can't be made headless, so only the class is checked.
+    assert issubclass(OccludedSurfaceError, FragmentColorError)
+    # A WindowTarget made by its constructor has no surface until Renderer.create_target makes one.
+    unready = RenderCanvasTarget(object(), None)
+    raises("WindowTarget.resize with no surface", lambda: unready.resize([4, 4]))
+    # A texture target hands rendercanvas a frame in its own format, Rgba8Unorm.
+    frame_format = renderer.create_texture_target([4, 4]).get_current_frame().format()
+    assert frame_format == "Rgba8Unorm", frame_format
+
+    # A pipeline the GPU refuses raises DeviceError, with its kind and the step's label.
+    # The fragment stage reads @location(0), which the vertex stage never writes.
+    unfed = Shader("""
+struct VOut { @builtin(position) pos: vec4<f32> };
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> VOut {
+  let p = array<vec2<f32>, 3>(vec2f(-1., -1.), vec2f(3., -1.), vec2f(-1., 3.));
+  return VOut(vec4f(p[i], 0., 1.));
+}
+@fragment fn fs_main(@location(0) tint: vec4<f32>) -> @location(0) vec4<f32> { return tint; }
+""")
+    target = renderer.create_texture_target([8, 8])
+    try:
+        renderer.render(unfed, target)
+    except DeviceError as e:
+        assert isinstance(e, FragmentColorError)
+        assert e.kind == ErrorKind.Validation, f"kind {e.kind}"
+        assert e.label == "render pipeline", f"label {e.label}"
+        assert str(e).startswith("Device error (validation) in 'render pipeline'"), str(e)
+        assert e.detail and str(e).endswith(f": {e.detail}"), f"detail {e.detail}"
+        print(f"render of a refused pipeline raised DeviceError: {e}")
+    else:
+        raise AssertionError("render of a refused pipeline should raise DeviceError")
 
 
 SOLID_SHADER = """
@@ -269,6 +326,131 @@ def check_require_graph(renderer):
     print("Pass.require runs the required passes")
 
 
+SAMPLE_SHADER = """
+@group(0) @binding(0) var source: texture_2d<f32>;
+@group(0) @binding(1) var soft: sampler;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+  return vec4f(p[i], 0., 1.);
+}
+@fragment fn fs_main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+  return textureSample(source, soft, pos.xy / 8.0);
+}
+"""
+
+def check_shader_refusals(renderer):
+    """render refuses a shader the device can't run before any GPU work, with an exception
+    class that names the kind of refusal and carries its fields as attributes."""
+    target = renderer.create_texture_target([8, 8])
+    far = Shader("""
+@group(100) @binding(0) var<uniform> tint: vec4<f32>;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+  return vec4f(p[i], 0., 1.);
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> { return tint; }
+""")
+    try:
+        renderer.render(far, target)
+    except LimitError as e:
+        assert isinstance(e, FragmentColorError)
+        assert e.limit == "max_bind_groups", f"limit {e.limit}"
+        assert e.value == 101 and e.max < 101, f"value {e.value}, max {e.max}"
+        assert e.item.startswith("'tint'"), f"item {e.item}"
+        print(f"a group past the device raised LimitError: {e}")
+    else:
+        raise AssertionError("a group past the device should raise LimitError")
+
+    storage = Shader("""
+@group(0) @binding(0) var img: texture_storage_2d<bgra8unorm, write>;
+@compute @workgroup_size(1) fn cs_main() { textureStore(img, vec2<i32>(0), vec4<f32>(1.0)); }
+""")
+    try:
+        renderer.render(storage, target)
+    except FeatureError as e:
+        assert isinstance(e, FragmentColorError)
+        assert e.item == "'img' at @group(0) @binding(0)", f"item {e.item}"
+        assert e.feature == "WriteOnly storage access to Bgra8Unorm", f"feature {e.feature}"
+        print(f"a storage format the device lacks raised FeatureError: {e}")
+    else:
+        raise AssertionError("a storage format the device lacks should raise FeatureError")
+
+    unset = Shader(SAMPLE_SHADER)
+    try:
+        renderer.render(unset, target)
+    except BindingError as e:
+        assert e.uniform == "source", f"uniform {e.uniform}"
+        assert e.expected == "a texture", f"expected {e.expected}"
+        assert e.found == "none, since it was never set", f"found {e.found}"
+        print(f"an unset texture raised BindingError: {e}")
+    else:
+        raise AssertionError("an unset texture should raise BindingError")
+
+    lone = Shader("@fragment fn main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }")
+    try:
+        renderer.render(lone, target)
+    except EntryError as e:
+        assert e.stage == "@vertex", f"stage {e.stage}"
+        print(f"a shader without a vertex stage raised EntryError: {e}")
+    else:
+        raise AssertionError("a shader without a vertex stage should raise EntryError")
+    assert issubclass(FeatureError, FragmentColorError)
+    renderer.render(Shader(SOLID_SHADER), target)
+
+
+def check_pass_targets(renderer):
+    """A target with a mip chain raises InvalidInputError, and render refuses a pass
+    that samples its own target, or a target from another Renderer, before any GPU work."""
+    chain = renderer.create_texture(bytes(64), size=[4, 4], usage=TextureUsage.RENDER_ATTACHMENT)
+    raises_invalid("Pass.set_target with a mip chain", lambda: Pass("chain").set_target(chain))
+
+    def refuses(label, words, call):
+        try:
+            call()
+        except DeviceError as e:
+            raise AssertionError(f"{label} reached the GPU: {e}")
+        except FragmentColorError as e:
+            assert words in str(e), str(e)
+            print(f"{label} raised FragmentColorError: {e}")
+            return
+        raise AssertionError(f"{label} should raise FragmentColorError")
+
+    target = renderer.create_texture_target([8, 8])
+    feedback = Shader(SAMPLE_SHADER)
+    feedback.set("source", target.texture())
+    refuses("sampling the render target", "Texture conflict", lambda: renderer.render(feedback, target))
+
+    foreign = Renderer().create_texture_target([8, 8])
+    refuses("a target from another Renderer", "another Renderer",
+            lambda: renderer.render(Shader(SOLID_SHADER), foreign))
+    refuses("a Renderer with no context", "another Renderer",
+            lambda: Renderer().render(Shader(SOLID_SHADER), target))
+
+    # A refused Scene render runs no setup, so it adds no default camera or light.
+    cover = Mesh()
+    cover.add_vertices([Vertex.pbr(corner) for corner in ([-1.0, -1.0, 0.0], [3.0, -1.0, 0.0], [-1.0, 3.0, 0.0])])
+    scene = Scene()
+    scene.add(Model(cover, Material.pbr()))
+    refuses("a Scene render into another Renderer's target", "another Renderer",
+            lambda: Renderer().render(scene, target))
+    assert not scene.cameras() and not scene.lights(), "the refused render added defaults"
+
+    # A pass error keeps its class whichever call raises it: render raises
+    # InvalidInputError for a target format the shader can't fill, as set_target does.
+    usage = TextureUsage.RENDER_ATTACHMENT | TextureUsage.TEXTURE_BINDING
+    integer = renderer.create_storage_texture([8, 8], TextureFormat.Rgba32Uint, usage=usage)
+    floats = Pass("floats into integers")
+    floats.add_shader(Shader(SOLID_SHADER))
+    floats.set_target(integer)
+    raises_invalid("render of vec4<f32> into Rgba32Uint", lambda: renderer.render(floats, target))
+
+    wide = Pass("wide viewport")
+    wide.add_shader(Shader(SOLID_SHADER))
+    wide.set_viewport([0, 0, 1 << 24, 8])
+    raises_invalid("render of a viewport past the device limit", lambda: renderer.render(wide, target))
+    renderer.render(Shader(SOLID_SHADER), target)
+
+
 def check_value_types():
     """Value types compare by value, and their fields read back."""
     chain = Mipmap.build(bytes(4 * 4 * 4), TextureFormat.Rgba8UnormSrgb, [4, 4])
@@ -277,12 +459,436 @@ def check_value_types():
     assert chain.levels()[0] == chain.level(0)
     assert Size(4, 2) == Size(4, 2) and Size(4, 2) != Size(2, 4)
     region = ScreenRegion((1, 2), (32, 16))
-    assert region == ScreenRegion.from_region(1, 2, 32, 16)
+    assert region == ScreenRegion([1, 2], [32, 16]) and region != ScreenRegion((1, 2), (16, 32))
     assert (region.min_x, region.max_y, region.width(), region.height()) == (1, 18, 32, 16)
-    assert ScreenRegion.from_tuple((64, 32)).width() == 64
     assert SamplerOptions(smooth=False) == SamplerOptions(smooth=False)
     assert RenderCanvasTarget is WindowTarget
     print("Value types compare by value")
+
+
+def check_number_errors(renderer):
+    """Counts, indices, sizes and regions take ints and raise InvalidInputError for one they can't hold."""
+    def raises(kind, label, call):
+        try:
+            call()
+        except kind as e:
+            print(f"{label} raised {kind.__name__}: {e}")
+            return
+        raise AssertionError(f"{label} should raise {kind.__name__}")
+
+    rpass, mesh, scene = Pass("numbers"), Mesh(), Scene()
+    scene.add_pass(rpass)
+    chain = Mipmap.build(bytes(4 * 4 * 4), TextureFormat.Rgba8Unorm, [4, 4])
+    texture = renderer.create_texture(bytes(4 * 4 * 4), size=[4, 4])
+    target = renderer.create_texture_target([4, 4])
+    model = Model(Mesh(), Material.pbr())
+    material = Material.pbr()
+    calls = {
+        "Pass.set_compute_dispatch": lambda n: rpass.set_compute_dispatch(n, 1, 1),
+        "Pass.set_viewport": lambda n: rpass.set_viewport([0, 0, n, 4]),
+        "Mesh.set_instance_count": lambda n: mesh.set_instance_count(n),
+        "Mesh.set_indices": lambda n: mesh.set_indices([0, n]),
+        "Scene.get_pass": lambda n: scene.get_pass(n),
+        "Scene.add_to": lambda n: scene.add_to(n, model),
+        "Mipmap.level": lambda n: chain.level(n),
+        "Texture.write_region": lambda n: texture.write_region(bytes(4), [n, 0, 1, 1]),
+        "Texture.write_region dict": lambda n: texture.write_region(bytes(4), {"min_x": n, "max_x": 1, "max_y": 1}),
+        "Size": lambda n: Size(n, 2),
+        "Size.depth": lambda n: setattr(Size(4, 2), "depth", n),
+        "TextureTarget.resize": lambda n: target.resize([n, 4]),
+        "create_texture_target": lambda n: renderer.create_texture_target({"width": n, "height": 4}),
+        "ScreenRegion": lambda n: ScreenRegion((0, 0), (n, 4)),
+        "ScreenRegion origin": lambda n: ScreenRegion((n, 0), (4, 4)),
+        "Material.texture_uv": lambda n: material.texture_uv(TextureSlot.Occlusion, n),
+    }
+    # An int of any size outside 0 to 2**32 - 1 is a value error, never OverflowError.
+    for name, call in calls.items():
+        for bad in (-1, 2**32, 2**128, 10**400):
+            raises(InvalidInputError, f"{name}({bad})", lambda: call(bad))
+        # A float or a bool is the wrong type, even a whole one.
+        raises(TypeError, f"{name}(1.5)", lambda: call(1.5))
+        raises(TypeError, f"{name}(2.0)", lambda: call(2.0))
+        raises(TypeError, f"{name}(True)", lambda: call(True))
+    assert issubclass(InvalidInputError, FragmentColorError)
+
+    # A texture id reads as a u64, so past that range it is a value error too.
+    for bad in (-1, 2**64, 10**400):
+        raises(InvalidInputError, f"Renderer.read_texture({bad})", lambda: renderer.read_texture(bad))
+        raises(InvalidInputError, f"Renderer.unregister_texture({bad})", lambda: renderer.unregister_texture(bad))
+    raises(TypeError, "Renderer.read_texture(1.5)", lambda: renderer.read_texture(1.5))
+    raises(TypeError, "Renderer.read_texture(True)", lambda: renderer.read_texture(True))
+    # A byte list takes ints from 0 to 255. Another int is a value error that names the
+    # call and the item, never OverflowError, and a float or a bool is the wrong type.
+    pixels = renderer.create_texture([0] * 8, size=[1, 2])
+    byte_calls = {
+        "Renderer.create_texture": lambda data: renderer.create_texture(data, size=[1, 2]),
+        "Renderer.create_storage_texture": lambda data: renderer.create_storage_texture([1, 2], TextureFormat.Rgba, data),
+        "Texture.write": lambda data: pixels.write(data),
+        "Mipmap.build": lambda data: Mipmap.build(data, TextureFormat.Rgba, [1, 2]),
+        "Material.base_color_texture": lambda data: Material.pbr().base_color_texture(data, size=[1, 2]),
+    }
+    for name, call in byte_calls.items():
+        for bad in (300, -1, 2**64):
+            try:
+                call([0] * 7 + [bad])
+            except InvalidInputError as e:
+                assert str(e).startswith(name) and "item 7" in str(e), e
+            else:
+                raise AssertionError(f"{name} with a byte of {bad} should raise InvalidInputError")
+        raises(TypeError, f"{name} with a byte of 2.5", lambda: call([0] * 7 + [2.5]))
+        raises(TypeError, f"{name} with a bool", lambda: call([True] + [0] * 7))
+    pixels.write((255,) * 8)
+    readable = renderer.create_texture(bytes(64), size=[4, 4], usage=TextureUsage.COPY_SRC)
+    assert len(renderer.read_texture(readable.id().id)) == len(renderer.read_texture(readable.id())) == 64
+    raises(InvalidInputError, "Pass.set_viewport([0, 0, 4])", lambda: rpass.set_viewport([0, 0, 4]))
+
+    # A UV set past 1 fits a u32, but no texture can sample it.
+    assert issubclass(MaterialError, FragmentColorError) and issubclass(MaterialError, ValueError)
+    raises(MaterialError, "Material.texture_uv(2)", lambda: material.texture_uv(TextureSlot.Occlusion, 2))
+    assert isinstance(material.texture_uv(TextureSlot.Occlusion, np.uint32(1)), Material)
+
+    # An offset or scale takes two numbers. Another count is a value error, and a string the wrong type.
+    transforms = {
+        "Material.texture_transform offset": lambda v: material.texture_transform(TextureSlot.Normal, v, [1.0, 1.0], 0.0),
+        "Material.texture_transform scale": lambda v: material.texture_transform(TextureSlot.Normal, [0.0, 0.0], v, 0.0),
+        "Material.uv_transform offset": lambda v: material.uv_transform(v, [1.0, 1.0], 0.0),
+        "Material.uv_transform scale": lambda v: material.uv_transform([0.0, 0.0], v, 0.0),
+    }
+    for name, apply in transforms.items():
+        raises(InvalidInputError, f"{name} with 3 numbers", lambda: apply([0.0, 0.0, 0.0]))
+        raises(TypeError, f"{name} with a string", lambda: apply("ab"))
+        for bad in (float("nan"), float("inf"), 1e39):
+            raises(InvalidInputError, f"{name} with {bad}", lambda: apply([bad, 1.0]))
+        assert isinstance(apply(np.array([0.5, 2.0])), Material)
+
+    size = Size(4, 2)
+    for field in ("width", "height", "depth"):
+        raises(InvalidInputError, f"Size.{field} = -1", lambda: setattr(size, field, -1))
+    assert (size.width, size.height, size.depth) == (4, 2, None), "a refused write changed the Size"
+    size.depth = 3
+    size.depth = None
+    assert size.depth is None
+
+    # NumPy integers count as ints.
+    rpass.set_viewport([0, 0, np.uint32(4), 4])
+    rpass.set_compute_dispatch(np.int64(64), 1, 1)
+    mesh.set_indices(np.array([0, 1, 2], dtype=np.uint32))
+    assert Size(np.uint32(4), 2).width == 4
+    print("Counts, indices, sizes and regions take ints and refuse ones they can't hold")
+
+
+def check_empty_regions():
+    """A region with a side of 0, or a far edge past 2**32 - 1, raises InvalidInputError."""
+    rpass = Pass("empty")
+    for label, call in (
+        ("ScreenRegion((0, 0), (0, 4))", lambda: ScreenRegion((0, 0), (0, 4))),
+        ("ScreenRegion((1, 1), (4, 0))", lambda: ScreenRegion((1, 1), (4, 0))),
+        ("ScreenRegion((0, 0), (0, 0))", lambda: ScreenRegion((0, 0), (0, 0))),
+        ("Pass.set_viewport([0, 0, 0, 4])", lambda: rpass.set_viewport([0, 0, 0, 4])),
+        ("Pass.set_viewport([4, 0])", lambda: rpass.set_viewport([4, 0])),
+        ("ScreenRegion((2**32 - 1, 0), (5, 5))", lambda: ScreenRegion((2**32 - 1, 0), (5, 5))),
+        ("ScreenRegion((0, 2**32 - 3), (4, 4))", lambda: ScreenRegion((0, 2**32 - 3), (4, 4))),
+        ("Pass.set_viewport([2**32 - 1, 0, 2, 2])", lambda: rpass.set_viewport([2**32 - 1, 0, 2, 2])),
+    ):
+        try:
+            call()
+        except InvalidInputError as e:
+            print(f"{label} raised InvalidInputError: {e}")
+        else:
+            raise AssertionError(f"{label} should raise InvalidInputError")
+    rpass.set_viewport([0, 0, 1, 1])
+    assert ScreenRegion((2**32 - 6, 0), (5, 5)).max_x == 2**32 - 1
+    # A ScreenRegion is frozen and every constructor takes an origin and a size,
+    # so Python can't build one whose max lies before its min.
+    try:
+        ScreenRegion((8, 0), (4, 4)).max_x = 2
+    except AttributeError:
+        pass
+    else:
+        raise AssertionError("a ScreenRegion's max_x should be read-only")
+    print("Regions refuse a side of 0 and a far edge past 2**32 - 1")
+
+
+def check_scalars_and_pairs():
+    """A bool is no float, and an origin or a size is any sequence of two ints, as in JavaScript."""
+    light = Light.point([0, 1, 0], [1, 1, 1])
+    model = Model(Mesh(), Material.pbr())
+    camera = Camera.perspective(1.0, 1.0, 0.1, 10.0)
+    scalars = {
+        "Material.metallic": lambda v: Material.pbr().metallic(v),
+        "Material.roughness": lambda v: Material.pbr().roughness(v),
+        "Material.normal_scale": lambda v: Material.pbr().normal_scale(v),
+        "Material.occlusion_strength": lambda v: Material.pbr().occlusion_strength(v),
+        "Material.alpha_cutoff": lambda v: Material.pbr().alpha_cutoff(v),
+        "Material.uv_transform": lambda v: Material.pbr().uv_transform([0, 0], [1, 1], v),
+        "Material.texture_transform": lambda v: Material.pbr().texture_transform(TextureSlot.Normal, [0, 0], [1, 1], v),
+        "Model.rotate": lambda v: model.rotate([0, 1, 0], v),
+        "Camera.perspective": lambda v: Camera.perspective(v, 1.0, 0.1, 10.0),
+        "Camera.orthographic": lambda v: Camera.orthographic(v, 1.0, -1.0, 1.0, 0.1, 10.0),
+        "Camera.set_aspect": lambda v: camera.set_aspect(v),
+        "Light.set_intensity": lambda v: light.set_intensity(v),
+        "Light.set_range": lambda v: light.set_range(v),
+        "Light.set_cone_angles": lambda v: Light.spot([0, 1, 0], [0, -1, 0], [1, 1, 1]).set_cone_angles(v, 1.0),
+    }
+    for name, call in scalars.items():
+        for flag in (True, np.bool_(True)):
+            raises_type(f"{name}({flag!r})", lambda: call(flag))
+        raises_type(f"{name}('1')", lambda: call("1"))
+        call(np.float32(0.5))
+    try:
+        Material.pbr().metallic(True)
+    except TypeError as e:
+        assert str(e) == "Material.metallic: value must be a number, got bool", e
+
+    assert ScreenRegion([1, 2], [32, 16]) == ScreenRegion((1, 2), (32, 16))
+    assert ScreenRegion(np.array([1, 2]), (32, 16)) == ScreenRegion((1, 2), (32, 16))
+    for label, call in (
+        ("ScreenRegion((0, 0, 0), (4, 4))", lambda: ScreenRegion((0, 0, 0), (4, 4))),
+        ("ScreenRegion((0, 0), [4])", lambda: ScreenRegion((0, 0), [4])),
+        ("ScreenRegion((0, 0), (1, 2, 3))", lambda: ScreenRegion((0, 0), (1, 2, 3))),
+        ("Pass.set_viewport(((0, 0, 0), (4, 4)))", lambda: Pass("p").set_viewport(((0, 0, 0), (4, 4)))),
+    ):
+        raises_invalid(label, call)
+    raises_type("ScreenRegion('ab', (4, 4))", lambda: ScreenRegion("ab", (4, 4)))
+    # A viewport takes an origin and a size as two pairs, as Rust's ((x, y), (w, h)) does.
+    Pass("pairs").set_viewport(((8, 0), (2, 4)))
+    Pass("pairs").set_viewport([[8, 0], [2, 4]])
+    raises_invalid("Pass.set_viewport(((0, 0), (0, 4)))", lambda: Pass("p").set_viewport(((0, 0), (0, 4))))
+    print("Floats refuse a bool, and origins and sizes take any sequence of two ints")
+
+
+def check_labels(renderer):
+    """Number errors name the parameter, and the item for a list, as JavaScript's do."""
+    def message(call):
+        try:
+            call()
+        except FragmentColorError as e:
+            return str(e)
+        raise AssertionError("the call should raise FragmentColorError")
+
+    assert "Mesh.set_indices: item 1" in message(lambda: Mesh().set_indices([0, -1, 2]))
+    assert "Pass.set_compute_dispatch: y" in message(lambda: Pass("p").set_compute_dispatch(1, -1, 1))
+    assert "Size: height" in message(lambda: Size(4, -1))
+    assert "Pass.set_viewport: item 2" in message(lambda: Pass("p").set_viewport([0, 0, -4, 4]))
+    assert "Pass.set_clear_color: item 1" in message(lambda: Pass("p").set_clear_color([0, 10**400, 0]))
+    assert "Pass.set_clear_color takes 3 or 4 numbers, got 5" in message(lambda: Pass("p").set_clear_color([0.5] * 5))
+    assert "Light.point: position takes 3 numbers, got 2" in message(lambda: Light.point([0, 1], [1, 1, 1]))
+    assert "Renderer.read_texture: texture_id" in message(lambda: renderer.read_texture(-1))
+    texture = renderer.create_texture(bytes(64), size=[4, 4])
+    for count in (3, 5):
+        raises_invalid(f"Texture.write_region with {count} numbers", lambda: texture.write_region(bytes(4), [0] * count))
+    print("Number errors name their parameter")
+
+
+def raises_invalid(label, call):
+    try:
+        call()
+    except InvalidInputError as e:
+        print(f"{label} raised InvalidInputError: {e}")
+        return
+    raise AssertionError(f"{label} should raise InvalidInputError")
+
+
+def raises_type(label, call):
+    try:
+        call()
+    except TypeError as e:
+        print(f"{label} raised TypeError: {e}")
+        return
+    raise AssertionError(f"{label} should raise TypeError")
+
+
+def check_colors(renderer):
+    """Every color setter takes a number sequence, refuses bytes and bools, and refuses a channel past float range."""
+    rpass, light, scene, material = Pass("colors"), Light.point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0]), Scene(), Material.pbr()
+    setters = {
+        "Pass.set_clear_color": (rpass.set_clear_color, 4),
+        "Light.set_color": (light.set_color, 3),
+        "Scene.ambient": (scene.ambient, 3),
+        "Material.base_color": (material.base_color, 4),
+        "Material.emissive": (material.emissive, 3),
+        "Light.point": (lambda color: Light.point([0.0, 0.0, 0.0], color), 3),
+        "Light.directional": (lambda color: Light.directional([0.0, -1.0, 0.0], color), 3),
+        "Light.spot": (lambda color: Light.spot([0.0, 1.0, 0.0], [0.0, -1.0, 0.0], color), 3),
+    }
+    for name, (setter, count) in setters.items():
+        setter([0.5] * count)
+        setter(tuple([0.5] * count))
+        setter(np.full(count, 0.5, dtype=np.float32))
+        for bytes_form in (bytes(count), bytearray(count), memoryview(bytes(count)), np.zeros(count, dtype=np.uint8)):
+            raises_type(f"{name}({type(bytes_form).__name__})", lambda: setter(bytes_form))
+        raises_type(f"{name} with a string channel", lambda: setter(["1"] + [0] * (count - 1)))
+        raises_type(f"{name} with a bool channel", lambda: setter([True] + [0] * (count - 1)))
+        raises_type(f"{name} with a NumPy bool channel", lambda: setter(np.ones(count, dtype=np.bool_)))
+        raises_invalid(f"{name} with 10**400", lambda: setter([10**400] + [0] * (count - 1)))
+        for bad in (1e39, float("nan"), float("inf"), float("-inf")):
+            raises_invalid(f"{name} with {bad}", lambda: setter([bad] + [0] * (count - 1)))
+        raises_invalid(f"{name} with too many channels", lambda: setter([0.5] * 5))
+    # Storage texture usage reads as an int too.
+    raises_invalid("create_storage_texture(usage=-1)",
+                   lambda: renderer.create_storage_texture([4, 4], TextureFormat.Rgba8Unorm, usage=-1))
+    raises_invalid("create_storage_texture(usage=10**400)",
+                   lambda: renderer.create_storage_texture([4, 4], TextureFormat.Rgba8Unorm, usage=10**400))
+    print("Color setters take number sequences and refuse bytes and out-of-range channels")
+
+
+def check_vectors():
+    """Every position, direction, axis and scale takes three numbers the way a color takes its channels."""
+    light, model, camera = Light.point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0]), Model(Mesh(), Material.pbr()), Camera.perspective(1.0, 1.0, 0.1, 100.0)
+    vectors = {
+        "Light.point: position": lambda v: Light.point(v, [1.0, 1.0, 1.0]),
+        "Light.directional: direction": lambda v: Light.directional(v, [1.0, 1.0, 1.0]),
+        "Light.spot: position": lambda v: Light.spot(v, [0.0, -1.0, 0.0], [1.0, 1.0, 1.0]),
+        "Light.spot: direction": lambda v: Light.spot([0.0, 1.0, 0.0], v, [1.0, 1.0, 1.0]),
+        "Light.set_position": lambda v: light.set_position(v),
+        "Light.set_direction": lambda v: Light.spot([0.0, 1.0, 0.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0]).set_direction(v),
+        "Model.translate": lambda v: model.translate(v),
+        "Model.scale": lambda v: model.scale(v),
+        "Model.rotate: axis": lambda v: model.rotate(v, 0.5),
+        "Camera.look_at: position": lambda v: camera.look_at(v, [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]),
+        "Camera.look_at: target": lambda v: camera.look_at([0.0, 0.0, 5.0], v, [0.0, 1.0, 0.0]),
+        "Camera.look_at: up": lambda v: camera.look_at([0.0, 0.0, 5.0], [0.0, 0.0, 0.0], v),
+    }
+    for name, apply in vectors.items():
+        apply([1, 2, 3])
+        apply((1.0, 2.0, 3.0))
+        apply(np.array([1.0, 2.0, 3.0], dtype=np.float32))
+        for bytes_form in (bytes(3), bytearray(3), memoryview(bytes(3)), np.zeros(3, dtype=np.uint8)):
+            raises_type(f"{name}({type(bytes_form).__name__})", lambda: apply(bytes_form))
+        raises_type(f"{name} with a bool", lambda: apply([True, 1, 0]))
+        raises_type(f"{name} with a string", lambda: apply(["0", 1, 0]))
+        raises_invalid(f"{name} with 2 numbers", lambda: apply([0.0, 1.0]))
+        raises_invalid(f"{name} with 10**400", lambda: apply([10**400, 1, 0]))
+        for bad in (1e39, float("nan"), float("inf"), float("-inf")):
+            raises_invalid(f"{name} with {bad}", lambda: apply([bad, 1, 0]))
+    assert light.set_position(np.array([1.0, 2.0, 3.0])).position() == [1.0, 2.0, 3.0]
+
+    # A matrix is 16 numbers or 4 columns of 4, as a list, a tuple or an ndarray.
+    identity = [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]]
+    model.set_transform([2.0] + [0.0] * 15)
+    assert model.transform()[0][0] == 2.0
+    model.set_transform(identity)
+    model.set_transform(np.eye(4, dtype=np.float32))
+    model.set_transform(tuple(np.arange(16.0)))
+    assert model.transform()[1][0] == 4.0, "a flat matrix fills column after column"
+    for label, matrix in (("15 numbers", [0.0] * 15), ("3 columns", identity[:3]),
+                          ("a column of 3", identity[:3] + [[0.0, 0.0, 1.0]]), ("10**400", [10**400] + [0.0] * 15)):
+        raises_invalid(f"Model.set_transform with {label}", lambda: model.set_transform(matrix))
+    for label, matrix in (("a string", ["1"] + [0.0] * 15), ("a bool", [True] + [0.0] * 15), ("bytes", bytes(16))):
+        raises_type(f"Model.set_transform with {label}", lambda: model.set_transform(matrix))
+
+    # A Quad corner takes two numbers and a vertex position 1 to 4, under the same rule.
+    points = {
+        "Quad: min": lambda v: Quad(v, [1.0, 1.0]),
+        "Quad: max": lambda v: Quad([0.0, 0.0], v),
+        "Vertex: position": lambda v: Vertex(v),
+        "Vertex.pbr: position": lambda v: Vertex.pbr(v),
+        "Mesh.add_vertex: vertex": lambda v: Mesh().add_vertex(v),
+        "Mesh.add_vertices: vertex 0": lambda v: Mesh().add_vertices([v]),
+        "Mesh.from_vertices: vertex 0": lambda v: Mesh.from_vertices([v]),
+    }
+    for name, apply in points.items():
+        apply([0.5, 1])
+        apply((0.5, 1.0))
+        apply(np.array([0.5, 1.0], dtype=np.float32))
+        for bytes_form in (bytes(2), bytearray(2), memoryview(bytes(2)), np.zeros(2, dtype=np.uint8)):
+            raises_type(f"{name}({type(bytes_form).__name__})", lambda: apply(bytes_form))
+        raises_type(f"{name} with a bool", lambda: apply([True, 1]))
+        raises_type(f"{name} with a 0-d bool array", lambda: apply([np.array(True), 1.0]))
+        raises_type(f"{name} with a string", lambda: apply(["0", 1]))
+        for bad in (10**400, 1e39, float("nan"), float("inf"), float("-inf")):
+            try:
+                apply([bad, 1.0])
+            except InvalidInputError as e:
+                assert str(e).startswith(name), f"{name} with {bad} raised {e}"
+            else:
+                raise AssertionError(f"{name} with {bad} should raise InvalidInputError")
+    raises_invalid("Quad with 3 numbers", lambda: Quad([0.0, 0.0, 0.0], [1.0, 1.0]))
+    raises_invalid("Vertex with 5 numbers", lambda: Vertex([0.0] * 5))
+    raises_invalid("Vertex(nan)", lambda: Vertex(float("nan")))
+    raises_type("Vertex(True)", lambda: Vertex(True))
+    raises_type("Vertex(np.array(True))", lambda: Vertex(np.array(True)))
+    raises_type("Vertex(np.bool_(True))", lambda: Vertex(np.bool_(True)))
+    Vertex(0.5)
+    Mesh().add_vertex(([0.0, 0.0, 0.0], [0.0, 1.0]))
+    raises_invalid("Mesh.add_vertex((position with NaN, uv))",
+                   lambda: Mesh().add_vertex(([float("nan"), 0.0, 0.0], [0.0, 1.0])))
+
+    # The uv and color of a vertex tuple take 2 and 4 numbers under the same rule.
+    position, uv, color = [0.0, 0.0, 0.0], [0.0, 1.0], [1.0, 1.0, 1.0, 1.0]
+    parts = {
+        "Mesh.add_vertex: vertex: uv": (2, lambda v: Mesh().add_vertex((position, v))),
+        "Mesh.add_vertices: vertex 0: uv": (2, lambda v: Mesh().add_vertices([(position, v, color)])),
+        "Mesh.from_vertices: vertex 0: color": (4, lambda v: Mesh.from_vertices([(position, uv, v)])),
+    }
+    for name, (count, apply) in parts.items():
+        apply([0.5] * count)
+        apply((0.5,) * count)
+        apply(np.full(count, 0.5, dtype=np.float32))
+        for bytes_form in (bytes(count), bytearray(count), memoryview(bytes(count)), np.zeros(count, dtype=np.uint8)):
+            raises_type(f"{name}({type(bytes_form).__name__})", lambda: apply(bytes_form))
+        raises_type(f"{name} with a bool", lambda: apply([True] + [1.0] * (count - 1)))
+        for bad in (10**400, 1e39, float("nan"), float("inf"), float("-inf")):
+            try:
+                apply([1.0] * (count - 1) + [bad])
+            except InvalidInputError as e:
+                assert str(e).startswith(f"{name}: item {count - 1}"), f"{name} with {bad} raised {e}"
+            else:
+                raise AssertionError(f"{name} with {bad} should raise InvalidInputError")
+        try:
+            apply([0.5] * (count + 1))
+        except InvalidInputError as e:
+            assert str(e) == f"{name} takes {count} numbers, got {count + 1}", f"{name} raised {e}"
+        else:
+            raise AssertionError(f"{name} with {count + 1} numbers should raise InvalidInputError")
+    print("Vectors take three numbers and refuse bytes, bools and out-of-range items")
+
+
+RESOLUTION_SHADER = """
+@group(0) @binding(0) var<uniform> resolution: vec2<f32>;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+  return vec4f(p[i], 0., 1.);
+}
+@fragment fn main() -> @location(0) vec4<f32> { return vec4f(resolution / 1000.0, 0., 1.); }
+"""
+
+
+def check_example_resize(renderer):
+    """The examples' rendercanvas resize handler hands resize whole pixels from float event sizes."""
+    import ast
+    for path in ("examples/python/main.py", "examples/python/multiobject.py"):
+        tree = ast.parse(Path(path).read_text())
+        handler = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "handler")
+        handler.decorator_list = []
+        shader = Shader(RESOLUTION_SHADER)
+        target = renderer.create_texture_target([8, 8])
+        namespace = {"circle": shader, "circles": [shader], "target": target}
+        exec(compile(ast.Module([handler], []), path, "exec"), namespace)
+        namespace["handler"]({"event_type": "resize", "width": 400.0, "height": 300.0, "pixel_ratio": 1.5})
+        size = target.size()
+        assert (size.width, size.height) == (600, 450), f"{path} resized to {size.width}x{size.height}"
+    print("The examples resize their target from float event sizes")
+
+
+def check_clear_color():
+    """A clear color keeps its numbers, raises InvalidInputError for NaN, and TypeError for a string."""
+    rpass = Pass("clear")
+    for label, color in (("NaN", [float("nan"), 0, 0]), ("infinity", [0, 0, float("inf"), 1]), ("two channels", [0, 0])):
+        try:
+            rpass.set_clear_color(color)
+        except InvalidInputError as e:
+            assert str(e).startswith("Pass.set_clear_color"), f"set_clear_color with {label} raised {e}"
+        else:
+            raise AssertionError(f"set_clear_color with {label} should raise InvalidInputError")
+    try:
+        rpass.set_clear_color(["1", 0, 0])
+    except TypeError:
+        pass
+    else:
+        raise AssertionError("set_clear_color with a string should raise TypeError")
+    rpass.set_clear_color([4.0, -1.0, 0.25])
+    print("Clear colors keep their numbers and refuse NaN")
 
 
 def check_texture_inputs(renderer):
@@ -303,6 +909,167 @@ def check_texture_inputs(renderer):
     print("create_texture takes every byte form, a Texture, and usage")
 
 
+def check_material_textures(renderer):
+    """The Material texture setters take create_texture's keywords, and each keyword reaches the upload."""
+    corners = ([-1.0, -1.0, 0.0], [3.0, -1.0, 0.0], [-1.0, 3.0, 0.0])
+    flat = ([0.0, 0.0], [0.0, 0.0], [0.0, 0.0])
+
+    def glow(set_texture, uvs=flat):
+        # A black surface lit only by its emissive map, over the whole target.
+        mesh = Mesh()
+        mesh.add_vertices([
+            Vertex.pbr(corner).set(Vertex.NORMAL, [0.0, 0.0, 1.0]).set(Vertex.UV0, uv)
+            for corner, uv in zip(corners, uvs)
+        ])
+        material = Material.pbr().base_color([0.0, 0.0, 0.0, 1.0]).emissive([1.0, 1.0, 1.0])
+        rpass = Pass("glow")
+        rpass.add(Model(mesh, set_texture(material)))
+        target = renderer.create_texture_target([4, 4])
+        renderer.render(rpass, target)
+        return [int(channel) for channel in target.get_image()[0, 0]]
+
+    def is_red(pixel):
+        return pixel[0] > 200 and pixel[1] < 40 and pixel[2] < 40
+
+    red = [255, 0, 0, 255]
+    forms = {
+        "size=[1, 1]": lambda m: m.emissive_texture(red, size=[1, 1]),
+        "input= and size=": lambda m: m.emissive_texture(input=red, size=[1, 1]),
+        "a positional size": lambda m: m.emissive_texture(bytes(red), [1, 1]),
+        "a Size": lambda m: m.emissive_texture(bytearray(red), size=Size(1, 1)),
+        "format=R8Unorm": lambda m: m.emissive_texture(bytes([255]), size=[1, 1], format=TextureFormat.R8Unorm),
+        "an ndarray": lambda m: m.emissive_texture(np.array([[red]], dtype=np.uint8)),
+    }
+    for label, form in forms.items():
+        pixel = glow(form)
+        assert is_red(pixel), f"emissive_texture with {label} drew {pixel}"
+
+    # Each keyword changes what draws, so a keyword the setter drops fails here.
+    gray = [128, 128, 128, 255]
+    linear = glow(lambda m: m.emissive_texture(gray, size=[1, 1], format=TextureFormat.Rgba8Unorm))
+    srgb = glow(lambda m: m.emissive_texture(gray, size=[1, 1]))
+    assert linear[0] > srgb[0] + 30, f"format=Rgba8Unorm drew {linear}, the sRGB default {srgb}"
+    pair = red + [0, 255, 0, 255]
+
+    def shift(m, offset):
+        return m.texture_transform(TextureSlot.Emissive, [offset, 0.0], [1.0, 1.0], 0.0)
+
+    repeat = SamplerOptions(repeat_x=True)
+    wrapped = glow(lambda m: shift(m, 1.25).emissive_texture(pair, size=[2, 1], sampler=repeat))
+    clamped = glow(lambda m: shift(m, 1.25).emissive_texture(pair, size=[2, 1]))
+    assert is_red(wrapped), f"sampler=repeat_x drew {wrapped} past the edge"
+    assert clamped[1] > 200 and clamped[0] < 40, f"the clamped default drew {clamped} past the edge"
+    # 16 texels to a pixel: a mip chain samples its 1x1 level, a mix of red and green.
+    wide = ([0.0, 0.0], [64.0, 0.0], [0.0, 64.0])
+    chained = glow(lambda m: shift(m, 0.25).emissive_texture(pair, size=[2, 1], sampler=repeat), wide)
+    single = glow(lambda m: shift(m, 0.25).emissive_texture(pair, size=[2, 1], sampler=repeat, mipmaps=False), wide)
+    assert is_red(single), f"mipmaps=False drew {single}"
+    assert chained[1] > 60, f"the default mip chain drew {chained}"
+
+    setters = ("base_color_texture", "metallic_roughness_texture", "normal_texture",
+               "occlusion_texture", "emissive_texture")
+    albedo = renderer.create_texture(red, size=[1, 1])
+    for name in setters:
+        setter = getattr(Material.pbr(), name)
+        setter(red, size=[1, 1], format=TextureFormat.Rgba8Unorm, mipmaps=False, usage=TextureUsage.COPY_SRC)
+        setter(albedo)
+        # 32 is outside the five TextureUsage flags, so the upload at render refuses it.
+        raises_invalid(f"Material.{name} with usage 32",
+                       lambda: glow(lambda m: getattr(m, name)(red, size=[1, 1], usage=32)))
+        raises_invalid(f"Material.{name} with an ndarray of another size",
+                       lambda: setter(np.zeros((2, 2, 4), dtype=np.uint8), size=[1, 1]))
+        raises_invalid(f"Material.{name} with a size beside a Texture", lambda: setter(albedo, size=[1, 1]))
+        raises_invalid(f"Material.{name} with a sampler beside a Texture",
+                       lambda: setter(albedo, sampler=SamplerOptions(repeat_x=True)))
+        try:
+            setter(albedo, usage=TextureUsage.COPY_SRC)
+        except InvalidInputError as e:
+            assert f"Material.{name}" in str(e), f"usage beside a Texture raised {e}"
+        else:
+            raise AssertionError(f"Material.{name} with usage beside a Texture should raise InvalidInputError")
+        raises_type(f"Material.{name} with a float size", lambda: setter(red, size=[1.0, 1.0]))
+        raises_type(f"Material.{name} with a string format", lambda: setter(red, format="rgba"))
+    raises_invalid("create_texture with a format beside a Texture",
+                   lambda: renderer.create_texture(albedo, format=TextureFormat.Rgba8Unorm))
+    assert renderer.create_texture(albedo).size() == albedo.size()
+    print("The Material texture setters take create_texture's keywords, and each keyword reaches the upload")
+
+
+MAPPED_SHADER = """
+@group(0) @binding(0) var base_color_map: texture_2d<f32>;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+  return vec4f(p[i], 0., 1.);
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> { return textureLoad(base_color_map, vec2<i32>(0), 0); }
+"""
+
+
+def check_material_maps():
+    """One Material map draws in two Renderers, and the second draws after the first is gone."""
+    import gc
+
+    red = np.array([[[255, 0, 0, 255]]], dtype=np.uint8)
+    material = Material.custom(Shader(MAPPED_SHADER)).base_color_texture(red)
+    first = Renderer()
+    first_target = first.create_texture_target([4, 4])
+    second = Renderer()
+    second_target = second.create_texture_target([4, 4])
+    for label, renderer, target in (("first", first, first_target), ("second", second, second_target)):
+        renderer.render(material.shader(), target)
+        pixel = target.get_image()[0, 0].tolist()
+        assert pixel == [255, 0, 0, 255], f"the {label} Renderer drew {pixel}"
+
+    del first, first_target
+    gc.collect()
+    second.render(material.shader(), second_target)
+    pixel = second_target.get_image()[0, 0].tolist()
+    assert pixel == [255, 0, 0, 255], f"the second Renderer drew {pixel} after the first was gone"
+    print("One Material map draws in two Renderers, each from a copy of its own")
+
+
+def check_invalid_textures(renderer):
+    """Texture inputs fill the format they are given, or raise InvalidInputError."""
+    gray = np.arange(16, dtype=np.uint8).reshape(4, 4)
+    texture = renderer.create_texture(
+        gray, format=TextureFormat.R8Unorm, mipmaps=False, usage=TextureUsage.COPY_SRC
+    )
+    assert bytes(renderer.read_texture(texture.id())) == gray.tobytes(), "R8Unorm read the gray bytes"
+
+    def invalid(label, call):
+        try:
+            call()
+        except InvalidInputError as e:
+            print(f"{label} raised InvalidInputError: {e}")
+            return
+        raise AssertionError(f"{label} should raise InvalidInputError")
+
+    invalid("a gray ndarray as Rgba32Float", lambda: renderer.create_texture(gray, format=TextureFormat.Rgba32Float))
+    invalid("an ndarray with another size", lambda: renderer.create_texture(gray, size=[2, 8]))
+    invalid("an ndarray with 5 channels", lambda: renderer.create_texture(np.zeros((2, 2, 5), np.uint8)))
+    invalid("a 4D ndarray", lambda: renderer.create_texture(np.zeros((2, 2, 2, 4), np.uint8)))
+    print("create_texture fits an ndarray to its format and size")
+
+    storage = renderer.create_storage_texture([16, 16], TextureFormat.Rgba)
+    patch = bytes(4 * 4 * 4)
+    storage.write_region(patch, {"min_x": 4, "max_x": 8, "min_y": 0, "max_y": 4})
+    invalid("reversed bounds", lambda: storage.write_region(patch, {"min_x": 8, "max_x": 4, "max_y": 4}))
+    invalid("misspelled keys", lambda: storage.write_region(patch, {"x": 0, "w": 4, "h": 4}))
+    invalid("both region forms", lambda: storage.write_region(patch, {"x": 0, "width": 4, "height": 4, "max_x": 4}))
+    # 4 rows of 16 texels, the bytes a 16x4 region holds, so only the zero width is wrong.
+    invalid("a zero width region", lambda: storage.write_region(bytes(16 * 4 * 4), [0, 0, 0, 4]))
+    storage.write_region(bytes(16 * 16 * 4), None)
+    print("write_region reads a dict region or raises InvalidInputError")
+
+    invalid("a path with a size", lambda: renderer.create_texture("examples/assets/logo.png", size=[64, 64]))
+    invalid("usage 32", lambda: renderer.create_texture(bytes(16), size=[2, 2], usage=32))
+    invalid("storage usage 0", lambda: renderer.create_storage_texture([4, 4], TextureFormat.Rgba, usage=0))
+    invalid("storage on Depth32Float", lambda: renderer.create_storage_texture([4, 4], TextureFormat.Depth32Float))
+    invalid("raw bytes into Depth32Float", lambda: renderer.create_texture(bytes(64), size=[4, 4], format=TextureFormat.Depth32Float))
+    invalid("extra raw bytes", lambda: renderer.create_texture(bytes(20), size=[2, 2]))
+    print("create_texture and create_storage_texture refuse what wgpu would")
+
+
 def check_scene_errors():
     """A failed Scene.load raises a FragmentColorError that is also a RuntimeError."""
     for kind in (FragmentColorError, RuntimeError, SceneLoadError):
@@ -321,11 +1088,42 @@ def check_scene_errors():
 
 
 def check_stub():
-    """The stub leaves out the binding plumbing that dispatch no longer calls."""
+    """The stub leaves out the binding plumbing that dispatch no longer calls,
+    and gives each exception the builtin base it has at run time."""
     stub = (Path(__file__).parent / "fragmentcolor" / "fragmentcolor.pyi").read_text()
     for plumbing in ("def passes(", "def renderable_type("):
         assert plumbing not in stub, f"the stub still lists {plumbing}"
-    print("The stub has no passes or renderable_type")
+    for error, builtin in (
+        (CameraError, ValueError),
+        (LightError, ValueError),
+        (MaterialError, ValueError),
+        (SceneLoadError, RuntimeError),
+    ):
+        assert issubclass(error, builtin), f"{error.__name__} is no {builtin.__name__}"
+        line = f"class {error.__name__}(FragmentColorError, {builtin.__name__}):"
+        assert line in stub, f"the stub lacks {line!r}"
+    print("The stub has no passes or renderable_type, and names each builtin base")
+
+
+def check_typed_returns():
+    """Light.kind returns a LightKind, Mipmap.size a Size, and matrices four columns of four."""
+    assert Light.directional([0, -1, 0], [1, 1, 1]).kind() == LightKind.Directional
+    assert Light.point([0, 1, 0], [1, 1, 1]).kind() == LightKind.Point
+    assert Light.spot([0, 1, 0], [0, -1, 0], [1, 1, 1]).kind() == LightKind.Spot
+    chain = Mipmap.build(bytes(4 * 2 * 4), TextureFormat.Rgba8Unorm, [4, 2])
+    assert isinstance(chain.size(), Size), type(chain.size())
+    assert (chain.size().width, chain.size().height, chain.size().depth) == (4, 2, None)
+    camera = Camera.perspective(1.0, 1.0, 0.1, 100.0).look_at([0, 0, 5], [0, 0, 0], [0, 1, 0])
+    assert [len(column) for column in camera.view_proj()] == [4, 4, 4, 4]
+    Renderer.set_log_level(LogLevel.Debug)
+    Renderer.set_log_level(LogLevel.Info)
+    try:
+        Renderer.set_log_level("debug")
+    except TypeError:
+        pass
+    else:
+        raise AssertionError("Renderer.set_log_level('debug') should raise TypeError")
+    print("Light.kind, Mipmap.size and Renderer.set_log_level take and return typed values")
 
 
 # Green when `id` arrives as the u32 16777217 and `cell` as the vec2<i32> (-1, 2), red otherwise.
@@ -390,9 +1188,12 @@ def check_vertex_values(renderer):
     negative = Mesh()
     negative.add_vertex(Vertex([0.0, 0.0]).set("id", 7).set("cell", [0, 0]))
     negative.add_vertex(Vertex([1.0, 0.0]).set("id", -1).set("cell", [0, 0]))
+    negative.add_vertex(Vertex([0.0, 1.0]).set("id", 7).set("cell", [0, 0]))
     rejects("-1 for a u32", negative, "expected u32, got -1 at vertex 1")
     fraction = Mesh()
     fraction.add_vertex(Vertex([0.0, 0.0]).set("id", 7).set("cell", [2.5, 0]))
+    fraction.add_vertex(Vertex([1.0, 0.0]).set("id", 7).set("cell", [0, 0]))
+    fraction.add_vertex(Vertex([0.0, 1.0]).set("id", 7).set("cell", [0, 0]))
     rejects("2.5 for an i32", fraction, "expected vec2<i32>, got 2.5")
 
     for label, values in (("five numbers", [1, 2, 3, 4, 5]), ("no numbers", [])):
@@ -436,20 +1237,104 @@ def check_mesh_inputs():
             return
         raise AssertionError(f"{label} should raise TypeError")
 
-    rejects("a five-number position", lambda: Vertex([1, 2, 3, 4, 5]))
+    raises_invalid("a five-number position", lambda: Vertex([1, 2, 3, 4, 5]))
     rejects("a string attribute", lambda: Vertex([0, 0]).set("w", "x"))
     rejects("a number as an instance", lambda: Mesh().add_instance(3.0))
     rejects("a string instance attribute", lambda: Mesh().add_instance({"offset": "x"}))
 
     # A dict instance sets its attributes in insertion order, so locations follow it.
     instanced = Mesh()
-    instanced.add_vertex([0.0, 0.0])
+    instanced.add_vertices(FULLSCREEN)
     instanced.add_instances([
         {"offset": [0.1, 0.2], "tint": [1.0, 0.0, 0.0, 1.0]},
         Instance().set("offset", [0.3, 0.4]).set("tint", [0.0, 1.0, 0.0, 1.0]),
     ])
     Shader(INSTANCED_SHADER).add_mesh(instanced)
     print("Mesh, Vertex, and Instance take their typed inputs")
+
+
+COLOR_SHADER = """
+struct VOut { @builtin(position) pos: vec4<f32>, @location(0) color: vec4<f32> };
+@group(0) @binding(0) var<uniform> gain: f32;
+@vertex fn vs_main(@location(0) position: vec2<f32>, @location(1) color: vec4<f32>) -> VOut {
+  return VOut(vec4<f32>(position, 0.0, 1.0), color * gain);
+}
+@fragment fn fs_main(v: VOut) -> @location(0) vec4<f32> { return v.color; }
+"""
+
+
+def check_mesh_draws(renderer):
+    """One shader draws meshes with other layouts, a second Renderer draws them too,
+    and render and add_mesh refuse the mesh data they can't draw."""
+    def column(left, right):
+        return [[left, -1.0], [right, -1.0], [right, 1.0], [left, -1.0], [right, 1.0], [left, 1.0]]
+
+    def refuses(label, words, call):
+        try:
+            call()
+        except FragmentColorError as e:
+            assert words in str(e), f"{label}: {e!r} does not name {words!r}"
+            print(f"{label} raised FragmentColorError: {e}")
+            return
+        raise AssertionError(f"{label} should raise FragmentColorError")
+
+    shader = Shader(COLOR_SHADER)
+    shader.set("gain", 1.0)
+    painted = Mesh()
+    for corner in column(-1.0, 0.0):
+        painted.add_vertex(Vertex(corner).set("color", [1.0, 0.0, 0.0, 1.0]))
+    tinted = Mesh()
+    tinted.add_vertices(column(0.0, 1.0))
+    tinted.add_instance({"color": [0.0, 0.0, 1.0, 1.0]})
+    shader.add_mesh(painted)
+    shader.add_mesh(tinted)
+
+    for label, painter in (("one Renderer", renderer), ("a second Renderer", Renderer())):
+        target = painter.create_texture_target([8, 2])
+        painter.render(shader, target)
+        image = target.get_image()
+        assert list(image[0, 1]) == [255, 0, 0, 255], f"{label}: vertex color column {list(image[0, 1])}"
+        assert list(image[0, 6]) == [0, 0, 255, 255], f"{label}: instance color column {list(image[0, 6])}"
+
+    target = renderer.create_texture_target([8, 2])
+    painted.set_indices([0, 1, 7])
+    refuses("an index past the last vertex", "points past the last of 6 vertices",
+            lambda: renderer.render(shader, target))
+    painted.set_indices([0, 1, 2, 0])
+    refuses("a partial triangle", "multiple of 3 indices", lambda: renderer.render(shader, target))
+    painted.clear_indices()
+    tinted.add_instance(Instance())
+    refuses("an instance without the color the shader reads", "got no value at instance 1",
+            lambda: renderer.render(shader, target))
+    tinted.clear_instances()
+    tinted.add_instance({"color": [0.0, 0.0, 1.0, 1.0]})
+    named = Mesh()
+    for corner in FULLSCREEN:
+        named.add_vertex(Vertex(corner).set("position", [5.0, 5.0]).set("color", [1.0, 1.0, 1.0, 1.0]))
+    refuses("a position property", "property named 'position'", lambda: Shader(COLOR_SHADER).add_mesh(named))
+    refuses("Shader.from_mesh of an empty mesh", "Mesh has no vertices", lambda: Shader.from_mesh(Mesh()))
+    refuses("Shader.from_mesh of a mesh its shader refuses", "property named 'position'",
+            lambda: Shader.from_mesh(named))
+
+    # No device takes 65 vertex attributes, so an input at @location(64) is past every limit.
+    far = Shader("""
+@vertex fn vs_main(@location(0) position: vec2<f32>, @location(64) extra: f32) -> @builtin(position) vec4<f32> { return vec4<f32>(position * extra, 0.0, 1.0); }
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
+""")
+    reaching = Mesh()
+    for corner in FULLSCREEN:
+        reaching.add_vertex(Vertex(corner).set("extra", 1.0))
+    far.add_mesh(reaching)
+    try:
+        renderer.render(far, target)
+    except LimitError as e:
+        assert e.limit == "max_vertex_attributes" and e.value == 65, f"limit {e.limit}, value {e.value}"
+        assert e.item == "shader input 'extra' @location(64)", f"item {e.item}"
+        print(f"a vertex input past the attribute limit raised LimitError: {e}")
+    else:
+        raise AssertionError("a vertex input past the attribute limit should raise LimitError")
+    renderer.render(shader, target)
+    print("One shader draws meshes with other layouts, and refuses mesh data it can't draw")
 
 
 def run():
@@ -607,11 +1492,26 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
     check_error_types(renderer)
     check_vertex_values(renderer)
     check_mesh_inputs()
+    check_mesh_draws(renderer)
     check_require_graph(renderer)
+    check_pass_targets(renderer)
+    check_shader_refusals(renderer)
     check_value_types()
+    check_number_errors(renderer)
+    check_empty_regions()
+    check_scalars_and_pairs()
+    check_labels(renderer)
+    check_colors(renderer)
+    check_vectors()
+    check_example_resize(renderer)
+    check_clear_color()
     check_texture_inputs(renderer)
+    check_material_textures(renderer)
+    check_material_maps()
+    check_invalid_textures(renderer)
     check_scene_errors()
     check_stub()
+    check_typed_returns()
 
     # Push constants smoke: solid color via var<immediate>
     pc_shader = Shader("""

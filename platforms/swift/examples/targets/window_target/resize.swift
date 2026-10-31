@@ -3,6 +3,6 @@ import QuartzCore
 let canvas = CAMetalLayer()
 
 let renderer = Renderer()
-let target = try await renderer.createTarget(canvas)
+let target = try renderer.createTarget(canvas)
 
-target.resize([1024, 768])
+try target.resize([1024, 768])

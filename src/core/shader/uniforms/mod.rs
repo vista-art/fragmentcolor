@@ -1,0 +1,1025 @@
+//! `Uniform` and `UniformData`: what a shader
+//! declares, and the values `Shader::set` and `Shader::get` move.
+
+use crate::ShaderError;
+use naga::{Module, ScalarKind, Type, TypeInner, VectorSize};
+
+#[cfg(python)]
+use pyo3::prelude::*;
+
+pub(super) mod bytes;
+pub(super) mod input;
+pub(crate) mod texture_maps;
+
+#[derive(Debug, Clone)]
+/// Represents a Uniform in the shader
+pub(crate) struct Uniform {
+    /// The name of the uniform
+    pub(crate) name: String,
+    /// The group number in the shader source
+    pub(crate) group: u32,
+    /// The binding number in the shader source
+    pub(crate) binding: u32,
+    /// The stages whose entry points use it, none for a global no entry point uses.
+    pub(crate) stages: wgpu::ShaderStages,
+    /// The uniform data
+    pub(crate) data: UniformData,
+}
+
+#[cfg_attr(python, derive(FromPyObject, IntoPyObject))]
+#[cfg_attr(mobile, derive(uniffi::Enum))]
+#[derive(Debug, Clone, PartialEq)]
+/// A uniform value, as `Shader::get` reads it back.
+/// A helper names it to forward one value to `Shader::set` on several shaders.
+/// It is the plumbing behind `impl Into<UniformData>`, like `ShaderInput`, with no page of its own.
+pub enum UniformData {
+    Bool(bool),
+    UInt(u32),
+    Int(i32),
+    Float(f32),
+    /// Vec2: exactly 2 elements
+    Vec2(Vec<f32>),
+    /// Vec3: exactly 3 elements
+    Vec3(Vec<f32>),
+    /// Vec4: exactly 4 elements
+    Vec4(Vec<f32>),
+    /// UVec2: exactly 2 elements
+    UVec2(Vec<u32>),
+    /// UVec3: exactly 3 elements
+    UVec3(Vec<u32>),
+    /// UVec4: exactly 4 elements
+    UVec4(Vec<u32>),
+    /// IVec2: exactly 2 elements
+    IVec2(Vec<i32>),
+    /// IVec3: exactly 3 elements
+    IVec3(Vec<i32>),
+    /// IVec4: exactly 4 elements
+    IVec4(Vec<i32>),
+    /// Mat2: 4 elements (flattened 2x2, column-major)
+    Mat2(Vec<f32>),
+    /// Mat3: 9 elements (flattened 3x3, column-major)
+    Mat3(Vec<f32>),
+    /// Mat4: 16 elements (flattened 4x4, column-major)
+    Mat4(Vec<f32>),
+    Texture(crate::texture::TextureMeta),
+    Sampler(crate::texture::SamplerInfo),
+    /// Array shape: element type, count, and stride.
+    Array(Vec<ArrayElement>),
+    /// Struct shape: ordered fields and total size/span in bytes.
+    Struct(StructShape),
+    /// Storage buffer root: inner shape, span, access flags.
+    /// Stored as a Vec to avoid infinite recursion (Box doesn't implement FromPyObject).
+    Storage(Vec<StorageEntry>),
+    /// Push constant root: inner shape and span.
+    /// Vec used for PyO3 compatibility; same pattern as Storage.
+    PushConstant(Vec<PushEntry>),
+    /// Raw bytes (opaque); intended for storage-root or push-root updates via Shader::set("root", bytes)
+    Bytes(Vec<u8>),
+}
+
+#[cfg_attr(python, derive(FromPyObject, IntoPyObject))]
+#[cfg_attr(mobile, derive(uniffi::Record))]
+#[derive(Debug, Clone, PartialEq)]
+/// Element shape used inside `UniformData::Array`.
+pub struct ArrayElement {
+    pub ty: Vec<UniformData>,
+    pub count: u32,
+    pub stride: u32,
+}
+
+#[cfg_attr(python, derive(FromPyObject, IntoPyObject))]
+#[cfg_attr(mobile, derive(uniffi::Record))]
+#[derive(Debug, Clone, PartialEq)]
+/// Struct shape used inside `UniformData::Struct`.
+pub struct StructShape {
+    pub fields: Vec<StructField>,
+    pub size: u32,
+}
+
+#[cfg_attr(python, derive(FromPyObject, IntoPyObject))]
+#[cfg_attr(mobile, derive(uniffi::Record))]
+#[derive(Debug, Clone, PartialEq)]
+/// One member of a struct shape.
+pub struct StructField {
+    pub offset: u32,
+    pub name: String,
+    pub ty: Vec<UniformData>,
+}
+
+#[cfg_attr(python, derive(FromPyObject, IntoPyObject))]
+#[cfg_attr(mobile, derive(uniffi::Record))]
+#[derive(Debug, Clone, PartialEq)]
+/// Storage buffer root entry used inside `UniformData::Storage`.
+pub struct StorageEntry {
+    pub inner: Vec<UniformData>,
+    pub span: u32,
+    pub access: StorageAccess,
+}
+
+#[cfg_attr(python, derive(FromPyObject, IntoPyObject))]
+#[cfg_attr(mobile, derive(uniffi::Record))]
+#[derive(Debug, Clone, PartialEq)]
+/// Push constant root entry used inside `UniformData::PushConstant`.
+pub struct PushEntry {
+    pub inner: Vec<UniformData>,
+    pub span: u32,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(python, pyclass(from_py_object))]
+#[cfg_attr(mobile, derive(uniffi::Enum))]
+pub enum StorageAccess {
+    Read,
+    Write,
+    Atomic,
+    ReadWrite,
+    AtomicRead,
+    AtomicWrite,
+    AtomicReadWrite,
+}
+
+impl StorageAccess {
+    pub(crate) fn is_readonly(&self) -> bool {
+        matches!(
+            self,
+            StorageAccess::Read | StorageAccess::Atomic | StorageAccess::AtomicRead
+        )
+    }
+}
+
+impl From<naga::StorageAccess> for StorageAccess {
+    fn from(value: naga::StorageAccess) -> Self {
+        use naga::StorageAccess as SA;
+
+        let load = value.contains(SA::LOAD);
+        let store = value.contains(SA::STORE);
+        let atomic = value.contains(SA::ATOMIC);
+
+        match (load, store, atomic) {
+            (true, false, false) => StorageAccess::Read,
+            (false, true, false) => StorageAccess::Write,
+            (false, false, true) => StorageAccess::Atomic,
+            (true, true, false) => StorageAccess::ReadWrite,
+            (true, false, true) => StorageAccess::AtomicRead,
+            (false, true, true) => StorageAccess::AtomicWrite,
+            (true, true, true) => StorageAccess::AtomicReadWrite,
+            (false, false, false) => StorageAccess::ReadWrite,
+        }
+    }
+}
+
+impl UniformData {
+    pub(super) fn to_bytes(&self) -> Vec<u8> {
+        match self {
+            Self::Bool(v) => bytemuck::bytes_of(v).to_vec(),
+            Self::Float(v) => bytemuck::bytes_of(v).to_vec(),
+            Self::Int(v) => bytemuck::bytes_of(v).to_vec(),
+            Self::UInt(v) => bytemuck::bytes_of(v).to_vec(),
+            Self::Vec2(v) => bytemuck::cast_slice(v.as_slice()).to_vec(),
+            Self::Vec3(v) => bytemuck::cast_slice(v.as_slice()).to_vec(),
+            Self::Vec4(v) => bytemuck::cast_slice(v.as_slice()).to_vec(),
+            Self::IVec2(v) => bytemuck::cast_slice(v.as_slice()).to_vec(),
+            Self::IVec3(v) => bytemuck::cast_slice(v.as_slice()).to_vec(),
+            Self::IVec4(v) => bytemuck::cast_slice(v.as_slice()).to_vec(),
+            Self::UVec2(v) => bytemuck::cast_slice(v.as_slice()).to_vec(),
+            Self::UVec3(v) => bytemuck::cast_slice(v.as_slice()).to_vec(),
+            Self::UVec4(v) => bytemuck::cast_slice(v.as_slice()).to_vec(),
+            Self::Mat2(v) => bytemuck::cast_slice(v.as_slice()).to_vec(),
+            Self::Mat3(v) => mat3_bytes(v),
+            Self::Mat4(v) => bytemuck::cast_slice(v.as_slice()).to_vec(),
+            Self::Texture(_m) => Vec::new(),
+            Self::Sampler(_s) => Vec::new(),
+            Self::Array(items) => {
+                // Respect naga-provided stride when laying out arrays.
+                // items holds a single ArrayElement record.
+                let mut bytes = Vec::new();
+                if let Some(ArrayElement { ty, count, stride }) = items.first()
+                    && let Some(elem) = ty.first()
+                {
+                    let elem_bytes = elem.to_bytes();
+                    let total = (*stride as usize).saturating_mul(*count as usize);
+                    bytes.resize(total, 0);
+                    for i in 0..*count as usize {
+                        let start = i * (*stride as usize);
+                        let end = start + elem_bytes.len();
+                        if end <= bytes.len() {
+                            bytes[start..end].copy_from_slice(&elem_bytes);
+                        }
+                    }
+                }
+                bytes
+            }
+            Self::Struct(StructShape { fields, size }) => {
+                // Allocate the full struct span and lay out fields at their declared offsets.
+                let mut bytes = vec![0u8; *size as usize];
+                for StructField { offset, ty, .. } in fields.iter() {
+                    let Some(field) = ty.first() else {
+                        continue;
+                    };
+                    let data = field.to_bytes();
+                    let start = *offset as usize;
+                    let end = start + data.len();
+                    if end <= bytes.len() {
+                        bytes[start..end].copy_from_slice(&data);
+                    }
+                }
+                bytes
+            }
+            Self::Storage(data) => {
+                if let Some(StorageEntry { inner, span, .. }) = data.iter().next()
+                    && let Some(shape) = inner.first()
+                {
+                    // Flatten inner representation; ensure it matches the declared span.
+                    let mut bytes = shape.to_bytes();
+                    if bytes.len() < *span as usize {
+                        bytes.resize(*span as usize, 0);
+                    } else if bytes.len() > *span as usize {
+                        bytes.truncate(*span as usize);
+                    }
+                    bytes
+                } else {
+                    Vec::new()
+                }
+            }
+            Self::PushConstant(data) => {
+                if let Some(PushEntry { inner, span }) = data.iter().next()
+                    && let Some(shape) = inner.first()
+                {
+                    // Flatten inner representation; ensure it matches the declared span.
+                    let mut bytes = shape.to_bytes();
+                    if bytes.len() < *span as usize {
+                        bytes.resize(*span as usize, 0);
+                    } else if bytes.len() > *span as usize {
+                        bytes.truncate(*span as usize);
+                    }
+                    bytes
+                } else {
+                    Vec::new()
+                }
+            }
+            Self::Bytes(b) => b.clone(),
+        }
+    }
+
+    /// Reads the value of a slot shaped like `self` out of its bytes.
+    /// Numbers decode into the same variant, and textures and samplers keep their binding.
+    /// Structs, arrays, and buffer roots read as raw bytes, since an array shape keeps one element.
+    pub(crate) fn decode(&self, bytes: &[u8]) -> UniformData {
+        fn words<T: bytemuck::Pod>(bytes: &[u8]) -> Vec<T> {
+            let chunks = bytes.chunks_exact(std::mem::size_of::<T>());
+            chunks.map(bytemuck::pod_read_unaligned).collect()
+        }
+        fn scalar<T: bytemuck::Pod + Default>(bytes: &[u8]) -> T {
+            let chunk = bytes.get(..std::mem::size_of::<T>());
+            chunk.map(bytemuck::pod_read_unaligned).unwrap_or_default()
+        }
+        match self {
+            Self::Bool(_) => Self::Bool(bytes.first().is_some_and(|&b| b != 0)),
+            Self::Float(_) => Self::Float(scalar(bytes)),
+            Self::Int(_) => Self::Int(scalar(bytes)),
+            Self::UInt(_) => Self::UInt(scalar(bytes)),
+            Self::Vec2(_) => Self::Vec2(words(bytes)),
+            Self::Vec3(_) => Self::Vec3(words(bytes)),
+            Self::Vec4(_) => Self::Vec4(words(bytes)),
+            Self::IVec2(_) => Self::IVec2(words(bytes)),
+            Self::IVec3(_) => Self::IVec3(words(bytes)),
+            Self::IVec4(_) => Self::IVec4(words(bytes)),
+            Self::UVec2(_) => Self::UVec2(words(bytes)),
+            Self::UVec3(_) => Self::UVec3(words(bytes)),
+            Self::UVec4(_) => Self::UVec4(words(bytes)),
+            Self::Mat2(_) => Self::Mat2(words(bytes)),
+            Self::Mat3(_) => Self::Mat3(
+                bytes
+                    .chunks(MAT3_COLUMN_STRIDE)
+                    .flat_map(|column| words(column.get(..12).unwrap_or(column)))
+                    .collect(),
+            ),
+            Self::Mat4(_) => Self::Mat4(words(bytes)),
+            Self::Texture(_) | Self::Sampler(_) => self.clone(),
+            Self::Array(_)
+            | Self::Struct(_)
+            | Self::Storage(_)
+            | Self::PushConstant(_)
+            | Self::Bytes(_) => Self::Bytes(bytes.to_vec()),
+        }
+    }
+
+    pub(crate) fn size(&self) -> u32 {
+        match self {
+            Self::Bool(_) => 1,
+            Self::Float(_) => 4,
+            Self::Int(_) => 4,
+            Self::UInt(_) => 4,
+            Self::Vec2(_) => 8,
+            Self::Vec3(_) => 12,
+            Self::Vec4(_) => 16,
+            Self::IVec2(_) => 8,
+            Self::IVec3(_) => 12,
+            Self::IVec4(_) => 16,
+            Self::UVec2(_) => 8,
+            Self::UVec3(_) => 12,
+            Self::UVec4(_) => 16,
+            Self::Mat2(_) => 16,
+            Self::Mat3(_) => 3 * MAT3_COLUMN_STRIDE as u32,
+            Self::Mat4(_) => 64,
+            Self::Texture(_) => 0,
+            Self::Sampler(_) => 0,
+            Self::Array(items) => {
+                if let Some(ArrayElement { count, stride, .. }) = items.first() {
+                    stride * count
+                } else {
+                    0
+                }
+            }
+            Self::Struct(StructShape { size, .. }) => *size,
+            // Storage buffers do not contribute to the CPU-side uniform buffer; size is 0 here.
+            Self::Storage(_) => 0,
+            // Push constants do not contribute to the CPU-side uniform buffer aggregate; return 0 here.
+            Self::PushConstant(_) => 0,
+            Self::Bytes(b) => b.len() as u32,
+        }
+    }
+}
+
+/// Bytes between the columns of a `mat3x3<f32>`, since WGSL aligns each `vec3` column to 16.
+const MAT3_COLUMN_STRIDE: usize = 16;
+
+/// Lays out 9 floats as the three padded `vec3` columns of a `mat3x3<f32>`.
+fn mat3_bytes(values: &[f32]) -> Vec<u8> {
+    let mut bytes = Vec::with_capacity(3 * MAT3_COLUMN_STRIDE);
+    for column in values.chunks(3) {
+        bytes.extend_from_slice(bytemuck::cast_slice(column));
+        bytes.resize(bytes.len().next_multiple_of(MAT3_COLUMN_STRIDE), 0);
+    }
+    bytes
+}
+
+/// Converts from a Naga type to our internal Uniform representation
+pub(crate) fn convert_type(module: &Module, ty: &Type) -> Result<UniformData, ShaderError> {
+    match &ty.inner {
+        TypeInner::Scalar(scalar) => Ok(match scalar.kind {
+            ScalarKind::Bool => UniformData::Bool(false),
+            ScalarKind::Sint => UniformData::Int(0),
+            ScalarKind::Uint => UniformData::UInt(0),
+            ScalarKind::Float => UniformData::Float(0.0),
+            _ => return Err(ShaderError::TypeMismatch("Unsupported scalar type".into())),
+        }),
+        // An atomic has the same layout as its scalar, so it reflects as one.
+        TypeInner::Atomic(scalar) => Ok(match scalar.kind {
+            ScalarKind::Sint => UniformData::Int(0),
+            ScalarKind::Uint => UniformData::UInt(0),
+            _ => return Err(ShaderError::TypeMismatch("Unsupported atomic type".into())),
+        }),
+        TypeInner::Vector { size, scalar, .. } => match scalar.kind {
+            ScalarKind::Float => Ok(match size {
+                VectorSize::Bi => UniformData::Vec2(vec![0.0; 2]),
+                VectorSize::Tri => UniformData::Vec3(vec![0.0; 3]),
+                VectorSize::Quad => UniformData::Vec4(vec![0.0; 4]),
+            }),
+            ScalarKind::Uint => Ok(match size {
+                VectorSize::Bi => UniformData::UVec2(vec![0; 2]),
+                VectorSize::Tri => UniformData::UVec3(vec![0; 3]),
+                VectorSize::Quad => UniformData::UVec4(vec![0; 4]),
+            }),
+            ScalarKind::Sint => Ok(match size {
+                VectorSize::Bi => UniformData::IVec2(vec![0; 2]),
+                VectorSize::Tri => UniformData::IVec3(vec![0; 3]),
+                VectorSize::Quad => UniformData::IVec4(vec![0; 4]),
+            }),
+            _ => Err(ShaderError::TypeMismatch(
+                "Unsupported vector scalar type".into(),
+            )),
+        },
+        TypeInner::Matrix { columns, rows, .. } => Ok(match (columns, rows) {
+            (VectorSize::Bi, VectorSize::Bi) => UniformData::Mat2(vec![0.0; 4]),
+            (VectorSize::Tri, VectorSize::Tri) => UniformData::Mat3(vec![0.0; 9]),
+            (VectorSize::Quad, VectorSize::Quad) => UniformData::Mat4(vec![0.0; 16]),
+            _ => {
+                return Err(ShaderError::TypeMismatch(
+                    "Unsupported matrix dimensions".into(),
+                ));
+            }
+        }),
+        TypeInner::Struct { members, span } => {
+            let mut fields = Vec::new();
+            for member in members {
+                let name = member.name.clone().unwrap_or_default();
+                let field = convert_type(module, &module.types[member.ty])?;
+                fields.push(StructField {
+                    offset: member.offset,
+                    name,
+                    ty: vec![field],
+                });
+            }
+
+            Ok(UniformData::Struct(StructShape {
+                fields,
+                size: *span,
+            }))
+        }
+        TypeInner::Array { base, size, stride } => {
+            let size = match size {
+                naga::ArraySize::Constant(size) => size.get(),
+                _ => {
+                    return Err(ShaderError::TypeMismatch(
+                        "Dynamic array size not supported".into(),
+                    ));
+                }
+            };
+            let base_ty = convert_type(module, &module.types[*base])?;
+
+            let item = ArrayElement {
+                ty: vec![base_ty],
+                count: size,
+                stride: *stride,
+            };
+            Ok(UniformData::Array(vec![item]))
+        }
+        TypeInner::Sampler { comparison } => {
+            Ok(UniformData::Sampler(crate::texture::SamplerInfo {
+                comparison: *comparison,
+            }))
+        }
+        TypeInner::Image {
+            dim,
+            arrayed,
+            class,
+        } => Ok(UniformData::Texture(crate::texture::TextureMeta {
+            id: crate::texture::TextureId { id: 0 },
+            dim: crate::texture::TextureDim::from_naga(*dim),
+            arrayed: *arrayed,
+            class: crate::texture::TextureClass::from_naga(*class),
+            // Default optimistic; `parse_uniforms` overrides this based on whether
+            // the corresponding global variable is ever used as an `ImageSample` input.
+            sampled: true,
+        })),
+
+        _ => Err(ShaderError::TypeMismatch("Unsupported type".into())),
+    }
+}
+
+// --------------------------------------------------------
+// Conversions from primitive types for public interfaces
+// --------------------------------------------------------
+
+// 1 element or scalar
+
+crate::impl_from_into_with_refs!(
+    UniformData,
+    bool,
+    |d: UniformData| match d {
+        UniformData::Bool(v) => v,
+        _ => false,
+    },
+    |b: bool| UniformData::Bool(b)
+);
+
+crate::impl_from_into_with_refs!(
+    UniformData,
+    f32,
+    |d: UniformData| match d {
+        UniformData::Float(v) => v,
+        _ => 0.0,
+    },
+    |v: f32| UniformData::Float(v)
+);
+
+crate::impl_from_into_with_refs!(
+    UniformData,
+    [f32; 1],
+    |d: UniformData| match d {
+        UniformData::Float(v) => [v],
+        _ => [0.0],
+    },
+    |a: [f32; 1]| UniformData::Float(a[0])
+);
+
+crate::impl_from_into_with_refs!(
+    UniformData,
+    i32,
+    |d: UniformData| match d {
+        UniformData::Int(v) => v,
+        _ => 0,
+    },
+    |v: i32| UniformData::Int(v)
+);
+
+crate::impl_from_into_with_refs!(
+    UniformData,
+    [i32; 1],
+    |d: UniformData| match d {
+        UniformData::Int(v) => [v],
+        _ => [0],
+    },
+    |a: [i32; 1]| UniformData::Int(a[0])
+);
+
+crate::impl_from_into_with_refs!(
+    UniformData,
+    u32,
+    |d: UniformData| match d {
+        UniformData::UInt(v) => v,
+        _ => 0,
+    },
+    |v: u32| UniformData::UInt(v)
+);
+
+crate::impl_from_into_with_refs!(
+    UniformData,
+    [u32; 1],
+    |d: UniformData| match d {
+        UniformData::UInt(v) => [v],
+        _ => [0],
+    },
+    |a: [u32; 1]| UniformData::UInt(a[0])
+);
+
+// 2 elements
+
+crate::impl_from_into_with_refs!(
+    UniformData,
+    [f32; 2],
+    |d: UniformData| match d {
+        UniformData::Vec2(v) if v.len() >= 2 => [v[0], v[1]],
+        _ => [0.0; 2],
+    },
+    |a: [f32; 2]| UniformData::Vec2(a.to_vec())
+);
+
+crate::impl_from_into_with_refs!(
+    UniformData,
+    [i32; 2],
+    |d: UniformData| match d {
+        UniformData::IVec2(v) if v.len() >= 2 => [v[0], v[1]],
+        _ => [0; 2],
+    },
+    |a: [i32; 2]| UniformData::IVec2(a.to_vec())
+);
+
+crate::impl_from_into_with_refs!(
+    UniformData,
+    [u32; 2],
+    |d: UniformData| match d {
+        UniformData::UVec2(v) if v.len() >= 2 => [v[0], v[1]],
+        _ => [0; 2],
+    },
+    |a: [u32; 2]| UniformData::UVec2(a.to_vec())
+);
+
+crate::impl_from_into_with_refs!(
+    UniformData,
+    (f32, f32),
+    |d: UniformData| match d {
+        UniformData::Vec2(v) if v.len() >= 2 => (v[0], v[1]),
+        _ => (0.0, 0.0),
+    },
+    |t: (f32, f32)| UniformData::Vec2(vec![t.0, t.1])
+);
+
+// 3 elements
+
+crate::impl_from_into_with_refs!(
+    UniformData,
+    [f32; 3],
+    |d: UniformData| match d {
+        UniformData::Vec3(v) if v.len() >= 3 => [v[0], v[1], v[2]],
+        _ => [0.0; 3],
+    },
+    |a: [f32; 3]| UniformData::Vec3(a.to_vec())
+);
+
+crate::impl_from_into_with_refs!(
+    UniformData,
+    [i32; 3],
+    |d: UniformData| match d {
+        UniformData::IVec3(v) if v.len() >= 3 => [v[0], v[1], v[2]],
+        _ => [0; 3],
+    },
+    |a: [i32; 3]| UniformData::IVec3(a.to_vec())
+);
+
+crate::impl_from_into_with_refs!(
+    UniformData,
+    [u32; 3],
+    |d: UniformData| match d {
+        UniformData::UVec3(v) if v.len() >= 3 => [v[0], v[1], v[2]],
+        _ => [0; 3],
+    },
+    |a: [u32; 3]| UniformData::UVec3(a.to_vec())
+);
+
+crate::impl_from_into_with_refs!(
+    UniformData,
+    (f32, f32, f32),
+    |d: UniformData| match d {
+        UniformData::Vec3(v) if v.len() >= 3 => (v[0], v[1], v[2]),
+        _ => (0.0, 0.0, 0.0),
+    },
+    |t: (f32, f32, f32)| UniformData::Vec3(vec![t.0, t.1, t.2])
+);
+
+// 4 elements
+
+crate::impl_from_into_with_refs!(
+    UniformData,
+    [f32; 4],
+    |d: UniformData| match d {
+        UniformData::Vec4(v) | UniformData::Mat2(v) if v.len() >= 4 => [v[0], v[1], v[2], v[3]],
+        _ => [0.0; 4],
+    },
+    |a: [f32; 4]| UniformData::Vec4(a.to_vec())
+);
+
+crate::impl_from_into_with_refs!(
+    UniformData,
+    [i32; 4],
+    |d: UniformData| match d {
+        UniformData::IVec4(v) if v.len() >= 4 => [v[0], v[1], v[2], v[3]],
+        _ => [0; 4],
+    },
+    |a: [i32; 4]| UniformData::IVec4(a.to_vec())
+);
+
+crate::impl_from_into_with_refs!(
+    UniformData,
+    [u32; 4],
+    |d: UniformData| match d {
+        UniformData::UVec4(v) if v.len() >= 4 => [v[0], v[1], v[2], v[3]],
+        _ => [0; 4],
+    },
+    |a: [u32; 4]| UniformData::UVec4(a.to_vec())
+);
+
+crate::impl_from_into_with_refs!(
+    UniformData,
+    (f32, f32, f32, f32),
+    |d: UniformData| match d {
+        UniformData::Vec4(v) if v.len() >= 4 => (v[0], v[1], v[2], v[3]),
+        _ => (0.0, 0.0, 0.0, 0.0),
+    },
+    |t: (f32, f32, f32, f32)| UniformData::Vec4(vec![t.0, t.1, t.2, t.3])
+);
+
+// 2 elements
+
+// 3 elements
+
+// 4 elements
+
+// Matrices
+crate::impl_from_into_with_refs!(
+    UniformData,
+    [[f32; 2]; 2],
+    |d: UniformData| match d {
+        UniformData::Mat2(m) if m.len() >= 4 => [[m[0], m[1]], [m[2], m[3]]],
+        _ => [[0.0; 2]; 2],
+    },
+    |m: [[f32; 2]; 2]| UniformData::Mat2(m.iter().flatten().copied().collect())
+);
+
+crate::impl_from_into_with_refs!(
+    UniformData,
+    [[f32; 3]; 3],
+    |d: UniformData| match d {
+        UniformData::Mat3(m) if m.len() >= 9 =>
+            [[m[0], m[1], m[2]], [m[3], m[4], m[5]], [m[6], m[7], m[8]],],
+        _ => [[0.0; 3]; 3],
+    },
+    |m: [[f32; 3]; 3]| UniformData::Mat3(m.iter().flatten().copied().collect())
+);
+
+crate::impl_from_into_with_refs!(
+    UniformData,
+    [[f32; 4]; 4],
+    |d: UniformData| match d {
+        UniformData::Mat4(m) if m.len() >= 16 => [
+            [m[0], m[1], m[2], m[3]],
+            [m[4], m[5], m[6], m[7]],
+            [m[8], m[9], m[10], m[11]],
+            [m[12], m[13], m[14], m[15]],
+        ],
+        _ => [[0.0; 4]; 4],
+    },
+    |m: [[f32; 4]; 4]| UniformData::Mat4(m.iter().flatten().copied().collect())
+);
+
+// Flat matrices, column after column, as the bindings pass them.
+crate::impl_from_into_with_refs!(
+    UniformData,
+    [f32; 9],
+    |d: UniformData| match d {
+        UniformData::Mat3(m) if m.len() >= 9 => std::array::from_fn(|i| m[i]),
+        _ => [0.0; 9],
+    },
+    |m: [f32; 9]| UniformData::Mat3(m.to_vec())
+);
+
+crate::impl_from_into_with_refs!(
+    UniformData,
+    [f32; 16],
+    |d: UniformData| match d {
+        UniformData::Mat4(m) if m.len() >= 16 => std::array::from_fn(|i| m[i]),
+        _ => [0.0; 16],
+    },
+    |m: [f32; 16]| UniformData::Mat4(m.to_vec())
+);
+
+// Simple conversions for byte slices
+impl From<&[u8]> for UniformData {
+    fn from(v: &[u8]) -> Self {
+        UniformData::Bytes(v.to_vec())
+    }
+}
+impl From<Vec<u8>> for UniformData {
+    fn from(v: Vec<u8>) -> Self {
+        UniformData::Bytes(v)
+    }
+}
+
+/// Any number of floats, such as a flat matrix built at run time.
+/// `Shader::set` shapes them to the type the shader declares for the key.
+impl From<Vec<f32>> for UniformData {
+    fn from(values: Vec<f32>) -> Self {
+        match values.len() {
+            1 => UniformData::Float(values[0]),
+            2 => UniformData::Vec2(values),
+            3 => UniformData::Vec3(values),
+            4 => UniformData::Vec4(values),
+            9 => UniformData::Mat3(values),
+            _ => UniformData::Mat4(values),
+        }
+    }
+}
+/// The floats of a float scalar, vector or matrix, and an empty list for any other value.
+impl From<UniformData> for Vec<f32> {
+    fn from(data: UniformData) -> Self {
+        use UniformData as U;
+        match data {
+            U::Float(value) => vec![value],
+            U::Vec2(v) | U::Vec3(v) | U::Vec4(v) | U::Mat2(v) | U::Mat3(v) | U::Mat4(v) => v,
+            _ => Vec::new(),
+        }
+    }
+}
+
+/// The value's bytes as the shader reads them.
+impl From<UniformData> for Vec<u8> {
+    fn from(data: UniformData) -> Self {
+        data.to_bytes()
+    }
+}
+
+/// The id of the texture bound to a texture key, and id 0 for any other value.
+impl From<UniformData> for crate::texture::TextureId {
+    fn from(data: UniformData) -> Self {
+        match data {
+            UniformData::Texture(meta) => meta.id,
+            _ => crate::texture::TextureId { id: 0 },
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use naga::StorageAccess as SA;
+
+    // Story: UniformData to_bytes/size layouts for Struct, Array, and Storage obey spans/strides.
+    #[test]
+    fn uniformdata_layouts_struct_array_storage() {
+        // Struct with two fields at offsets 0 and 16, span 32
+        let s = UniformData::Struct(StructShape {
+            fields: vec![
+                StructField {
+                    offset: 0,
+                    name: "a".into(),
+                    ty: vec![UniformData::Vec4(vec![1.0, 2.0, 3.0, 4.0])],
+                },
+                StructField {
+                    offset: 16,
+                    name: "b".into(),
+                    ty: vec![UniformData::Vec2(vec![9.0, 8.0])],
+                },
+            ],
+            size: 32,
+        });
+        let bytes = s.to_bytes();
+        assert_eq!(bytes.len(), 32);
+        let a: [f32; 4] = bytemuck::cast_slice(&bytes[0..16]).try_into().unwrap();
+        assert_eq!(a, [1.0, 2.0, 3.0, 4.0]);
+        let b: [f32; 2] = bytemuck::cast_slice(&bytes[16..24]).try_into().unwrap();
+        assert_eq!(b, [9.0, 8.0]);
+
+        // Array of vec4 with count 2 and stride 16
+        let arr = UniformData::Array(vec![ArrayElement {
+            ty: vec![UniformData::Vec4(vec![0.5, 0.5, 0.5, 0.5])],
+            count: 2,
+            stride: 16,
+        }]);
+        let bytes = arr.to_bytes();
+        assert_eq!(bytes.len(), 32);
+        // first element at 0..16
+        let e0: [f32; 4] = bytemuck::cast_slice(&bytes[0..16]).try_into().unwrap();
+        assert_eq!(e0, [0.5, 0.5, 0.5, 0.5]);
+        // second element at 16..32
+        let e1: [f32; 4] = bytemuck::cast_slice(&bytes[16..32]).try_into().unwrap();
+        assert_eq!(e1, [0.5, 0.5, 0.5, 0.5]);
+
+        // Storage wraps a shape with span and clamps/truncates to the span
+        let stor = UniformData::Storage(vec![StorageEntry {
+            inner: vec![UniformData::Vec4(vec![1.0, 2.0, 3.0, 4.0])],
+            span: 8,
+            access: StorageAccess::Read,
+        }]);
+        let bytes = stor.to_bytes();
+        assert_eq!(bytes.len(), 8);
+        // size() for Struct/Array reflects spans, Storage returns 0 for CPU uniform upload
+        assert_eq!(s.size(), 32);
+        assert_eq!(arr.size(), 32);
+        assert_eq!(stor.size(), 0);
+    }
+
+    #[test]
+    fn storage_access_combinations() {
+        assert_eq!(StorageAccess::from(SA::LOAD), StorageAccess::Read);
+        assert_eq!(StorageAccess::from(SA::STORE), StorageAccess::Write);
+        assert_eq!(StorageAccess::from(SA::ATOMIC), StorageAccess::Atomic);
+        assert_eq!(
+            StorageAccess::from(SA::LOAD | SA::STORE),
+            StorageAccess::ReadWrite
+        );
+        assert_eq!(
+            StorageAccess::from(SA::LOAD | SA::ATOMIC),
+            StorageAccess::AtomicRead
+        );
+        assert_eq!(
+            StorageAccess::from(SA::STORE | SA::ATOMIC),
+            StorageAccess::AtomicWrite
+        );
+        assert_eq!(
+            StorageAccess::from(SA::LOAD | SA::STORE | SA::ATOMIC),
+            StorageAccess::AtomicReadWrite
+        );
+    }
+
+    // Story: Scalar, vector and matrix to_bytes lengths and size() are as expected.
+    #[test]
+    fn scalar_vector_matrix_sizes_and_bytes() {
+        assert_eq!(UniformData::Float(1.0).to_bytes().len(), 4);
+        assert_eq!(UniformData::Vec3(vec![1.0, 2.0, 3.0]).to_bytes().len(), 12);
+        assert_eq!(UniformData::Mat2(vec![0.0; 4]).to_bytes().len(), 16);
+        assert_eq!(UniformData::Mat3(vec![0.0; 9]).to_bytes().len(), 48);
+        assert_eq!(UniformData::Mat4(vec![0.0; 16]).to_bytes().len(), 64);
+        assert_eq!(UniformData::Vec3(vec![0.0; 3]).size(), 12);
+        assert_eq!(UniformData::Mat3(vec![0.0; 9]).size(), 48);
+    }
+
+    // Story: Array stride padding is honored; elements land at multiples of stride with zeros in between.
+    #[test]
+    fn array_stride_padding_is_honored() {
+        // Two vec2 (8 bytes each) with stride 16 -> 32 total
+        let u = UniformData::Array(vec![ArrayElement {
+            ty: vec![UniformData::Vec2(vec![2.0, 4.0])],
+            count: 2,
+            stride: 16,
+        }]);
+        let bytes = u.to_bytes();
+        assert_eq!(bytes.len(), 32);
+        let e0: [f32; 2] = bytemuck::cast_slice(&bytes[0..8]).try_into().unwrap();
+        let e1: [f32; 2] = bytemuck::cast_slice(&bytes[16..24]).try_into().unwrap();
+        assert_eq!(e0, [2.0, 4.0]);
+        assert_eq!(e1, [2.0, 4.0]);
+        // Padding region between 8..16 should be zeros
+        assert!(bytes[8..16].iter().all(|&b| b == 0));
+    }
+
+    // Story: Round-trips for scalar wrappers (f32/i32/u32 and single-element arrays)
+    #[test]
+    fn scalar_round_trips() {
+        let f: f32 = UniformData::from(3.5f32).into();
+        assert_eq!(f, 3.5);
+        let i: i32 = UniformData::from(7i32).into();
+        assert_eq!(i, 7);
+        let u: u32 = UniformData::from(9u32).into();
+        assert_eq!(u, 9);
+        let a1f: [f32; 1] = UniformData::from([1.25f32]).into();
+        assert_eq!(a1f, [1.25]);
+        let a1i: [i32; 1] = UniformData::from([5i32]).into();
+        assert_eq!(a1i, [5]);
+        let a1u: [u32; 1] = UniformData::from([6u32]).into();
+        assert_eq!(a1u, [6]);
+    }
+
+    // Story: Vector conversions cover arrays and tuples for f32 vectors.
+    #[test]
+    fn vector_conversions_roundtrip_vec2_vec3_vec4() {
+        // Vec2
+        let u = UniformData::from([1.0f32, 2.0]);
+        let a: [f32; 2] = u.clone().into();
+        assert_eq!(a, [1.0, 2.0]);
+        let t: (f32, f32) = u.clone().into();
+        assert_eq!(t, (1.0, 2.0));
+
+        // Vec3
+        let u = UniformData::from([3.0f32, 4.0, 5.0]);
+        let a: [f32; 3] = u.clone().into();
+        assert_eq!(a, [3.0, 4.0, 5.0]);
+        let t: (f32, f32, f32) = u.clone().into();
+        assert_eq!(t, (3.0, 4.0, 5.0));
+
+        // Vec4
+        let u = UniformData::from([6.0f32, 7.0, 8.0, 9.0]);
+        let a: [f32; 4] = u.clone().into();
+        assert_eq!(a, [6.0, 7.0, 8.0, 9.0]);
+        let t: (f32, f32, f32, f32) = u.clone().into();
+        assert_eq!(t, (6.0, 7.0, 8.0, 9.0));
+    }
+
+    // Story: Integer vector conversions for IVecN and UVecN arrays work round-trip.
+    #[test]
+    fn integer_vector_conversions_roundtrip() {
+        let iu = UniformData::from([1i32, -2]);
+        let ia: [i32; 2] = iu.clone().into();
+        assert_eq!(ia, [1, -2]);
+
+        let iu3 = UniformData::from([1i32, 2, 3]);
+        let ia3: [i32; 3] = iu3.clone().into();
+        assert_eq!(ia3, [1, 2, 3]);
+
+        let uu = UniformData::from([10u32, 20u32, 30u32, 40u32]);
+        let ua: [u32; 4] = uu.clone().into();
+        assert_eq!(ua, [10, 20, 30, 40]);
+    }
+
+    // Story: Matrix conversions round-trip across Mat2/Mat3/Mat4.
+    #[test]
+    fn matrix_roundtrips() {
+        let m2_src = [[1.0f32, 2.0], [3.0, 4.0]];
+        let um2: UniformData = m2_src.into();
+        let m2: [[f32; 2]; 2] = um2.into();
+        assert_eq!(m2, m2_src);
+
+        let m3_src = [[1.0f32, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]];
+        let um3: UniformData = m3_src.into();
+        let m3: [[f32; 3]; 3] = um3.into();
+        assert_eq!(m3, m3_src);
+
+        let m4_src = [
+            [1.0f32, 2.0, 3.0, 4.0],
+            [5.0, 6.0, 7.0, 8.0],
+            [9.0, 10.0, 11.0, 12.0],
+            [13.0, 14.0, 15.0, 16.0],
+        ];
+        let um4: UniformData = m4_src.into();
+        let m4: [[f32; 4]; 4] = um4.into();
+        assert_eq!(m4, m4_src);
+    }
+
+    // Story: StorageAccess::is_readonly correctly classifies read-only variants.
+    #[test]
+    fn storage_access_readonly_flags() {
+        assert!(StorageAccess::Read.is_readonly());
+        assert!(StorageAccess::Atomic.is_readonly());
+        assert!(StorageAccess::AtomicRead.is_readonly());
+        assert!(!StorageAccess::Write.is_readonly());
+        assert!(!StorageAccess::ReadWrite.is_readonly());
+        assert!(!StorageAccess::AtomicWrite.is_readonly());
+        assert!(!StorageAccess::AtomicReadWrite.is_readonly());
+    }
+
+    // Story: Bytes conversions from &[u8] and Vec<u8] round-trip size and payload.
+    #[test]
+    fn bytes_conversions_size_and_bytes() {
+        let b = vec![1u8, 2, 3, 4, 5];
+        let u1: UniformData = (&b[..]).into();
+        assert_eq!(u1.size(), b.len() as u32);
+        assert_eq!(u1.to_bytes(), b);
+
+        let b2 = vec![9u8, 8, 7];
+        let u2: UniformData = b2.clone().into();
+        assert_eq!(u2.size(), 3);
+        assert_eq!(u2.to_bytes(), b2);
+    }
+
+    // Story: PushConstant to_bytes respects span and size() is zero.
+    #[test]
+    fn push_constant_to_bytes_and_size() {
+        let u = UniformData::PushConstant(vec![PushEntry {
+            inner: vec![UniformData::Vec4(vec![10.0, 20.0, 30.0, 40.0])],
+            span: 8,
+        }]);
+        let bytes = u.to_bytes();
+        assert_eq!(bytes.len(), 8);
+        let first_two: [f32; 2] = bytemuck::cast_slice(&bytes).try_into().unwrap();
+        assert_eq!(first_two, [10.0, 20.0]);
+        assert_eq!(u.size(), 0);
+    }
+
+    // Story: Sampler to_bytes is empty and size is zero.
+    #[test]
+    fn sampler_to_bytes_and_size() {
+        let u = UniformData::Sampler(crate::texture::SamplerInfo { comparison: true });
+        assert!(u.to_bytes().is_empty());
+        assert_eq!(u.size(), 0);
+    }
+}

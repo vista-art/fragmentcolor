@@ -185,9 +185,12 @@ mod convert {
     /// then `swift::finalize` finishes the syntactic swaps that don't
     /// fit a per-line model — backtick template literals → `"""`,
     /// `null` → `nil`, `try` insertion for throwing inits, etc.
-    pub fn to_swift(items: &[(String, bool)]) -> String {
+    ///
+    /// `setup` holds the Swift lines the example runs first, such as a hidden
+    /// block's `let image = try Data(...)`, whose locals the `try` insertion reads.
+    pub fn to_swift(items: &[(String, bool)], setup: &[String]) -> String {
         let ir = convert(items, Lang::Swift, /*aggressive_js_flatten=*/ false);
-        super::swift::finalize(&ir)
+        super::swift::finalize(&ir, setup)
     }
 
     /// Transpile a Rust example into idiomatic Kotlin.
@@ -1210,11 +1213,6 @@ mod convert {
             // 2) ScreenRegion.new((x, y), (w, h)) -> array arguments in JS
             rhs = region_tuples_to_arrays(&rhs, lang);
         }
-        // Python: convert `.size()` calls on RHS into `.size` property
-        if let Lang::Py = lang {
-            rhs = replace_py_size_calls(&rhs);
-        }
-
         // Var rename for Python reserved keyword "pass"
         let var_out: &str = match lang {
             Lang::Py if var == "pass" => {
@@ -1714,10 +1712,8 @@ mod convert {
             // 5) Await / remove error '?' artifacts
             line = transform_await(&line, lang);
 
-            // 6) Python size property + comment conversion
+            // 6) Python comment conversion
             if let Lang::Py = lang {
-                // Robustly convert `.size()` (with optional whitespace) into `.size`
-                line = replace_py_size_calls(&line);
                 // Convert JS-style '//' comments to Python '#', skipping '//'
                 // inside string and char literals (URLs etc).
                 if let Some(idx) = find_comment_marker(&line) {
@@ -2008,48 +2004,6 @@ mod convert {
                 continue;
             }
             out.push(bytes[i]);
-            i += 1;
-        }
-        out
-    }
-
-    // Replace `.size()` (allowing whitespace as `.size ( )`) with `.size` in Python output
-    fn replace_py_size_calls(line: &str) -> String {
-        let chars: Vec<char> = line.chars().collect();
-        let mut out = String::with_capacity(line.len());
-        let mut i = 0usize;
-        while i < chars.len() {
-            if chars[i] == '.' {
-                // optionally skip whitespace after '.'
-                let mut j = i + 1;
-                while j < chars.len() && chars[j].is_whitespace() {
-                    j += 1;
-                }
-                // match 'size'
-                let name = ['s', 'i', 'z', 'e'];
-                if j + name.len() <= chars.len() && chars[j..j + name.len()] == name {
-                    let mut k = j + name.len();
-                    // skip whitespace before '('
-                    while k < chars.len() && chars[k].is_whitespace() {
-                        k += 1;
-                    }
-                    if k < chars.len() && chars[k] == '(' {
-                        k += 1;
-                        // skip whitespace inside parens
-                        while k < chars.len() && chars[k].is_whitespace() {
-                            k += 1;
-                        }
-                        if k < chars.len() && chars[k] == ')' {
-                            // success: write ".size" and skip to after ')'
-                            out.push('.');
-                            out.push_str("size");
-                            i = k + 1;
-                            continue;
-                        }
-                    }
-                }
-            }
-            out.push(chars[i]);
             i += 1;
         }
         out

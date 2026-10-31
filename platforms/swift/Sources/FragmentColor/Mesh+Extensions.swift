@@ -21,41 +21,56 @@ extension Mesh {
     /// Append a single vertex from a position float array.
     /// Accepts 1 to 4 components.
     public func addVertex(_ position: [Float]) throws {
-        try addVertex(v: Vertex(position: position))
+        try addVertex(v: Vertex(position: readPosition(position, "Mesh.addVertex: vertex")))
     }
 
     /// Append a single vertex from a Double array (converted to Float).
+    @_disfavoredOverload
     public func addVertex(_ position: [Double]) throws {
-        try addVertex(v: Vertex(position: position.map { Float($0) }))
+        try addVertex(v: Vertex(position: readPosition(position, "Mesh.addVertex: vertex")))
     }
 
-    /// Append a vertex at `position` with a `"uv"` attribute, as Rust's `(position, uv)` tuple does.
+    /// Append a vertex at `position` with a `"uv"` attribute,
+    /// as Rust's `(position, uv)` tuple does: 3 and 2 finite numbers.
     public func addVertex(_ position: [Float], _ uv: [Float]) throws {
-        addVertex(try Vertex(position).set("uv", uv))
+        let position = try readVector(position, 3, "Mesh.addVertex: vertex: position")
+        let uv = try readVector(uv, 2, "Mesh.addVertex: vertex: uv")
+        addVertex(try Vertex(position: position).set("uv", uv))
     }
 
+    @_disfavoredOverload
     public func addVertex(_ position: [Double], _ uv: [Double]) throws {
-        addVertex(try Vertex(position).set("uv", uv))
+        let position = try readVector(position, 3, "Mesh.addVertex: vertex: position")
+        let uv = try readVector(uv, 2, "Mesh.addVertex: vertex: uv")
+        addVertex(try Vertex(position: position).set("uv", uv))
     }
 
     /// Append a vertex at `position` with `"uv"` and `"color"` attributes,
-    /// as Rust's `(position, uv, color)` tuple does.
+    /// as Rust's `(position, uv, color)` tuple does: 3, 2 and 4 finite numbers.
     public func addVertex(_ position: [Float], _ uv: [Float], _ color: [Float]) throws {
-        addVertex(try Vertex(position).set("uv", uv).set("color", color))
+        let position = try readVector(position, 3, "Mesh.addVertex: vertex: position")
+        let uv = try readVector(uv, 2, "Mesh.addVertex: vertex: uv")
+        let color = try readVector(color, 4, "Mesh.addVertex: vertex: color")
+        addVertex(try Vertex(position: position).set("uv", uv).set("color", color))
     }
 
+    @_disfavoredOverload
     public func addVertex(_ position: [Double], _ uv: [Double], _ color: [Double]) throws {
-        addVertex(try Vertex(position).set("uv", uv).set("color", color))
+        let position = try readVector(position, 3, "Mesh.addVertex: vertex: position")
+        let uv = try readVector(uv, 2, "Mesh.addVertex: vertex: uv")
+        let color = try readVector(color, 4, "Mesh.addVertex: vertex: color")
+        addVertex(try Vertex(position: position).set("uv", uv).set("color", color))
     }
 
     /// Append multiple vertices from an array of float-array positions.
     public func addVertices(_ positions: [[Float]]) throws {
-        try addVertices(vertices: positions.map { try Vertex(position: $0) })
+        try addVertices(vertices: readVertices(positions, "Mesh.addVertices"))
     }
 
     /// Append multiple vertices from an array of double-array positions.
+    @_disfavoredOverload
     public func addVertices(_ positions: [[Double]]) throws {
-        try addVertices(vertices: positions.map { try Vertex(position: $0.map { Float($0) }) })
+        try addVertices(vertices: readVertices(positions, "Mesh.addVertices"))
     }
 
     /// Append multiple already-constructed vertices (drops the `vertices:` label).
@@ -75,16 +90,27 @@ extension Mesh {
 
     /// Build a Mesh from an array of float-array positions.
     public static func fromVertices(_ positions: [[Float]]) throws -> Mesh {
-        let m = Mesh()
-        try m.addVertices(positions)
-        return m
+        return Mesh.fromVertices(vertices: try readVertices(positions, "Mesh.fromVertices"))
     }
 
     /// Build a Mesh from an array of double-array positions.
+    @_disfavoredOverload
     public static func fromVertices(_ positions: [[Double]]) throws -> Mesh {
-        let m = Mesh()
-        try m.addVertices(positions)
-        return m
+        return Mesh.fromVertices(vertices: try readVertices(positions, "Mesh.fromVertices"))
+    }
+}
+
+/// A vertex for each position, naming a failing one as `{label}: vertex {index}`.
+private func readVertices(_ positions: [[Float]], _ label: String) throws -> [Vertex] {
+    try positions.enumerated().map { index, position in
+        try Vertex(position: readPosition(position, "\(label): vertex \(index)"))
+    }
+}
+
+/// A vertex for each position, naming a failing one as `{label}: vertex {index}`.
+private func readVertices(_ positions: [[Double]], _ label: String) throws -> [Vertex] {
+    try positions.enumerated().map { index, position in
+        try Vertex(position: readPosition(position, "\(label): vertex \(index)"))
     }
 }
 
@@ -108,16 +134,18 @@ extension Vertex {
     }
 
     /// Convenience: construct a Vertex from an unlabeled double array.
+    @_disfavoredOverload
     public convenience init(_ position: [Double]) throws {
-        try self.init(position: position.map { Float($0) })
+        try self.init(position: readFloats(position, "Vertex: position"))
     }
 
     /// Unlabeled `Vertex.pbr([x, y, z])` matching the JS / Python spelling.
     public static func pbr(_ position: [Float]) throws -> Vertex {
         return try Vertex.pbr(position: position)
     }
+    @_disfavoredOverload
     public static func pbr(_ position: [Double]) throws -> Vertex {
-        return try Vertex.pbr(position: position.map { Float($0) })
+        return try Vertex.pbr(position: readFloats(position, "Vertex.pbr: position"))
     }
 
     // MARK: - Attributes
@@ -236,8 +264,9 @@ extension Quad {
     }
 
     /// Create a Quad from unlabeled Double corner arrays.
+    @_disfavoredOverload
     public convenience init(_ min: [Double], _ max: [Double]) throws {
-        try self.init(min: min.map { Float($0) }, max: max.map { Float($0) })
+        try self.init(min: readFloats(min, "Quad: min"), max: readFloats(max, "Quad: max"))
     }
 }
 

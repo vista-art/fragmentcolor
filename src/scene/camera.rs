@@ -8,6 +8,7 @@
 //! Camera has been wired into.
 
 use glam::camera::rh::{proj::directx, view};
+use glam::dcamera::rh::view as precise_view;
 use glam::{Mat4, Vec3};
 use lsp_doc::lsp_doc;
 use parking_lot::RwLock;
@@ -19,9 +20,48 @@ use pyo3::prelude::*;
 use wasm_bindgen::prelude::*;
 
 use crate::Shader;
-use crate::pass::{CameraSnapshot, PassObject};
+use crate::core::ShaderObject;
+use crate::core::{CameraSnapshot, PassObject};
 use crate::scene::SceneObject;
-use crate::shader::ShaderObject;
+
+/// Errors from camera parameters that leave no usable view.
+#[derive(Debug, thiserror::Error)]
+pub enum CameraError {
+    #[error(
+        "Camera::perspective needs finite values with 0 < fovy < π, a nonzero aspect, a positive near and far, and near != far, got fovy {fovy}, aspect {aspect}, near {near}, far {far}"
+    )]
+    Perspective {
+        fovy: f32,
+        aspect: f32,
+        near: f32,
+        far: f32,
+    },
+    #[error(
+        "a perspective camera with no zfar needs finite values with 0 < yfov < π, a nonzero aspect ratio and a positive znear, got yfov {fovy}, aspect ratio {aspect}, znear {near}"
+    )]
+    InfinitePerspective { fovy: f32, aspect: f32, near: f32 },
+    #[error(
+        "Camera::orthographic needs finite planes with left != right, bottom != top and near != far, got left {left}, right {right}, bottom {bottom}, top {top}, near {near}, far {far}"
+    )]
+    Orthographic {
+        left: f32,
+        right: f32,
+        bottom: f32,
+        top: f32,
+        near: f32,
+        far: f32,
+    },
+    #[error("Camera::set_aspect needs a finite, nonzero aspect, got {0}")]
+    Aspect(f32),
+    #[error(
+        "Camera::look_at needs finite vectors, a target apart from the position, and an up that isn't parallel to the view, got position {position:?}, target {target:?}, up {up:?}"
+    )]
+    View {
+        position: [f32; 3],
+        target: [f32; 3],
+        up: [f32; 3],
+    },
+}
 
 #[derive(Debug)]
 pub(crate) struct CameraObject {
@@ -48,11 +88,16 @@ pub(crate) struct CameraObject {
 /// `[[f32; 4]; 4]`.
 #[derive(Debug, Clone, Copy)]
 enum Projection {
+    /// A perspective with depth from 0 at `near` to 1 at `far`.
     Perspective {
         fovy_radians: f32,
         near: f32,
         far: f32,
     },
+    /// A perspective with no far plane: depth runs from 0 at `near` toward 1
+    /// at infinity. It's the projection glTF asks for when a camera has no `zfar`.
+    InfinitePerspective { fovy_radians: f32, near: f32 },
+    /// A box from `left` to `right`, `bottom` to `top` and `near` to `far`.
     Orthographic {
         left: f32,
         right: f32,
@@ -63,12 +108,175 @@ enum Projection {
     },
 }
 
+impl Projection {
+    /// Rebuild this projection for a new aspect, with its matrix.
+    fn reshape(self, aspect: f32) -> Result<(Self, Mat4), CameraError> {
+        if !aspect.is_finite() || aspect == 0.0 {
+            return Err(CameraError::Aspect(aspect));
+        }
+        match self {
+            Projection::Perspective {
+                fovy_radians,
+                near,
+                far,
+            } => Ok((self, build_perspective(fovy_radians, aspect, near, far)?)),
+            Projection::InfinitePerspective { fovy_radians, near } => Ok((
+                self,
+                build_infinite_perspective(fovy_radians, aspect, near)?,
+            )),
+            Projection::Orthographic {
+                left,
+                right,
+                bottom,
+                top,
+                near,
+                far,
+            } => {
+                let half_width = 0.5 * aspect * (top - bottom);
+                let middle = 0.5 * (left + right);
+                let (left, right) = (middle - half_width, middle + half_width);
+                let proj = build_orthographic(left, right, bottom, top, near, far)?;
+                let projection = Projection::Orthographic {
+                    left,
+                    right,
+                    bottom,
+                    top,
+                    near,
+                    far,
+                };
+                Ok((projection, proj))
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 struct CameraState {
     projection: Projection,
     view: Mat4,
     proj: Mat4,
     position: Vec3,
+}
+
+impl CameraState {
+    /// A state with `projection` and its matrix, viewed from the origin.
+    fn new(projection: Projection, proj: Mat4) -> Self {
+        Self {
+            projection,
+            view: Mat4::IDENTITY,
+            proj,
+            position: Vec3::ZERO,
+        }
+    }
+}
+
+/// Return `matrix` when every entry is finite, or `error`.
+fn require_finite(matrix: Mat4, error: CameraError) -> Result<Mat4, CameraError> {
+    if matrix.is_finite() {
+        Ok(matrix)
+    } else {
+        Err(error)
+    }
+}
+
+/// Build a perspective matrix, refusing parameters that give no finite one.
+/// `near > far` is allowed, since it gives a reverse-Z projection.
+fn build_perspective(fovy: f32, aspect: f32, near: f32, far: f32) -> Result<Mat4, CameraError> {
+    let error = CameraError::Perspective {
+        fovy,
+        aspect,
+        near,
+        far,
+    };
+    let valid = is_lens_valid(fovy, aspect, near) && far.is_finite() && far > 0.0 && near != far;
+    if !valid {
+        return Err(error);
+    }
+    require_finite(directx::perspective(fovy, aspect, near, far), error)
+}
+
+/// Build a perspective matrix with no far plane, refusing a lens that gives no finite one.
+fn build_infinite_perspective(fovy: f32, aspect: f32, near: f32) -> Result<Mat4, CameraError> {
+    let error = CameraError::InfinitePerspective { fovy, aspect, near };
+    if !is_lens_valid(fovy, aspect, near) {
+        return Err(error);
+    }
+    require_finite(directx::perspective_infinite(fovy, aspect, near), error)
+}
+
+/// Whether a field of view, aspect and near plane can start a perspective.
+fn is_lens_valid(fovy: f32, aspect: f32, near: f32) -> bool {
+    let finite = [fovy, aspect, near].iter().all(|value| value.is_finite());
+    finite && fovy > 0.0 && fovy < std::f32::consts::PI && aspect != 0.0 && near > 0.0
+}
+
+/// Build an orthographic matrix, refusing planes that give no finite one.
+fn build_orthographic(
+    left: f32,
+    right: f32,
+    bottom: f32,
+    top: f32,
+    near: f32,
+    far: f32,
+) -> Result<Mat4, CameraError> {
+    let error = CameraError::Orthographic {
+        left,
+        right,
+        bottom,
+        top,
+        near,
+        far,
+    };
+    let planes = [left, right, bottom, top, near, far];
+    if !planes.iter().all(|plane| plane.is_finite())
+        || left == right
+        || bottom == top
+        || near == far
+    {
+        return Err(error);
+    }
+    require_finite(
+        directx::orthographic(left, right, bottom, top, near, far),
+        error,
+    )
+}
+
+/// The sine below which `look_at` calls `up` parallel to the view.
+/// The view basis is built in f64, where parallel vectors leave about 1e-16,
+/// so this limit refuses only an `up` that really lies on the line of the view.
+const PARALLEL_LIMIT: f64 = 1.0e-12;
+
+/// Build a view matrix in f64 and cast it to f32.
+/// Both the view and `up` must have a direction, normalized before glam sees
+/// them, and stand at least `PARALLEL_LIMIT` apart, which refuses a target on
+/// the position. Double precision keeps the roll exact for a nearly parallel `up`.
+fn build_view(position: [f32; 3], target: [f32; 3], up: [f32; 3]) -> Result<Mat4, CameraError> {
+    let error = CameraError::View {
+        position,
+        target,
+        up,
+    };
+    let finite = position
+        .iter()
+        .chain(&target)
+        .chain(&up)
+        .all(|value| value.is_finite());
+    if !finite {
+        return Err(error);
+    }
+    let eye = Vec3::from(position).as_dvec3();
+    let forward = (Vec3::from(target).as_dvec3() - eye).try_normalize();
+    let up = Vec3::from(up).as_dvec3().try_normalize();
+    let (Some(forward), Some(up)) = (forward, up) else {
+        return Err(error);
+    };
+    if forward.cross(up).length() < PARALLEL_LIMIT {
+        return Err(error);
+    }
+    require_finite(
+        precise_view::look_to_mat4(eye, forward, up).as_mat4(),
+        error,
+    )
 }
 
 #[cfg_attr(wasm, wasm_bindgen)]
@@ -97,36 +305,92 @@ impl Camera {
     /// the vertical FOV; `aspect` is width / height. View defaults to
     /// identity (eye at origin, looking down -Z, +Y up).
     #[lsp_doc("docs/api/scene/camera/perspective.md")]
-    pub fn perspective(fovy_radians: f32, aspect: f32, near: f32, far: f32) -> Self {
-        Self::from_state(CameraState {
-            projection: Projection::Perspective {
-                fovy_radians,
-                near,
-                far,
-            },
-            view: Mat4::IDENTITY,
-            proj: directx::perspective(fovy_radians, aspect, near, far),
-            position: Vec3::ZERO,
-        })
+    pub fn perspective(
+        fovy_radians: f32,
+        aspect: f32,
+        near: f32,
+        far: f32,
+    ) -> Result<Self, CameraError> {
+        Self::create_perspective(fovy_radians, aspect, near, far)
     }
 
     /// Construct a Camera with an orthographic projection. The six args are
     /// the frustum planes in view space; pair with a depth attachment
     /// configured for wgpu's [0, 1] NDC depth range.
     #[lsp_doc("docs/api/scene/camera/orthographic.md")]
-    pub fn orthographic(left: f32, right: f32, bottom: f32, top: f32, near: f32, far: f32) -> Self {
+    pub fn orthographic(
+        left: f32,
+        right: f32,
+        bottom: f32,
+        top: f32,
+        near: f32,
+        far: f32,
+    ) -> Result<Self, CameraError> {
+        Self::create_orthographic(left, right, bottom, top, near, far)
+    }
+
+    fn create_perspective(
+        fovy_radians: f32,
+        aspect: f32,
+        near: f32,
+        far: f32,
+    ) -> Result<Self, CameraError> {
+        let proj = build_perspective(fovy_radians, aspect, near, far)?;
+        let projection = Projection::Perspective {
+            fovy_radians,
+            near,
+            far,
+        };
+        Ok(Self::from_state(CameraState::new(projection, proj)))
+    }
+
+    /// A perspective Camera with no far plane, for a glTF camera without `zfar`.
+    pub(crate) fn create_infinite(
+        fovy_radians: f32,
+        aspect: f32,
+        near: f32,
+    ) -> Result<Self, CameraError> {
+        let proj = build_infinite_perspective(fovy_radians, aspect, near)?;
+        let projection = Projection::InfinitePerspective { fovy_radians, near };
+        Ok(Self::from_state(CameraState::new(projection, proj)))
+    }
+
+    fn create_orthographic(
+        left: f32,
+        right: f32,
+        bottom: f32,
+        top: f32,
+        near: f32,
+        far: f32,
+    ) -> Result<Self, CameraError> {
+        let proj = build_orthographic(left, right, bottom, top, near, far)?;
+        let projection = Projection::Orthographic {
+            left,
+            right,
+            bottom,
+            top,
+            near,
+            far,
+        };
+        Ok(Self::from_state(CameraState::new(projection, proj)))
+    }
+
+    /// The camera a Scene injects when it has none: a 60° perspective with
+    /// a square aspect over [0.1, 100], five units back from the origin and
+    /// looking at it. Its constants build finite matrices, so it skips the checks.
+    pub(crate) fn create_stock() -> Self {
+        let projection = Projection::Perspective {
+            fovy_radians: std::f32::consts::FRAC_PI_3,
+            near: 0.1,
+            far: 100.0,
+        };
+        let proj = directx::perspective(std::f32::consts::FRAC_PI_3, 1.0, 0.1, 100.0);
+        let position = Vec3::new(0.0, 0.0, 5.0);
         Self::from_state(CameraState {
-            projection: Projection::Orthographic {
-                left,
-                right,
-                bottom,
-                top,
-                near,
-                far,
-            },
-            view: Mat4::IDENTITY,
-            proj: directx::orthographic(left, right, bottom, top, near, far),
-            position: Vec3::ZERO,
+            projection,
+            view: view::look_at_mat4(position, Vec3::ZERO, Vec3::Y),
+            proj,
+            position,
         })
     }
 
@@ -144,46 +408,11 @@ impl Camera {
     ///   matches the new aspect, centered on the existing horizontal
     ///   midpoint. Frustum height stays put.
     ///
-    /// Returns a handle to the same Camera (Arc-shared) for chaining.
+    /// Returns a handle to the same Camera (Arc-shared) for chaining. A
+    /// refused aspect leaves the Camera as it was.
     #[lsp_doc("docs/api/scene/camera/set_aspect.md")]
-    pub fn set_aspect(&self, aspect: f32) -> Self {
-        {
-            let mut state = self.object.state.write();
-            match state.projection {
-                Projection::Perspective {
-                    fovy_radians,
-                    near,
-                    far,
-                } => {
-                    state.proj = directx::perspective(fovy_radians, aspect, near, far);
-                }
-                Projection::Orthographic {
-                    left,
-                    right,
-                    bottom,
-                    top,
-                    near,
-                    far,
-                } => {
-                    let height = top - bottom;
-                    let mid_x = 0.5 * (left + right);
-                    let half_w = 0.5 * aspect * height;
-                    let new_left = mid_x - half_w;
-                    let new_right = mid_x + half_w;
-                    state.projection = Projection::Orthographic {
-                        left: new_left,
-                        right: new_right,
-                        bottom,
-                        top,
-                        near,
-                        far,
-                    };
-                    state.proj = directx::orthographic(new_left, new_right, bottom, top, near, far);
-                }
-            }
-        }
-        self.propagate();
-        self.clone()
+    pub fn set_aspect(&self, aspect: f32) -> Result<Self, CameraError> {
+        self.apply_aspect(aspect)
     }
 
     /// Position the camera in world space. `position` is where the camera
@@ -191,17 +420,16 @@ impl Camera {
     /// that orients the roll (typically `[0, 1, 0]`). Matches Light's
     /// `position` vocabulary so both scene types describe "where this
     /// object is in the world" the same way. Returns a handle to the same
-    /// Camera (Arc-shared backing) for chaining.
+    /// Camera (Arc-shared backing) for chaining. Refused vectors leave the
+    /// Camera as it was.
     #[lsp_doc("docs/api/scene/camera/look_at.md")]
-    pub fn look_at(&self, position: [f32; 3], target: [f32; 3], up: [f32; 3]) -> Self {
-        let pos_v = Vec3::from(position);
-        {
-            let mut state = self.object.state.write();
-            state.view = view::look_at_mat4(pos_v, Vec3::from(target), Vec3::from(up));
-            state.position = pos_v;
-        }
-        self.propagate();
-        self.clone()
+    pub fn look_at(
+        &self,
+        position: [f32; 3],
+        target: [f32; 3],
+        up: [f32; 3],
+    ) -> Result<Self, CameraError> {
+        self.apply_view(position, target, up)
     }
 
     /// Read the combined `proj * view` matrix as a column-major 4×4.
@@ -216,6 +444,38 @@ impl Camera {
     #[lsp_doc("docs/api/scene/camera/position.md")]
     pub fn position(&self) -> [f32; 3] {
         self.object.state.read().position.to_array()
+    }
+
+    /// Compute the projection for `aspect` before taking the write lock, so a
+    /// refused aspect never reaches the state.
+    fn apply_aspect(&self, aspect: f32) -> Result<Self, CameraError> {
+        let projection = self.object.state.read().projection;
+        let (projection, proj) = projection.reshape(aspect)?;
+        {
+            let mut state = self.object.state.write();
+            state.projection = projection;
+            state.proj = proj;
+        }
+        self.propagate();
+        Ok(self.clone())
+    }
+
+    /// Compute the view before taking the write lock, so refused vectors
+    /// never reach the state.
+    fn apply_view(
+        &self,
+        position: [f32; 3],
+        target: [f32; 3],
+        up: [f32; 3],
+    ) -> Result<Self, CameraError> {
+        let view = build_view(position, target, up)?;
+        {
+            let mut state = self.object.state.write();
+            state.view = view;
+            state.position = Vec3::from(position);
+        }
+        self.propagate();
+        Ok(self.clone())
     }
 
     /// Push the current state to every shader that absorbed this Camera,
@@ -235,7 +495,7 @@ impl Camera {
                 s.position.to_array(),
             )
         };
-        let snapshot = CameraSnapshot { view };
+        let snapshot = CameraSnapshot { view, view_proj };
         let mut attached = self.object.attached.write();
         attached.retain(|weak| {
             if let Some(shader) = weak.upgrade() {
@@ -285,7 +545,7 @@ impl SceneObject for Camera {
         // draws back-to-front without going through `Shader::get`. Register a
         // Weak<PassObject> on the Camera so subsequent `Camera::look_at` mutations
         // refresh the snapshot in step with every absorbing Pass.
-        *pass.object.camera_snapshot.write() = Some(CameraSnapshot { view });
+        *pass.object.camera_snapshot.write() = Some(CameraSnapshot { view, view_proj });
         self.object
             .attached_passes
             .write()
@@ -310,6 +570,13 @@ impl SceneObject for Camera {
     }
 }
 
+#[cfg(any(python, wasm, test))]
+impl crate::error::Classify for CameraError {
+    fn classify(&self) -> crate::error::ErrorClass {
+        crate::error::ErrorClass::Camera
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -326,7 +593,8 @@ mod tests {
 
     #[test]
     fn perspective_produces_nontrivial_mat4() {
-        let camera = Camera::perspective(60.0_f32.to_radians(), 16.0 / 9.0, 0.1, 100.0);
+        let camera =
+            Camera::perspective(60.0_f32.to_radians(), 16.0 / 9.0, 0.1, 100.0).expect("camera");
         let m = camera.view_proj();
         // Perspective encodes the homogeneous-w divide as a -1 in [2][3].
         assert!((m[2][3] + 1.0).abs() < 1.0e-5, "got {m:?}");
@@ -338,7 +606,7 @@ mod tests {
 
     #[test]
     fn orthographic_preserves_w() {
-        let camera = Camera::orthographic(-1.0, 1.0, -1.0, 1.0, 0.1, 10.0);
+        let camera = Camera::orthographic(-1.0, 1.0, -1.0, 1.0, 0.1, 10.0).expect("camera");
         let m = camera.view_proj();
         // Orthographic keeps the bottom-right [3][3] at 1 (no w divide).
         assert!((m[3][3] - 1.0).abs() < 1.0e-5, "got {m:?}");
@@ -346,10 +614,175 @@ mod tests {
     }
 
     #[test]
-    fn look_at_changes_view_component() {
-        let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0);
+    fn perspective_refuses_parameters_without_a_finite_matrix() {
+        for (fovy, aspect, near, far) in [
+            (0.0, 1.0, 0.1, 100.0),
+            (std::f32::consts::PI, 1.0, 0.1, 100.0),
+            (1.0, 0.0, 0.1, 100.0),
+            (1.0, f32::NAN, 0.1, 100.0),
+            (1.0, 1.0, 0.0, 100.0),
+            (1.0, 1.0, 1.0, 1.0),
+            (1.0, 1.0, 0.1, f32::INFINITY),
+        ] {
+            assert!(
+                matches!(
+                    Camera::perspective(fovy, aspect, near, far),
+                    Err(CameraError::Perspective { .. })
+                ),
+                "perspective({fovy}, {aspect}, {near}, {far}) should fail"
+            );
+        }
+    }
+
+    #[test]
+    fn an_infinite_perspective_keeps_no_far_plane_through_set_aspect() {
+        // The infinite projection's depth row is (-1, -near): no far plane.
+        let camera = Camera::create_infinite(1.0, 1.0, 0.25).expect("camera");
+        camera.set_aspect(2.0).expect("aspect");
+        let m = camera.view_proj();
+        assert_eq!((m[2][2], m[3][2]), (-1.0, -0.25), "got {m:?}");
+    }
+
+    #[test]
+    fn perspective_takes_reverse_z() {
+        let camera = Camera::perspective(1.0, 1.0, 100.0, 0.1).expect("near > far is reverse-Z");
+        assert!(glam::Mat4::from_cols_array_2d(&camera.view_proj()).is_finite());
+    }
+
+    #[test]
+    fn orthographic_refuses_planes_without_a_finite_matrix() {
+        for [left, right, bottom, top, near, far] in [
+            [-1.0, -1.0, -1.0, 1.0, 0.1, 10.0],
+            [-1.0, 1.0, 1.0, 1.0, 0.1, 10.0],
+            [-1.0, 1.0, -1.0, 1.0, 5.0, 5.0],
+            [f32::NAN, 1.0, -1.0, 1.0, 0.1, 10.0],
+            [-1.0, 1.0, -1.0, f32::INFINITY, 0.1, 10.0],
+        ] {
+            assert!(
+                matches!(
+                    Camera::orthographic(left, right, bottom, top, near, far),
+                    Err(CameraError::Orthographic { .. })
+                ),
+                "orthographic({left}, {right}, {bottom}, {top}, {near}, {far}) should fail"
+            );
+        }
+    }
+
+    #[test]
+    fn set_aspect_refuses_an_aspect_without_a_projection() {
+        let perspective = Camera::perspective(1.0, 1.0, 0.1, 100.0).expect("camera");
+        let orthographic = Camera::orthographic(-1.0, 1.0, -1.0, 1.0, 0.1, 10.0).expect("camera");
+        for camera in [perspective, orthographic] {
+            let before = camera.view_proj();
+            for aspect in [0.0, f32::NAN, f32::INFINITY] {
+                assert!(
+                    matches!(camera.set_aspect(aspect), Err(CameraError::Aspect(_))),
+                    "set_aspect({aspect}) should fail"
+                );
+            }
+            assert_eq!(
+                camera.view_proj(),
+                before,
+                "a refused aspect changes nothing"
+            );
+        }
+    }
+
+    #[test]
+    fn look_at_refuses_a_view_without_a_direction() {
+        let camera = Camera::perspective(1.0, 1.0, 0.1, 100.0)
+            .expect("camera")
+            .look_at([0.0, 0.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+            .expect("camera");
         let before = camera.view_proj();
-        camera.look_at([0.0, 0.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+        for (position, target, up) in [
+            ([1.0, 2.0, 3.0], [1.0, 2.0, 3.0], [0.0, 1.0, 0.0]),
+            ([0.0, 0.0, 5.0], [0.0, 0.0, 0.0], [0.0, 0.0, 1.0]),
+            ([0.0, 0.0, 5.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]),
+            ([f32::NAN, 0.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]),
+        ] {
+            assert!(
+                matches!(
+                    camera.look_at(position, target, up),
+                    Err(CameraError::View { .. })
+                ),
+                "look_at({position:?}, {target:?}, {up:?}) should fail"
+            );
+        }
+        assert_eq!(camera.view_proj(), before, "a refused view changes nothing");
+        assert_eq!(camera.position(), [0.0, 0.0, 5.0]);
+    }
+
+    /// The view matrix's side, up and back axes, as rows of its 3x3 part.
+    fn view_axes(camera: &Camera) -> [glam::Vec3; 3] {
+        let view = camera.object.state.read().view;
+        let row = |index: usize| view.row(index).truncate();
+        [row(0), row(1), row(2)]
+    }
+
+    #[test]
+    fn look_at_refuses_an_up_on_the_view_line() {
+        // Exactly parallel, forward or back: no roll follows from the numbers.
+        let camera = Camera::perspective(1.0, 1.0, 0.1, 100.0).expect("camera");
+        for up in [[0.3, 0.7, 1.1], [-0.3, -0.7, -1.1]] {
+            assert!(
+                matches!(
+                    camera.look_at([0.3, 0.7, 1.1], [0.0, 0.0, 0.0], up),
+                    Err(CameraError::View { .. })
+                ),
+                "an up of {up:?} lies on the view line"
+            );
+        }
+    }
+
+    #[test]
+    fn look_at_draws_the_line_at_a_sine_of_1e12() {
+        // A top-down camera a million units up: a target offset of 9e-7 gives
+        // a sine of 9e-13, below the limit, and 2e-6 gives 2e-12, above it.
+        let camera = Camera::perspective(1.0, 1.0, 0.1, 100.0).expect("camera");
+        let down = |offset| camera.look_at([0.0, 1.0e6, 0.0], [0.0, 0.0, offset], [0.0, 1.0, 0.0]);
+        assert!(matches!(down(9.0e-7), Err(CameraError::View { .. })));
+        down(2.0e-6).expect("a sine of 2e-12 still has a roll");
+    }
+
+    #[test]
+    fn look_at_takes_a_view_nearly_straight_down() {
+        // Offsetting the target a little is the usual way to look down along
+        // +Y. Even 10,000 units up, with a sine of 1e-7, the roll is exact:
+        // the side axis comes out as -X.
+        let camera = Camera::perspective(1.0, 1.0, 0.1, 100.0).expect("camera");
+        for height in [10.0, 1000.0, 10000.0] {
+            camera
+                .look_at([0.0, height, 0.0], [0.0, 0.0, 0.001], [0.0, 1.0, 0.0])
+                .expect("a top-down view offset by 0.001 has a roll");
+            let [side, _, _] = view_axes(&camera);
+            assert_eq!(side, glam::Vec3::new(-1.0, 0.0, 0.0), "height {height}");
+        }
+    }
+
+    #[test]
+    fn look_at_builds_orthonormal_axes_from_a_tiny_up() {
+        let camera = Camera::perspective(1.0, 1.0, 0.1, 100.0).expect("camera");
+        for up in [[0.0, 1.0e-21, 0.0], [0.0, 1.0e-22, 0.0], [0.0, 3.0e20, 0.0]] {
+            camera
+                .look_at([0.0, 0.0, 5.0], [0.0, 0.0, 0.0], up)
+                .expect("a tiny up still has a direction");
+            for axis in view_axes(&camera) {
+                assert!(
+                    (axis.length() - 1.0).abs() < 1.0e-6,
+                    "up {up:?} gave {axis:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn look_at_changes_view_component() {
+        let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0).expect("camera");
+        let before = camera.view_proj();
+        camera
+            .look_at([0.0, 0.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+            .expect("camera");
         let after = camera.view_proj();
         assert!(before != after, "look_at must change view_proj");
         assert_eq!(camera.position(), [0.0, 0.0, 5.0]);
@@ -357,19 +790,18 @@ mod tests {
 
     fn pbr_triangle_mesh() -> crate::Mesh {
         let mesh = crate::Mesh::new();
-        mesh.add_vertex(
-            crate::mesh::Vertex::pbr([0.0, 0.5, 0.0]).set(crate::mesh::Vertex::UV0, [0.5, 1.0]),
+        mesh.add_vertices(
+            [[0.0, 0.5, 0.0], [-0.5, -0.5, 0.0], [0.5, -0.5, 0.0]].map(crate::Vertex::pbr),
         );
         mesh
     }
 
     #[test]
     fn pass_add_seeds_shader_uniforms() {
-        let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0).look_at(
-            [1.0, 2.0, 3.0],
-            [0.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0],
-        );
+        let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0)
+            .expect("camera")
+            .look_at([1.0, 2.0, 3.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+            .expect("camera");
         let material = Material::pbr();
         let model = crate::scene::Model::new(pbr_triangle_mesh(), material.clone());
 
@@ -395,7 +827,7 @@ mod tests {
     fn mutations_propagate_to_all_pass_shaders() {
         // The same camera absorbed by a pass shows live updates on every
         // shader the pass wires it into, with no second `add` call.
-        let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0);
+        let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0).expect("camera");
         let material = Material::pbr();
         let model = crate::scene::Model::new(pbr_triangle_mesh(), material.clone());
 
@@ -404,7 +836,9 @@ mod tests {
         pass.add(&camera)
             .expect("camera attach is infallible in unit tests");
 
-        camera.look_at([5.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+        camera
+            .look_at([5.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+            .expect("camera");
         let p: [f32; 3] = material.shader().get("camera.position").unwrap();
         assert_eq!(p, [5.0, 0.0, 0.0]);
     }
@@ -413,11 +847,10 @@ mod tests {
     fn pass_add_before_model_still_reaches_the_new_shader() {
         // Camera added before any models — the pass remembers it and applies
         // to each shader as `add_model` brings them in.
-        let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0).look_at(
-            [0.0, 0.0, 7.0],
-            [0.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0],
-        );
+        let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0)
+            .expect("camera")
+            .look_at([0.0, 0.0, 7.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+            .expect("camera");
         let material = Material::pbr();
 
         let pass = crate::Pass::new("scene");
@@ -441,11 +874,10 @@ mod tests {
         let pass = crate::Pass::new("scene");
         assert!(pass.object.camera_snapshot.read().is_none());
 
-        let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0).look_at(
-            [0.0, 0.0, 5.0],
-            [0.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0],
-        );
+        let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0)
+            .expect("camera")
+            .look_at([0.0, 0.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+            .expect("camera");
         pass.add(&camera)
             .expect("camera attach is infallible in unit tests");
 
@@ -462,7 +894,9 @@ mod tests {
         assert!((translation[2] + 5.0).abs() < 1.0e-5, "got {translation:?}");
 
         // look_at should refresh the snapshot
-        camera.look_at([0.0, 0.0, 10.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+        camera
+            .look_at([0.0, 0.0, 10.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+            .expect("camera");
         let snap2 = pass
             .object
             .camera_snapshot
@@ -480,9 +914,9 @@ mod tests {
         // Same camera, different aspects → distinct view_proj outputs. The
         // perspective projection's [0][0] term is `1 / (aspect * tan(fovy/2))`
         // so doubling aspect halves the X-axis scale.
-        let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0);
+        let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0).expect("camera");
         let m_before = camera.view_proj();
-        camera.set_aspect(2.0);
+        camera.set_aspect(2.0).expect("camera");
         let m_after = camera.view_proj();
         assert!(
             (m_before[0][0] - 2.0 * m_after[0][0]).abs() < 1.0e-4,
@@ -496,8 +930,8 @@ mod tests {
         // vertical extent and rescaling the horizontal extents around the
         // current horizontal midpoint. Starting from a centered 2×2 frustum,
         // an aspect of 2.0 should land at a 4×2 frustum (left=-2, right=2).
-        let camera = Camera::orthographic(-1.0, 1.0, -1.0, 1.0, 0.1, 100.0);
-        camera.set_aspect(2.0);
+        let camera = Camera::orthographic(-1.0, 1.0, -1.0, 1.0, 0.1, 100.0).expect("camera");
+        camera.set_aspect(2.0).expect("camera");
         // The [0][0] term of an orthographic projection is `2 / (right - left)`.
         // For a 4-wide frustum that's 0.5; for the original 2-wide it was 1.0.
         let after = camera.view_proj();
@@ -519,7 +953,7 @@ mod tests {
         // After adding a Camera to a pass and rendering one frame, calling
         // set_aspect should update the attached shader's `camera.view_proj`
         // uniform without re-adding.
-        let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0);
+        let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0).expect("camera");
         let material = Material::pbr();
         let model = crate::scene::Model::new(pbr_triangle_mesh(), material.clone());
         let pass = crate::Pass::new("scene");
@@ -528,7 +962,7 @@ mod tests {
             .expect("camera attach is infallible in unit tests");
 
         let before: [[f32; 4]; 4] = material.shader().get("camera.view_proj").unwrap();
-        camera.set_aspect(2.0);
+        camera.set_aspect(2.0).expect("camera");
         let after: [[f32; 4]; 4] = material.shader().get("camera.view_proj").unwrap();
         assert!(
             before != after,

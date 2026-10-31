@@ -7,6 +7,9 @@ those bytes back for that root. Set a struct one field at a time
 (`"light.color"`) and an array one element at a time (`"weights[0]"`).
 Only a storage-buffer or push-constant root takes its whole bytes.
 
+A texture slot reads back the id of what it binds. A `Material` map's slot
+holds the map's id from the setter call on, before any `Renderer` loads it.
+
 ## Example
 
 ```rust

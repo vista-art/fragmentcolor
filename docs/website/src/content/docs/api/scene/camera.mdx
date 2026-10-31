@@ -4,7 +4,7 @@ description: "A `Camera` packages the two things every 3D render needs into one 
 category: scene
 categoryLabel: Scene
 sidebar:
-  order: 3
+  order: 4
 ---
 
 import { Code, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
@@ -33,6 +33,13 @@ Internally a Camera carries:
   shaders that need it (specular highlights, fresnel) don't have to invert
   the view matrix on every frame.
 
+Parameters that leave no usable view return an error, and a Camera that
+already exists keeps its state. `perspective`, `orthographic`, `look_at`
+and `set_aspect` return a `CameraError` in Rust, throw an `Error` named
+`CameraError` in JavaScript, raise `CameraError` (a `FragmentColorError` and a `ValueError`)
+in Python, throw `FragmentColorError` in Swift and throw
+`FragmentColorException` in Kotlin.
+
 The Camera is the user's domain, not the Material's: a Material is "what the
 surface looks like under any light from any viewpoint", a Camera is "which
 viewpoint we're using right now".
@@ -50,12 +57,18 @@ vertical field of view (use `degrees.to_radians()` if you're starting from
 degrees); `aspect` is width / height; `near` and `far` clip the depth range.
 
 Built on `glam::Mat4::perspective_rh`, which targets wgpu's NDC depth
-range `[0, 1]`. Pair with a depth attachment configured for that range
-when you add the Camera to a Pass that does depth testing.
+range `[0, 1]`. A pass that draws models gets a depth buffer for that
+range on its own.
 
 The view component starts at identity: eye at the world origin, looking
 down `-Z`, with `+Y` up. Chain [`look_at`](/api/scene/camera#look_at)
 to position the camera before binding it.
+
+Every value must be finite, `fovy_radians` must lie between 0 and π,
+`aspect` can't be 0, and `near` and `far` must be positive and different.
+Anything else returns `Err(CameraError::Perspective)`: such values give a
+matrix of infinities or NaN, a flipped or collapsed image, or no usable
+depth range.
 
 #### Example
 
@@ -64,19 +77,11 @@ to position the camera before binding it.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Camera;
 
-let camera = Camera::perspective(1.047, 16.0 / 9.0, 0.1, 100.0);
-
-// Perspective collapses the depth axis into a non-trivial matrix; the
-// [2][3] term encodes the -1 wgpu uses for the homogeneous w divide.
-let m = camera.view_proj();
-assert!((m[2][3] + 1.0).abs() < 1.0e-5);
-Ok(())
-}
+let camera = Camera::perspective(1.047, 16.0 / 9.0, 0.1, 100.0)?;
 `}
-lang="rust" meta="collapse={1-1, 6-11}"
+lang="rust"
 />
 
 </TabItem>
@@ -112,7 +117,7 @@ lang="python"
 code={`
 import FragmentColor
 
-let camera = Camera.perspective(1.047, 16.0 / 9.0, 0.1, 100.0)
+let camera = try Camera.perspective(1.047, 16.0 / 9.0, 0.1, 100.0)
 `}
 lang="swift"
 />
@@ -145,12 +150,16 @@ gameplay, isometric scenes) or for shadow-map style passes where you want
 parallel projection.
 
 Built on `glam::Mat4::orthographic_rh`, which targets wgpu's NDC depth
-range `[0, 1]`. Pair with a depth attachment configured for that range
-when you add the Camera to a Pass that does depth testing.
+range `[0, 1]`. A pass that draws models gets a depth buffer for that
+range on its own.
 
 The view component starts at identity: eye at the world origin, looking
 down `-Z`, with `+Y` up. Chain [`look_at`](/api/scene/camera#look_at)
 to position the camera before binding it.
+
+All six planes must be finite, and `left` and `right`, `bottom` and `top`,
+and `near` and `far` must differ. Planes that close the frustum to nothing
+return `Err(CameraError::Orthographic)`.
 
 #### Example
 
@@ -159,20 +168,12 @@ to position the camera before binding it.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Camera;
 
 // A 16:9 viewport, 10 world units tall, depth range 0.1..100.
-let camera = Camera::orthographic(-8.0, 8.0, -4.5, 4.5, 0.1, 100.0);
-
-let m = camera.view_proj();
-// Orthographic preserves parallel lines: the bottom-right corner is the
-// projection-only [3][3] term, which is 1.0 (unlike perspective's 0).
-assert!((m[3][3] - 1.0).abs() < 1.0e-5);
-Ok(())
-}
+let camera = Camera::orthographic(-8.0, 8.0, -4.5, 4.5, 0.1, 100.0)?;
 `}
-lang="rust" meta="collapse={1-1, 7-12}"
+lang="rust"
 />
 
 </TabItem>
@@ -211,7 +212,7 @@ code={`
 import FragmentColor
 
 // A 16:9 viewport, 10 world units tall, depth range 0.1..100.
-let camera = Camera.orthographic(-8.0, 8.0, -4.5, 4.5, 0.1, 100.0)
+let camera = try Camera.orthographic(-8.0, 8.0, -4.5, 4.5, 0.1, 100.0)
 `}
 lang="swift"
 />
@@ -249,6 +250,9 @@ Typical use: window-resize handler. On `WindowEvent::Resized`, call
 renders without distortion.
 
 Returns a handle to the same Camera (Arc-shared backing) for chaining.
+An aspect of 0, NaN or infinity returns `Err(CameraError::Aspect)` and
+leaves the projection as it was. A minimized window reports a width or
+height of 0, so skip the call until the window has an area again.
 
 Behavior by projection kind:
 
@@ -267,17 +271,14 @@ Behavior by projection kind:
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Camera;
 
-let camera = Camera::perspective(1.047, 1.0, 0.1, 100.0);
+let camera = Camera::perspective(1.047, 1.0, 0.1, 100.0)?;
 
 // Window resize: 1920×1080 → wide-screen aspect.
-camera.set_aspect(1920.0 / 1080.0);
-Ok(())
-}
+camera.set_aspect(1920.0 / 1080.0)?;
 `}
-lang="rust" meta="collapse={1-1, 8-9}"
+lang="rust"
 />
 
 </TabItem>
@@ -317,10 +318,10 @@ lang="python"
 code={`
 import FragmentColor
 
-let camera = Camera.perspective(1.047, 1.0, 0.1, 100.0)
+let camera = try Camera.perspective(1.047, 1.0, 0.1, 100.0)
 
 // Window resize: 1920×1080 → wide-screen aspect.
-camera.setAspect(1920.0 / 1080.0)
+try camera.setAspect(1920.0 / 1080.0)
 `}
 lang="swift"
 />
@@ -360,8 +361,18 @@ cleanly off a `perspective` or `orthographic` constructor and can be
 called again after the Camera has been added to a Pass. The new view
 propagates live to every Material the Pass renders.
 
-Internally builds the view matrix with `glam::Mat4::look_at_rh`. The
-result is a right-handed view matrix that pairs with the right-handed
+The vectors must be finite, `target` must differ from `position`, and
+`up` can't be zero or lie on the line of view, forward or back. Any of
+those leaves no way to orient the camera, so the call returns
+`Err(CameraError::View)` and the Camera keeps its view.
+
+The view is built in double precision, from a normalized `up`, and stored
+as `f32`. So an `up` counts as on that line only when the sine of its angle
+to it is below 1e-12, and one just off the line still gets the roll its
+numbers describe. A top-down camera 10,000 units up, with its target offset
+by 0.001, has a sine of 1e-7 and gets an exact roll.
+
+The result is a right-handed view matrix that pairs with the right-handed
 projection produced by [`perspective`](/api/scene/camera#perspective)
 and [`orthographic`](/api/scene/camera#orthographic).
 
@@ -377,17 +388,12 @@ the view matrix on every frame.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Camera;
 
-let camera = Camera::perspective(1.047, 16.0 / 9.0, 0.1, 100.0)
-    .look_at([0.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
-
-assert_eq!(camera.position(), [0.0, 1.0, 5.0]);
-Ok(())
-}
+let camera = Camera::perspective(1.047, 16.0 / 9.0, 0.1, 100.0)?
+    .look_at([0.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])?;
 `}
-lang="rust" meta="collapse={1-1, 7-9}"
+lang="rust"
 />
 
 </TabItem>
@@ -449,10 +455,12 @@ lang="kotlin"
 
 ### Camera::view_proj \{#view_proj\}
 
-Read the combined `proj * view` matrix as a column-major 4x4. Column-major
-matches WGSL's `mat4x4<f32>` storage and glam's `to_cols_array_2d()`, so
-the result is ready to feed directly into a Shader's `camera.view_proj`
-uniform via `Shader::set(...)` if you need direct control. For the common
+Read the combined `proj * view` matrix as its four columns of four numbers,
+the `[[f32; 4]; 4]` Rust returns, and four lists of four in every other language
+(four `Float32Array`s in JavaScript).
+Column-major order matches WGSL's `mat4x4<f32>` storage, so the result is ready
+to feed directly into a Shader's `camera.view_proj` uniform via `Shader::set(...)`
+if you need direct control. For the common
 case, pass the Camera to
 [`Pass::add`](/api/core/pass#add). The Pass seeds
 `camera.view_proj` + `camera.position` on every Material attached to it
@@ -465,20 +473,14 @@ and keeps them in sync with later updates.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Camera;
 
-let camera = Camera::perspective(1.047, 16.0 / 9.0, 0.1, 100.0)
-    .look_at([0.0, 0.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+let camera = Camera::perspective(1.047, 16.0 / 9.0, 0.1, 100.0)?
+    .look_at([0.0, 0.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])?;
 
 let view_proj = camera.view_proj();
-// Column 3 (translation) reflects the eye offset baked into the view matrix.
-assert!(view_proj[3][2] != 0.0);
-let _view_proj = view_proj;
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 8-12}"
+lang="rust"
 />
 
 </TabItem>
@@ -564,18 +566,14 @@ inversion on the GPU side).
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Camera;
 
-let camera = Camera::perspective(1.047, 16.0 / 9.0, 0.1, 100.0)
-    .look_at([3.0, 2.0, 8.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+let camera = Camera::perspective(1.047, 16.0 / 9.0, 0.1, 100.0)?
+    .look_at([3.0, 2.0, 8.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])?;
 
 let eye = camera.position();
-assert_eq!(eye, [3.0, 2.0, 8.0]);
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 8-10}"
+lang="rust"
 />
 
 </TabItem>

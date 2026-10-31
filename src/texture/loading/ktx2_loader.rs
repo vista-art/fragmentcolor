@@ -1,0 +1,786 @@
+//! KTX2 container loader.
+//!
+//! Parses a KTX2 byte slice via the `ktx2` crate, validates that the contents
+//! match the subset FragmentColor supports today (single-layer, single-face,
+//! 2D, no supercompression), maps the Vulkan format code to a
+//! [`wgpu::TextureFormat`], and uploads each pre-baked mip level directly. We
+//! deliberately skip the CPU `imageops::resize` chain we use for JPEG/PNG
+//! sources — the encoder already picked the format and built the chain.
+//!
+//! Cube maps, array textures, 3D textures, and Basis Universal supercompression
+//! are out of scope for this pass and will fail with a descriptive error so the
+//! caller sees them clearly rather than getting silently-wrong output.
+
+use ktx2::Format as VkFormat;
+
+use super::decode::Pick;
+use crate::RenderContext;
+use crate::texture::error::TextureError;
+use crate::texture::{SamplerOptions, TextureObject, create_default_sampler, mip_level_count_for};
+use parking_lot::RwLock;
+
+/// The identifier every KTX2 file starts with: `«KTX 20»\r\n\x1A\n`.
+const IDENTIFIER: [u8; 12] = [
+    0xAB, b'K', b'T', b'X', b' ', b'2', b'0', 0xBB, b'\r', b'\n', 0x1A, b'\n',
+];
+
+/// True when `bytes` start with the KTX2 identifier.
+pub(crate) fn is_ktx2(bytes: &[u8]) -> bool {
+    bytes.starts_with(&IDENTIFIER)
+}
+
+/// True when the file at `path` starts with the KTX2 identifier.
+pub(crate) fn is_ktx2_file(path: &std::path::Path) -> bool {
+    use std::io::Read;
+    let mut head = [0u8; IDENTIFIER.len()];
+    let read = std::fs::File::open(path).and_then(|mut file| file.read_exact(&mut head));
+    read.is_ok() && is_ktx2(&head)
+}
+
+/// Map a KTX2 (Vulkan) format code to the equivalent `wgpu::TextureFormat`.
+///
+/// Returns `None` for formats FragmentColor doesn't decode today; callers turn
+/// that into a [`TextureError`] explaining which format showed up.
+///
+/// The supported set covers the formats consumers commonly ship:
+/// uncompressed 8-bit / 16-bit RGBA, BC1–7 (desktop), ETC2 (Android),
+/// ASTC 4×4 / 8×8 (mobile + WebGPU). Anything else falls through to `None`
+/// for now — extending the table is a one-line change per format.
+pub(crate) fn vk_format_to_wgpu(format: VkFormat) -> Option<wgpu::TextureFormat> {
+    use wgpu::{AstcBlock, AstcChannel, TextureFormat};
+
+    let astc = |block: AstcBlock, channel: AstcChannel| TextureFormat::Astc { block, channel };
+
+    Some(match format {
+        // Uncompressed scalars and small vectors
+        VkFormat::R8_UNORM => TextureFormat::R8Unorm,
+        VkFormat::R8G8_UNORM => TextureFormat::Rg8Unorm,
+        VkFormat::R16_UNORM => TextureFormat::R16Unorm,
+        VkFormat::R16G16_UNORM => TextureFormat::Rg16Unorm,
+
+        // Uncompressed RGBA8 / RGBA16F (most common KTX2 uncompressed payloads)
+        VkFormat::R8G8B8A8_UNORM => TextureFormat::Rgba8Unorm,
+        VkFormat::R8G8B8A8_SRGB => TextureFormat::Rgba8UnormSrgb,
+        VkFormat::B8G8R8A8_UNORM => TextureFormat::Bgra8Unorm,
+        VkFormat::B8G8R8A8_SRGB => TextureFormat::Bgra8UnormSrgb,
+        VkFormat::R16G16B16A16_UNORM => TextureFormat::Rgba16Unorm,
+        VkFormat::R16G16B16A16_SFLOAT => TextureFormat::Rgba16Float,
+
+        // BC1-7 (desktop; needs TEXTURE_COMPRESSION_BC)
+        VkFormat::BC1_RGB_UNORM_BLOCK | VkFormat::BC1_RGBA_UNORM_BLOCK => {
+            TextureFormat::Bc1RgbaUnorm
+        }
+        VkFormat::BC1_RGB_SRGB_BLOCK | VkFormat::BC1_RGBA_SRGB_BLOCK => {
+            TextureFormat::Bc1RgbaUnormSrgb
+        }
+        VkFormat::BC2_UNORM_BLOCK => TextureFormat::Bc2RgbaUnorm,
+        VkFormat::BC2_SRGB_BLOCK => TextureFormat::Bc2RgbaUnormSrgb,
+        VkFormat::BC3_UNORM_BLOCK => TextureFormat::Bc3RgbaUnorm,
+        VkFormat::BC3_SRGB_BLOCK => TextureFormat::Bc3RgbaUnormSrgb,
+        VkFormat::BC4_UNORM_BLOCK => TextureFormat::Bc4RUnorm,
+        VkFormat::BC4_SNORM_BLOCK => TextureFormat::Bc4RSnorm,
+        VkFormat::BC5_UNORM_BLOCK => TextureFormat::Bc5RgUnorm,
+        VkFormat::BC5_SNORM_BLOCK => TextureFormat::Bc5RgSnorm,
+        VkFormat::BC6H_UFLOAT_BLOCK => TextureFormat::Bc6hRgbUfloat,
+        VkFormat::BC6H_SFLOAT_BLOCK => TextureFormat::Bc6hRgbFloat,
+        VkFormat::BC7_UNORM_BLOCK => TextureFormat::Bc7RgbaUnorm,
+        VkFormat::BC7_SRGB_BLOCK => TextureFormat::Bc7RgbaUnormSrgb,
+
+        // ETC2 (Android-class GPUs; needs TEXTURE_COMPRESSION_ETC2)
+        VkFormat::ETC2_R8G8B8_UNORM_BLOCK => TextureFormat::Etc2Rgb8Unorm,
+        VkFormat::ETC2_R8G8B8_SRGB_BLOCK => TextureFormat::Etc2Rgb8UnormSrgb,
+        VkFormat::ETC2_R8G8B8A1_UNORM_BLOCK => TextureFormat::Etc2Rgb8A1Unorm,
+        VkFormat::ETC2_R8G8B8A1_SRGB_BLOCK => TextureFormat::Etc2Rgb8A1UnormSrgb,
+        VkFormat::ETC2_R8G8B8A8_UNORM_BLOCK => TextureFormat::Etc2Rgba8Unorm,
+        VkFormat::ETC2_R8G8B8A8_SRGB_BLOCK => TextureFormat::Etc2Rgba8UnormSrgb,
+
+        // ASTC 4×4 and 8×8 (mobile + WebGPU; needs TEXTURE_COMPRESSION_ASTC)
+        VkFormat::ASTC_4x4_UNORM_BLOCK => astc(AstcBlock::B4x4, AstcChannel::Unorm),
+        VkFormat::ASTC_4x4_SRGB_BLOCK => astc(AstcBlock::B4x4, AstcChannel::UnormSrgb),
+        VkFormat::ASTC_8x8_UNORM_BLOCK => astc(AstcBlock::B8x8, AstcChannel::Unorm),
+        VkFormat::ASTC_8x8_SRGB_BLOCK => astc(AstcBlock::B8x8, AstcChannel::UnormSrgb),
+
+        _ => return None,
+    })
+}
+
+/// Decode a KTX2 byte slice into a fully-uploaded [`TextureObject`].
+///
+/// Validation rules (any violation returns `TextureError::CreateTextureError`,
+/// except a missing device feature, which returns `TextureError::UnsupportedFormatForUsage`):
+/// - `format` must be present (no Basis Universal — VK_FORMAT_UNDEFINED — yet).
+/// - `supercompression_scheme` must be `None` (no zstd/zlib/Basis transcoding yet).
+/// - `face_count` must be 1 (cube maps unsupported).
+/// - `layer_count` must be 0 or 1 (array textures unsupported).
+/// - `pixel_depth` must be 0 or 1 (3D textures unsupported).
+/// - The format must map to a `wgpu::TextureFormat` we know about.
+/// - The runtime device must actually support the chosen format. We honor the
+///   adapter's advertised features (BC / ETC2 / ASTC are opportunistically
+///   requested at device creation), but a desktop adapter without ASTC, for
+///   example, refuses ASTC textures here through `check_feature`, the check
+///   every other texture takes, rather than inside wgpu validation.
+///
+/// Mipmap chain: every level present in the file is uploaded as-is. We do not
+/// generate additional mips on top of the file's chain. A file that lists more
+/// levels than a chain down to 1x1 holds returns `TextureError::InvalidInput`.
+pub(crate) fn from_ktx2_bytes(
+    context: &RenderContext,
+    bytes: &[u8],
+    pick: Pick,
+    usage: wgpu::TextureUsages,
+) -> Result<TextureObject, TextureError> {
+    let reader = ktx2::Reader::new(bytes)
+        .map_err(|e| TextureError::CreateTextureError(format!("Invalid KTX2 file: {:?}", e)))?;
+    let header = reader.header();
+
+    if header.supercompression_scheme.is_some() {
+        return Err(TextureError::CreateTextureError(format!(
+            "KTX2 supercompression {:?} is not supported (decompress upstream or use a non-supercompressed file)",
+            header.supercompression_scheme
+        )));
+    }
+    if header.face_count != 1 {
+        return Err(TextureError::CreateTextureError(format!(
+            "KTX2 cube maps (face_count = {}) are not supported yet",
+            header.face_count
+        )));
+    }
+    if header.layer_count > 1 {
+        return Err(TextureError::CreateTextureError(format!(
+            "KTX2 array textures (layer_count = {}) are not supported yet",
+            header.layer_count
+        )));
+    }
+    if header.pixel_depth > 1 {
+        return Err(TextureError::CreateTextureError(format!(
+            "KTX2 3D textures (pixel_depth = {}) are not supported yet",
+            header.pixel_depth
+        )));
+    }
+
+    let vk_format = header.format.ok_or_else(|| {
+        TextureError::CreateTextureError(
+            "KTX2 file has VK_FORMAT_UNDEFINED (Basis Universal supercompressed payloads are not transcoded yet)".into(),
+        )
+    })?;
+    let wgpu_format = vk_format_to_wgpu(vk_format).ok_or_else(|| {
+        TextureError::CreateTextureError(format!(
+            "KTX2 format {:?} is not supported yet — extend vk_format_to_wgpu to add it",
+            vk_format
+        ))
+    })?;
+    // A format picked for the container reads its bytes only as their sRGB twin.
+    let wgpu_format = pick.apply(wgpu_format, "a KTX2 container")?;
+
+    crate::texture::check_feature(context.device.features(), wgpu_format)?;
+
+    let width = header.pixel_width;
+    let height = header.pixel_height.max(1);
+    let level_count = header.level_count.max(1);
+
+    if width == 0 {
+        return Err(TextureError::CreateTextureError(
+            "KTX2 file has zero width".into(),
+        ));
+    }
+
+    // A chain ends at 1x1, so a file can't hold more levels than that.
+    let most = mip_level_count_for(width, height);
+    if level_count > most {
+        return Err(TextureError::InvalidInput(format!(
+            "a {width}x{height} KTX2 file holds at most {most} mip levels, got {level_count}"
+        )));
+    }
+    let stored_levels = level_count;
+
+    let size = wgpu::Extent3d {
+        width,
+        height,
+        depth_or_array_layers: 1,
+    };
+    let dimension = wgpu::TextureDimension::D2;
+    crate::texture::check_format(context, wgpu_format, usage, dimension)?;
+    crate::texture::check_extent(&context.device.limits(), size, dimension)?;
+    // A compressed format stores whole blocks, so the size must hold a whole number of them.
+    let (block_w, block_h) = wgpu_format.block_dimensions();
+    if width % block_w != 0 || height % block_h != 0 {
+        return Err(TextureError::InvalidInput(format!(
+            "a {vk_format:?} texture needs a size in whole {block_w}x{block_h} blocks, got {width}x{height}"
+        )));
+    }
+    let descriptor = wgpu::TextureDescriptor {
+        label: Some("KTX2 Source Texture"),
+        size,
+        mip_level_count: stored_levels,
+        sample_count: 1,
+        dimension,
+        format: wgpu_format,
+        view_formats: &[],
+        usage,
+    };
+    let texture = context.device.create_texture(&descriptor);
+
+    let block_bytes = wgpu_format.block_copy_size(None).ok_or_else(|| {
+        TextureError::CreateTextureError(format!(
+            "KTX2 format {:?} has no defined block copy size — likely a depth/multi-aspect format that doesn't belong in a source texture",
+            vk_format
+        ))
+    })?;
+
+    for (level_index, level) in reader.levels().take(stored_levels as usize).enumerate() {
+        let mip = level_index as u32;
+        let level_w = (width >> mip).max(1);
+        let level_h = (height >> mip).max(1);
+
+        let blocks_in_row = level_w.div_ceil(block_w);
+        let blocks_in_col = level_h.div_ceil(block_h);
+        let bytes_per_row = block_bytes * blocks_in_row;
+        let expected_len = (bytes_per_row as u64) * (blocks_in_col as u64);
+        if (level.data.len() as u64) < expected_len {
+            return Err(TextureError::CreateTextureError(format!(
+                "KTX2 level {} is {} bytes but the format expects at least {}",
+                level_index,
+                level.data.len(),
+                expected_len
+            )));
+        }
+
+        // A level smaller than one block still stores a whole block, and wgpu
+        // copies whole blocks, so the copy covers the level's physical size.
+        context.queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                aspect: wgpu::TextureAspect::All,
+                texture: &texture,
+                mip_level: mip,
+                origin: wgpu::Origin3d::ZERO,
+            },
+            &level.data[..expected_len as usize],
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(bytes_per_row),
+                rows_per_image: Some(blocks_in_col),
+            },
+            wgpu::Extent3d {
+                width: blocks_in_row * block_w,
+                height: blocks_in_col * block_h,
+                depth_or_array_layers: 1,
+            },
+        );
+    }
+
+    let sampler = create_default_sampler(&context.device);
+    Ok(TextureObject {
+        inner: texture,
+        size,
+        sampler: RwLock::new(sampler),
+        options: RwLock::new(SamplerOptions::default()),
+        format: wgpu_format,
+        usage,
+    })
+}
+
+pub(in crate::texture) fn read_ktx2_file(
+    context: &RenderContext,
+    path: &std::path::Path,
+    pick: Pick,
+    usage: wgpu::TextureUsages,
+) -> Result<TextureObject, TextureError> {
+    let bytes = std::fs::read(path).map_err(|e| {
+        TextureError::CreateTextureError(format!(
+            "Failed to read KTX2 file {}: {}",
+            path.display(),
+            e
+        ))
+    })?;
+    from_ktx2_bytes(context, &bytes, pick, usage)
+}
+
+#[cfg(test)]
+pub(crate) mod test_helpers {
+    //! Minimal in-memory KTX2 builder for tests. Only constructs the subset
+    //! the loader actually accepts (single layer, single face, 2D, no
+    //! supercompression). The DFD is built with `ktx2::dfd::Basic::from_format`,
+    //! which produces a spec-compliant block for any format the crate knows.
+
+    use ktx2::dfd::{Basic, Block};
+    use ktx2::{Format as VkFormat, Header, Index};
+
+    pub struct Ktx2Test {
+        pub format: VkFormat,
+        pub width: u32,
+        pub height: u32,
+        /// Mip levels, ordered largest first (level 0). Each entry is the raw,
+        /// uncompressed bytes for that level.
+        pub levels: Vec<Vec<u8>>,
+    }
+
+    impl Ktx2Test {
+        pub fn build(self) -> Vec<u8> {
+            let (basic, type_size) = Basic::from_format(self.format).expect("supported format");
+            let dfd_block = Block::Basic(basic);
+            let dfd_block_bytes = dfd_block.to_vec();
+            let dfd_total_size_field: u32 = (4 + dfd_block_bytes.len()) as u32;
+
+            let level_count = self.levels.len() as u32;
+
+            // Layout (offsets in bytes):
+            //   header (80) | level index (24 * N) | DFD (4 + block) | KVD (0) | level data
+            let level_index_size = 24usize * level_count as usize;
+            let header_end = 80 + level_index_size;
+            let dfd_offset = header_end;
+            let dfd_byte_length = dfd_total_size_field;
+            let dfd_end = dfd_offset + dfd_byte_length as usize;
+            let kvd_offset = dfd_end;
+            let kvd_byte_length: u32 = 0;
+            let level_data_start = kvd_offset + kvd_byte_length as usize;
+
+            // Pack levels in spec order (level N-1 first on disk, level 0 last) — this
+            // matches what every well-formed KTX2 file we'd actually load looks like.
+            // The reader returns levels in level-0-first order regardless.
+            let mut level_offsets = Vec::with_capacity(level_count as usize);
+            let mut cursor = level_data_start;
+            for level in self.levels.iter().rev() {
+                level_offsets.push((cursor, level.len()));
+                cursor += level.len();
+            }
+            // Reverse so index 0 corresponds to mip level 0 (largest).
+            level_offsets.reverse();
+            let total_size = cursor;
+
+            let header = Header {
+                format: Some(self.format),
+                type_size,
+                pixel_width: self.width,
+                pixel_height: self.height,
+                pixel_depth: 0,
+                layer_count: 0,
+                face_count: 1,
+                level_count,
+                supercompression_scheme: None,
+                index: Index {
+                    dfd_byte_offset: dfd_offset as u32,
+                    dfd_byte_length,
+                    kvd_byte_offset: if kvd_byte_length > 0 {
+                        kvd_offset as u32
+                    } else {
+                        0
+                    },
+                    kvd_byte_length,
+                    sgd_byte_offset: 0,
+                    sgd_byte_length: 0,
+                },
+            };
+
+            let mut out = vec![0u8; total_size];
+            out[..80].copy_from_slice(&header.as_bytes());
+
+            for (i, (offset, length)) in level_offsets.iter().enumerate() {
+                let entry_offset = 80 + i * 24;
+                out[entry_offset..entry_offset + 8]
+                    .copy_from_slice(&(*offset as u64).to_le_bytes());
+                out[entry_offset + 8..entry_offset + 16]
+                    .copy_from_slice(&(*length as u64).to_le_bytes());
+                out[entry_offset + 16..entry_offset + 24]
+                    .copy_from_slice(&(*length as u64).to_le_bytes());
+            }
+
+            // DFD: 4-byte total length field + block bytes.
+            out[dfd_offset..dfd_offset + 4].copy_from_slice(&dfd_total_size_field.to_le_bytes());
+            out[dfd_offset + 4..dfd_offset + 4 + dfd_block_bytes.len()]
+                .copy_from_slice(&dfd_block_bytes);
+
+            // Level data
+            for (level, (offset, length)) in self.levels.iter().zip(level_offsets.iter()) {
+                out[*offset..*offset + *length].copy_from_slice(level);
+            }
+
+            out
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use test_helpers::Ktx2Test;
+
+    // Story: a KTX2 file wider than any device, or one whose size isn't a whole
+    // number of compression blocks, is refused before it reaches wgpu.
+    #[test]
+    fn refuses_sizes_the_device_cannot_take() {
+        pollster::block_on(async move {
+            let renderer = crate::Renderer::new();
+            let wide = Ktx2Test {
+                format: VkFormat::R8G8B8A8_UNORM,
+                width: 131_072,
+                height: 1,
+                levels: vec![vec![0; 131_072 * 4]],
+            }
+            .build();
+            let result = renderer
+                .create_texture(crate::texture::TextureData::Ktx2Bytes(wide))
+                .await;
+            assert!(matches!(
+                result,
+                Err(crate::RendererError::TextureError(
+                    TextureError::InvalidInput(_)
+                ))
+            ));
+
+            // 6x6 BC7 needs 2x2 blocks of 16 bytes, but wgpu wants whole 4x4 blocks.
+            let partial = Ktx2Test {
+                format: VkFormat::BC7_UNORM_BLOCK,
+                width: 6,
+                height: 6,
+                levels: vec![vec![0; 64]],
+            }
+            .build();
+            let result = renderer
+                .create_texture(crate::texture::TextureData::Ktx2Bytes(partial))
+                .await;
+            assert!(
+                matches!(
+                    result,
+                    Err(crate::RendererError::TextureError(
+                        TextureError::InvalidInput(_)
+                            | TextureError::UnsupportedFormatForUsage { .. }
+                    ))
+                ),
+                "a 6x6 BC7 file should be refused before wgpu"
+            );
+        });
+    }
+
+    // Story: a KTX2 file that lists more mip levels than its size has is refused.
+    #[test]
+    fn refuses_more_levels_than_the_size_has() {
+        pollster::block_on(async move {
+            let renderer = crate::Renderer::new();
+            let levels = [16, 4, 1, 1].map(|texels| vec![0; texels * 4]).to_vec();
+            let bytes = Ktx2Test {
+                format: VkFormat::R8G8B8A8_UNORM,
+                width: 4,
+                height: 4,
+                levels,
+            }
+            .build();
+            let result = renderer
+                .create_texture(crate::texture::TextureData::Ktx2Bytes(bytes))
+                .await;
+            let message = match result {
+                Err(crate::RendererError::TextureError(TextureError::InvalidInput(message))) => {
+                    message
+                }
+                other => panic!("expected InvalidInput, got {other:?}"),
+            };
+            assert!(message.contains("at most 3 mip levels, got 4"), "{message}");
+        });
+    }
+
+    // Story: a block-compressed chain down to 1x1, the chain encoders write, loads with
+    // no GPU error. Its levels smaller than one block still copy as one whole block.
+    #[test]
+    fn loads_compressed_levels_smaller_than_a_block() {
+        pollster::block_on(async move {
+            let renderer = crate::Renderer::new();
+            let target = renderer
+                .create_texture_target([1, 1])
+                .await
+                .expect("a target");
+            let context = target.context.clone();
+            if !context
+                .device
+                .features()
+                .contains(wgpu::Features::TEXTURE_COMPRESSION_BC)
+            {
+                eprintln!("the device has no BC compression");
+                return;
+            }
+            // An 8x8 BC1 chain: 2x2 blocks, then three levels of one 8-byte block each.
+            let levels = [32, 8, 8, 8].map(|bytes| vec![0; bytes]).to_vec();
+            let bytes = Ktx2Test {
+                format: VkFormat::BC1_RGBA_UNORM_BLOCK,
+                width: 8,
+                height: 8,
+                levels,
+            }
+            .build();
+            let usage = wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST;
+
+            let scope = context
+                .device
+                .push_error_scope(wgpu::ErrorFilter::Validation);
+            let pick = Pick {
+                format: None,
+                hinted: false,
+                call: "a test",
+            };
+            let texture = from_ktx2_bytes(&context, &bytes, pick, usage).expect("an 8x8 BC1 chain");
+            let error = scope.pop().await;
+
+            assert!(error.is_none(), "{error:?}");
+            assert_eq!(texture.inner.mip_level_count(), 4);
+        });
+    }
+
+    // Story: write, write_region and get_image move one texel at a time, so a
+    // block-compressed texture refuses them, aligned or not, before they reach wgpu.
+    #[test]
+    fn compressed_textures_refuse_texel_copies() {
+        pollster::block_on(async move {
+            let bytes = Ktx2Test {
+                format: VkFormat::BC7_UNORM_BLOCK,
+                width: 8,
+                height: 8,
+                levels: vec![vec![0; 4 * 16]],
+            }
+            .build();
+            let input = crate::TextureInput {
+                data: crate::texture::TextureData::Ktx2Bytes(bytes),
+                options: crate::TextureOptions::default().with_usage(crate::TextureUsage::COPY_SRC),
+            };
+            let renderer = crate::Renderer::new();
+            let texture = match renderer.create_texture(input).await {
+                Ok(texture) => texture,
+                // A device without BC compression can't make the texture at all.
+                Err(crate::RendererError::TextureError(
+                    TextureError::UnsupportedFormatForUsage { .. },
+                )) => {
+                    return;
+                }
+                Err(error) => panic!("create_texture failed: {error}"),
+            };
+            let refused = |result: Result<(), TextureError>| {
+                matches!(result, Err(TextureError::InvalidInput(_)))
+            };
+            assert!(refused(texture.write(&[0; 4 * 16])), "write");
+            assert!(
+                refused(texture.write_region(&[0; 64], [1, 1, 2, 2])),
+                "an unaligned region"
+            );
+            assert!(
+                refused(texture.write_region(&[0; 16], [0, 0, 4, 4])),
+                "an aligned region"
+            );
+            let image = texture.get_image().await;
+            assert!(
+                matches!(image, Err(TextureError::InvalidInput(_))),
+                "get_image"
+            );
+        });
+    }
+
+    /// Draws mip level 1 of `tex` over the whole target.
+    const SECOND_LEVEL: &str = "
+@group(0) @binding(0) var tex: texture_2d<f32>;
+@group(0) @binding(1) var samp: sampler;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>, 3>(vec2f(-1., -1.), vec2f(3., -1.), vec2f(-1., 3.));
+  return vec4f(p[i], 0., 1.);
+}
+@fragment fn main() -> @location(0) vec4<f32> {
+  return textureSampleLevel(tex, samp, vec2f(0.5, 0.5), 1.0);
+}
+";
+
+    // Story: a KTX2 file in Rgba16Float with a baked mip chain takes a whole
+    // write, which rebuilds the chain.
+    #[test]
+    fn half_float_chains_take_whole_writes() {
+        pollster::block_on(async move {
+            let bytes = Ktx2Test {
+                format: VkFormat::R16G16B16A16_SFLOAT,
+                width: 4,
+                height: 4,
+                levels: vec![vec![0; 4 * 4 * 8], vec![0; 2 * 2 * 8]],
+            }
+            .build();
+            let renderer = crate::Renderer::new();
+            let texture = renderer
+                .create_texture(crate::texture::TextureData::Ktx2Bytes(bytes))
+                .await
+                .expect("load a half float KTX2 chain");
+            assert_eq!(texture.object().inner.mip_level_count(), 2);
+
+            let one = half::f16::from_f32(1.0).to_le_bytes();
+            let white: Vec<u8> = one.repeat(4 * 4 * 4);
+            texture.write(&white).expect("a whole write");
+            let partial = texture.write_region(&white[..2 * 2 * 8], [0, 0, 2, 2]);
+            assert!(matches!(partial, Err(TextureError::InvalidInput(_))));
+
+            let shader = crate::Shader::new(SECOND_LEVEL).expect("shader");
+            shader.set("tex", &texture).expect("set tex");
+            let target = renderer
+                .create_texture_target([1, 1])
+                .await
+                .expect("target");
+            renderer.render(&shader, &target).expect("render");
+            let image = crate::Target::get_image(&target).await.expect("read back");
+            assert_eq!(image, [255, 255, 255, 255], "level 1 follows the write");
+        });
+    }
+
+    // Story: a KTX2 container uploads in its own format, or in that format's sRGB twin, which
+    // reads the same bytes. Any other format is refused with an error that names the call,
+    // from KTX2 bytes and from plain bytes that hold a container alike.
+    #[test]
+    fn a_container_takes_only_a_format_its_bytes_read_as() {
+        use crate::RendererError;
+        use crate::{TextureData, TextureFormat, TextureInput, TextureOptions};
+        pollster::block_on(async move {
+            let renderer = crate::Renderer::new();
+            let bytes = Ktx2Test {
+                format: VkFormat::R8G8B8A8_UNORM,
+                width: 4,
+                height: 4,
+                levels: vec![vec![0; 4 * 4 * 4]],
+            }
+            .build();
+            let ask = |data: TextureData, format: TextureFormat| TextureInput {
+                data,
+                options: TextureOptions {
+                    format,
+                    ..Default::default()
+                },
+            };
+
+            let srgb = ask(
+                TextureData::Ktx2Bytes(bytes.clone()),
+                TextureFormat::Rgba8UnormSrgb,
+            );
+            let texture = renderer.create_texture(srgb).await.expect("the sRGB twin");
+            assert_eq!(texture.object().format, wgpu::TextureFormat::Rgba8UnormSrgb);
+
+            for data in [
+                TextureData::Ktx2Bytes(bytes.clone()),
+                TextureData::Bytes(bytes),
+            ] {
+                let result = renderer
+                    .create_texture(ask(data, TextureFormat::Rgba32Float))
+                    .await;
+                let named = |message: &str| {
+                    message.starts_with("create_texture:") && message.contains("KTX2")
+                };
+                assert!(
+                    matches!(&result, Err(RendererError::TextureError(TextureError::InvalidInput(message))) if named(message)),
+                    "{result:?}"
+                );
+            }
+        });
+    }
+
+    // Story: a synthetic uncompressed-RGBA8 KTX2 with one mip level loads with
+    // the right format, dimensions, and mip count. The default RGBA8 path
+    // doesn't need any compression features so it works on every adapter.
+    #[test]
+    fn loads_uncompressed_rgba8_single_level() {
+        pollster::block_on(async move {
+            let pixels: Vec<u8> = (0..(4 * 4 * 4)).map(|i| i as u8).collect();
+            let bytes = Ktx2Test {
+                format: VkFormat::R8G8B8A8_UNORM,
+                width: 4,
+                height: 4,
+                levels: vec![pixels],
+            }
+            .build();
+
+            let renderer = crate::Renderer::new();
+            let tex = renderer
+                .create_texture(crate::texture::TextureData::Ktx2Bytes(bytes))
+                .await
+                .expect("load uncompressed KTX2");
+            assert_eq!(tex.object().format, wgpu::TextureFormat::Rgba8Unorm);
+            assert_eq!(tex.object().inner.mip_level_count(), 1);
+            assert_eq!(tex.size().width, 4);
+            assert_eq!(tex.size().height, 4);
+        });
+    }
+
+    // Story: plain bytes and a plain path holding a KTX2 file load through the KTX2
+    // path, found by the identifier at the start of the data.
+    #[test]
+    fn detects_ktx2_by_content() {
+        pollster::block_on(async move {
+            let bytes = Ktx2Test {
+                format: VkFormat::R8G8B8A8_UNORM,
+                width: 2,
+                height: 2,
+                levels: vec![vec![7u8; 2 * 2 * 4]],
+            }
+            .build();
+            assert!(super::is_ktx2(&bytes));
+            assert!(!super::is_ktx2(b"\x89PNG\r\n\x1a\n"));
+
+            let renderer = crate::Renderer::new();
+            let tex = renderer
+                .create_texture(bytes.clone())
+                .await
+                .expect("KTX2 as plain bytes");
+            assert_eq!(tex.object().format, wgpu::TextureFormat::Rgba8Unorm);
+
+            let path = std::env::temp_dir().join("fc_detects_ktx2_by_content.bin");
+            std::fs::write(&path, &bytes).expect("write temp KTX2");
+            let tex = renderer
+                .create_texture(path.as_path())
+                .await
+                .expect("KTX2 as a plain path");
+            let _ = std::fs::remove_file(&path);
+            assert_eq!(tex.size().width, 2);
+        });
+    }
+
+    // Story: pre-baked mip chain in the file is honored as-is — three levels in,
+    // three levels out, and we never call our CPU resize path.
+    #[test]
+    fn honors_prebaked_mip_chain() {
+        pollster::block_on(async move {
+            let l0: Vec<u8> = vec![0xAA; 4 * 4 * 4];
+            let l1: Vec<u8> = vec![0xBB; 2 * 2 * 4];
+            let l2: Vec<u8> = vec![0xCC; 4];
+            let bytes = Ktx2Test {
+                format: VkFormat::R8G8B8A8_SRGB,
+                width: 4,
+                height: 4,
+                levels: vec![l0, l1, l2],
+            }
+            .build();
+
+            let renderer = crate::Renderer::new();
+            let tex = renderer
+                .create_texture(crate::texture::TextureData::Ktx2Bytes(bytes))
+                .await
+                .expect("load mipped KTX2");
+            assert_eq!(tex.object().format, wgpu::TextureFormat::Rgba8UnormSrgb);
+            assert_eq!(tex.object().inner.mip_level_count(), 3);
+        });
+    }
+
+    // Story: cube maps and arrays are out of scope; the loader rejects them with
+    // a clear message instead of producing a half-broken texture.
+    #[test]
+    fn rejects_cube_map() {
+        pollster::block_on(async move {
+            let pixels: Vec<u8> = vec![0; 4 * 4 * 4 * 6];
+            let mut bytes = Ktx2Test {
+                format: VkFormat::R8G8B8A8_UNORM,
+                width: 4,
+                height: 4,
+                levels: vec![pixels],
+            }
+            .build();
+            // Patch face_count = 6 directly (Ktx2Test always emits 1).
+            bytes[36..40].copy_from_slice(&6u32.to_le_bytes());
+
+            let renderer = crate::Renderer::new();
+            let err = renderer
+                .create_texture(crate::texture::TextureData::Ktx2Bytes(bytes))
+                .await
+                .expect_err("cube maps should be rejected");
+            let msg = err.to_string();
+            assert!(
+                msg.contains("cube"),
+                "error should mention cube maps, got: {msg}"
+            );
+        });
+    }
+}

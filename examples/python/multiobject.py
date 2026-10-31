@@ -42,8 +42,8 @@ for _ in range(50):
 def handler(event):
     if event['event_type'] == "resize":
         ratio = event["pixel_ratio"]
-        w = event['width'] * ratio
-        h = event['height'] * ratio
+        w = round(event['width'] * ratio)
+        h = round(event['height'] * ratio)
         for circle in circles:
             circle.set("resolution", [w, h])
         target.resize([w, h])

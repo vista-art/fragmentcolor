@@ -38,7 +38,7 @@ async fn first_pixel(renderer: &Renderer, shader: &Shader) -> Vec<u8> {
     renderer
         .render(&Pass::from_shader("instances", shader), &target)
         .expect("render failed");
-    target.get_image().await[..4].to_vec()
+    target.get_image().await.expect("read back")[..4].to_vec()
 }
 
 // Story: A mesh draws as many instances as it holds, after the list grows and after it shrinks.

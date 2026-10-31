@@ -8,9 +8,12 @@ mod binding_checks {
     //!   name only bindings use, such as `MobileWindowTarget`, needs a `type`
     //!   entry with a reason in `docs/api/PARITY`, and every entry there must
     //!   still name a class some binding declares.
-    //! - **JS errors.** A `#[wasm_bindgen]` function that returns `Result<_, E>`
-    //!   throws a JS `Error`: `E` is `JsError`, or its `From<E> for JsValue`
-    //!   builds a `js_sys::Error`, so JS never catches a bare string.
+    //! - **JS errors.** Every JS error is a `WebError`, an `Error` named after the class
+    //!   Python raises. A `#[wasm_bindgen]` function that returns `Result<_, E>` returns
+    //!   `WebError`, or an `E` whose `From<E> for JsValue` is exactly
+    //!   `WebError::from(error).into()`, and so is every such `From` in the crate. A function
+    //!   that returns a `Promise` builds it with `error::defer`, whose future fails with a
+    //!   `WebError`, and nothing outside `src/error/platform/web.rs` calls `future_to_promise`.
 
     use std::collections::{BTreeMap, BTreeSet};
     use std::fs;
@@ -577,12 +580,28 @@ mod binding_checks {
         file: PathBuf,
         name: String,
         error: Type,
+    }
+
+    /// A `#[wasm_bindgen]` function that returns a `Promise`, which rejects with what its future returns.
+    struct Deferred {
+        file: PathBuf,
+        name: String,
         body: TokenStream,
     }
 
+    /// What the scan of `src` finds: the fallible and deferred exports, each
+    /// `From<E> for JsValue` by the name of `E` with whether it goes through `WebError`,
+    /// and the files that build a promise without `error::defer`.
+    #[derive(Default)]
+    struct Exports {
+        fallible: Vec<Fallible>,
+        deferred: Vec<Deferred>,
+        conversions: BTreeMap<String, (PathBuf, bool)>,
+        builders: Vec<PathBuf>,
+    }
+
     fn check_errors(root: &Path) -> Vec<String> {
-        let mut fallible = Vec::new();
-        let mut conversions: BTreeMap<String, TokenStream> = BTreeMap::new();
+        let mut exports = Exports::default();
         for file in list_files(&root.join("src")) {
             let Ok(text) = fs::read_to_string(&file) else {
                 continue;
@@ -591,28 +610,54 @@ mod binding_checks {
                 continue;
             };
             let relative = file.strip_prefix(root).unwrap_or(&file);
-            scan_items(&parsed.items, relative, &mut fallible, &mut conversions);
+            scan_items(&parsed.items, relative, &mut exports);
+            let home = relative == Path::new("src/error/platform/web.rs");
+            if !home && names(&parsed.to_token_stream(), "future_to_promise") {
+                exports.builders.push(relative.to_path_buf());
+            }
         }
 
         let mut problems = Vec::new();
-        for f in &fallible {
+        for f in &exports.fallible {
             let error = read_ident(&f.error).unwrap_or_default();
-            let stringly = match error.as_str() {
-                "JsError" => false,
-                "JsValue" => throws_string(&f.body),
-                _ => match conversions.get(&error) {
-                    Some(body) => !builds_error(body),
-                    None => true,
-                },
+            let advice = match error.as_str() {
+                "WebError" => continue,
+                "JsError" | "JsValue" => "Return `WebError`.".to_string(),
+                _ if exports.conversions.contains_key(&error) => continue,
+                _ => format!(
+                    "Return `WebError`, or convert through `WebError` in `From<{error}> for JsValue`."
+                ),
             };
-            if stringly {
+            problems.push(format!(
+                "{}: `{}` returns `Result<_, {error}>`, and JS would catch an error that no class names. {advice}",
+                f.file.display(),
+                f.name
+            ));
+        }
+        for (source, (file, named)) in &exports.conversions {
+            if source != "WebError" && !named {
                 problems.push(format!(
-                    "{}: `{}` returns `Result<_, {error}>`, and JS would catch a string. \
-                     Return `JsError`, or build a `js_sys::Error` in `From<{error}> for JsValue`.",
-                    f.file.display(),
-                    f.name
+                    "{}: write `From<{source}> for JsValue` as `WebError::from(error).into()`, \
+                     and put per-variant logic in `From<{source}> for WebError`.",
+                    file.display()
                 ));
             }
+        }
+        for d in &exports.deferred {
+            if !names(&d.body, "defer") {
+                problems.push(format!(
+                    "{}: `{}` returns a `Promise` that `error::defer` didn't build. \
+                     Build it with `defer`, whose future fails with a `WebError`.",
+                    d.file.display(),
+                    d.name
+                ));
+            }
+        }
+        for file in &exports.builders {
+            problems.push(format!(
+                "{}: calls `future_to_promise`, whose promise can reject with any `JsValue`. Use `error::defer`.",
+                file.display()
+            ));
         }
         problems
     }
@@ -634,28 +679,16 @@ mod binding_checks {
         out
     }
 
-    fn scan_items(
-        items: &[Item],
-        file: &Path,
-        fallible: &mut Vec<Fallible>,
-        conversions: &mut BTreeMap<String, TokenStream>,
-    ) {
+    fn scan_items(items: &[Item], file: &Path, exports: &mut Exports) {
         for item in items {
             match item {
                 Item::Mod(m) => {
                     if let Some((_, inner)) = &m.content {
-                        scan_items(inner, file, fallible, conversions);
+                        scan_items(inner, file, exports);
                     }
                 }
                 Item::Fn(f) if is_exported(&f.attrs) => {
-                    if let Some(error) = read_error(&f.sig.output) {
-                        fallible.push(Fallible {
-                            file: file.to_path_buf(),
-                            name: f.sig.ident.to_string(),
-                            error: error.clone(),
-                            body: f.block.to_token_stream(),
-                        });
-                    }
+                    record_export(file, &f.sig, f.block.to_token_stream(), exports);
                 }
                 Item::Impl(imp) => {
                     let into_js = imp.trait_.as_ref().is_some_and(|(_, path, _)| {
@@ -663,7 +696,8 @@ mod binding_checks {
                     }) && read_ident(&imp.self_ty).as_deref() == Some("JsValue");
                     if into_js {
                         if let Some(source) = read_source(imp).and_then(read_ident) {
-                            conversions.insert(source, imp.to_token_stream());
+                            let conversion = (file.to_path_buf(), converts_through(imp));
+                            exports.conversions.insert(source, conversion);
                         }
                         continue;
                     }
@@ -674,14 +708,7 @@ mod binding_checks {
                         let ImplItem::Fn(f) = member else {
                             continue;
                         };
-                        if let Some(error) = read_error(&f.sig.output) {
-                            fallible.push(Fallible {
-                                file: file.to_path_buf(),
-                                name: f.sig.ident.to_string(),
-                                error: error.clone(),
-                                body: f.block.to_token_stream(),
-                            });
-                        }
+                        record_export(file, &f.sig, f.block.to_token_stream(), exports);
                     }
                 }
                 _ => {}
@@ -735,29 +762,75 @@ mod binding_checks {
         }
     }
 
-    /// Whether a conversion into `JsValue` builds an `Error` object.
-    fn builds_error(body: &TokenStream) -> bool {
-        let text = body.to_string().replace(' ', "");
-        text.contains("js_sys::Error") || text.contains("JsError")
+    /// Records an export that returns a `Result` or a `Promise`.
+    fn record_export(file: &Path, sig: &syn::Signature, body: TokenStream, exports: &mut Exports) {
+        let name = sig.ident.to_string();
+        if let Some(error) = read_error(&sig.output) {
+            let error = error.clone();
+            let file = file.to_path_buf();
+            exports.fallible.push(Fallible { file, name, error });
+        } else if returns_promise(&sig.output) {
+            let file = file.to_path_buf();
+            exports.deferred.push(Deferred { file, name, body });
+        }
     }
 
-    /// Whether a function body hands a string `JsValue` to `Err`, `map_err`,
-    /// `ok_or` or `ok_or_else`.
-    fn throws_string(body: &TokenStream) -> bool {
-        let tokens: Vec<TokenTree> = body.clone().into_iter().collect();
-        tokens.iter().enumerate().any(|(i, token)| match token {
-            TokenTree::Ident(ident)
-                if matches!(
-                    ident.to_string().as_str(),
-                    "Err" | "map_err" | "ok_or" | "ok_or_else"
-                ) =>
-            {
-                matches!(tokens.get(i + 1), Some(TokenTree::Group(g)) if {
-                    let text = g.stream().to_string().replace(' ', "");
-                    text.contains("JsValue::from_str") || text.contains("JsValue::from(")
-                })
-            }
-            TokenTree::Group(group) => throws_string(&group.stream()),
+    /// Whether `output` is a `Promise`.
+    fn returns_promise(output: &ReturnType) -> bool {
+        let ReturnType::Type(_, ty) = output else {
+            return false;
+        };
+        read_ident(ty).as_deref() == Some("Promise")
+    }
+
+    /// Whether a `From<E> for JsValue` impl's `from` is exactly `WebError::from(error).into()`,
+    /// with `error` its own parameter. A `From<E> for WebError` outside
+    /// `src/error/platform/web.rs` can only build its value through a constructor
+    /// that names a class, so this form always names one.
+    fn converts_through(imp: &syn::ItemImpl) -> bool {
+        let Some(from) = imp.items.iter().find_map(|item| match item {
+            ImplItem::Fn(f) if f.sig.ident == "from" => Some(f),
+            _ => None,
+        }) else {
+            return false;
+        };
+        let Some(syn::FnArg::Typed(argument)) = from.sig.inputs.first() else {
+            return false;
+        };
+        let syn::Pat::Ident(param) = &*argument.pat else {
+            return false;
+        };
+        let [syn::Stmt::Expr(syn::Expr::MethodCall(call), None)] = &from.block.stmts[..] else {
+            return false;
+        };
+        if call.method != "into" || !call.args.is_empty() {
+            return false;
+        }
+        let syn::Expr::Call(inner) = &*call.receiver else {
+            return false;
+        };
+        let syn::Expr::Path(function) = &*inner.func else {
+            return false;
+        };
+        let segments: Vec<String> = function
+            .path
+            .segments
+            .iter()
+            .map(|segment| segment.ident.to_string())
+            .collect();
+        let named = segments.ends_with(&["WebError".to_string(), "from".to_string()]);
+        let passes = matches!(
+            inner.args.iter().collect::<Vec<_>>()[..],
+            [syn::Expr::Path(value)] if value.path.is_ident(&param.ident)
+        );
+        named && passes
+    }
+
+    /// Whether `tokens` name the identifier `name` anywhere, string literals and comments aside.
+    fn names(tokens: &TokenStream, name: &str) -> bool {
+        tokens.clone().into_iter().any(|token| match token {
+            TokenTree::Ident(ident) => ident == name,
+            TokenTree::Group(group) => names(&group.stream(), name),
             _ => false,
         })
     }

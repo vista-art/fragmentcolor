@@ -351,6 +351,8 @@ mod reflect {
         pub is_unit: bool,
         /// Field types, named or positional.
         pub fields: Vec<Type>,
+        /// Field names, `None` for a positional field.
+        pub names: Vec<Option<String>>,
     }
 
     /// An `impl` block, inherent or for a trait.
@@ -491,9 +493,12 @@ mod reflect {
         }
 
         /// Whether the impl's self type is a path into another crate.
+        /// `core`, `std` and `alloc` always count, even beside a module of that name.
         fn is_foreign(&self, imp: &ImplDef) -> bool {
             imp.self_root.as_deref().is_some_and(|root| {
-                !matches!(root, "crate" | "self" | "super" | "Self") && !self.modules.contains(root)
+                matches!(root, "core" | "std" | "alloc")
+                    || (!matches!(root, "crate" | "self" | "super" | "Self")
+                        && !self.modules.contains(root))
             })
         }
 
@@ -670,6 +675,11 @@ mod reflect {
                             cfg: Cfg::All(cfgs_of(&v.attrs)),
                             is_unit: matches!(v.fields, Fields::Unit),
                             fields: v.fields.iter().map(|f| f.ty.clone()).collect(),
+                            names: v
+                                .fields
+                                .iter()
+                                .map(|f| f.ident.as_ref().map(ToString::to_string))
+                                .collect(),
                         })
                         .collect();
                     model.types.push(TypeDef {
@@ -1145,7 +1155,7 @@ mod reflect {
         Some(renamed.unwrap_or_else(|| ident.to_string()))
     }
 
-    /// What the `#[pymodule]` in `src/platforms/python.rs` registers, in registration order.
+    /// What the `#[pymodule]` in `src/bindings/python.rs` registers, in registration order.
     pub struct PythonModule {
         /// Rust idents passed to `add_class`.
         pub classes: Vec<String>,
@@ -1153,10 +1163,12 @@ mod reflect {
         pub functions: Vec<String>,
         /// Names given to `m.add("...", ...)`.
         pub exceptions: Vec<String>,
+        /// The builtin each `PythonError` class also extends, such as `ValueError`, by class name.
+        pub builtins: BTreeMap<String, String>,
     }
 
     impl PythonModule {
-        pub const FILE: &'static str = "src/platforms/python.rs";
+        pub const FILE: &'static str = "src/bindings/python.rs";
 
         pub fn read(root: &Path) -> PythonModule {
             let path = root.join(Self::FILE);
@@ -1171,6 +1183,7 @@ mod reflect {
                 classes: Vec::new(),
                 functions: Vec::new(),
                 exceptions: Vec::new(),
+                builtins: BTreeMap::new(),
             };
             let mut rest = code.as_str();
             while let Some(at) = rest.find("add_class::<") {
@@ -1193,11 +1206,36 @@ mod reflect {
                 if let Some(stripped) = rest.trim_start().strip_prefix('"')
                     && let Some(end) = stripped.find('"')
                 {
-                    module.exceptions.push(stripped[..end].to_string());
+                    let name = stripped[..end].to_string();
+                    let value = &stripped[end..stripped.find(";").unwrap_or(stripped.len())];
+                    if let Some(builtin) = read_builtin(root, value) {
+                        module.builtins.insert(name.clone(), builtin);
+                    }
+                    module.exceptions.push(name);
                 }
             }
             module
         }
+    }
+
+    /// The builtin a class registered as `PythonError::<Variant>.class(py)` also extends,
+    /// read from the arm of `PythonError::class` in `src/error/platform/python.rs` that pairs
+    /// the variant with `py.get_type::<PyValueError>()` or another builtin:
+    /// `ValueError` for that one.
+    fn read_builtin(root: &Path, value: &str) -> Option<String> {
+        let at = value.find("PythonError::")? + "PythonError::".len();
+        let variant: String = value[at..]
+            .chars()
+            .take_while(|c| c.is_alphanumeric() || *c == '_')
+            .collect();
+        let path = root.join("src/error/platform/python.rs");
+        let text = fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("reflect: cannot read {}: {e}", path.display()));
+        let arm = format!("PythonError::{variant} => (");
+        let start = text.find(&arm)? + arm.len();
+        let line = &text[start..start + text[start..].find('\n').unwrap_or(text.len() - start)];
+        let builtin = line.split("get_type::<Py").nth(1)?;
+        Some(builtin.chars().take_while(|c| c.is_alphanumeric()).collect())
     }
 
     impl Reflection {
@@ -1371,6 +1409,8 @@ mod reflect {
         pub params: Vec<Type>,
         /// How many trailing parameters a `default(...)` argument covers.
         pub defaults: usize,
+        /// The exported type a call returns, when it returns one.
+        pub returns: Option<String>,
     }
 
     /// A uniffi enum whose variants carry no data.
@@ -1453,6 +1493,24 @@ mod reflect {
                 .collect()
         }
 
+        /// The type a call of `sig` returns, by the name Swift and Kotlin give it,
+        /// when that is one crate type. `Self` is `owner`, and `Result` and `Arc` unwrap.
+        fn returned_type(&self, sig: &Signature, owner: &str, build: Build) -> Option<String> {
+            let mut ty = return_type(sig)?;
+            for wrapper in ["Result", "Arc"] {
+                ty = generic_arg(ty, wrapper).unwrap_or(ty);
+            }
+            let Type::Path(path) = ty else {
+                return None;
+            };
+            let last = path.path.segments.last()?;
+            let ident = last.ident.to_string();
+            let plain = matches!(last.arguments, syn::PathArguments::None);
+            let named = ident.starts_with(|c: char| c.is_ascii_uppercase());
+            let ident = if ident == "Self" { owner } else { ident.as_str() };
+            (plain && named).then(|| self.uniffi_type_name(ident, build))
+        }
+
         /// The name Swift and Kotlin give the crate type `ident`.
         fn uniffi_type_name(&self, ident: &str, build: Build) -> String {
             self.type_named(ident, build)
@@ -1481,6 +1539,7 @@ mod reflect {
                         throws: returns_result(&f.sig),
                         params: typed_params(&f.sig),
                         defaults: uniffi_defaults(f, build),
+                        returns: self.returned_type(&f.sig, owner, build),
                     }
                 })
                 .collect()

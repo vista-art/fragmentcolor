@@ -2,8 +2,13 @@
 
 use lsp_doc::lsp_doc;
 use pyo3::prelude::*;
+use pyo3::types::PyString;
 
-use crate::scene::{Camera, Light, LightError, LightKind, Model, Scene, SceneLoadError};
+use crate::bindings::python::{PyChannels, PyFloat, PyUnsigned, read_numbers, read_unsigned};
+use crate::error::InvalidInputError;
+use crate::scene::{
+    Camera, CameraError, Light, LightError, LightKind, Model, PassRef, Scene, SceneLoadError,
+};
 use crate::{Material, Mesh, Pass};
 
 #[pymethods]
@@ -36,26 +41,31 @@ impl Model {
 
     #[pyo3(name = "set_transform")]
     #[lsp_doc("docs/api/scene/model/set_transform.md")]
-    pub fn set_transform_py(&self, matrix: PyMatrix) {
-        self.set_transform(matrix.into());
+    pub fn set_transform_py(&self, matrix: PyMatrix<'_>) -> PyResult<()> {
+        self.set_transform(matrix.read("Model.set_transform")?);
+        Ok(())
     }
 
     #[pyo3(name = "translate")]
     #[lsp_doc("docs/api/scene/model/translate.md")]
-    pub fn translate_py(&self, offset: [f32; 3]) {
-        self.translate(offset);
+    pub fn translate_py(&self, offset: PyChannels<'_>) -> PyResult<()> {
+        self.translate(offset.read_array("Model.translate")?);
+        Ok(())
     }
 
     #[pyo3(name = "rotate")]
     #[lsp_doc("docs/api/scene/model/rotate.md")]
-    pub fn rotate_py(&self, axis: [f32; 3], radians: f32) {
-        self.rotate(axis, radians);
+    pub fn rotate_py(&self, axis: PyChannels<'_>, radians: PyFloat<'_>) -> PyResult<()> {
+        let radians = radians.read("Model.rotate: radians")?;
+        self.rotate(axis.read_array("Model.rotate: axis")?, radians);
+        Ok(())
     }
 
     #[pyo3(name = "scale")]
     #[lsp_doc("docs/api/scene/model/scale.md")]
-    pub fn scale_py(&self, factor: [f32; 3]) {
-        self.scale(factor);
+    pub fn scale_py(&self, factor: PyChannels<'_>) -> PyResult<()> {
+        self.scale(factor.read_array("Model.scale")?);
+        Ok(())
     }
 
     #[pyo3(name = "visible")]
@@ -76,34 +86,60 @@ impl Camera {
     #[staticmethod]
     #[pyo3(name = "perspective")]
     #[lsp_doc("docs/api/scene/camera/perspective.md")]
-    pub fn perspective_py(fovy_radians: f32, aspect: f32, near: f32, far: f32) -> Self {
-        Camera::perspective(fovy_radians, aspect, near, far)
+    pub fn perspective_py(
+        fovy_radians: PyFloat<'_>,
+        aspect: PyFloat<'_>,
+        near: PyFloat<'_>,
+        far: PyFloat<'_>,
+    ) -> PyResult<Self> {
+        Ok(Camera::perspective(
+            fovy_radians.read("Camera.perspective: fovy_radians")?,
+            aspect.read("Camera.perspective: aspect")?,
+            near.read("Camera.perspective: near")?,
+            far.read("Camera.perspective: far")?,
+        )?)
     }
 
     #[staticmethod]
     #[pyo3(name = "orthographic")]
     #[lsp_doc("docs/api/scene/camera/orthographic.md")]
     pub fn orthographic_py(
-        left: f32,
-        right: f32,
-        bottom: f32,
-        top: f32,
-        near: f32,
-        far: f32,
-    ) -> Self {
-        Camera::orthographic(left, right, bottom, top, near, far)
+        left: PyFloat<'_>,
+        right: PyFloat<'_>,
+        bottom: PyFloat<'_>,
+        top: PyFloat<'_>,
+        near: PyFloat<'_>,
+        far: PyFloat<'_>,
+    ) -> PyResult<Self> {
+        Ok(Camera::orthographic(
+            left.read("Camera.orthographic: left")?,
+            right.read("Camera.orthographic: right")?,
+            bottom.read("Camera.orthographic: bottom")?,
+            top.read("Camera.orthographic: top")?,
+            near.read("Camera.orthographic: near")?,
+            far.read("Camera.orthographic: far")?,
+        )?)
     }
 
     #[pyo3(name = "look_at")]
     #[lsp_doc("docs/api/scene/camera/look_at.md")]
-    pub fn look_at_py(&self, position: [f32; 3], target: [f32; 3], up: [f32; 3]) -> Self {
-        self.look_at(position, target, up)
+    pub fn look_at_py(
+        &self,
+        position: PyChannels<'_>,
+        target: PyChannels<'_>,
+        up: PyChannels<'_>,
+    ) -> PyResult<Self> {
+        Ok(self.look_at(
+            position.read_array("Camera.look_at: position")?,
+            target.read_array("Camera.look_at: target")?,
+            up.read_array("Camera.look_at: up")?,
+        )?)
     }
 
     #[pyo3(name = "set_aspect")]
     #[lsp_doc("docs/api/scene/camera/set_aspect.md")]
-    pub fn set_aspect_py(&self, aspect: f32) -> Self {
-        self.set_aspect(aspect)
+    pub fn set_aspect_py(&self, aspect: PyFloat<'_>) -> PyResult<Self> {
+        Ok(self.set_aspect(aspect.read("Camera.set_aspect: aspect")?)?)
     }
 
     #[pyo3(name = "view_proj")]
@@ -119,23 +155,88 @@ impl Camera {
     }
 }
 
-/// A 4x4 matrix from Python: four columns of four, or 16 numbers column after column.
+/// A 4x4 matrix from Python: four columns of four numbers, or 16 numbers column after column.
+/// [`PyMatrix::read`] tells the forms apart by the first item: a list, but no string, starts a column.
 #[derive(FromPyObject)]
-pub enum PyMatrix {
-    #[pyo3(annotation = "Sequence[Sequence[float]]")]
-    Columns([[f32; 4]; 4]),
-    #[pyo3(annotation = "Sequence[float]")]
-    Flat([f32; 16]),
+pub enum PyMatrix<'py> {
+    #[pyo3(
+        annotation = "Sequence[Sequence[float] | npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64]] | Sequence[float] | npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64]"
+    )]
+    Numbers(Bound<'py, PyAny>),
 }
 
-impl From<PyMatrix> for [[f32; 4]; 4] {
-    fn from(matrix: PyMatrix) -> Self {
-        match matrix {
-            PyMatrix::Columns(columns) => columns,
-            PyMatrix::Flat(flat) => {
-                std::array::from_fn(|column| std::array::from_fn(|row| flat[column * 4 + row]))
-            }
+impl PyMatrix<'_> {
+    /// The matrix's columns. A list of another length raises `InvalidInputError`
+    /// that names `label`, and an item that isn't a number raises `TypeError`.
+    pub(crate) fn read(&self, label: &str) -> PyResult<[[f32; 4]; 4]> {
+        let PyMatrix::Numbers(value) = self;
+        let items = value.extract::<Vec<Bound<'_, PyAny>>>()?;
+        let columns = match items.first() {
+            Some(first) if !first.is_instance_of::<PyString>() && first.len().is_ok() => items,
+            _ => return read_flat(value, label),
+        };
+        if columns.len() != 4 {
+            return Err(InvalidInputError::new_err(format!(
+                "{label} takes 4 columns of 4 numbers, got {} columns",
+                columns.len()
+            )));
         }
+        let mut matrix = [[0.0; 4]; 4];
+        for (index, (column, slot)) in columns.iter().zip(matrix.iter_mut()).enumerate() {
+            let label = format!("{label}: column {index}");
+            let numbers = read_numbers(column, &label)?;
+            *slot = match <[f64; 4]>::try_from(numbers.as_slice()) {
+                Ok(column) => column.map(|number| number as f32),
+                Err(_) => {
+                    return Err(InvalidInputError::new_err(format!(
+                        "{label} takes 4 numbers, got {}",
+                        numbers.len()
+                    )));
+                }
+            };
+        }
+        Ok(matrix)
+    }
+}
+
+/// A matrix of 16 numbers, column after column.
+/// The pass `Scene.add_to` names: its name, or its index.
+fn read_pass_ref(target: &Bound<'_, PyAny>) -> PyResult<PassRef> {
+    match target.extract::<String>() {
+        Ok(name) => Ok(PassRef::Name(name)),
+        Err(_) => {
+            let index: u32 = read_unsigned(target, "Scene.add_to: target")?;
+            Ok(PassRef::Index(index as usize))
+        }
+    }
+}
+
+/// Adds the Model, Camera or Light that `object` holds to the pass `target` names.
+fn add_object(scene: &Scene, target: PassRef, object: &Bound<'_, PyAny>) -> PyResult<()> {
+    if let Ok(model) = object.cast::<Model>() {
+        scene.add_to(target, &*model.borrow())?;
+    } else if let Ok(camera) = object.cast::<Camera>() {
+        scene.add_to(target, &*camera.borrow())?;
+    } else if let Ok(light) = object.cast::<Light>() {
+        scene.add_to(target, &*light.borrow())?;
+    } else {
+        return Err(pyo3::exceptions::PyTypeError::new_err(
+            "Scene.add_to: expected a Model, Camera, or Light",
+        ));
+    }
+    Ok(())
+}
+
+fn read_flat(value: &Bound<'_, PyAny>, label: &str) -> PyResult<[[f32; 4]; 4]> {
+    let numbers = read_numbers(value, label)?;
+    match <[f64; 16]>::try_from(numbers.as_slice()) {
+        Ok(flat) => Ok(std::array::from_fn(|column| {
+            std::array::from_fn(|row| flat[column * 4 + row] as f32)
+        })),
+        Err(_) => Err(InvalidInputError::new_err(format!(
+            "{label} takes 16 numbers or 4 columns of 4 numbers, got {} numbers",
+            numbers.len()
+        ))),
     }
 }
 
@@ -143,7 +244,15 @@ impl From<PyMatrix> for [[f32; 4]; 4] {
 /// a `FragmentColorError` that is also a `ValueError`.
 impl From<LightError> for PyErr {
     fn from(error: LightError) -> Self {
-        crate::error::PythonError::Light.new_err(error.to_string())
+        crate::error::raise_error(&error)
+    }
+}
+
+/// Refused camera parameters raise `CameraError`,
+/// a `FragmentColorError` that is also a `ValueError`.
+impl From<CameraError> for PyErr {
+    fn from(error: CameraError) -> Self {
+        crate::error::raise_error(&error)
     }
 }
 
@@ -151,7 +260,7 @@ impl From<LightError> for PyErr {
 /// a `FragmentColorError` that is also a `RuntimeError`.
 impl From<SceneLoadError> for PyErr {
     fn from(error: SceneLoadError) -> Self {
-        crate::error::PythonError::SceneLoad.new_err(error.to_string())
+        crate::error::raise_error(&error)
     }
 }
 
@@ -181,32 +290,42 @@ impl Light {
     #[staticmethod]
     #[pyo3(name = "directional")]
     #[lsp_doc("docs/api/scene/light/directional.md")]
-    pub fn directional_py(direction: [f32; 3], color: [f32; 3]) -> Self {
-        Light::directional(direction, color)
+    pub fn directional_py(direction: PyChannels<'_>, color: PyChannels<'_>) -> PyResult<Self> {
+        Ok(Light::directional(
+            direction.read_array("Light.directional: direction")?,
+            color.read_array("Light.directional: color")?,
+        ))
     }
 
     #[staticmethod]
     #[pyo3(name = "point")]
     #[lsp_doc("docs/api/scene/light/point.md")]
-    pub fn point_py(position: [f32; 3], color: [f32; 3]) -> Self {
-        Light::point(position, color)
+    pub fn point_py(position: PyChannels<'_>, color: PyChannels<'_>) -> PyResult<Self> {
+        Ok(Light::point(
+            position.read_array("Light.point: position")?,
+            color.read_array("Light.point: color")?,
+        ))
     }
 
     #[staticmethod]
     #[pyo3(name = "spot")]
     #[lsp_doc("docs/api/scene/light/spot.md")]
-    pub fn spot_py(position: [f32; 3], direction: [f32; 3], color: [f32; 3]) -> Self {
-        Light::spot(position, direction, color)
+    pub fn spot_py(
+        position: PyChannels<'_>,
+        direction: PyChannels<'_>,
+        color: PyChannels<'_>,
+    ) -> PyResult<Self> {
+        Ok(Light::spot(
+            position.read_array("Light.spot: position")?,
+            direction.read_array("Light.spot: direction")?,
+            color.read_array("Light.spot: color")?,
+        ))
     }
 
     #[pyo3(name = "kind")]
     #[lsp_doc("docs/api/scene/light/kind.md")]
-    pub fn kind_py(&self) -> &'static str {
-        match self.kind() {
-            LightKind::Directional => "directional",
-            LightKind::Point => "point",
-            LightKind::Spot => "spot",
-        }
+    pub fn kind_py(&self) -> LightKind {
+        self.kind()
     }
 
     #[pyo3(name = "color")]
@@ -253,42 +372,44 @@ impl Light {
 
     #[pyo3(name = "set_color")]
     #[lsp_doc("docs/api/scene/light/set_color.md")]
-    pub fn set_color_py(&self, color: [f32; 3]) -> Self {
-        self.set_color(color)
+    pub fn set_color_py(&self, color: PyChannels<'_>) -> PyResult<Self> {
+        Ok(self.set_color(color.read_array("Light.set_color")?))
     }
 
     #[pyo3(name = "set_intensity")]
     #[lsp_doc("docs/api/scene/light/set_intensity.md")]
-    pub fn set_intensity_py(&self, value: f32) -> Self {
-        self.set_intensity(value)
+    pub fn set_intensity_py(&self, value: PyFloat<'_>) -> PyResult<Self> {
+        Ok(self.set_intensity(value.read("Light.set_intensity: value")?))
     }
 
     #[pyo3(name = "set_position")]
     #[lsp_doc("docs/api/scene/light/set_position.md")]
-    pub fn set_position_py(&self, position: [f32; 3]) -> Result<Self, PyErr> {
-        Ok(self.set_position(position)?)
+    pub fn set_position_py(&self, position: PyChannels<'_>) -> Result<Self, PyErr> {
+        Ok(self.set_position(position.read_array("Light.set_position")?)?)
     }
 
     #[pyo3(name = "set_direction")]
     #[lsp_doc("docs/api/scene/light/set_direction.md")]
-    pub fn set_direction_py(&self, direction: [f32; 3]) -> Result<Self, PyErr> {
-        Ok(self.set_direction(direction)?)
+    pub fn set_direction_py(&self, direction: PyChannels<'_>) -> Result<Self, PyErr> {
+        Ok(self.set_direction(direction.read_array("Light.set_direction")?)?)
     }
 
     #[pyo3(name = "set_range")]
     #[lsp_doc("docs/api/scene/light/set_range.md")]
-    pub fn set_range_py(&self, value: f32) -> Result<Self, PyErr> {
-        Ok(self.set_range(value)?)
+    pub fn set_range_py(&self, value: PyFloat<'_>) -> Result<Self, PyErr> {
+        Ok(self.set_range(value.read("Light.set_range: value")?)?)
     }
 
     #[pyo3(name = "set_cone_angles")]
     #[lsp_doc("docs/api/scene/light/set_cone_angles.md")]
     pub fn set_cone_angles_py(
         &self,
-        inner_radians: f32,
-        outer_radians: f32,
+        inner_radians: PyFloat<'_>,
+        outer_radians: PyFloat<'_>,
     ) -> Result<Self, PyErr> {
-        Ok(self.set_cone_angles(inner_radians, outer_radians)?)
+        let inner = inner_radians.read("Light.set_cone_angles: inner_radians")?;
+        let outer = outer_radians.read("Light.set_cone_angles: outer_radians")?;
+        Ok(self.set_cone_angles(inner, outer)?)
     }
 }
 
@@ -307,7 +428,7 @@ impl Scene {
     #[pyo3(name = "load", signature = (source, cameras=true, lights=true))]
     #[lsp_doc("docs/api/scene/scene/load.md")]
     pub fn load_py(source: PySceneSource<'_>, cameras: bool, lights: bool) -> PyResult<Self> {
-        let source = crate::scene::SceneSource::gltf(source)
+        let source = crate::scene::GltfSource::from(source)
             .cameras(cameras)
             .lights(lights);
         Ok(Scene::load(source)?)
@@ -352,8 +473,8 @@ impl Scene {
 
     #[pyo3(name = "get_pass")]
     #[lsp_doc("docs/api/scene/scene/get_pass.md")]
-    pub fn get_pass_py(&self, index: usize) -> Option<Pass> {
-        self.get_pass(index)
+    pub fn get_pass_py(&self, index: PyUnsigned<'_>) -> PyResult<Option<Pass>> {
+        Ok(self.get_pass(index.read("Scene.get_pass: index")? as usize))
     }
 
     #[pyo3(name = "find_pass")]
@@ -370,7 +491,7 @@ impl Scene {
 
     /// Add a SceneObject to a specific Pass, addressed by an `int` index or
     /// a `str` name. Branches on the runtime Python type the same way
-    /// `Scene.add` does.
+    /// `Scene.add` does. A target that is neither a str nor an int raises `TypeError`.
     #[pyo3(name = "add_to")]
     #[lsp_doc("docs/api/scene/scene/add_to.md")]
     pub fn add_to_py<'py>(
@@ -378,26 +499,7 @@ impl Scene {
         target: &Bound<'py, PyAny>,
         object: &Bound<'py, PyAny>,
     ) -> PyResult<PyRef<'py, Self>> {
-        let target = if let Ok(index) = target.extract::<usize>() {
-            crate::scene::PassRef::Index(index)
-        } else if let Ok(name) = target.extract::<String>() {
-            crate::scene::PassRef::Name(name)
-        } else {
-            return Err(pyo3::exceptions::PyTypeError::new_err(
-                "Scene.add_to: target must be an int index or a str name",
-            ));
-        };
-        if let Ok(model) = object.cast::<Model>() {
-            slf.add_to(target, &*model.borrow())?;
-        } else if let Ok(camera) = object.cast::<Camera>() {
-            slf.add_to(target, &*camera.borrow())?;
-        } else if let Ok(light) = object.cast::<Light>() {
-            slf.add_to(target, &*light.borrow())?;
-        } else {
-            return Err(pyo3::exceptions::PyTypeError::new_err(
-                "Scene.add_to: expected a Model, Camera, or Light",
-            ));
-        }
+        add_object(&slf, read_pass_ref(target)?, object)?;
         Ok(slf)
     }
 
@@ -444,9 +546,12 @@ impl Scene {
 
     #[pyo3(name = "ambient")]
     #[lsp_doc("docs/api/scene/scene/ambient.md")]
-    pub fn ambient_py(slf: PyRef<'_, Self>, color: [f32; 3]) -> PyRef<'_, Self> {
-        slf.ambient(color);
-        slf
+    pub fn ambient_py<'py>(
+        slf: PyRef<'py, Self>,
+        color: PyChannels<'_>,
+    ) -> PyResult<PyRef<'py, Self>> {
+        slf.ambient(color.read_array("Scene.ambient")?);
+        Ok(slf)
     }
 
     #[pyo3(name = "models")]

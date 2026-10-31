@@ -10,6 +10,14 @@ import Foundation
 import QuartzCore
 
 extension Renderer {
+    // MARK: - setLogLevel
+
+    /// Set how much FragmentColor logs, for the whole process.
+    /// Matches the JS / Python static-method spelling.
+    public static func setLogLevel(_ level: LogLevel) {
+        _ = Renderer.useLogLevel(level: level)
+    }
+
     // MARK: - createTarget
 
     /// Build a `WindowTarget` from a `CAMetalLayer`. The uniffi-generated
@@ -35,7 +43,7 @@ extension Renderer {
 
     /// Create a headless texture target from a `Size`.
     public func createTextureTarget(_ size: Size) async throws -> TextureTarget {
-        try await createTextureTarget(width: size.width, height: size.height)
+        try await createTextureTarget(size: size)
     }
 
     // MARK: - createDepthTexture
@@ -47,7 +55,7 @@ extension Renderer {
 
     /// Create a depth texture from a `Size`.
     public func createDepthTexture(_ size: Size) async throws -> Texture {
-        try await createDepthTexture(width: size.width, height: size.height)
+        try await createDepthTexture(size: size)
     }
 
     // MARK: - createStorageTexture
@@ -122,6 +130,11 @@ extension Renderer {
         try await createTexture(Data(bytes), usage: usage)
     }
 
+    /// Create a texture from encoded image bytes, one `Int` per byte.
+    public func createTexture(_ bytes: [Int], usage: TextureUsage? = nil) async throws -> Texture {
+        try await createTexture(try byteData(bytes, "createTexture"), usage: usage)
+    }
+
     /// Create a texture from encoded image bytes, decoded into `format`.
     public func createTexture(_ bytes: Data, _ format: TextureFormat, usage: TextureUsage? = nil) async throws -> Texture {
         try await createTexture(input: .bytes(bytes), options: textureOptions(format: format, usage: usage))
@@ -132,9 +145,24 @@ extension Renderer {
         try await createTexture(Data(bytes), format, usage: usage)
     }
 
+    /// Create a texture from encoded image bytes, one `Int` per byte, decoded into `format`.
+    public func createTexture(_ bytes: [Int], _ format: TextureFormat, usage: TextureUsage? = nil) async throws -> Texture {
+        try await createTexture(try byteData(bytes, "createTexture"), format, usage: usage)
+    }
+
     /// Create a texture from raw RGBA pixels and their `Size`, so the bytes are never decoded.
     public func createTexture(_ bytes: Data, _ size: Size, usage: TextureUsage? = nil) async throws -> Texture {
         try await createTexture(input: .bytes(bytes), options: textureOptions(size: size, usage: usage))
+    }
+
+    /// Create a texture from raw RGBA pixels given as `[UInt8]`, and their `Size`.
+    public func createTexture(_ bytes: [UInt8], _ size: Size, usage: TextureUsage? = nil) async throws -> Texture {
+        try await createTexture(Data(bytes), size, usage: usage)
+    }
+
+    /// Create a texture from raw RGBA pixels, one `Int` per byte, and their `Size`.
+    public func createTexture(_ bytes: [Int], _ size: Size, usage: TextureUsage? = nil) async throws -> Texture {
+        try await createTexture(try byteData(bytes, "createTexture"), size, usage: usage)
     }
 
     /// Create a texture from raw RGBA pixels and their `[width, height]`.
@@ -162,9 +190,19 @@ extension Renderer {
         try await createTexture(Data(bytes), options)
     }
 
+    /// Create a texture from bytes, one `Int` per byte, with every option spelled out.
+    public func createTexture(_ bytes: [Int], _ options: TextureOptions) async throws -> Texture {
+        try await createTexture(try byteData(bytes, "createTexture"), options)
+    }
+
     /// Create a texture from an image file path or an `http(s)` URL.
     public func createTexture(_ path: String) async throws -> Texture {
         try await createTexture(input: pathInput(path), options: nil)
+    }
+
+    /// Create a texture from an image file path or an `http(s)` URL, decoded into `format`.
+    public func createTexture(_ path: String, _ format: TextureFormat) async throws -> Texture {
+        try await createTexture(input: pathInput(path), options: textureOptions(format: format))
     }
 
     /// Create a texture from an image file path or an `http(s)` URL, with every option spelled out.
@@ -175,6 +213,11 @@ extension Renderer {
     /// Create a texture from a `Mipmap`.
     public func createTexture(_ chain: Mipmap) async throws -> Texture {
         try await createTexture(input: .prepared(chain), options: nil)
+    }
+
+    /// Create a texture from a `Mipmap`, with a sampler and usage from `options`.
+    public func createTexture(_ chain: Mipmap, _ options: TextureOptions) async throws -> Texture {
+        try await createTexture(input: .prepared(chain), options: options)
     }
 
     /// Default-options overload: drop the trailing `options: nil` from
@@ -312,14 +355,64 @@ func byteData(_ bytes: [Int], _ method: String) throws -> Data {
     })
 }
 
+/// Each number of a color or vector as a `Float`, the rule every binding shares.
+/// Throws for NaN, an infinity, or a finite number past the `Float` range.
+func readFloats(_ values: [Double], _ label: String) throws -> [Float] {
+    try values.enumerated().map { index, value in
+        let float = Float(value)
+        guard float.isFinite else {
+            throw FragmentColorError.Render(
+                "\(label): item \(index) must be a finite number that fits a 32-bit float, got \(showNumber(value))"
+            )
+        }
+        return float
+    }
+}
+
+/// A vertex position of 1 to 4 numbers as Floats, each checked as `readFloats` checks it.
+func readPosition(_ values: [Double], _ label: String) throws -> [Float] {
+    let floats = try readFloats(values, label)
+    guard (1...4).contains(floats.count) else {
+        throw FragmentColorError.Render("\(label) takes 1 to 4 numbers, got \(floats.count)")
+    }
+    return floats
+}
+
+/// Exactly `count` numbers of a float vector as Floats, each checked as `readFloats` checks it.
+func readVector(_ values: [Double], _ count: Int, _ label: String) throws -> [Float] {
+    let floats = try readFloats(values, label)
+    guard floats.count == count else {
+        throw FragmentColorError.Render("\(label) takes \(count) numbers, got \(floats.count)")
+    }
+    return floats
+}
+
+/// Exactly `count` Floats of a float vector, checked as the Double one is.
+func readVector(_ values: [Float], _ count: Int, _ label: String) throws -> [Float] {
+    try readVector(values.map { Double($0) }, count, label)
+}
+
+/// A vertex position of 1 to 4 Floats, checked as the Double one is.
+func readPosition(_ values: [Float], _ label: String) throws -> [Float] {
+    try readPosition(values.map { Double($0) }, label)
+}
+
+/// The number as the shared Rust message prints it: `NaN`, `inf`, `-inf`, or `1e39`.
+/// Only those reach the message, since every other Double fits a Float.
+func showNumber(_ value: Double) -> String {
+    if value.isNaN { return "NaN" }
+    if value.isInfinite { return value < 0 ? "-inf" : "inf" }
+    return "\(value)".replacingOccurrences(of: "e+", with: "e")
+}
+
 /// A URL input for `http(s)`, otherwise a file path.
-private func pathInput(_ path: String) -> TextureInputMobile {
+func pathInput(_ path: String) -> TextureInputMobile {
     path.hasPrefix("http://") || path.hasPrefix("https://") ? .url(path) : .path(path)
 }
 
 /// Rust's default `TextureOptions` with an optional size, format and usage,
 /// or `nil` when nothing differs, so the renderer applies its own defaults.
-private func textureOptions(
+func textureOptions(
     size: Size? = nil,
     format: TextureFormat? = nil,
     usage: TextureUsage? = nil

@@ -368,8 +368,11 @@ mod website {
                 headings.push(Heading::new("Example"));
             }
 
-            out.push_str("\n## Methods\n\n");
-            headings.push(Heading::new("Methods"));
+            // An object with no methods, such as an enum, gets no Methods heading.
+            if !method_files.is_empty() {
+                out.push_str("\n## Methods\n\n");
+                headings.push(Heading::new("Methods"));
+            }
             for file in method_files.iter() {
                 let md = std::fs::read_to_string(obj_dir.join(format!("{}.md", file)))
                     .unwrap_or_default();
@@ -702,11 +705,93 @@ mod website {
         );
         js_out.push_str("const EXAMPLES = [\n");
         for rel in &js_list {
-            js_out.push_str(&format!("  '../examples/{}',\n", rel));
+            let rel_norm = rel.replace('\\', "/");
+            let stem = rel_norm.strip_suffix(".js").unwrap_or(&rel_norm);
+            js_out.push_str(&format!(
+                "  ['../examples/{}', '{}'],\n",
+                rel_norm,
+                example_page(stem)
+            ));
         }
         js_out.push_str("]\n\n");
         js_out.push_str("function fq(rel){ return 'platforms.web.examples.' + rel.replace('../examples/','').replace(/\\\\.js$/, '').replaceAll('/', '.'); }\n");
-        js_out.push_str("export async function runExamples() {\n  const total = EXAMPLES.length;\n  let passed = 0;\n  let failed = 0;\n  console.log(`running ${total} tests`);\n  globalThis.__HC = globalThis.__HC || { currentModule: null };\n  for (const rel of EXAMPLES) {\n    const name = fq(rel);\n    const head = `test ${name} ... `;\n    try {\n      globalThis.__HC.currentModule = name;\n      await import(rel);\n      passed++;\n      console.log(head + GREEN + 'OK' + RESET);\n    } catch (e) {\n      failed++;\n      console.log(head + RED + 'FAILED' + RESET);\n      console.error(e);\n    } finally {\n      globalThis.__HC.currentModule = null;\n    }\n  }\n  return { passed, failed };\n}\n");
+        // WebGPU reports an example's GPU errors after its calls return. The runner waits
+        // for the error scopes each example opened before it starts the next one, so a
+        // late error fails the example that caused it and names its `docs/api` page.
+        js_out.push_str(
+            r#"
+// The error scopes WebGPU has yet to resolve.
+const pending = new Set();
+
+// Counts each popErrorScope until its promise settles.
+function trackScopes() {
+  const device = globalThis.GPUDevice;
+  if (!device || device.prototype.popErrorScope.__fcTracked) return;
+  const pop = device.prototype.popErrorScope;
+  const tracked = function () {
+    const promise = pop.call(this);
+    pending.add(promise);
+    const forget = () => pending.delete(promise);
+    promise.then(forget, forget);
+    return promise;
+  };
+  tracked.__fcTracked = true;
+  device.prototype.popErrorScope = tracked;
+}
+
+// Waits until every open scope has resolved and the library has logged what it caught.
+// The rounds are capped, so an example that keeps rendering can't hold the run.
+async function settleScopes() {
+  for (let round = 0; round < 100 && pending.size > 0; round++) {
+    await Promise.allSettled([...pending]);
+  }
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+export async function runExamples() {
+  const total = EXAMPLES.length;
+  let passed = 0;
+  let failed = 0;
+  console.log(`running ${total} tests`);
+  globalThis.__HC = globalThis.__HC || { currentModule: null };
+  trackScopes();
+  const consoleError = console.error;
+  let logged = [];
+  console.error = (...args) => {
+    logged.push(args.map(String).join(' '));
+    consoleError.apply(console, args);
+  };
+  try {
+    for (const [rel, page] of EXAMPLES) {
+      const name = fq(rel);
+      const head = `test ${name} ... `;
+      logged = [];
+      let problem = null;
+      try {
+        globalThis.__HC.currentModule = name;
+        await import(rel);
+      } catch (e) {
+        problem = e;
+      }
+      await settleScopes();
+      globalThis.__HC.currentModule = null;
+      if (problem === null && logged.length > 0) problem = logged.join('\n');
+      if (problem === null) {
+        passed++;
+        console.log(head + GREEN + 'OK' + RESET);
+      } else {
+        failed++;
+        console.log(head + RED + 'FAILED' + RESET);
+        console.error(`${page}:`, problem);
+      }
+    }
+  } finally {
+    console.error = consoleError;
+  }
+  return { passed, failed };
+}
+"#,
+        );
         let _ = super::meta::write_if_changed(&js_path, &js_out);
 
         // Sort and write Python aggregator
@@ -1191,7 +1276,7 @@ if __name__ == '__main__':
         let body = match lang {
             Lang::Js => crate::convert::to_js(items),
             Lang::Python => crate::convert::to_py(items),
-            Lang::Swift => crate::convert::to_swift(items),
+            Lang::Swift => crate::convert::to_swift(items, example.harness(lang).read_setup()),
             Lang::Kotlin => crate::convert::to_kotlin(items),
         };
         example.harness(lang).wrap(&body)
@@ -1268,28 +1353,10 @@ if __name__ == '__main__':
         ex_swift: &mut std::collections::HashSet<String>,
         ex_kotlin: &mut std::collections::HashSet<String>,
     ) -> String {
-        // Collapse ranges (1-based inclusive) over the hidden runs
-        let items = &example.rust;
-        let mut ranges: Vec<(usize, usize)> = Vec::new();
-        let mut i_ln = 0usize;
-        while i_ln < items.len() {
-            if items[i_ln].1 {
-                let start = i_ln + 1;
-                while i_ln < items.len() && items[i_ln].1 {
-                    i_ln += 1;
-                }
-                let end = i_ln; // inclusive
-                ranges.push((start, end));
-            } else {
-                i_ln += 1;
-            }
-        }
-        let rust_lines: Vec<String> = items.iter().map(|(t, _)| t.clone()).collect();
-        let rust_processed = rust_lines.join("\n");
-
+        // The Rust tab leaves the doctest's hidden lines out, as rustdoc does.
         let mut tabs = String::new();
         tabs.push_str("<Tabs>\n\n");
-        push_tab(&mut tabs, "Rust", "rust", &rust_processed, &ranges);
+        push_tab(&mut tabs, "Rust", "rust", &visible_rust(&example.rust), &[]);
 
         // Each language's example is both a tab and a healthcheck file.
         let outputs = [
@@ -1316,6 +1383,15 @@ if __name__ == '__main__':
 
         tabs.push_str("</Tabs>\n\n");
         tabs
+    }
+
+    /// The lines of a Rust example a reader sees: all but the hidden ones,
+    /// without the blank lines the hidden ones leave at either end.
+    fn visible_rust(items: &[(String, bool)]) -> String {
+        let lines: Vec<&str> = items.iter().filter(|(_, hidden)| !hidden).map(|(text, _)| text.as_str()).collect();
+        let first = lines.iter().position(|line| !line.trim().is_empty()).unwrap_or(lines.len());
+        let last = lines.iter().rposition(|line| !line.trim().is_empty()).map_or(first, |at| at + 1);
+        lines[first..last.max(first)].join("\n")
     }
 
     /// One `<TabItem>` holding `code`, with its hidden lines collapsed.
@@ -1579,80 +1655,17 @@ if __name__ == '__main__':
         out.trim_end().to_string()
     }
 
-    /// Post-process MDX content to transform Rust code fences:
-    /// - Strip leading `#` from hidden lines (doc-test convention)
-    /// - Move top-level `use ...` lines inside the first hidden wrapper block
-    /// - Compute collapse ranges for all contiguous hidden runs and annotate the fence
+    /// Post-process MDX content so each ```rust fence shows what a reader sees:
+    /// the doctest's hidden `#` lines and other languages' hidden blocks are left out.
     ///
     /// Only affects ```rust* code fences. All other languages are left unchanged.
     fn transform_rust_code_fences(mdx: &str) -> String {
-        #[derive(Clone)]
-        struct LineItem {
-            text: String,
-            hidden: bool,
-        }
-
         fn process_rust_block(header: &str, body: &[String]) -> (String, Vec<String>) {
-            // Hidden lines lose their '#', and other languages' hidden lines leave the Rust code
             let code: String = body.iter().map(|line| format!("{line}\n")).collect();
             let example =
                 Example::parse(&code).unwrap_or_else(|e| panic!("in a Rust code fence: {e}\n{code}"));
-            let items: Vec<LineItem> = example
-                .rust
-                .into_iter()
-                .map(|(text, hidden)| LineItem { text, hidden })
-                .collect();
-
-            // Compute collapse ranges over final items
-            let mut ranges: Vec<(usize, usize)> = Vec::new();
-            let mut i = 0usize;
-            let mut line_no = 1usize;
-            while i < items.len() {
-                if items[i].hidden {
-                    let start = line_no;
-                    while i < items.len() && items[i].hidden {
-                        i += 1;
-                        line_no += 1;
-                    }
-                    let end = line_no.saturating_sub(1);
-                    if end >= start {
-                        ranges.push((start, end));
-                    }
-                    continue;
-                }
-                i += 1;
-                line_no += 1;
-            }
-
-            // Prepare new header with collapse={...}
-            let mut new_header = header.to_string();
-            if !ranges.is_empty() {
-                let mut collapse = String::new();
-                collapse.push_str("collapse={");
-                for (idx, (s, e)) in ranges.iter().enumerate() {
-                    if idx > 0 {
-                        collapse.push_str(", ");
-                    }
-                    // Ranges are already computed as 0-based above.
-                    collapse.push_str(&format!("{}-{}", s, e));
-                }
-                collapse.push('}');
-
-                // Remove any existing collapse={...} chunk in header (best-effort without regex)
-                if let Some(pos) = new_header.find("collapse={")
-                    && let Some(end_rel) = new_header[pos..].find('}')
-                {
-                    let end = pos + end_rel + 1;
-                    new_header.replace_range(pos..end, "");
-                }
-                if !new_header.ends_with(' ') {
-                    new_header.push(' ');
-                }
-                new_header.push_str(&collapse);
-            }
-
-            let new_body: Vec<String> = items.into_iter().map(|it| it.text).collect();
-            (new_header, new_body)
+            let shown = visible_rust(&example.rust);
+            (header.to_string(), shown.lines().map(str::to_string).collect())
         }
 
         let mut out = String::new();

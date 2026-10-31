@@ -1,13 +1,17 @@
 #![cfg(wasm)]
 
-use js_sys::Reflect;
+use crate::error::{ErrorClass, WebError};
+use js_sys::{Array, ArrayBuffer, Reflect, Uint8Array, Uint8ClampedArray};
 use lsp_doc::lsp_doc;
+use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
-use crate::platforms::web::read_unsigned;
+use crate::bindings::web::{describe, read_count, read_number, read_unsigned};
+use crate::texture::loading::decode::check_pixels;
+use crate::texture::{TextureError, swap_bgra};
 use crate::{
-    CompareFunction, Mipmap, SamplerOptions, Size, Texture, TextureFormat, TextureId, TextureInput,
-    TextureOptions,
+    CompareFunction, Mipmap, SamplerOptions, Size, Texture, TextureData, TextureFormat, TextureId,
+    TextureInput, TextureOptions,
 };
 
 #[wasm_bindgen]
@@ -29,36 +33,23 @@ impl Mipmap {
     #[lsp_doc("docs/api/texture/mipmap/build.md")]
     pub fn build_js(
         bytes: &JsValue,
-        format: TextureFormat,
-        #[wasm_bindgen(unchecked_optional_param_type = "ArrayLike<number> | Size")] size: Option<
-            JsValue,
-        >,
-    ) -> Result<Mipmap, JsError> {
-        let bytes = crate::texture::js_to_texture_bytes(bytes)?;
-        let size = size.filter(|size| !size.is_undefined() && !size.is_null());
-        let size: Option<Size> = size.as_ref().map(Size::try_from).transpose()?;
-        let input = crate::TextureInput {
-            data: crate::TextureData::Bytes(bytes),
-            options: crate::TextureOptions {
-                size,
-                format,
-                ..Default::default()
-            },
-        };
-        Ok(Self::build(input)?)
+        #[wasm_bindgen(unchecked_param_type = "TextureFormat")] format: &JsValue,
+        #[wasm_bindgen(unchecked_optional_param_type = "ArrayLike<number> | Size | null")]
+        size: Option<JsValue>,
+    ) -> Result<Mipmap, WebError> {
+        Ok(Self::build(read_chain_input(bytes, format, size)?)?)
     }
 
     #[wasm_bindgen(js_name = "format")]
     #[lsp_doc("docs/api/texture/mipmap/format.md")]
     pub fn format_js(&self) -> TextureFormat {
-        self.format.into()
+        TextureFormat::from_wgpu(self.format)
     }
 
     #[wasm_bindgen(js_name = "size")]
     #[lsp_doc("docs/api/texture/mipmap/size.md")]
     pub fn size_js(&self) -> Size {
-        let (w, h) = self.size();
-        Size::from([w, h])
+        self.size()
     }
 
     #[wasm_bindgen(js_name = "count")]
@@ -76,20 +67,15 @@ impl Mipmap {
 
     /// Return the bytes for a single mip level as a `Uint8Array`. Use
     /// `count()` to discover the valid range. Returns an error if the
-    /// requested level is out of range.
+    /// requested level is out of range or not a whole number.
     #[wasm_bindgen(js_name = "level")]
     #[lsp_doc("docs/api/texture/mipmap/level.md")]
-    pub fn level_js(&self, index: u32) -> Result<js_sys::Uint8Array, JsError> {
-        let levels = self.levels();
-        let idx = index as usize;
-        if idx >= levels.len() {
-            return Err(JsError::new(&format!(
-                "level {} out of range; chain has {} levels",
-                idx,
-                levels.len()
-            )));
-        }
-        Ok(js_sys::Uint8Array::from(levels[idx].as_slice()))
+    pub fn level_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "number")] index: &JsValue,
+    ) -> Result<js_sys::Uint8Array, WebError> {
+        let index = read_count(index, "Mipmap.level: index")?;
+        Ok(js_sys::Uint8Array::from(self.level(index as usize)?))
     }
 }
 
@@ -98,7 +84,7 @@ impl Texture {
     #[wasm_bindgen(js_name = "id")]
     #[lsp_doc("docs/api/texture/texture/id.md")]
     pub fn id_js(&self) -> TextureId {
-        self.id
+        *self.id()
     }
 
     #[wasm_bindgen(js_name = "size")]
@@ -115,7 +101,7 @@ impl Texture {
 
     #[wasm_bindgen(js_name = "setSamplerOptions")]
     #[lsp_doc("docs/api/texture/texture/set_sampler_options.md")]
-    pub fn set_sampler_options_js(&self, options: &JsValue) -> Result<(), JsError> {
+    pub fn set_sampler_options_js(&self, options: &JsValue) -> Result<(), WebError> {
         let opts = js_to_sampler_options(options)?;
         self.set_sampler_options(opts);
         Ok(())
@@ -123,42 +109,69 @@ impl Texture {
 
     #[wasm_bindgen(js_name = "write")]
     #[lsp_doc("docs/api/texture/texture/write.md")]
-    pub fn write_js(&self, data: &JsValue) -> Result<(), JsError> {
-        let bytes = crate::texture::js_to_texture_bytes(data)?;
+    pub fn write_js(&self, data: &JsValue) -> Result<(), WebError> {
+        let object = self.object();
+        let (bytes, _) = js_to_texture_bytes(
+            data,
+            Some(object.size()),
+            object.format,
+            "Texture.write: data",
+        )?;
         self.write(&bytes)?;
         Ok(())
     }
 
     #[wasm_bindgen(js_name = "writeRegion")]
     #[lsp_doc("docs/api/texture/texture/write_region.md")]
-    pub fn write_region_js(&self, data: &JsValue, region: &JsValue) -> Result<(), JsError> {
-        let bytes = crate::texture::js_to_texture_bytes(data)?;
-        let r: crate::TextureRegion = region.try_into()?;
-        self.write_region(&bytes, r)?;
+    pub fn write_region_js(&self, data: &JsValue, region: &JsValue) -> Result<(), WebError> {
+        if region.is_undefined() || region.is_null() {
+            return self.write_js(data);
+        }
+        let region: crate::TextureRegion = region.try_into()?;
+        let [width, height, depth] = region.size;
+        let size = Size::new(width, height, Some(depth));
+        let format = self.object().format;
+        let label = "Texture.writeRegion: data";
+        let (bytes, _) = js_to_texture_bytes(data, Some(size), format, label)?;
+        self.write_region(&bytes, region)?;
         Ok(())
     }
 
-    #[wasm_bindgen(js_name = "getImage")]
+    #[wasm_bindgen(js_name = "resize")]
+    #[lsp_doc("docs/api/texture/texture/resize.md")]
+    pub fn resize_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number> | Size")] size: &JsValue,
+    ) -> Result<(), WebError> {
+        let size: Size = size.try_into()?;
+        self.resize(size)?;
+        Ok(())
+    }
+
+    // A plain function, so the call takes its start before it returns the promise.
+    #[wasm_bindgen(js_name = "getImage", unchecked_return_type = "Promise<Uint8Array>")]
     #[lsp_doc("docs/api/texture/texture/get_image.md")]
-    pub async fn get_image_js(&self) -> Result<js_sys::Uint8Array, JsError> {
-        let bytes = self
-            .get_image()
-            .await
-            .map_err(|e| JsError::new(&e.to_string()))?;
-        Ok(js_sys::Uint8Array::from(bytes.as_slice()))
+    pub fn get_image_js(&self) -> js_sys::Promise {
+        let start = crate::core::Start::now(Some(&self.context));
+        let texture = self.clone();
+        crate::error::defer(async move {
+            let object = texture.object();
+            let bytes = crate::texture::read_pixels_from(&texture.context, &object, start).await?;
+            Ok(js_sys::Uint8Array::from(bytes.as_slice()).into())
+        })
     }
 }
 
 // Helper: parse JS values into CompareFunction. Accepts string names (case-insensitive)
 // or numeric enum codes (1..=8). Returns Ok(Some(...)) if present, Ok(None) if undefined/null,
 // and Err for type mismatches.
-fn parse_compare(value: &JsValue) -> Result<Option<CompareFunction>, JsError> {
+pub(crate) fn parse_compare(value: &JsValue) -> Result<Option<CompareFunction>, WebError> {
     if value.is_undefined() || value.is_null() {
         return Ok(None);
     }
-    if let Some(s) = value.as_string() {
-        let name = s.to_ascii_lowercase();
-        let cf = match name.as_str() {
+    if let Some(text) = value.as_string() {
+        let name = text.to_ascii_lowercase();
+        let compare = match name.as_str() {
             "!" | "never" => CompareFunction::Never,
             "<" | "less" => CompareFunction::Less,
             "=" | "equal" => CompareFunction::Equal,
@@ -168,16 +181,16 @@ fn parse_compare(value: &JsValue) -> Result<Option<CompareFunction>, JsError> {
             ">=" | "ge" | "greaterequal" | "greater_equal" => CompareFunction::GreaterEqual,
             "*" | "always" => CompareFunction::Always,
             _ => {
-                return Err(JsError::new(
+                return Err(WebError::new(
+                    ErrorClass::InvalidInput,
                     "Invalid compare string; expected one of Never, Less, Equal, LessEqual, Greater, NotEqual, GreaterEqual, Always",
                 ));
             }
         };
-        return Ok(Some(cf));
+        return Ok(Some(compare));
     }
-    if let Some(n) = value.as_f64() {
-        let code = n as i32;
-        let cf = match code {
+    if let Some(number) = value.as_f64() {
+        let compare = match read_unsigned(number, "compare")? {
             1 => CompareFunction::Never,
             2 => CompareFunction::Less,
             3 => CompareFunction::Equal,
@@ -186,28 +199,35 @@ fn parse_compare(value: &JsValue) -> Result<Option<CompareFunction>, JsError> {
             6 => CompareFunction::NotEqual,
             7 => CompareFunction::GreaterEqual,
             8 => CompareFunction::Always,
-            _ => return Err(JsError::new("Invalid numeric compare code; expected 1..=8")),
+            _ => {
+                return Err(WebError::new(
+                    ErrorClass::InvalidInput,
+                    "Invalid numeric compare code; expected 1..=8",
+                ));
+            }
         };
-        return Ok(Some(cf));
+        return Ok(Some(compare));
     }
     // Accept a CompareFunction instance if provided (from wasm-bindgen enum)
     // On wasm-bindgen, exported enums are numbers under the hood; above branch should catch it.
-    Err(JsError::new("Unsupported compare value type"))
+    Err(WebError::type_error("Unsupported compare value type"))
 }
 
-pub(crate) fn js_to_sampler_options(value: &JsValue) -> Result<SamplerOptions, JsError> {
+pub(crate) fn js_to_sampler_options(value: &JsValue) -> Result<SamplerOptions, WebError> {
     if !value.is_object() {
-        return Err(JsError::new(
+        return Err(WebError::type_error(
             "sampler options must be an object { repeatX?, repeatY?, smooth?, compare? }",
         ));
     }
     // Each flag reads its camelCase key, then its snake_case key, which wins.
-    let flag = |names: &[&str], default: bool| -> Result<bool, JsError> {
+    let flag = |names: &[&str], default: bool| -> Result<bool, WebError> {
         let mut flag = default;
         for name in names {
             if let Some(field) = read_field(value, name) {
                 let message = format!("{name} must be a boolean");
-                flag = field.as_bool().ok_or_else(|| JsError::new(&message))?;
+                flag = field
+                    .as_bool()
+                    .ok_or_else(|| WebError::type_error(&message))?;
             }
         }
         Ok(flag)
@@ -222,33 +242,83 @@ pub(crate) fn js_to_sampler_options(value: &JsValue) -> Result<SamplerOptions, J
     })
 }
 
-/// Reads a texture source and its options, as `createTexture` and the Material
-/// texture setters take them. An `ImageData` or canvas source carries its own
-/// size, which applies when the options don't set one.
+/// The input `Mipmap.build` chains: the bytes, their format, and the size they give or bring.
+fn read_chain_input(
+    bytes: &JsValue,
+    format: &JsValue,
+    size: Option<JsValue>,
+) -> Result<TextureInput, WebError> {
+    let format = read_format(format)?;
+    let size = size.filter(|size| !size.is_undefined() && !size.is_null());
+    let size: Option<Size> = size.as_ref().map(Size::try_from).transpose()?;
+    let (bytes, own) = js_to_texture_bytes(bytes, size, format.to_wgpu(), "Mipmap.build: bytes")?;
+    let size = size.or(own);
+    Ok(TextureInput {
+        data: TextureData::Bytes(bytes),
+        options: TextureOptions {
+            size,
+            format,
+            ..Default::default()
+        },
+    })
+}
+
+/// Reads a texture source and its options, as `createTexture` and the Material setters take them.
+/// An `ImageData` or canvas brings its own size and RGBA pixels, so the options may repeat
+/// that size and pick an 8-bit RGBA or BGRA format, which stores blue first. A `Texture` keeps
+/// the options it was created with, so options beside one throw an error that names `call`.
 pub(crate) fn read_texture_input(
     source: &JsValue,
     options: Option<&JsValue>,
-) -> Result<TextureInput, JsError> {
-    let mut input = TextureInput::try_from(source)?;
+    call: &str,
+) -> Result<TextureInput, WebError> {
+    let mut input = read_source(source, call)?;
     if let Some(options) = options.filter(|options| !options.is_undefined() && !options.is_null()) {
+        if matches!(input.data, TextureData::CloneOf(_)) {
+            return Err(WebError::new(
+                ErrorClass::InvalidInput,
+                &format!(
+                    "{call}: a Texture keeps the options it was created with, so it takes none"
+                ),
+            ));
+        }
         let source_size = input.options.size;
         input.options = read_texture_options(options)?;
+        if let (Some(own), TextureData::Bytes(pixels)) = (source_size, &mut input.data) {
+            let format = input.options.format.to_wgpu();
+            check_pixels(own, input.options.size, format)?;
+            crate::texture::swap_bgra(pixels, format);
+        }
         input.options.size = input.options.size.or(source_size);
     }
     Ok(input)
 }
 
-/// Reads texture options: a bare `TextureFormat`, a bare size such as `[w, h]`,
-/// or an object `{ size?, format?, mipmaps?, sampler?, usage? }`.
-fn read_texture_options(value: &JsValue) -> Result<TextureOptions, JsError> {
-    if let Some(code) = value.as_f64() {
-        return Ok(TextureOptions::from(read_format(code)?));
+/// The keys of a texture options object.
+const OPTION_KEYS: [&str; 5] = ["size", "format", "mipmaps", "sampler", "usage"];
+
+/// Reads texture options, and throws for a bare size that fails to read, such as `[1.5, 2]`.
+/// The options are a `TextureFormat`, a bare size such as `[w, h]` or `{ width, height }`, or an
+/// object `{ size?, format?, mipmaps?, sampler?, usage? }`, which reads as options whenever it holds
+/// one of those keys and then refuses a `width`, `height` or `depth`.
+fn read_texture_options(value: &JsValue) -> Result<TextureOptions, WebError> {
+    if value.as_f64().is_some() {
+        return Ok(TextureOptions::from(read_format(value)?));
     }
-    if let Ok(size) = Size::try_from(value) {
-        return Ok(TextureOptions::from(size));
+    let given = |keys: &[&str]| keys.iter().any(|key| read_field(value, key).is_some());
+    let options = value.is_object() && given(&OPTION_KEYS);
+    if options && given(&["width", "height", "depth"]) {
+        return Err(WebError::new(
+            ErrorClass::InvalidInput,
+            "texture options take the size under `size`, as in { size: [w, h] }",
+        ));
+    }
+    let list = js_sys::Array::is_array(value) || js_sys::ArrayBuffer::is_view(value);
+    if !options && (list || given(&["width", "height", "depth"])) {
+        return Ok(TextureOptions::from(Size::try_from(value)?));
     }
     if !value.is_object() {
-        return Err(JsError::new(
+        return Err(WebError::type_error(
             "texture options must be a size, a TextureFormat, or an options object",
         ));
     }
@@ -257,15 +327,12 @@ fn read_texture_options(value: &JsValue) -> Result<TextureOptions, JsError> {
         options.size = Some(Size::try_from(&size)?);
     }
     if let Some(format) = read_field(value, "format") {
-        let code = format
-            .as_f64()
-            .ok_or_else(|| JsError::new("options.format must be a TextureFormat"))?;
-        options.format = read_format(code)?;
+        options.format = read_format(&format)?;
     }
     if let Some(mipmaps) = read_field(value, "mipmaps") {
         options.mipmaps = mipmaps
             .as_bool()
-            .ok_or_else(|| JsError::new("options.mipmaps must be a boolean"))?;
+            .ok_or_else(|| WebError::type_error("options.mipmaps must be a boolean"))?;
     }
     if let Some(sampler) = read_field(value, "sampler") {
         options.sampler = js_to_sampler_options(&sampler)?;
@@ -277,12 +344,12 @@ fn read_texture_options(value: &JsValue) -> Result<TextureOptions, JsError> {
 }
 
 /// Reads a `TextureUsage` or its bits as a number.
-pub(crate) fn read_usage(value: &JsValue) -> Result<u32, JsError> {
+pub(crate) fn read_usage(value: &JsValue) -> Result<u32, WebError> {
     let bits = match value.as_f64() {
         Some(bits) => bits,
         None => read_field(value, "bits")
             .and_then(|bits| bits.as_f64())
-            .ok_or_else(|| JsError::new("usage must be a TextureUsage or a number"))?,
+            .ok_or_else(|| WebError::type_error("usage must be a TextureUsage or a number"))?,
     };
     read_unsigned(bits, "usage")
 }
@@ -294,9 +361,16 @@ fn read_field(object: &JsValue, name: &str) -> Option<JsValue> {
         .filter(|value| !value.is_undefined() && !value.is_null())
 }
 
-/// Maps a `TextureFormat` code from JS to the format. The codes follow the
-/// variant order in `src/texture/format.rs`.
-fn read_format(code: f64) -> Result<TextureFormat, JsError> {
+/// Maps a `TextureFormat` from JS, a number in the variant order of
+/// `src/texture/format.rs`, to the format. Anything else is an error,
+/// where wasm-bindgen would read `undefined`, `NaN` or a fraction as a code.
+pub(crate) fn read_format(value: &JsValue) -> Result<TextureFormat, WebError> {
+    let code = value.as_f64().ok_or_else(|| {
+        WebError::type_error(&format!(
+            "format must be a TextureFormat, got {}",
+            crate::bindings::web::describe(value)
+        ))
+    })?;
     let format = match read_unsigned(code, "format")? {
         0 => TextureFormat::R8Unorm,
         1 => TextureFormat::Rg8Unorm,
@@ -315,7 +389,215 @@ fn read_format(code: f64) -> Result<TextureFormat, JsError> {
         14 => TextureFormat::Bgra,
         15 => TextureFormat::Lab,
         16 => TextureFormat::L8,
-        _ => return Err(JsError::new(&format!("{code} is not a TextureFormat"))),
+        _ => {
+            return Err(WebError::new(
+                ErrorClass::InvalidInput,
+                &format!("{code} is not a TextureFormat"),
+            ));
+        }
     };
     Ok(format)
+}
+
+/// A texture source decoded from JS, for the call `label` names.
+/// `ImageData` and canvases carry their pixel size in `options.size`,
+/// so their raw RGBA bytes upload without a size argument.
+/// A value no source takes, or an item of a byte list that isn't a number, is a `TypeError`,
+/// as Python raises, and a byte that isn't a whole number from 0 to 255 an `InvalidInputError`.
+fn read_source(value: &JsValue, label: &str) -> Result<TextureInput, WebError> {
+    use WebError;
+    let pixels = |bytes: Vec<u8>, width: u32, height: u32| TextureInput {
+        data: TextureData::Bytes(bytes),
+        options: TextureOptions::from(Size::from([width, height])),
+    };
+
+    // Case: Mipmap handle (built off-thread via Mipmap.build).
+    // Detected through the branded __fc_kind + __wbg_ptr anchor so it
+    // survives bundler renaming. Must come before the Uint8Array / object
+    // cases because wasm-bindgen handles also satisfy `is_object()`.
+    if let Ok(chain) = Mipmap::try_from(value) {
+        return Ok(TextureData::Prepared(chain).into());
+    }
+
+    // Case: an existing Texture handle, shared as is
+    if let Ok(texture) = Texture::try_from(value) {
+        return Ok(TextureData::CloneOf(texture).into());
+    }
+
+    // Case: Uint8Array (fast path)
+    if let Some(array) = value.dyn_ref::<Uint8Array>() {
+        let mut bytes = vec![0u8; array.length() as usize];
+        array.copy_to(&mut bytes[..]);
+        return Ok(TextureData::Bytes(bytes).into());
+    }
+
+    // Case: Uint8ClampedArray (ImageData.data)
+    if let Some(clamped) = value.dyn_ref::<Uint8ClampedArray>() {
+        let mut bytes = vec![0u8; clamped.length() as usize];
+        clamped.copy_to(&mut bytes[..]);
+        return Ok(TextureData::Bytes(bytes).into());
+    }
+
+    // Case: ArrayBuffer
+    if let Some(buffer) = value.dyn_ref::<ArrayBuffer>() {
+        // Guard against detached buffers via byte_length() == 0; safe fallback for empty too.
+        if buffer.byte_length() == 0 {
+            return Ok(TextureData::Bytes(Vec::new()).into());
+        }
+        let array = Uint8Array::new(buffer);
+        let mut bytes = vec![0u8; array.length() as usize];
+        array.copy_to(&mut bytes[..]);
+        return Ok(TextureData::Bytes(bytes).into());
+    }
+
+    // Case: ImageData -> its RGBA pixels and size
+    if let Some(image_data) = value.dyn_ref::<web_sys::ImageData>() {
+        let bytes = image_data.data().0;
+        return Ok(pixels(bytes, image_data.width(), image_data.height()));
+    }
+
+    // Case: HTMLCanvasElement or OffscreenCanvas -> raw pixel bytes via 2D context
+    if let Some(input) = read_canvas(value)? {
+        return Ok(input);
+    }
+
+    // Case: HTMLImageElement -> pass through as URL
+    if let Some(image) = value.dyn_ref::<web_sys::HtmlImageElement>() {
+        return Ok(TextureData::Url(image.src()).into());
+    }
+
+    // Case: Plain JS Array of numbers
+    if Array::is_array(value) {
+        let bytes = Array::from(value)
+            .iter()
+            .enumerate()
+            .map(|(index, item)| js_to_byte(&item, label, index))
+            .collect::<Result<Vec<u8>, WebError>>()?;
+        return Ok(TextureData::Bytes(bytes).into());
+    }
+
+    // Case: String -> selector or URL
+    if let Some(text) = value.as_string() {
+        let url = if text.starts_with('#') || text.starts_with('.') {
+            if let Some(document) = web_sys::window().and_then(|window| window.document()) {
+                if let Ok(Some(element)) = document.query_selector(&text) {
+                    if let Some(image) = element.dyn_ref::<web_sys::HtmlImageElement>() {
+                        image.src()
+                    } else if let Some(canvas) = element.dyn_ref::<web_sys::HtmlCanvasElement>() {
+                        canvas.to_data_url().unwrap_or(text.clone())
+                    } else {
+                        text.clone()
+                    }
+                } else {
+                    text.clone()
+                }
+            } else {
+                text.clone()
+            }
+        } else {
+            text.clone()
+        };
+        return Ok(TextureData::Url(url).into());
+    }
+
+    Err(WebError::type_error(&format!(
+        "{label} takes bytes (a Uint8Array, an ArrayBuffer or an array of numbers), an ImageData, a canvas, an image, a URL, a Texture or a Mipmap, got {}",
+        describe(value)
+    )))
+}
+
+/// The RGBA pixels and size of an `HTMLCanvasElement` or `OffscreenCanvas` with a 2D context,
+/// or `None` for any other value.
+fn read_canvas(value: &JsValue) -> Result<Option<TextureInput>, TextureError> {
+    let image = if let Some(canvas) = value.dyn_ref::<web_sys::HtmlCanvasElement>()
+        && let Ok(Some(context)) = canvas.get_context("2d")
+        && let Ok(context) = context.dyn_into::<web_sys::CanvasRenderingContext2d>()
+    {
+        let (width, height) = (canvas.width(), canvas.height());
+        context.get_image_data(0.0, 0.0, width as f64, height as f64)?
+    } else if let Some(canvas) = value.dyn_ref::<web_sys::OffscreenCanvas>()
+        && let Ok(Some(context)) = canvas.get_context("2d")
+        && let Ok(context) = context.dyn_into::<web_sys::OffscreenCanvasRenderingContext2d>()
+    {
+        let (width, height) = (canvas.width(), canvas.height());
+        context.get_image_data(0.0, 0.0, width as f64, height as f64)?
+    } else {
+        return Ok(None);
+    };
+    let size = Size::from([image.width(), image.height()]);
+    Ok(Some(TextureInput {
+        data: TextureData::Bytes(image.data().0),
+        options: TextureOptions::from(size),
+    }))
+}
+
+/// One item of a JS byte list, named `label`: a `TypeError` for a value that isn't a number,
+/// as Python raises, and an `InvalidInputError` for one that isn't a whole number from 0 to 255.
+fn js_to_byte(value: &JsValue, label: &str, index: usize) -> Result<u8, WebError> {
+    let item = format_args!("{label}: item {index}");
+    let number = read_number(value, item)?;
+    if number.fract() == 0.0 && (0.0..=255.0).contains(&number) {
+        return Ok(number as u8);
+    }
+    Err(TextureError::InvalidInput(format!(
+        "{label}: item {index} must be a whole number from 0 to 255, got {number}"
+    ))
+    .into())
+}
+
+/// A texture id from JS: a `TextureId`, a whole number or a bigint. A value of another type
+/// is a `TypeError`, as Python raises, and a negative, fractional or out-of-range number an
+/// `InvalidInputError`.
+pub(crate) fn js_to_texture_id(value: &JsValue) -> Result<TextureId, WebError> {
+    let invalid = |shown: String| {
+        TextureError::InvalidInput(format!(
+            "a texture id is a whole number from 0 to {}, got {shown}",
+            u64::MAX
+        ))
+    };
+    if let Some(number) = value.as_f64() {
+        // `u64::MAX as f64` rounds up to 2^64, so the range leaves it out.
+        if number.fract() != 0.0 || !(0.0..u64::MAX as f64).contains(&number) {
+            return Err(invalid(number.to_string()).into());
+        }
+        return Ok(TextureId { id: number as u64 });
+    }
+    if value.is_bigint() {
+        let Ok(id) = u64::try_from(value.clone()) else {
+            let shown = js_sys::BigInt::from(value.clone()).to_string(10);
+            return Err(invalid(shown.map(String::from).unwrap_or_default()).into());
+        };
+        return Ok(TextureId::from(id));
+    }
+    if let Ok(id) = TextureId::try_from(value) {
+        return Ok(id);
+    }
+    Err(WebError::type_error(&format!(
+        "a texture id is a TextureId or a whole number, got {}",
+        describe(value)
+    )))
+}
+
+/// The bytes of a JS source for a texture of `format` and, when known, `size`,
+/// with the size the source brings. An `ImageData` or canvas holds RGBA pixels,
+/// like a decoded image, so it gets the checks and the BGRA swap `createTexture` gives it.
+/// A value of another type, such as a string or a `Texture`, is a `TypeError` that names `label`.
+pub(crate) fn js_to_texture_bytes(
+    value: &JsValue,
+    size: Option<Size>,
+    format: wgpu::TextureFormat,
+    label: &str,
+) -> Result<(Vec<u8>, Option<Size>), WebError> {
+    let TextureInput { data, options } = read_source(value, label)?;
+    let TextureData::Bytes(mut bytes) = data else {
+        return Err(WebError::type_error(&format!(
+            "{label} takes bytes (a Uint8Array, an ArrayBuffer or an array of numbers), an ImageData or a canvas, got {}",
+            describe(value)
+        )));
+    };
+    if let Some(own) = options.size {
+        check_pixels(own, size, format)?;
+        swap_bgra(&mut bytes, format);
+    }
+    Ok((bytes, options.size))
 }

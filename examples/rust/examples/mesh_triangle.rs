@@ -1,4 +1,4 @@
-use fragmentcolor::mesh::{Mesh, Vertex};
+use fragmentcolor::{Mesh, Vertex};
 use fragmentcolor::{Pass, Renderer, Shader};
 
 fn main() {

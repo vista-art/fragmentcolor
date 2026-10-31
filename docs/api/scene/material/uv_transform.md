@@ -1,21 +1,23 @@
 # Material::uv_transform
 
-Set a global UV transform applied to every map sample. Matches glTF's
+Set one UV transform on all five texture slots, the transform glTF's
 [`KHR_texture_transform`](https://github.com/KhronosGroup/glTF/tree/main/extensions/2.0/Khronos/KHR_texture_transform)
-composition: scale → rotate → offset, with the result fed to every
-`textureSample` in the PBR fragment shader.
+describes. Each slot's UV is scaled first, then rotated, then offset:
 
-- `offset` translates the UV after scale + rotation (`[0, 0]` is no translation)
-- `scale` multiplies the UV first (`[1, 1]` is no scale)
-- `rotation` rotates the scaled UV in radians (positive = counter-clockwise
-  in WGSL's `(u, v)` convention)
+- `scale` multiplies the UV (`[1, 1]` keeps it)
+- `rotation` turns the scaled UV around the origin, in radians. A positive
+  angle turns the UVs counter-clockwise in texture space, where `v` points
+  down, so the image itself turns clockwise
+- `offset` moves the result, in fractions of the texture (`[0, 0]` keeps it)
 
-Defaults to identity (scale `[1, 1]`, rotation `0`, offset `[0, 0]`) so an
-unset Material samples textures untransformed. The transform is shared
-across all five texture slots; per-map transforms (and the per-map
-`texCoord` selector that picks `UV0` vs `UV1`) are out of scope for the
-built-in PBR shader. For glTFs that carry `KHR_texture_transform` only on
-the base-color map (the most common case), the global path is lossless.
+Every slot starts with the identity transform: scale `[1, 1]`, rotation
+`0` and offset `[0, 0]`.
+[`texture_transform`](https://fragmentcolor.org/api/scene/material#texture_transform)
+sets the transform of one slot, so a call after `uv_transform` replaces
+that slot's transform and keeps the other four. Each slot applies its
+transform to the UV set that
+[`texture_uv`](https://fragmentcolor.org/api/scene/material#texture_uv)
+picks for it.
 
 ## Example
 

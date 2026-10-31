@@ -8,6 +8,11 @@ on:
       - 'build.rs'
       - 'platforms/web/**'
       - 'docs/api/**'
+      - 'scripts/**'
+      - 'docs/website/public/shaders/**'
+      - 'docs/guides/**'
+      - 'examples/assets/**'
+      - 'path/**'
       - 'tools/**'
       - '.github/workflows/healthcheck_web.yml'
   workflow_dispatch:
@@ -69,6 +74,8 @@ jobs:
         timeout-minutes: 15
         env:
           FC_HEALTHCHECK_VERBOSE: 1
+          # The clustered lights check needs a WebGPU adapter, and the runner has one.
+          FC_REQUIRE_WEBGPU: 1
           PORT: 8765
         run: |
           chmod +x ./tools/healthcheck

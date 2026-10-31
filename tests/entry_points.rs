@@ -44,7 +44,7 @@ fn render_pipeline_runs_the_first_entry_points() {
         renderer
             .render(&Pass::from_shader("first", &shader), &target)
             .expect("render failed");
-        let pixel = target.get_image().await[..4].to_vec();
+        let pixel = target.get_image().await.expect("read back")[..4].to_vec();
 
         // Assert
         assert_eq!(pixel, [255, 0, 0, 255], "vs_first and fs_first draw red");

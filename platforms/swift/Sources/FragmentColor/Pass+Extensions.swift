@@ -30,8 +30,8 @@ extension Pass {
     // MARK: - Shader / Mesh (unlabeled overloads)
 
     /// Attach a shader to this pass (unlabeled overload).
-    public func addShader(_ shader: Shader) {
-        addShader(shader: shader)
+    public func addShader(_ shader: Shader) throws {
+        try addShader(shader: shader)
     }
 
     /// Attach a mesh to this pass (unlabeled overload).
@@ -110,7 +110,10 @@ extension Pass {
         try self.setTarget(target: .texture(target))
     }
 
-    /// Render into a `Texture`, such as one from `Renderer.createTexture`.
+    /// Render into a `Texture` with `RENDER_ATTACHMENT` usage, a color format,
+    /// one mip level and one layer, such as a `TextureTarget`'s `texture()`, or a 2D
+    /// texture from `Renderer.createStorageTexture` with a usage that has `RENDER_ATTACHMENT`.
+    /// A texture without that usage, with a depth format, or with a mip chain or layers, throws.
     public func setTarget(_ texture: Texture) throws {
         try self.setTargetTexture(texture: texture)
     }
@@ -129,36 +132,40 @@ extension Pass {
 
     // MARK: - Clear color
 
-    /// Set the clear color as separate RGBA components (0..1 linear space).
-    public func setClearColor(r: Float, g: Float, b: Float, a: Float = 1.0) throws {
-        try self.setClearColor(color: [r, g, b, a])
-    }
-
-    /// Set the clear color from a 3- or 4-element float array (`[r, g, b]` or `[r, g, b, a]`).
+    /// Set the clear color from `[r, g, b]` or `[r, g, b, a]`, each channel passed to the GPU as given.
     public func setClearColor(_ rgba: [Float]) throws {
         try self.setClearColor(color: rgba)
     }
 
+    /// Set the clear color from `[r, g, b]` or `[r, g, b, a]` as doubles.
+    @_disfavoredOverload
+    public func setClearColor(_ rgba: [Double]) throws {
+        try self.setClearColor(color: readFloats(rgba, "Pass.setClearColor"))
+    }
+
     // MARK: - Viewport
 
-    /// Set the viewport (unlabeled overload).
-    public func setViewport(_ region: ScreenRegion) {
-        setViewport(region: region)
+    /// Set the viewport (unlabeled overload). A max before its min, or a width or height of 0, throws.
+    public func setViewport(_ region: ScreenRegion) throws {
+        try setViewport(region: region)
     }
 
     /// Set the viewport from `[(x, y), (width, height)]`, an origin and a size,
-    /// as `ScreenRegion(origin, size)` reads them.
-    public func setViewport(_ originAndSize: [(UInt32, UInt32)]) {
-        precondition(originAndSize.count == 2, "setViewport: expected [(x, y), (width, height)]")
-        setViewport(region: ScreenRegion(originAndSize[0], originAndSize[1]))
+    /// as `ScreenRegion(origin, size)` reads them. A width or height of 0 throws.
+    public func setViewport(_ originAndSize: [(UInt32, UInt32)]) throws {
+        guard originAndSize.count == 2 else {
+            throw FragmentColorError.Render("setViewport: expected [(x, y), (width, height)], got \(originAndSize.count) pairs")
+        }
+        try setViewport(region: ScreenRegion(originAndSize[0], originAndSize[1]))
     }
 
     /// Set the viewport from `[x, y, width, height]`, or `[width, height]` at the origin.
-    public func setViewport(_ rect: [UInt32]) {
+    /// A width or height of 0, or any other count of numbers, throws.
+    public func setViewport(_ rect: [UInt32]) throws {
         switch rect.count {
-        case 2: setViewport(region: ScreenRegion([0, 0], rect))
-        case 4: setViewport(region: ScreenRegion(Array(rect[0..<2]), Array(rect[2..<4])))
-        default: preconditionFailure("setViewport: expected [width, height] or [x, y, width, height], got \(rect.count) numbers")
+        case 2: try setViewport(region: ScreenRegion([0, 0], rect))
+        case 4: try setViewport(region: ScreenRegion(Array(rect[0..<2]), Array(rect[2..<4])))
+        default: throw FragmentColorError.Render("setViewport: expected [width, height] or [x, y, width, height], got \(rect.count) numbers")
         }
     }
 
@@ -171,20 +178,26 @@ extension Pass {
 }
 
 extension ScreenRegion {
-    /// A region at `origin` (x, y) that is `size` (width, height) large,
-    /// as Rust's `ScreenRegion::new(origin, size)` reads them.
-    public init(_ origin: (UInt32, UInt32), _ size: (UInt32, UInt32)) {
-        self.init(
-            minX: origin.0,
-            minY: origin.1,
-            maxX: UInt32(clamping: UInt64(origin.0) + UInt64(size.0)),
-            maxY: UInt32(clamping: UInt64(origin.1) + UInt64(size.1))
-        )
+    /// A region at `origin` (x, y) that is `size` (width, height) large, as Rust's
+    /// `ScreenRegion::new(origin, size)` reads them. A side of 0 throws, and so does
+    /// a far edge past `UInt32.max`.
+    public init(_ origin: (UInt32, UInt32), _ size: (UInt32, UInt32)) throws {
+        guard size.0 > 0 && size.1 > 0 else {
+            throw FragmentColorError.Render("ScreenRegion: a region needs a width and a height of at least 1, got \(size.0) by \(size.1)")
+        }
+        let (maxX, xOverflow) = origin.0.addingReportingOverflow(size.0)
+        let (maxY, yOverflow) = origin.1.addingReportingOverflow(size.1)
+        guard !xOverflow && !yOverflow else {
+            throw FragmentColorError.Render("ScreenRegion: a region at \(origin.0), \(origin.1) sized \(size.0) by \(size.1) reaches past \(UInt32.max)")
+        }
+        self.init(minX: origin.0, minY: origin.1, maxX: maxX, maxY: maxY)
     }
 
     /// A region at `origin` `[x, y]` that is `size` `[width, height]` large.
-    public init(_ origin: [UInt32], _ size: [UInt32]) {
-        precondition(origin.count == 2 && size.count == 2, "ScreenRegion: origin and size hold 2 numbers each")
-        self.init((origin[0], origin[1]), (size[0], size[1]))
+    public init(_ origin: [UInt32], _ size: [UInt32]) throws {
+        guard origin.count == 2 && size.count == 2 else {
+            throw FragmentColorError.Render("ScreenRegion: origin and size hold 2 numbers each")
+        }
+        try self.init((origin[0], origin[1]), (size[0], size[1]))
     }
 }

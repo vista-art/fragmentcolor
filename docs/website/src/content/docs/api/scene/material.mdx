@@ -65,6 +65,13 @@ the explicit-fresh-Material path is the escape hatch.
   `normal_map`, `occlusion_map`, `emissive_map`) and sampled by the default
   shader. Unset slots resolve to the renderer's 1×1 defaults so the shader's
   bind group is always complete.
+- **UV sources**: each texture slot samples its own UV set (`UV0` or `UV1`)
+  through its own `KHR_texture_transform`. The PBR shader keeps them in
+  `material.uv`, five entries in
+  [`TextureSlot`](/api/scene/textureslot) order,
+  each with `uv_set`, `offset`, `scale` and `rotation`.
+  `Material::texture_uv`, `Material::texture_transform` and
+  `Material::uv_transform` set them.
 - **Per-Model transform** rides the **per-instance vertex attribute** stream
   as `model_0` to `model_3` (four `vec4<f32>` columns of a `mat4x4<f32>`, at
   locations 3 to 6 in the PBR shader). The renderer fills it from each
@@ -95,13 +102,14 @@ bundled implementation, use `Material::custom`.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Material, Mesh, Model, Vertex};
 
 let mesh = Mesh::new();
-mesh.add_vertex(
+mesh.add_vertices([
     Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]),
-);
+    Vertex::pbr([-0.5, -0.5, 0.0]).set(Vertex::UV0, [0.0, 0.0]),
+    Vertex::pbr([0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]),
+]);
 
 let material = Material::pbr()
     .base_color([0.85, 0.2, 0.2, 1.0])
@@ -110,11 +118,8 @@ let material = Material::pbr()
     .emissive([0.0, 0.0, 0.05]);
 
 let model = Model::new(mesh, material);
-let _model = model;
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 16-18}"
+lang="rust"
 />
 
 </TabItem>
@@ -125,7 +130,7 @@ code={`
 import { Material, Mesh, Model, Vertex } from "fragmentcolor";
 
 const mesh = new Mesh();
-mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), );
+mesh.addVertices([ Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]), Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]), ]);
 
 const material = Material.pbr().baseColor([0.85, 0.2, 0.2, 1.0]).metallic(0.0).roughness(0.4).emissive([0.0, 0.0, 0.05]);
 
@@ -142,9 +147,11 @@ code={`
 from fragmentcolor import Material, Mesh, Model, Vertex
 
 mesh = Mesh()
-mesh.add_vertex(
+mesh.add_vertices([
     Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
-)
+    Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+    Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+])
 
 material = Material.pbr().base_color([0.85, 0.2, 0.2, 1.0]).metallic(0.0).roughness(0.4).emissive([0.0, 0.0, 0.05])
 
@@ -161,9 +168,11 @@ code={`
 import FragmentColor
 
 let mesh = Mesh()
-try mesh.addVertex(
-    try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0])
-)
+mesh.addVertices([
+    try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
+    try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+    try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+])
 
 let material = try Material.pbr().baseColor([0.85, 0.2, 0.2, 1.0]).metallic(0.0).roughness(0.4).emissive([0.0, 0.0, 0.05])
 
@@ -180,7 +189,7 @@ code={`
 import org.fragmentcolor.*
 
 val mesh = Mesh()
-mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
+mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
 
 val material = Material.pbr().baseColor(listOf(0.85f, 0.2f, 0.2f, 1.0f)).metallic(0.0f).roughness(0.4f).emissive(listOf(0.0f, 0.0f, 0.05f))
 
@@ -216,15 +225,11 @@ when you want hard-edged cut-out transparency (foliage, chain-link, decals).
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Material;
 
 let foliage = Material::pbr().alpha_cutoff(0.3);
-let _foliage = foliage;
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 5-7}"
+lang="rust"
 />
 
 </TabItem>
@@ -307,6 +312,12 @@ The three variants:
   so self-intersecting or interpenetrating translucent meshes can still show artifacts.
   Cross-Material interleaving works correctly: translucent draws across every shader
   in the Pass merge into one globally-sorted back-to-front pass.
+  Blending needs a color target that blends and a shader that writes a `vec4`.
+  A format that never blends, such as an integer one, and an output without alpha
+  return `PassError::InvalidColorTarget` on every device. Whether `Rgba32Float` blends
+  depends on the device: the renderer asks for float32 blending wherever the GPU offers it,
+  and a device without it returns `RendererError::FeatureError`. `Rgba16Float` and the 8-bit
+  unorm formats blend everywhere.
 
 This is a pipeline-state flag. Changing it forces the renderer to rebuild the pipeline
 for the affected `(shader, alpha_mode, double_sided)` key. Switching it every frame is
@@ -320,7 +331,6 @@ draw call inside a frame.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{AlphaMode, Material};
 
 let foliage = Material::pbr()
@@ -332,11 +342,8 @@ let glass = Material::pbr()
     .alpha_mode(AlphaMode::Blend);
 
 let solid = Material::pbr().alpha_mode(AlphaMode::Opaque);
-let _ = (foliage, glass, solid);
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 13-15}"
+lang="rust"
 />
 
 </TabItem>
@@ -430,17 +437,12 @@ for what that means for mutation visibility.
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Material, Renderer};
 
 let renderer = Renderer::new();
 let red = Material::pbr().base_color([1.0, 0.2, 0.2, 1.0]);
-let _ = red;
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 6-9}"
+lang="rust"
 />
 
 </TabItem>
@@ -504,27 +506,67 @@ lang="kotlin"
 
 ### Material::base_color_texture \{#base_color_texture\}
 
-Bind a texture to the `base_color_map` slot. The default PBR shader samples it in `fs_main` and multiplies by the factor. The albedo for each fragment is `material.base_color * textureSample(base_color_map, sampler, in.uv)`.
+Bind a texture to the `base_color_map` slot. The default PBR shader samples it in `fs_main` and multiplies by the factor. The albedo for each fragment is `material.base_color * textureSample(base_color_map, pbr_sampler, uv) * vertex_color`, where `uv` is `slot_uv(material.uv[0], in.uv0, in.uv1)`: the UV set [`texture_uv`](/api/scene/material#texture_uv) picks for the slot, through the slot's [`texture_transform`](/api/scene/material#texture_transform).
 
-Accepts any `Into<TextureInput>`:
+Accepts any `Into<TextureInput>`, the inputs [`Renderer::create_texture`](/api/core/renderer#create_texture) takes:
 
-- A pre-built [`&Texture`](/api/texture/texture). The setter stores the texture's ID immediately and the GPU texture stays Arc-shared across every Material that points at it. Passing the same `&shared_texture` to N Materials produces one GPU upload and N shader-uniform references: the cheap way to reuse one texture map across a scene full of objects without paying for N texture allocations.
-- Bytes / path / URL. The setter queues the input on the Material's Shader. [`Renderer::load`](/api/core/renderer) uploads it, and on native targets the first [`Renderer::render`](/api/core/renderer) runs `load` for you.
+- A pre-built [`&Texture`](/api/texture/texture). The setter stores the texture's ID immediately and the GPU texture stays Arc-shared across every Material that points at it. Passing the same `&shared_texture` to N Materials produces one GPU upload and N shader-uniform references: the cheap way to reuse one texture map across a scene full of objects without paying for N texture allocations. The texture belongs to the `Renderer` that created it, and another `Renderer` refuses to draw it. It keeps the options it was created with, so JavaScript and Python refuse options beside it with an `InvalidInputError`.
+- Encoded bytes, raw pixels with their size as `(bytes, [w, h])`, bytes with a format as `(bytes, format)`, bytes with every option as `(bytes, options)`, a path or a URL, alone or as `(path, format)` or `(path, options)`, or a [`Mipmap`](/api/texture/mipmap), alone or as `(chain, options)`. The Material keeps this source as a map. Each `Renderer` that draws the Material uploads a copy of its own at [`Renderer::load`](/api/core/renderer#load), or on native targets at its first [`Renderer::render`](/api/core/renderer#render), and frees it when the `Renderer` or the Material drops. A map set again draws its old copy until the `Renderer` loads the new one.
+
+To share a map across Renderers, pass bytes, a path, a URL or a `Mipmap`.
+
+Each language spells these inputs the way its `create_texture` does, and the other four texture setters take the same ones:
+
+- **JavaScript:** `baseColorTexture(input, options?)`, where `options` is a size such as `[w, h]`, a `TextureFormat`, or `{ size?, format?, mipmaps?, sampler?, usage? }`.
+- **Python:** `base_color_texture(input, size=None, format=None, mipmaps=None, sampler=None, usage=None)`. A NumPy array brings its own size, and a `size` that differs from it raises `InvalidInputError`.
+- **Swift and Kotlin:** `baseColorTexture(texture)`, `baseColorTexture(bytes)`, `baseColorTexture(bytes, format)`, `baseColorTexture(bytes, [w, h])`, `baseColorTexture(bytes, size)`, `baseColorTexture(bytes, options)`, `baseColorTexture(path)`, `baseColorTexture(path, format)`, `baseColorTexture(path, options)`, `baseColorTexture(chain)` and `baseColorTexture(chain, options)`. Bytes are `Data`, `[UInt8]` or `[Int]` in Swift and `ByteArray` or `List<Int>` in Kotlin, in every bytes form. The bytes forms without `options` take an optional `usage`. An `Int` outside 0 to 255 throws, and so does a `[w, h]` that isn't 2 or 3 numbers.
+
+A source with no format of its own reads as sRGB in this slot, as glTF's
+base color does. A `Mipmap` or a KTX2 container keeps the format it stores,
+and takes that sRGB reading only where its bytes read the same in it, so a
+float chain or container stays linear. A format you pass yourself is the
+one it uploads in, and a `Mipmap` or KTX2 container whose bytes can't be
+read in it fails the `load` with an `InvalidInput` error that names `load`.
 
 Unset, this slot resolves to a 1×1 white default the renderer hands out
 lazily, so calling `Material::pbr()` without binding a
 texture renders correctly under the factor alone.
 
-#### Errors are surfaced lazily
+#### Memory
 
-The setter itself is infallible: it queues the upload (lazy path) or
-takes an Arc-clone (eager path) and returns. Failures from the lazy
-path (file not found, decode error, unsupported format) surface when
-the queue drains: when you call
-[`Renderer::load(&material).await`](/api/core/renderer),
-or at the first render on native targets.
-Until then the Material renders against its 1×1 default and a
-`log::warn!` line names the slot.
+A map holds its source for as long as the slot keeps it. That is the file's
+bytes for an encoded PNG or JPEG, a glTF image inside its file included, the
+pixels for raw bytes or a NumPy array, the container for KTX2, and the chain
+for a `Mipmap`. A path or
+a URL holds only its string, and each `Renderer` reads or fetches it again.
+`renderer.create_texture` keeps nothing on the CPU, and the texture it returns
+draws in that one `Renderer`.
+
+#### Errors
+
+In Rust the setter can't fail at the call. The bindings read their arguments
+there and throw for one they can't use: a size that isn't 2 or 3 whole numbers,
+options of the wrong type or shape, options beside a `Texture`, and in Python a
+`size` that differs from a NumPy array's own. Python raises `TypeError` for an
+argument of the wrong type and `InvalidInputError` for the rest, JavaScript throws
+an `Error` of the same name, and Swift and Kotlin throw `FragmentColorError` and
+`FragmentColorException`.
+
+The setter checks the slot at once. A slot the shader doesn't declare as a
+texture, or an empty input, logs a warning and leaves the Material as it was.
+
+A source that fails to upload (file not found, decode error, unsupported
+format) fails [`Renderer::load(&material).await`](/api/core/renderer#load),
+or the native render that runs it. That `Renderer` keeps no copy and tries
+again at each later call, until the source is fixed or replaced, while the
+other maps upload.
+
+On the web, `render` uploads nothing, so await `load` in each `Renderer`
+before its first frame. Until then the slot draws its 1×1 default, in a custom
+shader too, where the default fits the slot. Otherwise, as for an integer
+texture or a compute shader, the render fails with a `BindingError` that asks
+for `load`. On native, only a map set on another thread during a `render`
+meets this, for that frame.
 
 For deterministic error handling, pre-build the texture eagerly:
 `renderer.create_texture(path).await?` returns a `Texture` that can't
@@ -539,7 +581,6 @@ path resolves at render time but the caller doesn't want to await yet.
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Material, Renderer};
 
 let renderer = Renderer::new();
@@ -555,12 +596,12 @@ let albedo = renderer.create_texture((albedo_bytes, [2, 2])).await?;
 // texture; passing the same handle into N Material instances costs one
 // upload and N shader-uniform references.
 let material = Material::pbr().base_color_texture(&albedo);
-let _ = material;
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+
+// Raw pixels with their size upload when the scene loads.
+let tint: Vec<u8> = vec![255, 128, 0, 255];
+let tinted = Material::pbr().base_color_texture((tint, [1, 1]));
 `}
-lang="rust" meta="collapse={1-1, 17-20}"
+lang="rust"
 />
 
 </TabItem>
@@ -578,6 +619,10 @@ const albedo = await renderer.createTexture(albedo_bytes, [2, 2]);
 // texture; passing the same handle into N Material instances costs one
 // upload and N shader-uniform references.
 const material = Material.pbr().baseColorTexture(albedo);
+
+// Raw pixels with their size upload when the scene loads.
+const tint = [255, 128, 0, 255];
+const tinted = Material.pbr().baseColorTexture(tint, [1, 1]);
 `}
 lang="js"
 />
@@ -602,6 +647,10 @@ albedo = renderer.create_texture(albedo_bytes, size=[2, 2])
 # texture; passing the same handle into N Material instances costs one
 # upload and N shader-uniform references.
 material = Material.pbr().base_color_texture(albedo)
+
+# Raw pixels with their size upload when the scene loads.
+tint = [255, 128, 0, 255]
+tinted = Material.pbr().base_color_texture(tint, size=[1, 1])
 `}
 lang="python"
 />
@@ -626,6 +675,10 @@ let albedo = try await renderer.createTexture(albedo_bytes, [2, 2])
 // texture; passing the same handle into N Material instances costs one
 // upload and N shader-uniform references.
 let material = Material.pbr().baseColorTexture(albedo)
+
+// Raw pixels with their size upload when the scene loads.
+let tint = [255, 128, 0, 255]
+let tinted = try Material.pbr().baseColorTexture(tint, [1, 1])
 `}
 lang="swift"
 />
@@ -645,6 +698,10 @@ val albedo = renderer.createTexture(albedo_bytes, listOf(2u, 2u))
 // texture; passing the same handle into N Material instances costs one
 // upload and N shader-uniform references.
 val material = Material.pbr().baseColorTexture(albedo)
+
+// Raw pixels with their size upload when the scene loads.
+val tint = listOf(255, 128, 0, 255)
+val tinted = Material.pbr().baseColorTexture(tint, listOf(1u, 1u))
 `}
 lang="kotlin"
 />
@@ -675,14 +732,190 @@ Optional but recommended:
 
 - `struct PbrMaterial { base_color: vec4<f32>, … }` at `@group(1) @binding(0)`
   bound as `material`. This lets the PBR factor setters work as-is.
+- A `uv` field in that struct, with one entry per texture slot in
+  `TextureSlot` order, for `uv_transform`, `texture_transform` and
+  `texture_uv` to write. The built-in PBR shader declares it this way:
+
+```wgsl
+struct TextureUv {
+  offset: vec2<f32>,
+  scale: vec2<f32>,
+  rotation: f32,
+  uv_set: u32,
+  pad: vec2<u32>,
+}
+
+struct PbrMaterial {
+  base_color: vec4<f32>,
+  // … the other factors, then plain padding members up to
+  // an offset that is a multiple of 16 …
+  uv: array<TextureUv, 5>,
+}
+```
+
+Spell the padding out as members, as the built-in PBR shader does. `@size` and `@align` keep their layout on Vulkan, Metal, DX12 and the browser's WebGPU, where FragmentColor hands the browser WGSL that keeps them, and the GL backends, WebGL2 among them, refuse them, since a std140 block can't hold such a layout.
+
 - Four `vec4<f32>` vertex inputs named `model_0` to `model_3`, the columns of
   the Model's transform. The renderer fills them at draw time from each
   Model's `set_transform`, `translate`, `rotate` and `scale`. The PBR shader
   reads them at locations 3 to 6. Any free locations work, since the renderer
-  matches these inputs by name.
+  matches these inputs by name. It fills them for each visible Model that a
+  pass draws through this shader. A Model's Mesh that no visible Model in the
+  pass draws through it, such as a hidden Model's, or one in another pass that
+  shares the Material, draws nothing. A shader that draws none of the pass's
+  Models and reads these columns for a Model's Mesh, such as this Material's
+  shader rendered on its own, makes `Renderer::render` return
+  `MeshError::InvalidInstance`, which names the columns the shader reads.
 
 Without these the Material still draws. The factor setters do nothing, and
 every Model draws at its Mesh's own coordinates, whatever its transform.
+
+#### Lights
+
+A render shader takes the [Lights](/api/scene/light)
+that reach it by declaring a root named `lights`, and optionally one named
+`light_grid`, at any group and binding. The member names, types and offsets
+must match the ones below, and so must the struct's size, so no `@align` may
+raise its alignment. The struct names are free. The renderer fills
+both roots in render passes, so they don't appear in `list_uniforms` or
+`list_keys`, and `set` and `get` reach only `lights.ambient`.
+
+```wgsl
+struct Light {                   // 64 bytes
+  kind: u32,                     // 0 directional, 1 point, 2 spot
+  intensity: f32,
+  range: f32,                    // 0 reaches everywhere
+  inner_cone_cos: f32,
+  position: vec3<f32>,
+  outer_cone_cos: f32,
+  direction: vec3<f32>,
+  color: vec3<f32>,
+}
+struct LightGrid {               // 112 bytes
+  view_proj: mat4x4<f32>,
+  depth_plane: vec4<f32>,
+  size: vec3<u32>,
+  slicing: u32,                  // 0 no grid, 1 logarithmic, 2 linear
+  slice_scale: f32,
+  slice_bias: f32,
+  reach: f32,
+}
+struct Lights {
+  count: u32,
+  global_count: u32,
+  promoted_count: u32,
+  ambient: vec3<f32>,
+  grid: LightGrid,               // at byte 32
+  lights: array<Light>,          // at byte 144
+}
+@group(0) @binding(1) var<storage, read> lights: Lights;
+@group(0) @binding(2) var<storage, read> light_grid: array<u32>;
+```
+
+A storage `lights` with another layout, or a `light_grid` of another type,
+fails `Shader::new` with `ShaderError::TypeMismatch`, which spells out the
+layout above.
+
+`lights.lights` holds `lights.count` lights: first the `global_count` lights
+without a range, then the lights with one. A shader without `light_grid`
+loops over all of them. With it, a fragment reads only the lights that
+reach its cluster. `light_grid` starts with `promoted_count` light indices
+that every cluster reads, and cluster `c` follows at word
+`promoted_count + 2 * c`, as the word where its index list starts and the
+length of that list. Copy `light_cell` and `accumulate_lights` below and
+write a `shade_light` for your shading model:
+
+```wgsl
+const GRID_MARGIN: f32 = 0.015625;
+const CELL_EVERY: u32 = 0xffffffffu;
+const CELL_GLOBAL: u32 = 0xfffffffeu;
+
+// The cluster that holds `world`, or CELL_GLOBAL past every light's reach,
+// or CELL_EVERY with no grid, behind the grid's eye, or outside the grid.
+fn light_cell(world: vec3<f32>) -> u32 {
+  let grid = lights.grid;
+  if (grid.slicing == 0u) {
+    return CELL_EVERY;
+  }
+  let point = vec4<f32>(world, 1.0);
+  let depth = dot(grid.depth_plane, point);
+  if (depth > grid.reach) {
+    return CELL_GLOBAL;
+  }
+  let clip = grid.view_proj * point;
+  if (clip.w <= 0.0) {
+    return CELL_EVERY;
+  }
+  let size = vec3<f32>(grid.size);
+  var slice = depth * grid.slice_scale + grid.slice_bias;
+  if (grid.slicing == 1u) {
+    slice = log2(max(depth, 1.0e-30)) * grid.slice_scale + grid.slice_bias;
+  }
+  let cell = vec3<f32>((clip.xy / clip.w * 0.5 + 0.5) * size.xy, slice);
+  if (any(cell < vec3<f32>(-GRID_MARGIN)) || any(cell > size + GRID_MARGIN)) {
+    return CELL_EVERY;
+  }
+  let index = min(vec3<u32>(max(cell, vec3<f32>(0.0))), grid.size - vec3<u32>(1u));
+  return index.x + grid.size.x * (index.y + grid.size.y * index.z);
+}
+
+// Every light that reaches `world`, shaded by your `shade_light`.
+fn accumulate_lights(world: vec3<f32>, normal: vec3<f32>) -> vec3<f32> {
+  var total = vec3<f32>(0.0);
+  let cell = light_cell(world);
+  if (cell == CELL_EVERY) {
+    for (var i = 0u; i < lights.count; i++) {
+      total += shade_light(lights.lights[i], world, normal);
+    }
+    return total;
+  }
+  for (var i = 0u; i < lights.global_count; i++) {
+    total += shade_light(lights.lights[i], world, normal);
+  }
+  if (cell == CELL_GLOBAL) {
+    return total;
+  }
+  for (var k = 0u; k < lights.promoted_count; k++) {
+    total += shade_light(lights.lights[light_grid[k]], world, normal);
+  }
+  let entry = lights.promoted_count + 2u * cell;
+  let first = light_grid[entry];
+  for (var k = 0u; k < light_grid[entry + 1u]; k++) {
+    total += shade_light(lights.lights[light_grid[first + k]], world, normal);
+  }
+  return total;
+}
+```
+
+A light with a range adds nothing past it, and a spot light adds nothing
+outside its outer cone, so `shade_light` must honor both for the grid to
+stay exact. The `Material::pbr` shader's `shade_light` uses the
+`KHR_lights_punctual` falloff, `(1 - (d / range)^4)` scaled by the inverse
+square distance.
+
+On every OpenGL backend, WebGL2 included, and on a device without compute
+shaders or storage buffers in fragment shaders, the same source runs with
+`lights` turned into a uniform block that holds as many lights as the device
+allows, and with no grid, so `light_cell` returns `CELL_EVERY`. A shader that
+calls `arrayLength` on either root can't run there, and `Renderer::render`
+refuses it with `RendererError::FeatureError` before it takes a frame. Loop to
+`lights.count` instead.
+
+##### A fixed-size light array
+
+A uniform `LightArray` of a fixed length `N` fills on every device too,
+with up to `N` lights:
+
+```wgsl
+struct LightArray { count: u32, ambient: vec3<f32>, lights: array<Light, N> }
+@group(0) @binding(1) var<uniform> lights: LightArray;
+```
+
+A shader of this shape takes at most `N` lights, and the `add` past them
+fails with `PassError::LightCapReached { cap: N }`. `lights.lights[i]` holds
+the lights in the order they reached the shader. A uniform `lights` that
+matches neither shape stays an ordinary uniform, which `set` reaches, and
+logs a warning.
 
 #### Example
 
@@ -691,12 +924,18 @@ every Model draws at its Mesh's own coordinates, whatever its transform.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Material, Shader};
 
-let wireframe = Shader::new(r#"
+let flat = Shader::new(r#"
     struct Camera { view_proj: mat4x4<f32>, position: vec3<f32> }
+    struct Light { kind: u32, intensity: f32, range: f32, inner_cone_cos: f32,
+        position: vec3<f32>, outer_cone_cos: f32, direction: vec3<f32>, color: vec3<f32> }
+    struct LightGrid { view_proj: mat4x4<f32>, depth_plane: vec4<f32>, size: vec3<u32>,
+        slicing: u32, slice_scale: f32, slice_bias: f32, reach: f32 }
+    struct Lights { count: u32, global_count: u32, promoted_count: u32,
+        ambient: vec3<f32>, grid: LightGrid, lights: array<Light> }
     @group(0) @binding(0) var<uniform> camera: Camera;
+    @group(0) @binding(1) var<storage, read> lights: Lights;
 
     @vertex
     fn vs_main(
@@ -710,16 +949,17 @@ let wireframe = Shader::new(r#"
         return camera.view_proj * model * vec4<f32>(p, 1.0);
     }
     @fragment fn fs_main() -> @location(0) vec4<f32> {
-        return vec4<f32>(0.0, 1.0, 0.4, 1.0);
+        var glow = lights.ambient;
+        for (var i = 0u; i < lights.count; i++) {
+            glow += lights.lights[i].color * lights.lights[i].intensity * 0.1;
+        }
+        return vec4<f32>(glow, 1.0);
     }
 "#)?;
 
-let wire_mat = Material::custom(wireframe);
-let _ = wire_mat;
-Ok(())
-}
+let flat_mat = Material::custom(flat);
 `}
-lang="rust" meta="collapse={1-1, 25-27}"
+lang="rust"
 />
 
 </TabItem>
@@ -729,10 +969,17 @@ lang="rust" meta="collapse={1-1, 25-27}"
 code={`
 import { Material, Shader } from "fragmentcolor";
 
-const wireframe = new Shader(\`
+const flat = new Shader(\`
 
     struct Camera { view_proj: mat4x4<f32>, position: vec3<f32> }
+    struct Light { kind: u32, intensity: f32, range: f32, inner_cone_cos: f32,
+        position: vec3<f32>, outer_cone_cos: f32, direction: vec3<f32>, color: vec3<f32> }
+    struct LightGrid { view_proj: mat4x4<f32>, depth_plane: vec4<f32>, size: vec3<u32>,
+        slicing: u32, slice_scale: f32, slice_bias: f32, reach: f32 }
+    struct Lights { count: u32, global_count: u32, promoted_count: u32,
+        ambient: vec3<f32>, grid: LightGrid, lights: array<Light> }
     @group(0) @binding(0) var<uniform> camera: Camera;
+    @group(0) @binding(1) var<storage, read> lights: Lights;
 
     @vertex
     fn vs_main(
@@ -746,12 +993,16 @@ const wireframe = new Shader(\`
         return camera.view_proj * model * vec4<f32>(p, 1.0);
     }
     @fragment fn fs_main() -> @location(0) vec4<f32> {
-        return vec4<f32>(0.0, 1.0, 0.4, 1.0);
+        var glow = lights.ambient;
+        for (var i = 0u; i < lights.count; i++) {
+            glow += lights.lights[i].color * lights.lights[i].intensity * 0.1;
+        }
+        return vec4<f32>(glow, 1.0);
     }
 
 \`);
 
-const wire_mat = Material.custom(wireframe);
+const flat_mat = Material.custom(flat);
 `}
 lang="js"
 />
@@ -763,9 +1014,16 @@ lang="js"
 code={`
 from fragmentcolor import Material, Shader
 
-wireframe = Shader("""
+flat = Shader("""
     struct Camera { view_proj: mat4x4<f32>, position: vec3<f32> }
+    struct Light { kind: u32, intensity: f32, range: f32, inner_cone_cos: f32,
+        position: vec3<f32>, outer_cone_cos: f32, direction: vec3<f32>, color: vec3<f32> }
+    struct LightGrid { view_proj: mat4x4<f32>, depth_plane: vec4<f32>, size: vec3<u32>,
+        slicing: u32, slice_scale: f32, slice_bias: f32, reach: f32 }
+    struct Lights { count: u32, global_count: u32, promoted_count: u32,
+        ambient: vec3<f32>, grid: LightGrid, lights: array<Light> }
     @group(0) @binding(0) var<uniform> camera: Camera;
+    @group(0) @binding(1) var<storage, read> lights: Lights;
 
     @vertex
     fn vs_main(
@@ -779,12 +1037,16 @@ wireframe = Shader("""
         return camera.view_proj * model * vec4<f32>(p, 1.0);
     }
     @fragment fn fs_main() -> @location(0) vec4<f32> {
-        return vec4<f32>(0.0, 1.0, 0.4, 1.0);
+        var glow = lights.ambient;
+        for (var i = 0u; i < lights.count; i++) {
+            glow += lights.lights[i].color * lights.lights[i].intensity * 0.1;
+        }
+        return vec4<f32>(glow, 1.0);
     }
 
 """)
 
-wire_mat = Material.custom(wireframe)
+flat_mat = Material.custom(flat)
 `}
 lang="python"
 />
@@ -796,9 +1058,16 @@ lang="python"
 code={`
 import FragmentColor
 
-let wireframe = try Shader("""
+let flat = try Shader("""
     struct Camera { view_proj: mat4x4<f32>, position: vec3<f32> }
+    struct Light { kind: u32, intensity: f32, range: f32, inner_cone_cos: f32,
+        position: vec3<f32>, outer_cone_cos: f32, direction: vec3<f32>, color: vec3<f32> }
+    struct LightGrid { view_proj: mat4x4<f32>, depth_plane: vec4<f32>, size: vec3<u32>,
+        slicing: u32, slice_scale: f32, slice_bias: f32, reach: f32 }
+    struct Lights { count: u32, global_count: u32, promoted_count: u32,
+        ambient: vec3<f32>, grid: LightGrid, lights: array<Light> }
     @group(0) @binding(0) var<uniform> camera: Camera;
+    @group(0) @binding(1) var<storage, read> lights: Lights;
 
     @vertex
     fn vs_main(
@@ -812,12 +1081,16 @@ let wireframe = try Shader("""
         return camera.view_proj * model * vec4<f32>(p, 1.0);
     }
     @fragment fn fs_main() -> @location(0) vec4<f32> {
-        return vec4<f32>(0.0, 1.0, 0.4, 1.0);
+        var glow = lights.ambient;
+        for (var i = 0u; i < lights.count; i++) {
+            glow += lights.lights[i].color * lights.lights[i].intensity * 0.1;
+        }
+        return vec4<f32>(glow, 1.0);
     }
 
 """)
 
-let wire_mat = Material.custom(wireframe)
+let flat_mat = Material.custom(flat)
 `}
 lang="swift"
 />
@@ -829,9 +1102,16 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
-val wireframe = Shader("""
+val flat = Shader("""
     struct Camera { view_proj: mat4x4<f32>, position: vec3<f32> }
+    struct Light { kind: u32, intensity: f32, range: f32, inner_cone_cos: f32,
+        position: vec3<f32>, outer_cone_cos: f32, direction: vec3<f32>, color: vec3<f32> }
+    struct LightGrid { view_proj: mat4x4<f32>, depth_plane: vec4<f32>, size: vec3<u32>,
+        slicing: u32, slice_scale: f32, slice_bias: f32, reach: f32 }
+    struct Lights { count: u32, global_count: u32, promoted_count: u32,
+        ambient: vec3<f32>, grid: LightGrid, lights: array<Light> }
     @group(0) @binding(0) var<uniform> camera: Camera;
+    @group(0) @binding(1) var<storage, read> lights: Lights;
 
     @vertex
     fn vs_main(
@@ -845,12 +1125,16 @@ val wireframe = Shader("""
         return camera.view_proj * model * vec4<f32>(p, 1.0);
     }
     @fragment fn fs_main() -> @location(0) vec4<f32> {
-        return vec4<f32>(0.0, 1.0, 0.4, 1.0);
+        var glow = lights.ambient;
+        for (var i = 0u; i < lights.count; i++) {
+            glow += lights.lights[i].color * lights.lights[i].intensity * 0.1;
+        }
+        return vec4<f32>(glow, 1.0);
     }
 
 """)
 
-val wire_mat = Material.custom(wireframe)
+val flat_mat = Material.custom(flat)
 `}
 lang="kotlin"
 />
@@ -886,7 +1170,6 @@ values.
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{AlphaMode, Material, Renderer};
 
 let renderer = Renderer::new();
@@ -898,12 +1181,8 @@ let leaf = Material::pbr()
 
 // The default is single-sided, with back-face culling on.
 let solid_mesh = Material::pbr().double_sided(false);
-let _ = (leaf, solid_mesh);
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 13-16}"
+lang="rust"
 />
 
 </TabItem>
@@ -997,19 +1276,14 @@ Maps to the `material.emissive` uniform. Default is `[0, 0, 0]`.
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Material, Renderer};
 
 let renderer = Renderer::new();
 let lava = Material::pbr()
     .base_color([0.1, 0.05, 0.0, 1.0])
     .emissive([1.5, 0.4, 0.1]);
-let _ = lava;
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 8-11}"
+lang="rust"
 />
 
 </TabItem>
@@ -1075,10 +1349,14 @@ lang="kotlin"
 
 Bind an emissive map to the canonical `emissive_map` slot. The default PBR
 shader samples it in `fs_main` and multiplies by the factor: per-fragment
-emission is `material.emissive * textureSample(emissive_map, sampler, in.uv).rgb`.
+emission is `material.emissive * textureSample(emissive_map, pbr_sampler, uv).rgb`,
+where `uv` is `slot_uv(material.uv[4], in.uv0, in.uv1)`, the slot's own UV
+set through its own transform.
 
 Unset, this slot resolves to a 1×1 white default so the multiplied
 emission falls back to the `material.emissive` factor as-is.
+
+Takes the inputs [`Material::base_color_texture`](/api/scene/material#base_color_texture) takes, spelled as each language's `create_texture` spells them: a `Texture`, or encoded bytes, raw pixels with their size, bytes with a format or with every option, a path or a URL, alone or with a format or every option, or a `Mipmap`, alone or with options. The Material keeps a source as a map, and each `Renderer` uploads a copy of its own when it loads the scene. `base_color_texture` tells how a map loads, what it holds in memory and how it fails.
 
 #### Example
 
@@ -1087,26 +1365,20 @@ emission falls back to the `material.emissive` factor as-is.
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Material, Renderer};
+use fragmentcolor::Material;
 
-let renderer = Renderer::new();
+// Raw pixels with their size upload when the scene loads.
 let glow_bytes: Vec<u8> = vec![
     255, 0, 0, 255,
-    255,   0, 0, 255,
-    255,   0, 0, 255,
-    255,   0, 0, 255,
+    255, 0, 0, 255,
+    255, 0, 0, 255,
+    255, 0, 0, 255,
 ];
-let glow = renderer.create_texture((glow_bytes, [2, 2])).await?;
 let mat = Material::pbr()
     .emissive([0.8, 0.0, 0.0])
-    .emissive_texture(&glow);
-let _ = mat;
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+    .emissive_texture((glow_bytes, [2, 2]));
 `}
-lang="rust" meta="collapse={1-1, 15-18}"
+lang="rust"
 />
 
 </TabItem>
@@ -1114,12 +1386,11 @@ lang="rust" meta="collapse={1-1, 15-18}"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Material, Renderer } from "fragmentcolor";
+import { Material } from "fragmentcolor";
 
-const renderer = new Renderer();
-const glow_bytes = [ 255, 0, 0, 255, 255,   0, 0, 255, 255,   0, 0, 255, 255,   0, 0, 255, ];
-const glow = await renderer.createTexture(glow_bytes, [2, 2]);
-const mat = Material.pbr().emissive([0.8, 0.0, 0.0]).emissiveTexture(glow);
+// Raw pixels with their size upload when the scene loads.
+const glow_bytes = [ 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, ];
+const mat = Material.pbr().emissive([0.8, 0.0, 0.0]).emissiveTexture(glow_bytes, [2, 2]);
 `}
 lang="js"
 />
@@ -1129,17 +1400,16 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Material, Renderer
+from fragmentcolor import Material
 
-renderer = Renderer()
+# Raw pixels with their size upload when the scene loads.
 glow_bytes = [
     255, 0, 0, 255,
-    255,   0, 0, 255,
-    255,   0, 0, 255,
-    255,   0, 0, 255,
+    255, 0, 0, 255,
+    255, 0, 0, 255,
+    255, 0, 0, 255,
 ]
-glow = renderer.create_texture(glow_bytes, size=[2, 2])
-mat = Material.pbr().emissive([0.8, 0.0, 0.0]).emissive_texture(glow)
+mat = Material.pbr().emissive([0.8, 0.0, 0.0]).emissive_texture(glow_bytes, size=[2, 2])
 `}
 lang="python"
 />
@@ -1151,15 +1421,14 @@ lang="python"
 code={`
 import FragmentColor
 
-let renderer = Renderer()
+// Raw pixels with their size upload when the scene loads.
 let glow_bytes = [
     255, 0, 0, 255,
-    255,   0, 0, 255,
-    255,   0, 0, 255,
-    255,   0, 0, 255,
+    255, 0, 0, 255,
+    255, 0, 0, 255,
+    255, 0, 0, 255,
 ]
-let glow = try await renderer.createTexture(glow_bytes, [2, 2])
-let mat = try Material.pbr().emissive([0.8, 0.0, 0.0]).emissiveTexture(glow)
+let mat = try Material.pbr().emissive([0.8, 0.0, 0.0]).emissiveTexture(glow_bytes, [2, 2])
 `}
 lang="swift"
 />
@@ -1171,10 +1440,9 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
-val renderer = Renderer()
+// Raw pixels with their size upload when the scene loads.
 val glow_bytes = listOf(255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255)
-val glow = renderer.createTexture(glow_bytes, listOf(2u, 2u))
-val mat = Material.pbr().emissive(listOf(0.8f, 0.0f, 0.0f)).emissiveTexture(glow)
+val mat = Material.pbr().emissive(listOf(0.8f, 0.0f, 0.0f)).emissiveTexture(glow_bytes, listOf(2u, 2u))
 `}
 lang="kotlin"
 />
@@ -1204,15 +1472,11 @@ under the factor-driven defaults.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Material;
 
 let chrome = Material::pbr().metallic(1.0).roughness(0.05);
-let _chrome = chrome;
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 5-7}"
+lang="rust"
 />
 
 </TabItem>
@@ -1281,6 +1545,8 @@ Unset, this slot resolves to a 1×1 default with `(R=0, G=1, B=1, A=1)` so
 the factor multiplication passes both `material.metallic` and
 `material.roughness` through unchanged.
 
+Takes the inputs [`Material::base_color_texture`](/api/scene/material#base_color_texture) takes, spelled as each language's `create_texture` spells them: a `Texture`, or encoded bytes, raw pixels with their size, bytes with a format or with every option, a path or a URL, alone or with a format or every option, or a `Mipmap`, alone or with options. The Material keeps a source as a map, and each `Renderer` uploads a copy of its own when it loads the scene. `base_color_texture` tells how a map loads, what it holds in memory and how it fails.
+
 #### Example
 
 <Tabs>
@@ -1288,24 +1554,18 @@ the factor multiplication passes both `material.metallic` and
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Material, Renderer};
+use fragmentcolor::Material;
 
-let renderer = Renderer::new();
+// Raw pixels with their size upload when the scene loads.
 let mr_map_bytes: Vec<u8> = vec![
     0, 200, 50, 255,
-    0,   240, 80, 255,
-    0,   180, 30, 255,
-    0,   220, 60, 255,
+    0, 240, 80, 255,
+    0, 180, 30, 255,
+    0, 220, 60, 255,
 ];
-let mr_map = renderer.create_texture((mr_map_bytes, [2, 2])).await?;
-let mat = Material::pbr().metallic_roughness_texture(&mr_map);
-let _ = mat;
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+let mat = Material::pbr().metallic_roughness_texture((mr_map_bytes, [2, 2]));
 `}
-lang="rust" meta="collapse={1-1, 13-16}"
+lang="rust"
 />
 
 </TabItem>
@@ -1313,12 +1573,11 @@ lang="rust" meta="collapse={1-1, 13-16}"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Material, Renderer } from "fragmentcolor";
+import { Material } from "fragmentcolor";
 
-const renderer = new Renderer();
-const mr_map_bytes = [ 0, 200, 50, 255, 0,   240, 80, 255, 0,   180, 30, 255, 0,   220, 60, 255, ];
-const mr_map = await renderer.createTexture(mr_map_bytes, [2, 2]);
-const mat = Material.pbr().metallicRoughnessTexture(mr_map);
+// Raw pixels with their size upload when the scene loads.
+const mr_map_bytes = [ 0, 200, 50, 255, 0, 240, 80, 255, 0, 180, 30, 255, 0, 220, 60, 255, ];
+const mat = Material.pbr().metallicRoughnessTexture(mr_map_bytes, [2, 2]);
 `}
 lang="js"
 />
@@ -1328,17 +1587,16 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Material, Renderer
+from fragmentcolor import Material
 
-renderer = Renderer()
+# Raw pixels with their size upload when the scene loads.
 mr_map_bytes = [
     0, 200, 50, 255,
-    0,   240, 80, 255,
-    0,   180, 30, 255,
-    0,   220, 60, 255,
+    0, 240, 80, 255,
+    0, 180, 30, 255,
+    0, 220, 60, 255,
 ]
-mr_map = renderer.create_texture(mr_map_bytes, size=[2, 2])
-mat = Material.pbr().metallic_roughness_texture(mr_map)
+mat = Material.pbr().metallic_roughness_texture(mr_map_bytes, size=[2, 2])
 `}
 lang="python"
 />
@@ -1350,15 +1608,14 @@ lang="python"
 code={`
 import FragmentColor
 
-let renderer = Renderer()
+// Raw pixels with their size upload when the scene loads.
 let mr_map_bytes = [
     0, 200, 50, 255,
-    0,   240, 80, 255,
-    0,   180, 30, 255,
-    0,   220, 60, 255,
+    0, 240, 80, 255,
+    0, 180, 30, 255,
+    0, 220, 60, 255,
 ]
-let mr_map = try await renderer.createTexture(mr_map_bytes, [2, 2])
-let mat = Material.pbr().metallicRoughnessTexture(mr_map)
+let mat = try Material.pbr().metallicRoughnessTexture(mr_map_bytes, [2, 2])
 `}
 lang="swift"
 />
@@ -1370,10 +1627,9 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
-val renderer = Renderer()
+// Raw pixels with their size upload when the scene loads.
 val mr_map_bytes = listOf(0, 200, 50, 255, 0, 240, 80, 255, 0, 180, 30, 255, 0, 220, 60, 255)
-val mr_map = renderer.createTexture(mr_map_bytes, listOf(2u, 2u))
-val mat = Material.pbr().metallicRoughnessTexture(mr_map)
+val mat = Material.pbr().metallicRoughnessTexture(mr_map_bytes, listOf(2u, 2u))
 `}
 lang="kotlin"
 />
@@ -1402,15 +1658,11 @@ perturbation by this value before combining with the world-space normal.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Material;
 
 let detailed = Material::pbr().normal_scale(1.5);
-let _detailed = detailed;
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 5-7}"
+lang="rust"
 />
 
 </TabItem>
@@ -1481,6 +1733,8 @@ Unset, this slot resolves to a 1×1 flat tangent-space default
 `(128, 128, 255, 255)` so the decoded normal is `(0, 0, 1)` and the world
 normal passes through unchanged.
 
+Takes the inputs [`Material::base_color_texture`](/api/scene/material#base_color_texture) takes, spelled as each language's `create_texture` spells them: a `Texture`, or encoded bytes, raw pixels with their size, bytes with a format or with every option, a path or a URL, alone or with a format or every option, or a `Mipmap`, alone or with options. The Material keeps a source as a map, and each `Renderer` uploads a copy of its own when it loads the scene. `base_color_texture` tells how a map loads, what it holds in memory and how it fails.
+
 #### Example
 
 <Tabs>
@@ -1488,24 +1742,20 @@ normal passes through unchanged.
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Material, Renderer};
+use fragmentcolor::Material;
 
-let renderer = Renderer::new();
+// Raw pixels with their size upload when the scene loads.
 let normal_map_bytes: Vec<u8> = vec![
     128, 128, 255, 255,
-    128,   128, 255, 255,
-    128,   128, 255, 255,
-    128,   128, 255, 255,
+    128, 128, 255, 255,
+    128, 128, 255, 255,
+    128, 128, 255, 255,
 ];
-let normal_map = renderer.create_texture((normal_map_bytes, [2, 2])).await?;
-let mat = Material::pbr().normal_texture(&normal_map).normal_scale(1.2);
-let _ = mat;
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+let mat = Material::pbr()
+    .normal_texture((normal_map_bytes, [2, 2]))
+    .normal_scale(1.2);
 `}
-lang="rust" meta="collapse={1-1, 13-16}"
+lang="rust"
 />
 
 </TabItem>
@@ -1513,12 +1763,11 @@ lang="rust" meta="collapse={1-1, 13-16}"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Material, Renderer } from "fragmentcolor";
+import { Material } from "fragmentcolor";
 
-const renderer = new Renderer();
-const normal_map_bytes = [ 128, 128, 255, 255, 128,   128, 255, 255, 128,   128, 255, 255, 128,   128, 255, 255, ];
-const normal_map = await renderer.createTexture(normal_map_bytes, [2, 2]);
-const mat = Material.pbr().normalTexture(normal_map).normalScale(1.2);
+// Raw pixels with their size upload when the scene loads.
+const normal_map_bytes = [ 128, 128, 255, 255, 128, 128, 255, 255, 128, 128, 255, 255, 128, 128, 255, 255, ];
+const mat = Material.pbr().normalTexture(normal_map_bytes, [2, 2]).normalScale(1.2);
 `}
 lang="js"
 />
@@ -1528,17 +1777,16 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Material, Renderer
+from fragmentcolor import Material
 
-renderer = Renderer()
+# Raw pixels with their size upload when the scene loads.
 normal_map_bytes = [
     128, 128, 255, 255,
-    128,   128, 255, 255,
-    128,   128, 255, 255,
-    128,   128, 255, 255,
+    128, 128, 255, 255,
+    128, 128, 255, 255,
+    128, 128, 255, 255,
 ]
-normal_map = renderer.create_texture(normal_map_bytes, size=[2, 2])
-mat = Material.pbr().normal_texture(normal_map).normal_scale(1.2)
+mat = Material.pbr().normal_texture(normal_map_bytes, size=[2, 2]).normal_scale(1.2)
 `}
 lang="python"
 />
@@ -1550,15 +1798,14 @@ lang="python"
 code={`
 import FragmentColor
 
-let renderer = Renderer()
+// Raw pixels with their size upload when the scene loads.
 let normal_map_bytes = [
     128, 128, 255, 255,
-    128,   128, 255, 255,
-    128,   128, 255, 255,
-    128,   128, 255, 255,
+    128, 128, 255, 255,
+    128, 128, 255, 255,
+    128, 128, 255, 255,
 ]
-let normal_map = try await renderer.createTexture(normal_map_bytes, [2, 2])
-let mat = Material.pbr().normalTexture(normal_map).normalScale(1.2)
+let mat = try Material.pbr().normalTexture(normal_map_bytes, [2, 2]).normalScale(1.2)
 `}
 lang="swift"
 />
@@ -1570,10 +1817,9 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
-val renderer = Renderer()
+// Raw pixels with their size upload when the scene loads.
 val normal_map_bytes = listOf(128, 128, 255, 255, 128, 128, 255, 255, 128, 128, 255, 255, 128, 128, 255, 255)
-val normal_map = renderer.createTexture(normal_map_bytes, listOf(2u, 2u))
-val mat = Material.pbr().normalTexture(normal_map).normalScale(1.2f)
+val mat = Material.pbr().normalTexture(normal_map_bytes, listOf(2u, 2u)).normalScale(1.2f)
 `}
 lang="kotlin"
 />
@@ -1602,15 +1848,11 @@ the result into the diffuse term.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Material;
 
 let crevices = Material::pbr().occlusion_strength(0.8);
-let _crevices = crevices;
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 5-7}"
+lang="rust"
 />
 
 </TabItem>
@@ -1678,6 +1920,8 @@ default PBR shader, then multiplied into the diffuse term.
 Unset, this slot resolves to a 1×1 white default so the multiplied
 occlusion factor is `1.0` and no darkening is applied.
 
+Takes the inputs [`Material::base_color_texture`](/api/scene/material#base_color_texture) takes, spelled as each language's `create_texture` spells them: a `Texture`, or encoded bytes, raw pixels with their size, bytes with a format or with every option, a path or a URL, alone or with a format or every option, or a `Mipmap`, alone or with options. The Material keeps a source as a map, and each `Renderer` uploads a copy of its own when it loads the scene. `base_color_texture` tells how a map loads, what it holds in memory and how it fails.
+
 #### Example
 
 <Tabs>
@@ -1685,24 +1929,18 @@ occlusion factor is `1.0` and no darkening is applied.
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Material, Renderer};
+use fragmentcolor::Material;
 
-let renderer = Renderer::new();
+// Raw pixels with their size upload when the scene loads.
 let ao_bytes: Vec<u8> = vec![
     220, 0, 0, 255,
-    180,   0, 0, 255,
-    200,   0, 0, 255,
-    160,   0, 0, 255,
+    180, 0, 0, 255,
+    200, 0, 0, 255,
+    160, 0, 0, 255,
 ];
-let ao = renderer.create_texture((ao_bytes, [2, 2])).await?;
-let mat = Material::pbr().occlusion_texture(&ao);
-let _ = mat;
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+let mat = Material::pbr().occlusion_texture((ao_bytes, [2, 2]));
 `}
-lang="rust" meta="collapse={1-1, 13-16}"
+lang="rust"
 />
 
 </TabItem>
@@ -1710,12 +1948,11 @@ lang="rust" meta="collapse={1-1, 13-16}"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Material, Renderer } from "fragmentcolor";
+import { Material } from "fragmentcolor";
 
-const renderer = new Renderer();
-const ao_bytes = [ 220, 0, 0, 255, 180,   0, 0, 255, 200,   0, 0, 255, 160,   0, 0, 255, ];
-const ao = await renderer.createTexture(ao_bytes, [2, 2]);
-const mat = Material.pbr().occlusionTexture(ao);
+// Raw pixels with their size upload when the scene loads.
+const ao_bytes = [ 220, 0, 0, 255, 180, 0, 0, 255, 200, 0, 0, 255, 160, 0, 0, 255, ];
+const mat = Material.pbr().occlusionTexture(ao_bytes, [2, 2]);
 `}
 lang="js"
 />
@@ -1725,17 +1962,16 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Material, Renderer
+from fragmentcolor import Material
 
-renderer = Renderer()
+# Raw pixels with their size upload when the scene loads.
 ao_bytes = [
     220, 0, 0, 255,
-    180,   0, 0, 255,
-    200,   0, 0, 255,
-    160,   0, 0, 255,
+    180, 0, 0, 255,
+    200, 0, 0, 255,
+    160, 0, 0, 255,
 ]
-ao = renderer.create_texture(ao_bytes, size=[2, 2])
-mat = Material.pbr().occlusion_texture(ao)
+mat = Material.pbr().occlusion_texture(ao_bytes, size=[2, 2])
 `}
 lang="python"
 />
@@ -1747,15 +1983,14 @@ lang="python"
 code={`
 import FragmentColor
 
-let renderer = Renderer()
+// Raw pixels with their size upload when the scene loads.
 let ao_bytes = [
     220, 0, 0, 255,
-    180,   0, 0, 255,
-    200,   0, 0, 255,
-    160,   0, 0, 255,
+    180, 0, 0, 255,
+    200, 0, 0, 255,
+    160, 0, 0, 255,
 ]
-let ao = try await renderer.createTexture(ao_bytes, [2, 2])
-let mat = Material.pbr().occlusionTexture(ao)
+let mat = try Material.pbr().occlusionTexture(ao_bytes, [2, 2])
 `}
 lang="swift"
 />
@@ -1767,10 +2002,9 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
-val renderer = Renderer()
+// Raw pixels with their size upload when the scene loads.
 val ao_bytes = listOf(220, 0, 0, 255, 180, 0, 0, 255, 200, 0, 0, 255, 160, 0, 0, 255)
-val ao = renderer.createTexture(ao_bytes, listOf(2u, 2u))
-val mat = Material.pbr().occlusionTexture(ao)
+val mat = Material.pbr().occlusionTexture(ao_bytes, listOf(2u, 2u))
 `}
 lang="kotlin"
 />
@@ -1803,22 +2037,48 @@ The shader uses:
   and Schlick Fresnel.
 - **Lambertian diffuse** with energy conservation against the specular
   Fresnel and metalness.
-- **Up to 32 lights** in the `lights.lights[N]` array (uniform `lights`, with
-  `lights.count` active), one camera (uniform `camera`), and the per-Model
-  transform via the instance-attribute stream.
+- **Clustered lights**: as many lights as the device allows, in the
+  read-only storage roots `lights` and `light_grid` that the renderer fills.
+  Each fragment reads only the lights whose range reaches its cluster, plus
+  every light without a range. See [Light](/api/scene/light)
+  for the cost of each kind and the cap on each device, and
+  [`Material::custom`](/api/scene/material#custom)
+  for the layout of the roots.
+- **One camera** (uniform `camera`), and the per-Model transform via the
+  instance-attribute stream.
 - **glTF 2.0 PBR-MR texture sampling**: five sampled maps (`base_color_map`,
   `metallic_roughness_map`, `normal_map`, `occlusion_map`, `emissive_map`)
   combined with their matching factors per the spec.
+- **Output for the target**: lighting is computed in linear light. On the
+  `Rgba8Unorm` and `Bgra8Unorm` targets FragmentColor creates, which hold
+  colors encoded for display, the shader encodes it as sRGB. An sRGB target
+  encodes on write and a float target keeps linear light for the passes after
+  it, so both get linear light. The renderer picks per pipeline from the
+  target's format, through the shader's `override ENCODE_SRGB: bool`. A custom
+  shader that declares the same override gets the same value.
 
-The vertex inputs the shader expects, in this order:
+The shader reads these vertex inputs from the mesh:
 
-- `@location(0) position : vec3<f32>`, set as `Vertex::new([...])`.
+- `@location(0) position : vec3<f32>`, a 3D position from `Vertex::new([...])` or `Vertex::pbr([...])`.
 - `@location(1) normal   : vec3<f32>`, set as `.set(Vertex::NORMAL, ...)`.
 - `@location(2) uv0      : vec2<f32>`, set as `.set(Vertex::UV0, ...)`.
+- `@location(7) color0   : vec4<f32>`, set as `.set(Vertex::COLOR0, ...)`, which tints the base color.
+- `@location(8) uv1      : vec2<f32>`, set as `.set(Vertex::UV1, ...)`, which the texture slots on UV set 1 sample.
+- `@location(9) tangent  : vec4<f32>`, set as `.set(Vertex::TANGENT, ...)`, with the bitangent sign in `w`.
 
-If your Mesh's first vertex doesn't carry these three properties in this
-order, attaching it to the Material's shader will fail with a layout
-mismatch. Use `Material::custom(...)` to bring your own vertex layout.
+Each input finds its attribute by name, then by the location
+[`Vertex::set`](/api/geometry/vertex#set) gave the
+attribute. A vertex that sets them under these names can set them in any
+order. Locations 3 to 6 hold `model_0` to `model_3`, the columns of the
+Model's transform, which come from the Model rather than the mesh.
+
+The shader has no default for any mesh input. An attribute under another name
+stands in for one when it sits at the input's location and fits its type, and
+a Model fails to attach when an input finds no attribute by either rule. The
+error names the input, or the attribute at the input's location when that
+attribute has the wrong type. `Vertex::pbr` sets every input after the
+position to a neutral value. Use `Material::custom(...)` to bring your own
+vertex layout.
 
 #### Defaults (post-construction)
 
@@ -1838,16 +2098,21 @@ mismatch. Use `Material::custom(...)` to bring your own vertex layout.
 | `emissive_map`               | 1×1 white            |
 | `camera.view_proj`           | identity 4×4         |
 | `camera.position`            | `[0, 0, 0]`          |
-| `light.direction`            | `[0, -1, 0]` (down)  |
-| `light.color`                | `[1, 1, 1]`          |
+| `lights.ambient`             | `[0.03, 0.03, 0.03]` |
+| placeholder light            | white, directional, pointing down `[0, -1, 0]` |
 
-The camera and light are the user's domain, not the Material's. Pass them
-to [`Pass::add`](/api/core/pass#add). The
-typed [Camera](/api/scene/camera) and
-[Light](/api/scene/light) handles seed the matching
-`camera.*` / `light.*` uniforms and propagate any later updates back into
-the Material's shader. Dropping down to `material.shader().set(...)` directly
-is still supported if you need it.
+The placeholder light lights a fresh Material until the first
+[Light](/api/scene/light) reaches its shader,
+and returns once no Light does.
+
+The camera and lights are the user's domain, not the Material's. Pass them
+to [`Pass::add`](/api/core/pass#add). The typed
+[Camera](/api/scene/camera) handle seeds the
+`camera.*` uniforms and propagates later updates into the Material's shader,
+and the renderer packs every Light that reaches the shader at each render.
+`material.shader().set(...)` still sets `camera.*` and `lights.ambient`
+directly. The lights themselves have no keys: `set` and `get` on
+`lights.count` or `lights.lights[i]` return `ShaderError::UniformNotFound`.
 
 #### Example
 
@@ -1856,19 +2121,14 @@ is still supported if you need it.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Material;
 
 let bronze = Material::pbr()
     .base_color([0.8, 0.5, 0.2, 1.0])
     .metallic(1.0)
     .roughness(0.3);
-
-let _bronze = bronze;
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 9-11}"
+lang="rust"
 />
 
 </TabItem>
@@ -1944,17 +2204,12 @@ Maps to the `material.roughness` uniform. Default is `1.0`.
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Material, Renderer};
 
 let renderer = Renderer::new();
 let satin = Material::pbr().roughness(0.35);
-let _ = satin;
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 6-9}"
+lang="rust"
 />
 
 </TabItem>
@@ -2045,17 +2300,14 @@ handles propagate updates live across every absorbed shader.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Material;
 
 // Direct uniform access for a custom field that isn't covered by the
 // Material setters or by Camera / Light.
 let material = Material::pbr();
 material.shader().set("material.alpha_cutoff", 0.25)?;
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 8-9}"
+lang="rust"
 />
 
 </TabItem>
@@ -2125,24 +2377,33 @@ lang="kotlin"
 
 ---
 
-### Material::uv_transform \{#uv_transform\}
+### Material::texture_transform \{#texture_transform\}
 
-Set a global UV transform applied to every map sample. Matches glTF's
+Give one texture slot its own UV transform, the one glTF's
 [`KHR_texture_transform`](https://github.com/KhronosGroup/glTF/tree/main/extensions/2.0/Khronos/KHR_texture_transform)
-composition: scale → rotate → offset, with the result fed to every
-`textureSample` in the PBR fragment shader.
+describes. The slot's UV is scaled first, then rotated, then offset:
 
-- `offset` translates the UV after scale + rotation (`[0, 0]` is no translation)
-- `scale` multiplies the UV first (`[1, 1]` is no scale)
-- `rotation` rotates the scaled UV in radians (positive = counter-clockwise
-  in WGSL's `(u, v)` convention)
+- `scale` multiplies the UV (`[1, 1]` keeps it)
+- `rotation` turns the scaled UV around the origin, in radians. A positive
+  angle turns the UVs counter-clockwise in texture space, where `v` points
+  down, so the image itself turns clockwise
+- `offset` moves the result, in fractions of the texture (`[0, 0]` keeps it)
 
-Defaults to identity (scale `[1, 1]`, rotation `0`, offset `[0, 0]`) so an
-unset Material samples textures untransformed. The transform is shared
-across all five texture slots; per-map transforms (and the per-map
-`texCoord` selector that picks `UV0` vs `UV1`) are out of scope for the
-built-in PBR shader. For glTFs that carry `KHR_texture_transform` only on
-the base-color map (the most common case), the global path is lossless.
+Every slot starts with the identity transform. The transform applies to
+the UV set that
+[`texture_uv`](/api/scene/material#texture_uv)
+picks for the slot.
+[`uv_transform`](/api/scene/material#uv_transform)
+sets one transform on all five slots, and a `texture_transform` after it
+replaces the transform of its slot alone.
+
+Whether a UV past 0 to 1 repeats the texture depends on the sampler. The
+PBR shader samples all five slots with one sampler, which takes the
+options of the first texture the material sets, in `TextureSlot` order:
+base color, metallic-roughness, normal, occlusion, then emissive. A slot
+left at its 1×1 default doesn't count. So a material with only an
+occlusion map tiles it with the occlusion map's own options, and one with
+a clamped base color texture clamps a tiled normal map too.
 
 #### Example
 
@@ -2151,17 +2412,243 @@ the base-color map (the most common case), the global path is lossless.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, TextureSlot};
+
+// Every map spans the surface twice, and the normal map eight times.
+let tiles = Material::pbr()
+    .uv_transform([0.0, 0.0], [2.0, 2.0], 0.0)
+    .texture_transform(TextureSlot::Normal, [0.0, 0.0], [8.0, 8.0], 0.0);
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Material, TextureSlot } from "fragmentcolor";
+
+// Every map spans the surface twice, and the normal map eight times.
+const tiles = Material.pbr().uvTransform([0.0, 0.0], [2.0, 2.0], 0.0).textureTransform(TextureSlot.Normal, [0.0, 0.0], [8.0, 8.0], 0.0);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Material, TextureSlot
+
+# Every map spans the surface twice, and the normal map eight times.
+tiles = Material.pbr().uv_transform([0.0, 0.0], [2.0, 2.0], 0.0).texture_transform(TextureSlot.Normal, [0.0, 0.0], [8.0, 8.0], 0.0)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+// Every map spans the surface twice, and the normal map eight times.
+let tiles = try Material.pbr().uvTransform([0.0, 0.0], [2.0, 2.0], 0.0).textureTransform(TextureSlot.normal, [0.0, 0.0], [8.0, 8.0], 0.0)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+// Every map spans the surface twice, and the normal map eight times.
+val tiles = Material.pbr().uvTransform(listOf(0.0f, 0.0f), listOf(2.0f, 2.0f), 0.0f).textureTransform(TextureSlot.NORMAL, listOf(0.0f, 0.0f), listOf(8.0f, 8.0f), 0.0f)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Material::texture_uv \{#texture_uv\}
+
+Pick the vertex UV set one texture slot samples: `0` reads `Vertex::UV0`
+and `1` reads `Vertex::UV1`. glTF calls this choice `texCoord`. Baked
+lighting and occlusion often live on a second UV layout, apart from the
+tiled UVs of the color maps. Every slot starts on set 0.
+
+A set other than 0 or 1 returns `MaterialError::UvSet` and keeps the
+slot's set. JavaScript throws an `Error` named `MaterialError`, Python raises `MaterialError`, a
+`FragmentColorError` that is also a `ValueError`, Swift throws
+`FragmentColorError`, and Kotlin throws `FragmentColorException`. The set
+is a count like any other: JavaScript throws for a fraction or a negative
+number, and Python takes an `int`, raising `TypeError` for a float and
+`InvalidInputError` for an int below 0 or past `2**32 - 1`.
+
+The PBR shader reads `UV1` from every vertex, and a mesh whose vertices
+lack it fails to attach with an error that names `uv1`. `Vertex::pbr`
+seeds `UV1` at `[0, 0]`, so a slot on set 1 reads that one point until
+the mesh sets its own. `Scene::load` gives a primitive without
+`TEXCOORD_1` its `TEXCOORD_0` values as `UV1`, so set 1 reads the same UVs
+as set 0 there.
+
+The slot's
+[`texture_transform`](/api/scene/material#texture_transform)
+applies to whichever set it reads.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::{Material, Mesh, TextureSlot, Vertex};
+
+let mesh = Mesh::new();
+mesh.add_vertices([
+    Vertex::pbr([0.0, 0.5, 0.0])
+        .set(Vertex::UV0, [0.5, 1.0])
+        .set(Vertex::UV1, [0.25, 0.75]),
+    Vertex::pbr([-0.5, -0.5, 0.0])
+        .set(Vertex::UV0, [0.0, 0.0])
+        .set(Vertex::UV1, [0.0, 0.5]),
+    Vertex::pbr([0.5, -0.5, 0.0])
+        .set(Vertex::UV0, [1.0, 0.0])
+        .set(Vertex::UV1, [0.5, 0.5]),
+]);
+
+// The occlusion map follows the second UV layout.
+let material = Material::pbr().texture_uv(TextureSlot::Occlusion, 1)?;
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Material, Mesh, TextureSlot, Vertex } from "fragmentcolor";
+
+const mesh = new Mesh();
+mesh.addVertices([ Vertex.pbr([0.0, 0.5, 0.0]) .set(Vertex.UV0, [0.5, 1.0]) .set(Vertex.UV1, [0.25, 0.75]), Vertex.pbr([-0.5, -0.5, 0.0]) .set(Vertex.UV0, [0.0, 0.0]) .set(Vertex.UV1, [0.0, 0.5]), Vertex.pbr([0.5, -0.5, 0.0]) .set(Vertex.UV0, [1.0, 0.0]) .set(Vertex.UV1, [0.5, 0.5]), ]);
+
+// The occlusion map follows the second UV layout.
+const material = Material.pbr().textureUv(TextureSlot.Occlusion, 1);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Material, Mesh, TextureSlot, Vertex
+
+mesh = Mesh()
+mesh.add_vertices([
+    Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]).set(Vertex.UV1, [0.25, 0.75]),
+    Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]).set(Vertex.UV1, [0.0, 0.5]),
+    Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]).set(Vertex.UV1, [0.5, 0.5]),
+])
+
+# The occlusion map follows the second UV layout.
+material = Material.pbr().texture_uv(TextureSlot.Occlusion, 1)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let mesh = Mesh()
+mesh.addVertices([
+    try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]).set(Vertex.UV1, [0.25, 0.75]),
+    try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]).set(Vertex.UV1, [0.0, 0.5]),
+    try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]).set(Vertex.UV1, [0.5, 0.5]),
+])
+
+// The occlusion map follows the second UV layout.
+let material = try Material.pbr().textureUv(TextureSlot.occlusion, 1)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val mesh = Mesh()
+mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)).set(Vertex.UV1, listOf(0.25f, 0.75f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)).set(Vertex.UV1, listOf(0.0f, 0.5f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f)).set(Vertex.UV1, listOf(0.5f, 0.5f))))
+
+// The occlusion map follows the second UV layout.
+val material = Material.pbr().textureUv(TextureSlot.OCCLUSION, 1u)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Material::uv_transform \{#uv_transform\}
+
+Set one UV transform on all five texture slots, the transform glTF's
+[`KHR_texture_transform`](https://github.com/KhronosGroup/glTF/tree/main/extensions/2.0/Khronos/KHR_texture_transform)
+describes. Each slot's UV is scaled first, then rotated, then offset:
+
+- `scale` multiplies the UV (`[1, 1]` keeps it)
+- `rotation` turns the scaled UV around the origin, in radians. A positive
+  angle turns the UVs counter-clockwise in texture space, where `v` points
+  down, so the image itself turns clockwise
+- `offset` moves the result, in fractions of the texture (`[0, 0]` keeps it)
+
+Every slot starts with the identity transform: scale `[1, 1]`, rotation
+`0` and offset `[0, 0]`.
+[`texture_transform`](/api/scene/material#texture_transform)
+sets the transform of one slot, so a call after `uv_transform` replaces
+that slot's transform and keeps the other four. Each slot applies its
+transform to the UV set that
+[`texture_uv`](/api/scene/material#texture_uv)
+picks for it.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
 use fragmentcolor::Material;
 
 // Tile the texture 4× in both directions, rotate 45°, shift by half a tile.
 let brick = Material::pbr()
     .uv_transform([0.5, 0.0], [4.0, 4.0], 0.785); // 45° in radians
-let _ = brick;
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 7-9}"
+lang="rust"
 />
 
 </TabItem>

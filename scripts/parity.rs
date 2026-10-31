@@ -857,7 +857,7 @@ mod parity {
 
     /// Free functions (top-level `pub fn`) can carry a binding marker too —
     /// `#[uniffi::export]` for mobile (e.g. `set_shader_registry` in
-    /// src/shader/platform/mobile.rs), `#[wasm_bindgen]` directly, or
+    /// src/core/shader/platform/mobile.rs), `#[wasm_bindgen]` directly, or
     /// `#[pyfunction]` for Python. If the function carries an `#[lsp_doc(...)]`
     /// annotation, credit the matching platforms.
     fn visit_free_fn(attrs: &[Attribute], b: &mut Bindings, file_platforms: &[Platform]) {
@@ -1812,7 +1812,12 @@ mod parity {
                 }
                 Some(build) => (params.len() - count_defaults(site.f, build, &names), false),
             };
+            // A JS promise resolves to the value and rejects with the error,
+            // so a function that returns one reads as an async call that throws.
+            let promise = matches!(&sig.output,
+                ReturnType::Type(_, ty) if read_ident(ty).as_deref() == Some("Promise"));
             let (returns, returns_raw, throws) = match &sig.output {
+                _ if promise => (Class::Any, None, true),
                 ReturnType::Default => (Class::Unit, None, false),
                 ReturnType::Type(_, ty) => match unwrap_result(ty) {
                     Some(ok) => (classify(model, ok, site), read_core(ok), true),
@@ -1831,7 +1836,7 @@ mod parity {
                 required,
                 open,
                 throws,
-                is_async: sig.asyncness.is_some(),
+                is_async: sig.asyncness.is_some() || promise,
                 returns,
                 returns_raw,
             }

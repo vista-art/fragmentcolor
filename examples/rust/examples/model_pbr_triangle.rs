@@ -17,8 +17,9 @@ fn main() {
             .await
             .expect("texture target");
 
-        // A triangle in the world-space XY plane, facing +Z. The PBR shader
-        // expects position (vec3), normal (vec3), uv0 (vec2) in this order.
+        // A triangle in the world-space XY plane, facing +Z.
+        // The PBR shader reads position, normal, uv0, color0, uv1 and tangent.
+        // `Vertex::pbr` seeds all but the position, and `set` overrides uv0.
         let mesh = Mesh::new();
         for (pos, uv) in [
             ([0.0_f32, 0.5, 0.0], [0.5, 1.0]),
@@ -37,11 +38,10 @@ fn main() {
         // Nudge it slightly to the right to show the per-Model transform path.
         model.translate([0.1, 0.0, 0.0]);
 
-        let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0).look_at(
-            [0.0, 0.0, 2.0],
-            [0.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0],
-        );
+        let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0)
+            .expect("camera")
+            .look_at([0.0, 0.0, 2.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+            .expect("camera");
         let sun = Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]);
 
         let scene = Scene::new();
@@ -54,7 +54,7 @@ fn main() {
             .expect("sun");
         renderer.render(&scene, &target).expect("render");
 
-        let image = target.get_image().await;
+        let image = target.get_image().await.expect("read back");
         assert_eq!(image.len(), 256 * 256 * 4);
         println!(
             "rendered {} bytes — first pixel: ({}, {}, {}, {})",

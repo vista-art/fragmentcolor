@@ -20,6 +20,11 @@ private object SurfaceBridge {
     external fun release_native_window(window: Long)
 }
 
+/** Set how much FragmentColor logs, for the whole process. */
+fun Renderer.Companion.setLogLevel(level: LogLevel) {
+    useLogLevel(level).destroy()
+}
+
 /**
  * Build a [WindowTarget] from an [android.view.Surface] on this renderer.
  *
@@ -46,16 +51,9 @@ fun Renderer.createTarget(surface: Surface): WindowTarget {
 suspend fun Renderer.createTextureTarget(size: List<UInt>): TextureTarget =
     createTextureTarget(sizeRecord(size, "createTextureTarget"))
 
-/** Create a headless texture target from a [Size]. */
-suspend fun Renderer.createTextureTarget(size: Size): TextureTarget =
-    createTextureTarget(size.width, size.height)
-
 /** Create a depth texture from a `[width, height]` list. */
 suspend fun Renderer.createDepthTexture(size: List<UInt>): Texture =
     createDepthTexture(sizeRecord(size, "createDepthTexture"))
-
-/** Create a depth texture from a [Size]. */
-suspend fun Renderer.createDepthTexture(size: Size): Texture = createDepthTexture(size.width, size.height)
 
 // ── createStorageTexture ─────────────────────────────────────────────────────
 
@@ -96,13 +94,25 @@ suspend fun Renderer.createStorageTexture(
 suspend fun Renderer.createTexture(bytes: ByteArray, usage: TextureUsage? = null): Texture =
     createTexture(TextureInputMobile.Bytes(bytes), textureOptions(usage = usage))
 
+/** Create a texture from encoded image bytes, one [Int] per byte. */
+suspend fun Renderer.createTexture(bytes: List<Int>, usage: TextureUsage? = null): Texture =
+    createTexture(byteArray(bytes, "createTexture"), usage)
+
 /** Create a texture from encoded image bytes, decoded into [format]. */
 suspend fun Renderer.createTexture(bytes: ByteArray, format: TextureFormat, usage: TextureUsage? = null): Texture =
     createTexture(TextureInputMobile.Bytes(bytes), textureOptions(format = format, usage = usage))
 
+/** Create a texture from encoded image bytes, one [Int] per byte, decoded into [format]. */
+suspend fun Renderer.createTexture(bytes: List<Int>, format: TextureFormat, usage: TextureUsage? = null): Texture =
+    createTexture(byteArray(bytes, "createTexture"), format, usage)
+
 /** Create a texture from raw RGBA pixels and their [Size], so the bytes are never decoded. */
 suspend fun Renderer.createTexture(bytes: ByteArray, size: Size, usage: TextureUsage? = null): Texture =
     createTexture(TextureInputMobile.Bytes(bytes), textureOptions(size = size, usage = usage))
+
+/** Create a texture from raw RGBA pixels, one [Int] per byte, and their [Size]. */
+suspend fun Renderer.createTexture(bytes: List<Int>, size: Size, usage: TextureUsage? = null): Texture =
+    createTexture(byteArray(bytes, "createTexture"), size, usage)
 
 /** Create a texture from raw RGBA pixels and their `[width, height]`. */
 suspend fun Renderer.createTexture(bytes: ByteArray, size: List<UInt>, usage: TextureUsage? = null): Texture =
@@ -116,8 +126,16 @@ suspend fun Renderer.createTexture(bytes: List<Int>, size: List<UInt>, usage: Te
 suspend fun Renderer.createTexture(bytes: ByteArray, options: TextureOptions): Texture =
     createTexture(TextureInputMobile.Bytes(bytes), options)
 
+/** Create a texture from bytes, one [Int] per byte, with every option spelled out. */
+suspend fun Renderer.createTexture(bytes: List<Int>, options: TextureOptions): Texture =
+    createTexture(byteArray(bytes, "createTexture"), options)
+
 /** Create a texture from an image file path or an `http(s)` URL. */
 suspend fun Renderer.createTexture(path: String): Texture = createTexture(pathInput(path), null)
+
+/** Create a texture from an image file path or an `http(s)` URL, decoded into [format]. */
+suspend fun Renderer.createTexture(path: String, format: TextureFormat): Texture =
+    createTexture(pathInput(path), textureOptions(format = format))
 
 /** Create a texture from an image file path or an `http(s)` URL, with every option spelled out. */
 suspend fun Renderer.createTexture(path: String, options: TextureOptions): Texture =
@@ -126,6 +144,10 @@ suspend fun Renderer.createTexture(path: String, options: TextureOptions): Textu
 /** Create a texture from a [Mipmap] chain, which uploads without decoding. */
 suspend fun Renderer.createTexture(chain: Mipmap): Texture =
     createTexture(TextureInputMobile.Prepared(chain), null)
+
+/** Create a texture from a [Mipmap] chain, with a sampler and usage from [options]. */
+suspend fun Renderer.createTexture(chain: Mipmap, options: TextureOptions): Texture =
+    createTexture(TextureInputMobile.Prepared(chain), options)
 
 /** Create a texture from any [TextureInputMobile] with the default options. */
 suspend fun Renderer.createTexture(input: TextureInputMobile): Texture = createTexture(input, null)
@@ -235,6 +257,62 @@ internal fun sizeRecord(size: List<UInt>, method: String): Size {
     }
     return Size(width = size[0], height = size[1], depth = size.getOrNull(2))
 }
+
+/**
+ * Each number of a color or vector as a [Float], the rule every binding shares.
+ * Throws [FragmentColorException] for NaN, an infinity, or a finite number past the [Float] range.
+ */
+internal fun readFloats(values: List<Double>, label: String): List<Float> =
+    values.mapIndexed { index, value ->
+        val float = value.toFloat()
+        if (!float.isFinite()) {
+            throw FragmentColorException.Render(
+                "$label: item $index must be a finite number that fits a 32-bit float, got ${showNumber(value)}",
+            )
+        }
+        float
+    }
+
+/**
+ * The number as the shared Rust message prints it: `NaN`, `inf`, `-inf`, or `1e39`.
+ * Only those reach the message, since every other Double fits a Float.
+ */
+internal fun showNumber(value: Double): String =
+    when {
+        value.isNaN() -> "NaN"
+        value.isInfinite() -> if (value < 0) "-inf" else "inf"
+        else -> value.toString().replace(".0E", "E").replace("E", "e")
+    }
+
+internal fun readFloats(values: DoubleArray, label: String): List<Float> = readFloats(values.toList(), label)
+
+/** A vertex position of 1 to 4 numbers as [Float]s, each checked as [readFloats] checks it. */
+internal fun readPosition(values: List<Double>, label: String): List<Float> {
+    val floats = readFloats(values, label)
+    if (floats.size !in 1..4) {
+        throw FragmentColorException.Render("$label takes 1 to 4 numbers, got ${floats.size}")
+    }
+    return floats
+}
+
+/** Exactly [count] numbers of a float vector as [Float]s, each checked as [readFloats] checks it. */
+internal fun readVector(values: List<Double>, count: Int, label: String): List<Float> {
+    val floats = readFloats(values, label)
+    if (floats.size != count) {
+        throw FragmentColorException.Render("$label takes $count numbers, got ${floats.size}")
+    }
+    return floats
+}
+
+/** Exactly [count] [Float]s of a float vector, checked as the [Double] one is. */
+@JvmName("readFloatVector")
+internal fun readVector(values: List<Float>, count: Int, label: String): List<Float> =
+    readVector(values.map { it.toDouble() }, count, label)
+
+/** A vertex position of 1 to 4 [Float]s, checked as the [Double] one is. */
+@JvmName("readFloatPosition")
+internal fun readPosition(values: List<Float>, label: String): List<Float> =
+    readPosition(values.map { it.toDouble() }, label)
 
 /** Bytes from one [Int] per byte. Throws [FragmentColorException] for a value outside 0..255. */
 internal fun byteArray(bytes: List<Int>, method: String): ByteArray =

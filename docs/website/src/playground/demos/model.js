@@ -120,8 +120,9 @@ export function frame(state, renderer, target, time, size, pointer, gesture = { 
   if (gesture.zoom || gesture.pan[0] || gesture.pan[1]) state.turning = false;
   if (state.turning) state.yaw += delta * SPIN;
   // A drag the height of the canvas turns the camera half a circle.
-  state.yaw -= (gesture.pan[0] / size[1]) * Math.PI;
-  state.pitch = clamp(state.pitch + (gesture.pan[1] / size[1]) * Math.PI, -1.4, 1.4);
+  const height = Math.max(size[1], 1);
+  state.yaw -= (gesture.pan[0] / height) * Math.PI;
+  state.pitch = clamp(state.pitch + (gesture.pan[1] / height) * Math.PI, -1.4, 1.4);
   state.distance = clamp(state.distance / 2 ** gesture.zoom, DISTANCE / 3, DISTANCE * 3);
 
   const reach = state.distance * Math.cos(state.pitch);
@@ -138,16 +139,16 @@ export function frame(state, renderer, target, time, size, pointer, gesture = { 
 }
 
 // The fish draws into a 16-bit float image, so light brighter than white reaches
-// the tone map, and a depth buffer keeps its far side behind its near side.
-// Neither can change size, so a new canvas size gets new ones, and the fish
-// keeps drawing at the old size until they are ready.
+// the tone map, and a depth texture keeps its far side behind its near side.
+// A new canvas size gets a new pair, and the fish keeps drawing at the old size
+// until they are ready.
 async function fit(state, renderer, size) {
   state.wanted = size;
   const usage = TextureUsage.RENDER_ATTACHMENT | TextureUsage.TEXTURE_BINDING;
   const image = await renderer.createStorageTexture(size, TextureFormat.Rgba16Float, null, usage);
   const depth = await renderer.createDepthTexture(size);
-  // The renderer keeps every texture until it is unregistered. When a newer size
-  // came in during the wait, these two are already out of date.
+  // When a newer size came in during the wait, these two are already out of date.
+  // Unregistering frees them now, where a dropped handle waits for the collector.
   if (state.wanted !== size) {
     renderer.unregisterTexture(image.id());
     renderer.unregisterTexture(depth.id());
@@ -181,6 +182,8 @@ const VALUES = {
 // The site loads FragmentColor 0.12.6, where Shader.set takes a texture on the web.
 const RELEASE = "0.12.6";
 const NEEDS = `Needs FragmentColor ${RELEASE} or later.`;
+// The Rust tab handles the camera errors 0.12.7 returns with `?`, which 0.12.6 can't compile.
+const RUST_NEEDS = "Needs FragmentColor 0.12.7 or later.";
 
 const CREDIT = "Barramundi Fish by Microsoft, CC0, from the Khronos glTF sample assets.";
 
@@ -208,7 +211,7 @@ function setCalls(lang, values, { before = "", after = "" } = {}) {
 
 function writeRust({ library, values }) {
   return [
-    `// ${NEEDS}`,
+    `// ${RUST_NEEDS}`,
     "",
     "use std::error::Error;",
     "use std::f32::consts::PI;",
@@ -262,7 +265,7 @@ function writeRust({ library, values }) {
     "    // Upload the textures now, so the first frame only draws.",
     "    renderer.load(&scene).await?;",
     "",
-    "    let camera = Camera::perspective(0.6, 1.0, 0.01, 10.0);",
+    "    let camera = Camera::perspective(0.6, 1.0, 0.01, 10.0)?;",
     "    let key = Light::directional(KEY, [1.0, 0.96, 0.9]).set_intensity(3.0);",
     "    let rim = Light::directional(RIM, [0.6, 0.7, 1.0]).set_intensity(1.0);",
     "    scene",
@@ -274,7 +277,7 @@ function writeRust({ library, values }) {
     "    // The fish pass clears to transparent, so present.wgsl can lay the fish over the water.",
     "    // The first frame gives it an image and a depth buffer the size of the window.",
     '    let fish = scene.get_pass(0).ok_or("the model loaded no pass")?;',
-    "    fish.set_clear_color([0.0, 0.0, 0.0, 0.0]);",
+    "    fish.set_clear_color([0.0, 0.0, 0.0, 0.0])?;",
     "",
     ...wrap("    ", "let present = Shader::new([", [...library.map(quote), "PRESENT_SOURCE"], "])?;", 100),
     ...setCalls("rust", values, { after: "?;" }),
@@ -321,8 +324,9 @@ function writeRust({ library, values }) {
     "        state.yaw += delta * SPIN;",
     "    }",
     "    // A drag the height of the window turns the camera half a circle.",
-    "    state.yaw -= gesture.pan[0] / size[1] * PI;",
-    "    state.pitch = (state.pitch + gesture.pan[1] / size[1] * PI).clamp(-1.4, 1.4);",
+    "    let height = size[1].max(1.0);",
+    "    state.yaw -= gesture.pan[0] / height * PI;",
+    "    state.pitch = (state.pitch + gesture.pan[1] / height * PI).clamp(-1.4, 1.4);",
     "    state.distance = (state.distance / gesture.zoom.exp2()).clamp(DISTANCE / 3.0, DISTANCE * 3.0);",
     "",
     "    let reach = state.distance * state.pitch.cos();",
@@ -333,8 +337,8 @@ function writeRust({ library, values }) {
     "    ];",
     "    state",
     "        .camera",
-    "        .set_aspect(size[0] / size[1])",
-    "        .look_at(eye, CENTER, [0.0, 1.0, 0.0]);",
+    "        .set_aspect(size[0].max(1.0) / height)?",
+    "        .look_at(eye, CENTER, [0.0, 1.0, 0.0])?;",
     "    // Both lights turn with the camera, so the side in view stays lit.",
     "    state.key.set_direction(turn(KEY, state.yaw))?;",
     "    state.rim.set_direction(turn(RIM, state.yaw))?;",
@@ -343,8 +347,8 @@ function writeRust({ library, values }) {
     "}",
     "",
     "/// The fish draws into a 16-bit float image, so light brighter than white reaches",
-    "/// the tone map, and a depth buffer keeps its far side behind its near side.",
-    "/// Neither can change size, so a new window size gets new ones.",
+    "/// the tone map, and a depth texture keeps its far side behind its near side.",
+    "/// A new window size gets a new pair.",
     "async fn fit(state: &mut State, renderer: &Renderer, size: [f32; 2]) -> Result<(), Box<dyn Error>> {",
     "    let pixels = [size[0].max(1.0) as u32, size[1].max(1.0) as u32];",
     "    let options = TextureOptions {",
@@ -360,7 +364,7 @@ function writeRust({ library, values }) {
     "    let image = renderer.create_storage_texture(input).await?;",
     "    let depth = renderer.create_depth_texture(pixels).await?;",
     "",
-    "    // The renderer keeps every texture until it is unregistered.",
+    "    // Unregistering frees the old pair now, before its handles go.",
     "    let stale = [state.image.take(), state.depth.take()];",
     "    for old in stale.into_iter().flatten() {",
     "        renderer.unregister_texture(old.id())?;",
@@ -471,8 +475,9 @@ function writePython({ library, values }) {
     "    if state.turning:",
     "        state.yaw += delta * SPIN",
     "    # A drag the height of the canvas turns the camera half a circle.",
-    "    state.yaw -= gesture.pan[0] / size[1] * math.pi",
-    "    state.pitch = min(max(state.pitch + gesture.pan[1] / size[1] * math.pi, -1.4), 1.4)",
+    "    height = max(size[1], 1)",
+    "    state.yaw -= gesture.pan[0] / height * math.pi",
+    "    state.pitch = min(max(state.pitch + gesture.pan[1] / height * math.pi, -1.4), 1.4)",
     "    state.distance = min(",
     "        max(state.distance / 2**gesture.zoom, DISTANCE / 3), DISTANCE * 3",
     "    )",
@@ -483,7 +488,8 @@ function writePython({ library, values }) {
     "        CENTER[1] + state.distance * math.sin(state.pitch),",
     "        CENTER[2] + reach * math.cos(state.yaw),",
     "    ]",
-    "    state.camera.set_aspect(size[0] / size[1]).look_at(eye, CENTER, [0.0, 1.0, 0.0])",
+    "    aspect = max(size[0], 1) / height",
+    "    state.camera.set_aspect(aspect).look_at(eye, CENTER, [0.0, 1.0, 0.0])",
     "    # Both lights turn with the camera, so the side in view stays lit.",
     "    state.key.set_direction(turn(KEY, state.yaw))",
     "    state.rim.set_direction(turn(RIM, state.yaw))",
@@ -491,8 +497,8 @@ function writePython({ library, values }) {
     "",
     "",
     "# The fish draws into a 16-bit float image, so light brighter than white reaches",
-    "# the tone map, and a depth buffer keeps its far side behind its near side.",
-    "# Neither can change size, so a new canvas size gets new ones.",
+    "# the tone map, and a depth texture keeps its far side behind its near side.",
+    "# A new canvas size gets a new pair.",
     "def fit(state, renderer, size):",
     "    pixels = [max(int(size[0]), 1), max(int(size[1]), 1)]",
     "    usage = TextureUsage.RENDER_ATTACHMENT | TextureUsage.TEXTURE_BINDING",
@@ -501,7 +507,7 @@ function writePython({ library, values }) {
     "    )",
     "    depth = renderer.create_depth_texture(pixels)",
     "",
-    "    # The renderer keeps every texture until it is unregistered.",
+    "    # Unregistering frees the old pair now, before its handles go.",
     "    for old in (state.image, state.depth):",
     "        if old is not None:",
     "            renderer.unregister_texture(old.id())",
@@ -574,7 +580,7 @@ function writeSwift({ library, values }) {
     "    // Upload the textures now, so the first frame only draws.",
     "    try await renderer.load(scene)",
     "",
-    "    let camera = Camera.perspective(0.6, 1, 0.01, 10)",
+    "    let camera = try Camera.perspective(0.6, 1, 0.01, 10)",
     "    let key = try Light.directional(keyDirection, [1, 0.96, 0.9]).setIntensity(3)",
     "    let rim = try Light.directional(rimDirection, [0.6, 0.7, 1]).setIntensity(1)",
     "    try scene.add(camera).add(key).add(rim).ambient([0.1, 0.1, 0.12])",
@@ -615,8 +621,9 @@ function writeSwift({ library, values }) {
     "        state.yaw += delta * spin",
     "    }",
     "    // A drag the height of the view turns the camera half a circle.",
-    "    state.yaw -= gesture.pan[0] / size[1] * .pi",
-    "    state.pitch = min(max(state.pitch + gesture.pan[1] / size[1] * .pi, -1.4), 1.4)",
+    "    let height = max(size[1], 1)",
+    "    state.yaw -= gesture.pan[0] / height * .pi",
+    "    state.pitch = min(max(state.pitch + gesture.pan[1] / height * .pi, -1.4), 1.4)",
     "    let zoomed = state.distance / pow(2, gesture.zoom)",
     "    state.distance = min(max(zoomed, startDistance / 3), startDistance * 3)",
     "",
@@ -626,23 +633,24 @@ function writeSwift({ library, values }) {
     "        center[1] + state.distance * sin(state.pitch),",
     "        center[2] + reach * cos(state.yaw),",
     "    ]",
-    "    _ = try state.camera.setAspect(size[0] / size[1]).lookAt(eye, center, [0, 1, 0])",
+    "    let aspect = max(size[0], 1) / height",
+    "    try state.camera.setAspect(aspect).lookAt(eye, center, [0, 1, 0])",
     "    // Both lights turn with the camera, so the side in view stays lit.",
-    "    _ = try state.key.setDirection(turn(keyDirection, state.yaw))",
-    "    _ = try state.rim.setDirection(turn(rimDirection, state.yaw))",
+    "    try state.key.setDirection(turn(keyDirection, state.yaw))",
+    "    try state.rim.setDirection(turn(rimDirection, state.yaw))",
     "    try renderer.render(state.scene, target)",
     "}",
     "",
     "/// The fish draws into a 16-bit float image, so light brighter than white reaches",
-    "/// the tone map, and a depth buffer keeps its far side behind its near side.",
-    "/// Neither can change size, so a new view size gets new ones.",
+    "/// the tone map, and a depth texture keeps its far side behind its near side.",
+    "/// A new view size gets a new pair.",
     "func fit(_ state: inout State, _ renderer: Renderer, _ size: [Float]) async throws {",
     "    let pixels = [UInt32(max(size[0], 1)), UInt32(max(size[1], 1))]",
     "    let usage = TextureUsage.RENDER_ATTACHMENT | TextureUsage.TEXTURE_BINDING",
     "    let image = try await renderer.createStorageTexture(pixels, .rgba16Float, nil, usage)",
     "    let depth = try await renderer.createDepthTexture(pixels)",
     "",
-    "    // The renderer keeps every texture until it is unregistered.",
+    "    // Unregistering frees the old pair now, before its handles go.",
     "    for old in [state.image, state.depth].compactMap({ $0 }) {",
     "        try renderer.unregisterTexture(old.id())",
     "    }",
@@ -756,7 +764,7 @@ function writeKotlin({ library, values }) {
     "    if (gesture.zoom != 0.0 || gesture.pan != listOf(0.0, 0.0)) state.turning = false",
     "    if (state.turning) state.yaw += delta * SPIN",
     "    // A drag the height of the view turns the camera half a circle.",
-    "    val height = size[1].toDouble()",
+    "    val height = maxOf(size[1].toDouble(), 1.0)",
     "    state.yaw -= gesture.pan[0] / height * PI",
     "    state.pitch = (state.pitch + gesture.pan[1] / height * PI).coerceIn(-1.4, 1.4)",
     "    state.distance = (state.distance / 2.0.pow(gesture.zoom)).coerceIn(DISTANCE / 3, DISTANCE * 3)",
@@ -767,7 +775,8 @@ function writeKotlin({ library, values }) {
     "        CENTER[1] + state.distance * sin(state.pitch),",
     "        CENTER[2] + reach * cos(state.yaw),",
     "    )",
-    "    state.camera.setAspect(size[0] / height).lookAt(eye, CENTER, listOf(0.0, 1.0, 0.0))",
+    "    val aspect = maxOf(size[0].toDouble(), 1.0) / height",
+    "    state.camera.setAspect(aspect).lookAt(eye, CENTER, listOf(0.0, 1.0, 0.0))",
     "    // Both lights turn with the camera, so the side in view stays lit.",
     "    state.key.setDirection(turn(KEY, state.yaw))",
     "    state.rim.setDirection(turn(RIM, state.yaw))",
@@ -776,8 +785,8 @@ function writeKotlin({ library, values }) {
     "",
     "/**",
     " * The fish draws into a 16-bit float image, so light brighter than white reaches",
-    " * the tone map, and a depth buffer keeps its far side behind its near side.",
-    " * Neither can change size, so a new view size gets new ones.",
+    " * the tone map, and a depth texture keeps its far side behind its near side.",
+    " * A new view size gets a new pair.",
     " */",
     "suspend fun fit(state: State, renderer: Renderer, size: List<Float>) {",
     "    val pixels = listOf(maxOf(size[0].toUInt(), 1u), maxOf(size[1].toUInt(), 1u))",
@@ -785,7 +794,7 @@ function writeKotlin({ library, values }) {
     "    val image = renderer.createStorageTexture(pixels, TextureFormat.RGBA16_FLOAT, usage = usage)",
     "    val depth = renderer.createDepthTexture(pixels)",
     "",
-    "    // The renderer keeps every texture until it is unregistered.",
+    "    // Unregistering frees the old pair now, before its handles go.",
     "    listOfNotNull(state.image, state.depth).forEach { renderer.unregisterTexture(it.id()) }",
     "    state.fish.setTarget(image)",
     "    state.fish.setDepthTarget(depth)",

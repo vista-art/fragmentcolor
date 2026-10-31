@@ -37,7 +37,7 @@ The constants are plain `&'static str` literals: `vertex.set(Vertex::UV0, [...])
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::mesh::Vertex;
+use fragmentcolor::Vertex;
 let v = Vertex::new([0.0, 0.0, 0.0])
     .set(Vertex::UV0, [0.5, 0.5])
     .set(Vertex::NORMAL, [0.0, 1.0, 0.0]);
@@ -108,6 +108,9 @@ your shader declares.
 A 1-component position becomes 2D with `y` at 0. A 4-component position
 uploads as 3D: the mesh drops the 4th component.
 
+In JavaScript, Python, Swift and Kotlin, a position of another length, or a number
+that is NaN, infinite or past the 32-bit float range, is an error that names the call.
+
 #### Example
 
 <Tabs>
@@ -115,7 +118,7 @@ uploads as 3D: the mesh drops the 4th component.
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::mesh::Vertex;
+use fragmentcolor::Vertex;
 let v = Vertex::new([0.0, 0.0]);
 `}
 lang="rust"
@@ -179,12 +182,15 @@ Seeds every attribute [`Material::pbr`](/api/scene/material#pbr)
 reads (`NORMAL`, `UV0`, `COLOR0`, `UV1`, `TANGENT`) with a neutral identity
 default; chain `.set(...)` to override the slots a real mesh has data for.
 
-A vertex built with `Vertex::pbr(pos)` alone renders the same way
-[`Scene::load`](/api/scene/scene#load) renders a
-glTF primitive that carries only POSITION. Face-normal computation, UV
-defaults, vertex tint, and tangents all collapse to the values the loader
-falls back to. Useful for building PBR meshes by hand without spelling
-out every default attribute.
+The defaults are the values
+[`Scene::load`](/api/scene/scene#load) falls back
+to for a glTF primitive that lacks those attributes, with two exceptions.
+The loader computes a missing normal from the faces, where `Vertex::pbr`
+points every normal along +Z. And the loader copies a primitive's
+`TEXCOORD_0` into `UV1` when it has no `TEXCOORD_1`, where `Vertex::pbr`
+keeps `UV1` at `[0, 0]` after you set `UV0`, until you set `UV1` too.
+Useful for building PBR meshes by hand without spelling out every default
+attribute.
 
 Defaults:
 
@@ -193,7 +199,7 @@ Defaults:
 | `NORMAL`  | `[0, 0, 1]`             | forward-facing surface                          |
 | `UV0`     | `[0, 0]`                | corner of the texture                           |
 | `COLOR0`  | `[1, 1, 1, 1]`          | identity vertex tint                            |
-| `UV1`     | `[0, 0]`                | unused; only matters for maps that opt into UV1 |
+| `UV1`     | `[0, 0]`                | read by slots `texture_uv` puts on UV set 1     |
 | `TANGENT` | `[1, 0, 0, 1]`          | T = +X, bitangent sign +1                       |
 
 #### Example
@@ -203,7 +209,6 @@ Defaults:
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Mesh, Vertex};
 
 // Build a triangle and set only what the mesh carries. NORMAL, COLOR0,
@@ -212,10 +217,8 @@ let mesh = Mesh::new();
 mesh.add_vertex(Vertex::pbr([ 0.0,  0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]));
 mesh.add_vertex(Vertex::pbr([-0.5, -0.5, 0.0]).set(Vertex::UV0, [0.0, 0.0]));
 mesh.add_vertex(Vertex::pbr([ 0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]));
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 10-11}"
+lang="rust"
 />
 
 </TabItem>
@@ -320,6 +323,10 @@ Locations and mapping:
   then looks by the property's own location (instance first, then vertex).
 - The first shader that reads a property fixes its type for that mesh. A
   shader that declares another type for it fails to attach.
+- `position` names the position `Vertex::new` sets, so no property takes it.
+  A mesh with a vertex that sets `position` fails to attach with
+  `ShaderError::InvalidKey`, and `Renderer.render` returns
+  `MeshError::InvalidVertex` for one added later. Both name the vertex.
 
 #### Example
 
@@ -328,7 +335,6 @@ Locations and mapping:
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Mesh, Shader, Vertex};
 
 let shader = Shader::new(r#"
@@ -339,19 +345,21 @@ let shader = Shader::new(r#"
   @fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0, 0.0, 0.0, 1.0); }
 "#)?;
 
-let vertex = Vertex::new([0.0, 0.0])
+let vertex = Vertex::new([0.0, 0.5])
     .set("id", 7)
     .set("weight", 0.5);
 
 let mesh = Mesh::new();
-mesh.add_vertex(vertex);
+mesh.add_vertices([
+    vertex,
+    Vertex::new([-0.5, -0.5]).set("id", 8).set("weight", 1.0),
+    Vertex::new([0.5, -0.5]).set("id", 9).set("weight", 1.0),
+]);
 
-// id uploads as the u32 7 and weight as the f32 0.5.
+// The first id uploads as the u32 7 and its weight as the f32 0.5.
 shader.add_mesh(&mesh)?;
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 21-22}"
+lang="rust"
 />
 
 </TabItem>
@@ -371,12 +379,12 @@ const shader = new Shader(\`
 
 \`);
 
-const vertex = new Vertex([0.0, 0.0]).set("id", 7).set("weight", 0.5);
+const vertex = new Vertex([0.0, 0.5]).set("id", 7).set("weight", 0.5);
 
 const mesh = new Mesh();
-mesh.addVertex(vertex);
+mesh.addVertices([ vertex, new Vertex([-0.5, -0.5]).set("id", 8).set("weight", 1.0), new Vertex([0.5, -0.5]).set("id", 9).set("weight", 1.0), ]);
 
-// id uploads as the u32 7 and weight as the f32 0.5.
+// The first id uploads as the u32 7 and its weight as the f32 0.5.
 shader.addMesh(mesh);
 `}
 lang="js"
@@ -398,12 +406,16 @@ shader = Shader("""
 
 """)
 
-vertex = Vertex([0.0, 0.0]).set("id", 7).set("weight", 0.5)
+vertex = Vertex([0.0, 0.5]).set("id", 7).set("weight", 0.5)
 
 mesh = Mesh()
-mesh.add_vertex(vertex)
+mesh.add_vertices([
+    vertex,
+    Vertex([-0.5, -0.5]).set("id", 8).set("weight", 1.0),
+    Vertex([0.5, -0.5]).set("id", 9).set("weight", 1.0),
+])
 
-# id uploads as the u32 7 and weight as the f32 0.5.
+# The first id uploads as the u32 7 and its weight as the f32 0.5.
 shader.add_mesh(mesh)
 `}
 lang="python"
@@ -425,12 +437,16 @@ let shader = try Shader("""
 
 """)
 
-let vertex = try Vertex([0.0, 0.0]).set("id", 7).set("weight", 0.5)
+let vertex = try Vertex([0.0, 0.5]).set("id", 7).set("weight", 0.5)
 
 let mesh = Mesh()
-try mesh.addVertex(vertex)
+mesh.addVertices([
+    vertex,
+    try Vertex([-0.5, -0.5]).set("id", 8).set("weight", 1.0),
+    try Vertex([0.5, -0.5]).set("id", 9).set("weight", 1.0),
+])
 
-// id uploads as the u32 7 and weight as the f32 0.5.
+// The first id uploads as the u32 7 and its weight as the f32 0.5.
 try shader.addMesh(mesh)
 `}
 lang="swift"
@@ -452,12 +468,12 @@ val shader = Shader("""
 
 """)
 
-val vertex = Vertex(listOf(0.0f, 0.0f)).set("id", 7).set("weight", 0.5f)
+val vertex = Vertex(listOf(0.0f, 0.5f)).set("id", 7).set("weight", 0.5f)
 
 val mesh = Mesh()
-mesh.addVertex(vertex)
+mesh.addVertices(listOf(vertex, Vertex(listOf(-0.5f, -0.5f)).set("id", 8).set("weight", 1.0f), Vertex(listOf(0.5f, -0.5f)).set("id", 9).set("weight", 1.0f)))
 
-// id uploads as the u32 7 and weight as the f32 0.5.
+// The first id uploads as the u32 7 and its weight as the f32 0.5.
 shader.addMesh(mesh)
 `}
 lang="kotlin"
@@ -484,12 +500,11 @@ the fields that differ.
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::mesh::Vertex;
+use fragmentcolor::Vertex;
 let v = Vertex::new([0.0, 0.0]);
 let inst = v.create_instance();
-_ = inst;
 `}
-lang="rust" meta="collapse={4-4}"
+lang="rust"
 />
 
 </TabItem>

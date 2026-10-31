@@ -2,7 +2,7 @@
 
 Validate that a Mesh is compatible with this Shader's vertex inputs.
 
-- Checks that every `@location` input of the vertex entry point finds an attribute, and that every vertex and instance value fits the type the input declares.
+- Checks that every `@location` input of the vertex entry point finds an attribute, that every vertex and instance holds each attribute the shader reads, and that every value fits the type the input declares. The `@location` members of a struct argument count as inputs, each under its member name.
 - Matches each input in this order:
   1) by name, instance attributes first, then vertex attributes (`position` included)
   2) the position, at `@location(0)`
@@ -14,7 +14,7 @@ Validate that a Mesh is compatible with this Shader's vertex inputs.
 
 - `Shader::add_mesh` and `Pass::add_mesh` run the same check. Call `validate_mesh` to test a mesh without attaching it.
 - It changes nothing: the mesh isn't attached and its attributes take no type.
-- If the Shader has no @location inputs (fullscreen/builtin-only), attaching a Mesh is rejected.
+- If the Shader has no `@location` inputs, as arguments or struct members, it draws fullscreen and attaching a Mesh is rejected. A struct of built-ins only, such as `@builtin(vertex_index)`, still counts as no input.
 - This method does not allocate GPU buffers; it inspects CPU-side vertex/instance data only.
 
 ## Example

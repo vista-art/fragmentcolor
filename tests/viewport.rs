@@ -1,6 +1,6 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use fragmentcolor::{Pass, Renderer, ScreenRegion, Shader, Target};
+use fragmentcolor::{Pass, PassError, Renderer, ScreenRegion, Shader, Target};
 
 const FILL: &str = r#"
 @group(0) @binding(0) var<uniform> color: vec4<f32>;
@@ -20,12 +20,17 @@ const GREEN: [u8; 4] = [0, 255, 0, 255];
 const BLUE: [u8; 4] = [0, 0, 255, 255];
 
 /// A pass that fills its viewport with `color` over a blue clear.
-fn fill_pass(viewport: impl Into<ScreenRegion>, color: [f32; 4]) -> Pass {
+fn fill_pass<R>(viewport: R, color: [f32; 4]) -> Pass
+where
+    R: TryInto<ScreenRegion>,
+    PassError: From<R::Error>,
+{
     let shader = Shader::new(FILL).expect("fill shader failed");
     shader.set("color", color).expect("set failed");
     let pass = Pass::from_shader("fill", &shader);
-    pass.set_clear_color([0.0, 0.0, 1.0, 1.0]);
-    pass.set_viewport(viewport);
+    pass.set_clear_color([0.0, 0.0, 1.0, 1.0])
+        .expect("set_clear_color failed");
+    pass.set_viewport(viewport).expect("set_viewport failed");
     pass
 }
 
@@ -62,12 +67,12 @@ fn draws_inside_the_viewport_only() {
 
         renderer.render(&pass, &target).expect("render failed");
 
-        let image = target.get_image().await;
+        let image = target.get_image().await.expect("read back");
         assert_pixels(
             &image,
             16,
             16,
-            red_inside(ScreenRegion::new((4, 2), (8, 6))),
+            red_inside(ScreenRegion::new((4, 2), (8, 6)).expect("a region")),
         );
     });
 }
@@ -84,17 +89,17 @@ fn clips_a_viewport_larger_than_the_target() {
 
         let past = fill_pass([10, 6, 100, 100], [1.0, 0.0, 0.0, 1.0]);
         renderer.render(&past, &target).expect("render failed");
-        let image = target.get_image().await;
+        let image = target.get_image().await.expect("read back");
         assert_pixels(
             &image,
             16,
             16,
-            red_inside(ScreenRegion::new((10, 6), (6, 10))),
+            red_inside(ScreenRegion::new((10, 6), (6, 10)).expect("a region")),
         );
 
         let whole = fill_pass([64, 64], [1.0, 0.0, 0.0, 1.0]);
         renderer.render(&whole, &target).expect("render failed");
-        let image = target.get_image().await;
+        let image = target.get_image().await.expect("read back");
         assert_pixels(&image, 16, 16, |_, _| RED);
     });
 }
@@ -128,14 +133,48 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
             .expect("create_texture_target failed");
         let shader = Shader::new(HALVES).expect("halves shader failed");
         let pass = Pass::from_shader("halves", &shader);
-        pass.set_clear_color([0.0, 0.0, 1.0, 1.0]);
+        pass.set_clear_color([0.0, 0.0, 1.0, 1.0])
+            .expect("set_clear_color failed");
         // The viewport spans x 8..24, so its red left half covers 8..16 and its green half falls off.
-        pass.set_viewport([8, 0, 16, 8]);
+        pass.set_viewport([8, 0, 16, 8])
+            .expect("set_viewport failed");
 
         renderer.render(&pass, &target).expect("render failed");
 
-        let image = target.get_image().await;
+        let image = target.get_image().await.expect("read back");
         assert_pixels(&image, 16, 8, |x, _| if x < 8 { BLUE } else { RED });
+    });
+}
+
+// Story: A viewport with a side past the device's 2D texture limit is refused before
+// the frame, where it shrank to the limit and squeezed the image to another zoom.
+#[test]
+fn refuses_a_viewport_past_the_device_limit() {
+    pollster::block_on(async move {
+        let renderer = Renderer::new();
+        let target = renderer
+            .create_texture_target([16, 8])
+            .await
+            .expect("create_texture_target failed");
+        // A side of 2^24 passes every device's 2D limit. One of 2048 fits: GLES 3.0 and
+        // WebGL2 guarantee it, and wgpu's lowest tier, `downlevel_webgl2_defaults`, uses it.
+        let pass = fill_pass([0, 0, 1 << 24, 8], [1.0, 0.0, 0.0, 1.0]);
+
+        let result = renderer.render(&pass, &target);
+        assert!(
+            matches!(
+                &result,
+                Err(fragmentcolor::RendererError::PassError(PassError::ViewportLimit { size, .. }))
+                    if *size == [1 << 24, 8]
+            ),
+            "{result:?}"
+        );
+
+        pass.set_viewport([0, 0, 2048, 8])
+            .expect("set_viewport failed");
+        renderer
+            .render(&pass, &target)
+            .expect("a viewport within the limit");
     });
 }
 
@@ -152,7 +191,7 @@ fn skips_draws_for_a_viewport_outside_the_target() {
 
         renderer.render(&pass, &target).expect("render failed");
 
-        let image = target.get_image().await;
+        let image = target.get_image().await.expect("read back");
         assert_pixels(&image, 16, 16, |_, _| BLUE);
     });
 }
@@ -175,8 +214,13 @@ fn clips_to_the_pass_target() {
 
         renderer.render(&pass, &probe).expect("render failed");
 
-        let image = side.get_image().await;
-        assert_pixels(&image, 8, 8, red_inside(ScreenRegion::new((4, 0), (4, 8))));
+        let image = side.get_image().await.expect("read back");
+        assert_pixels(
+            &image,
+            8,
+            8,
+            red_inside(ScreenRegion::new((4, 0), (4, 8)).expect("a region")),
+        );
     });
 }
 
@@ -197,7 +241,7 @@ fn splits_the_target_between_two_passes() {
             .render(&vec![&left, &right], &target)
             .expect("render failed");
 
-        let image = target.get_image().await;
+        let image = target.get_image().await.expect("read back");
         assert_pixels(&image, 16, 8, |x, _| if x < 8 { RED } else { GREEN });
     });
 }

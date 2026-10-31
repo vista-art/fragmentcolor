@@ -1,6 +1,9 @@
 #![cfg(python)]
 
-use crate::texture::{Mipmap, Texture, TextureId, TextureRegion};
+use crate::bindings::python::{PyUnsigned, read_bytes, read_list, read_unsigned};
+use crate::texture::loading::decode::array_pixels;
+use crate::texture::{Mipmap, Texture, TextureError, TextureId, TextureRegion};
+use crate::texture::{measure_texel, read_pixels};
 use crate::{CompareFunction, SamplerOptions, TextureFormat};
 use lsp_doc::lsp_doc;
 use pyo3::exceptions::PyTypeError;
@@ -10,39 +13,41 @@ use pyo3::types::{PyByteArray, PyBytes, PyDict, PyList, PyMemoryView, PyTuple};
 // The argument types below are `pub` inside this private module,
 // so the bindings can take them while they stay out of the crate API.
 
-/// A texture id from Python: the integer value or a `TextureId`.
+/// A texture id from Python: a `TextureId` or its integer value, which [`PyTextureId::read`] checks.
 #[derive(FromPyObject)]
-pub enum PyTextureId {
-    #[pyo3(annotation = "int")]
-    Int(u64),
+pub enum PyTextureId<'py> {
     #[pyo3(annotation = "TextureId")]
     Id(TextureId),
+    #[pyo3(annotation = "int")]
+    Int(Bound<'py, PyAny>),
 }
 
-impl From<PyTextureId> for TextureId {
-    fn from(value: PyTextureId) -> Self {
-        match value {
-            PyTextureId::Int(id) => id.into(),
-            PyTextureId::Id(id) => id,
+impl PyTextureId<'_> {
+    /// The id, or an error that names `label` when the int is below 0 or past `u64::MAX`.
+    pub(crate) fn read(&self, label: &str) -> PyResult<TextureId> {
+        match self {
+            PyTextureId::Id(id) => Ok(*id),
+            PyTextureId::Int(value) => Ok(read_unsigned::<u64>(value, label)?.into()),
         }
     }
 }
 
 /// Raw texture bytes from Python: a `uint8` ndarray of any shape and layout,
-/// or `bytes` or a sequence of ints, tried in that order.
+/// or `bytes` or a sequence of ints, tried in that order. [`PyTextureBytes::read`] checks each int.
 #[derive(FromPyObject)]
 pub enum PyTextureBytes<'py> {
     #[pyo3(annotation = "ndarray[uint8]")]
     Array(numpy::PyReadonlyArrayDyn<'py, u8>),
     #[pyo3(annotation = "bytes | Sequence[int]")]
-    Bytes(Vec<u8>),
+    Bytes(Bound<'py, PyAny>),
 }
 
-impl From<PyTextureBytes<'_>> for Vec<u8> {
-    fn from(value: PyTextureBytes<'_>) -> Self {
-        match value {
-            PyTextureBytes::Array(array) => ndarray_bytes(&array),
-            PyTextureBytes::Bytes(bytes) => bytes,
+impl PyTextureBytes<'_> {
+    /// The bytes, or an error that names `label` and the item, as [`read_bytes`] reads them.
+    pub(crate) fn read(&self, label: &str) -> PyResult<Vec<u8>> {
+        match self {
+            PyTextureBytes::Array(array) => Ok(ndarray_bytes(array)),
+            PyTextureBytes::Bytes(bytes) => read_bytes(bytes, label),
         }
     }
 }
@@ -84,108 +89,78 @@ pub enum PyTextureSource<'py> {
     Mipmap(Mipmap),
 }
 
-/// The texture input a Python source stands for. An ndarray brings its own size.
-impl TryFrom<PyTextureSource<'_>> for crate::TextureInput {
-    type Error = PyErr;
-
-    fn try_from(source: PyTextureSource<'_>) -> PyResult<Self> {
+impl PyTextureSource<'_> {
+    /// The texture input the source stands for, or an error that names `label`.
+    /// An ndarray brings its own size, and each int of a list or tuple must be a byte.
+    pub(crate) fn read(self, label: &str) -> PyResult<crate::TextureInput> {
         use crate::TextureData;
-        let data = match source {
+        let data = match self {
             PyTextureSource::Texture(texture) => TextureData::CloneOf(texture),
             PyTextureSource::Bytes(bytes) => TextureData::Bytes(bytes.as_bytes().to_vec()),
             PyTextureSource::ByteArray(bytes) => TextureData::Bytes(bytes.to_vec()),
             PyTextureSource::MemoryView(view) => {
                 TextureData::Bytes(view.call_method0("tobytes")?.extract()?)
             }
-            PyTextureSource::List(list) => TextureData::Bytes(list.extract()?),
-            PyTextureSource::Tuple(tuple) => TextureData::Bytes(tuple.extract()?),
+            PyTextureSource::List(list) => TextureData::Bytes(read_bytes(list.as_any(), label)?),
+            PyTextureSource::Tuple(tuple) => TextureData::Bytes(read_bytes(tuple.as_any(), label)?),
             PyTextureSource::Source(source) => TextureData::from(source.as_str()),
             PyTextureSource::Path(path) => TextureData::Path(path),
-            PyTextureSource::Array(array) => {
-                let (rgba, size) = ndarray_to_rgba(&array)?;
-                return Ok((rgba, size).into());
-            }
+            PyTextureSource::Array(array) => return Ok(read_ndarray(&array, None, None)?),
             PyTextureSource::Mipmap(chain) => TextureData::Prepared(chain),
         };
         Ok(data.into())
     }
 }
 
-/// Expands an `(h, w)` or `(h, w, 1 | 3 | 4)` uint8 array to RGBA8 bytes.
-fn ndarray_to_rgba(
+/// The texture input for a `uint8` array, which brings its own size.
+/// A `size` keyword must match it, and its channels must fit the `format`, `Rgba` when unset.
+pub(crate) fn read_ndarray(
     array: &numpy::PyReadonlyArrayDyn<'_, u8>,
-) -> Result<(Vec<u8>, crate::Size), PyErr> {
+    size: Option<crate::Size>,
+    format: Option<TextureFormat>,
+) -> Result<crate::TextureInput, crate::texture::TextureError> {
     use numpy::PyUntypedArrayMethods;
 
-    let shape = array.shape();
-    if shape.len() != 2 && shape.len() != 3 {
-        return Err(crate::error::PyFragmentColorError::new_err(format!(
-            "ndarray must have 2 or 3 dimensions, got {}",
-            shape.len()
+    let format = format.unwrap_or_default();
+    let read = || ndarray_bytes(array);
+    let (pixels, own) = array_pixels(array.shape(), read, format.to_wgpu())?;
+    let fits = |size: &crate::Size| {
+        (size.width, size.height, size.depth.unwrap_or(1)) == (own.width, own.height, 1)
+    };
+    if let Some(size) = size.filter(|size| !fits(size)) {
+        return Err(crate::texture::TextureError::InvalidInput(format!(
+            "size {size:?} differs from the ndarray's {}x{}",
+            own.width, own.height
         )));
     }
-    let h = shape[0] as u32;
-    let w = shape[1] as u32;
-    let c = if shape.len() == 3 { shape[2] } else { 1 };
-    let mut rgba = vec![0u8; (w as usize) * (h as usize) * 4];
-    let data = ndarray_bytes(array);
-    for y in 0..(h as usize) {
-        for x in 0..(w as usize) {
-            let src_idx = (y * (w as usize) + x) * c;
-            let dst_idx = (y * (w as usize) + x) * 4;
-            match c {
-                1 => {
-                    let v = data[src_idx];
-                    rgba[dst_idx..dst_idx + 4].copy_from_slice(&[v, v, v, 255]);
-                }
-                3 => {
-                    let r = data[src_idx];
-                    let g = data[src_idx + 1];
-                    let b = data[src_idx + 2];
-                    rgba[dst_idx..dst_idx + 4].copy_from_slice(&[r, g, b, 255]);
-                }
-                4 => {
-                    rgba[dst_idx..dst_idx + 4].copy_from_slice(&data[src_idx..src_idx + 4]);
-                }
-                _ => {
-                    return Err(crate::error::PyFragmentColorError::new_err(
-                        "ndarray last dimension must be 1, 3, or 4",
-                    ));
-                }
-            }
-        }
-    }
-    Ok((rgba, crate::Size::new(w, h, None)))
+    Ok((pixels, format, own).into())
 }
 
 /// A texture usage from Python: a `TextureUsage`, such as
 /// `TextureUsage.COPY_SRC | TextureUsage.TEXTURE_BINDING`, or its bits as an int.
 #[derive(FromPyObject)]
-pub enum PyTextureUsage {
+pub enum PyTextureUsage<'py> {
     #[pyo3(annotation = "TextureUsage")]
     Usage(crate::TextureUsage),
     #[pyo3(annotation = "int")]
-    Bits(u32),
+    Bits(PyUnsigned<'py>),
 }
 
-impl From<PyTextureUsage> for u32 {
-    fn from(usage: PyTextureUsage) -> Self {
-        match usage {
-            PyTextureUsage::Usage(usage) => usage.bits,
-            PyTextureUsage::Bits(bits) => bits,
+impl PyTextureUsage<'_> {
+    /// The usage bits, or an error that names `label` for an int out of range.
+    pub(crate) fn read(&self, label: &str) -> PyResult<u32> {
+        match self {
+            PyTextureUsage::Usage(usage) => Ok(usage.bits),
+            PyTextureUsage::Bits(bits) => bits.read(label),
         }
     }
 }
 
-/// A `Texture.write_region` region from Python, tried in this order.
+/// A `Texture.write_region` region from Python: `[w, h]`, `[x, y, w, h]` or
+/// `[x, y, z, w, h, d]` in any sequence of ints, a `ScreenRegion`, or a dict.
 #[derive(FromPyObject)]
 pub enum PyTextureRegion<'py> {
-    #[pyo3(annotation = "[w, h]")]
-    Size([u32; 2]),
-    #[pyo3(annotation = "[x, y, w, h]")]
-    Rect([u32; 4]),
-    #[pyo3(annotation = "[x, y, z, w, h, d]")]
-    Volume([u32; 6]),
+    Numbers(Vec<PyUnsigned<'py>>),
     #[pyo3(annotation = "ScreenRegion")]
     Screen(crate::ScreenRegion),
     #[pyo3(annotation = "dict[str, int | None]")]
@@ -196,55 +171,40 @@ impl TryFrom<PyTextureRegion<'_>> for TextureRegion {
     type Error = PyErr;
 
     fn try_from(region: PyTextureRegion<'_>) -> Result<Self, Self::Error> {
-        match region {
-            PyTextureRegion::Size(size) => Ok(size.into()),
-            PyTextureRegion::Rect(rect) => Ok(rect.into()),
-            PyTextureRegion::Volume(volume) => Ok(volume.into()),
-            PyTextureRegion::Screen(screen) => Ok(screen.into()),
-            PyTextureRegion::Layout(layout) => layout_region(&layout),
+        let items = match region {
+            PyTextureRegion::Numbers(items) => items,
+            PyTextureRegion::Screen(screen) => return Ok(TextureRegion::try_from(screen)?),
+            PyTextureRegion::Layout(layout) => return layout_region(&layout),
+        };
+        let numbers = read_list(&items, "Texture.write_region")?;
+        match *numbers {
+            [w, h] => Ok([w, h].into()),
+            [x, y, w, h] => Ok([x, y, w, h].into()),
+            [x, y, z, w, h, d] => Ok([x, y, z, w, h, d].into()),
+            _ => Err(TextureError::InvalidInput(format!(
+                "a region takes 2, 4 or 6 numbers, got {}",
+                numbers.len()
+            ))
+            .into()),
         }
     }
 }
 
-/// Reads the known keys of the dict form, so any other entry is ignored.
+/// Reads the dict form through the reader the bindings share.
 /// A key like `bytes_per_row` also takes its camelCase form, `bytesPerRow`.
 fn layout_region(layout: &Bound<'_, PyDict>) -> PyResult<TextureRegion> {
-    let read = |names: &[&str]| -> PyResult<Option<u32>> {
-        for name in names {
-            if let Some(value) = layout.get_item(*name)? {
-                return value.extract::<Option<u32>>();
+    let read = |(camel, snake): crate::texture::region::Key| -> PyResult<Option<u32>> {
+        for name in [snake, camel] {
+            if let Some(value) = layout.get_item(name)? {
+                if value.is_none() {
+                    return Ok(None);
+                }
+                return read_unsigned(&value, &format!("Texture.write_region: {snake}")).map(Some);
             }
         }
         Ok(None)
     };
-
-    let mut region = if read(&["min_x", "minX"])?.is_some() || read(&["max_x", "maxX"])?.is_some() {
-        let min_x = read(&["min_x", "minX"])?.unwrap_or(0);
-        let min_y = read(&["min_y", "minY"])?.unwrap_or(0);
-        let max_x = read(&["max_x", "maxX"])?.unwrap_or(min_x);
-        let max_y = read(&["max_y", "maxY"])?.unwrap_or(min_y);
-        let min_z = read(&["min_z", "minZ"])?.unwrap_or(0);
-        let max_z = read(&["max_z", "maxZ"])?.unwrap_or(min_z.saturating_add(1));
-        TextureRegion::new(
-            [min_x, min_y, min_z],
-            [
-                max_x.saturating_sub(min_x),
-                max_y.saturating_sub(min_y),
-                max_z.saturating_sub(min_z).max(1),
-            ],
-        )
-    } else {
-        let x = read(&["x"])?.unwrap_or(0);
-        let y = read(&["y"])?.unwrap_or(0);
-        let z = read(&["z"])?.unwrap_or(0);
-        let w = read(&["width"])?.unwrap_or(0);
-        let h = read(&["height"])?.unwrap_or(0);
-        let d = read(&["depth"])?.unwrap_or(1);
-        TextureRegion::new([x, y, z], [w, h, d])
-    };
-    region.bytes_per_row = read(&["bytes_per_row", "bytesPerRow"])?;
-    region.rows_per_image = read(&["rows_per_image", "rowsPerImage"])?;
-    Ok(region)
+    crate::texture::region::read_region(read)
 }
 
 /// `SamplerOptions` from Python: the class itself, or a dict of its fields.
@@ -329,10 +289,10 @@ impl Mipmap {
     pub fn build_py(
         bytes: PyTextureBytes<'_>,
         format: TextureFormat,
-        size: Option<crate::size::PySize>,
+        size: Option<crate::values::PySize<'_>>,
     ) -> pyo3::PyResult<Mipmap> {
         let input = crate::TextureInput {
-            data: crate::TextureData::Bytes(bytes.into()),
+            data: crate::TextureData::Bytes(bytes.read("Mipmap.build: bytes")?),
             options: crate::TextureOptions {
                 size: size.map(crate::Size::try_from).transpose()?,
                 format,
@@ -345,12 +305,12 @@ impl Mipmap {
     #[pyo3(name = "format")]
     #[lsp_doc("docs/api/texture/mipmap/format.md")]
     pub fn format_py(&self) -> TextureFormat {
-        self.format.into()
+        TextureFormat::from_wgpu(self.format)
     }
 
     #[pyo3(name = "size")]
     #[lsp_doc("docs/api/texture/mipmap/size.md")]
-    pub fn size_py(&self) -> (u32, u32) {
+    pub fn size_py(&self) -> crate::Size {
         self.size()
     }
 
@@ -364,8 +324,10 @@ impl Mipmap {
     /// the valid range.
     #[pyo3(name = "level")]
     #[lsp_doc("docs/api/texture/mipmap/level.md")]
-    pub fn level_py(&self, index: usize) -> pyo3::PyResult<Vec<u8>> {
-        Ok(self.level(index)?.to_vec())
+    pub fn level_py(&self, index: PyUnsigned<'_>) -> pyo3::PyResult<Vec<u8>> {
+        Ok(self
+            .level(index.read("Mipmap.level: index")? as usize)?
+            .to_vec())
     }
 
     /// Every mip level's bytes as a list, level 0 first.
@@ -381,14 +343,12 @@ impl Texture {
     #[pyo3(name = "id")]
     #[lsp_doc("docs/api/texture/texture/id.md")]
     pub fn id_py(&self) -> TextureId {
-        self.id
+        *self.id()
     }
 
-    /// Python property: size -> returns a Size object
-    #[getter]
     #[pyo3(name = "size")]
     #[lsp_doc("docs/api/texture/texture/size.md")]
-    pub fn size_prop(&self) -> crate::Size {
+    pub fn size_py(&self) -> crate::Size {
         self.size()
     }
 
@@ -410,7 +370,7 @@ impl Texture {
     #[pyo3(name = "write")]
     #[lsp_doc("docs/api/texture/texture/write.md")]
     pub fn write_py(&self, data: PyTextureBytes<'_>) -> pyo3::PyResult<()> {
-        let bytes: Vec<u8> = data.into();
+        let bytes = data.read("Texture.write: data")?;
         self.write(&bytes)?;
         Ok(())
     }
@@ -422,42 +382,57 @@ impl Texture {
         data: PyTextureBytes<'_>,
         region: Option<PyTextureRegion<'_>>,
     ) -> pyo3::PyResult<()> {
-        let bytes: Vec<u8> = data.into();
-        let region = match region {
-            Some(region) => TextureRegion::try_from(region)?,
-            None => TextureRegion::default(),
-        };
-        self.write_region(&bytes, region)?;
+        let bytes = data.read("Texture.write_region: data")?;
+        match region {
+            Some(region) => self.write_region(&bytes, TextureRegion::try_from(region)?)?,
+            None => self.write(&bytes)?,
+        }
+        Ok(())
+    }
+
+    #[pyo3(name = "resize")]
+    #[lsp_doc("docs/api/texture/texture/resize.md")]
+    pub fn resize_py(&self, size: crate::PySize<'_>) -> pyo3::PyResult<()> {
+        self.resize(crate::Size::try_from(size)?)?;
         Ok(())
     }
 
     /// Read back mip 0 as a uint8 ndarray shaped (height, width, bytes per pixel),
     /// with a leading layer axis for array textures. The bytes keep the native
-    /// format, so a float texture reads as floats through `image.view(numpy.float32)`.
+    /// format, so a float texture reads as floats through `image.view(numpy.float16)`
+    /// for `Rgba16Float` or `image.view(numpy.float32)` for `Rgba32Float`.
     #[pyo3(name = "get_image")]
     #[lsp_doc("docs/api/texture/texture/get_image.md")]
     pub fn get_image_py(&self) -> pyo3::PyResult<Py<numpy::PyArrayDyn<u8>>> {
-        use numpy::PyArrayMethods;
-        let data = pollster::block_on(self.get_image())?;
-        let extent = self.object.size;
-        let bpp = crate::texture::bytes_per_pixel(self.object.format) as usize;
-        let (width, height) = (extent.width as usize, extent.height as usize);
-        let layers = extent.depth_or_array_layers.max(1) as usize;
-        let shape = match layers {
-            1 => vec![height, width, bpp],
-            _ => vec![layers, height, width, bpp],
-        };
-        let expected: usize = shape.iter().product();
-        if data.len() != expected {
-            return Err(crate::error::PyFragmentColorError::new_err(format!(
-                "Unexpected image data length: expected {expected}, got {}",
-                data.len()
-            )));
-        }
-        Python::attach(|py| {
-            // The readback is row-major, so it takes the image shape without a copy.
-            let image = numpy::PyArray1::from_vec(py, data).reshape(shape)?;
-            Ok(image.unbind())
-        })
+        read_array(self)
     }
+}
+
+/// The mip-0 pixels of `texture` as a uint8 ndarray shaped (height, width, bytes per pixel),
+/// with a leading layer axis for array textures.
+fn read_array(texture: &Texture) -> PyResult<Py<numpy::PyArrayDyn<u8>>> {
+    use numpy::PyArrayMethods;
+    // One snapshot reads the pixels and their shape, even across a resize.
+    let object = texture.object();
+    let data = pollster::block_on(read_pixels(&texture.context, &object))?;
+    let extent = object.size;
+    let texel = measure_texel(object.format)? as usize;
+    let (width, height) = (extent.width as usize, extent.height as usize);
+    let layers = extent.depth_or_array_layers.max(1) as usize;
+    let shape = match layers {
+        1 => vec![height, width, texel],
+        _ => vec![layers, height, width, texel],
+    };
+    let expected: usize = shape.iter().product();
+    if data.len() != expected {
+        return Err(crate::error::PyFragmentColorError::new_err(format!(
+            "Unexpected image data length: expected {expected}, got {}",
+            data.len()
+        )));
+    }
+    Python::attach(|py| {
+        // The readback is row-major, so it takes the image shape without a copy.
+        let image = numpy::PyArray1::from_vec(py, data).reshape(shape)?;
+        Ok(image.unbind())
+    })
 }

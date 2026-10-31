@@ -34,9 +34,6 @@ description below for details.
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-let canvas = fragmentcolor::headless_window([800, 600]);
-
 use fragmentcolor::{Shader, Renderer, Target};
 
 let renderer = Renderer::new();
@@ -49,16 +46,8 @@ let texture_target = renderer.create_texture_target([16, 16]).await?;
 renderer.render(&Shader::default(), &texture_target)?;
 
 // That's it. Welcome to FragmentColor!
-
-let s = target.size();
-assert_eq!([s.width, s.height], [800, 600]);
-let s2 = texture_target.size();
-assert_eq!([s2.width, s2.height], [16, 16]);
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-2, 17-23}"
+lang="rust"
 />
 
 </TabItem>
@@ -123,7 +112,7 @@ let canvas = CAMetalLayer()
 let renderer = Renderer()
 
 // The canvas comes from your platform's windowing system
-let target = try await renderer.createTarget(canvas)
+let target = try renderer.createTarget(canvas)
 let texture_target = try await renderer.createTextureTarget([16, 16])
 
 // RENDERING
@@ -173,13 +162,19 @@ lang="kotlin" meta="collapse={2-3, 15-15}"
 
 Create a depth texture using `Depth32Float`.
 
+A pass that draws models gets a depth buffer without one. Create a depth texture to read depth in a later pass, or to give depth to a pass of plain meshes.
+
+A width or height of zero, a side past the device limit, or a depth other than 1 is an error, the one `resize` returns: `TextureError::InvalidInput` inside `InitializationError::TextureError` in Rust.
+
 The created depth texture inherits the renderer's current sample count:
 - If you called `create_target(window)` (surface-backed), it matches the negotiated MSAA (e.g., 2×/4×) for that surface.
 - If you are rendering offscreen via `create_texture_target`, it defaults to 1.
 
 This ensures the depth attachment `sample_count` matches the pass sample count.
-If you attach a depth texture with a different `sample_count` than the pass,
-rendering will return a descriptive validation error.
+A depth texture with a different `sample_count` than the pass makes `render` return
+`RendererError::DepthSampleCountMismatch`, and one whose width or height differs from
+the pass's color attachment returns `RendererError::DepthSizeMismatch`, before it takes
+a frame. A window that resizes needs a depth texture of the new size, or a `resize` of this one.
 
 #### Example
 
@@ -188,16 +183,11 @@ rendering will return a descriptive validation error.
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Renderer;
 let r = Renderer::new();
 let depth = r.create_depth_texture([800, 600]).await?;
-_ = depth;
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 5-8}"
+lang="rust"
 />
 
 </TabItem>
@@ -255,108 +245,6 @@ lang="kotlin"
 
 ---
 
-### Renderer::create_external_texture(source) \{#create_external_texture\}
-
-Wrap a native platform video-frame source as an external texture so a WGSL
-shader can sample it directly via `texture_external` /
-`textureSampleBaseClampToEdge`, without an intermediate CPU upload.
-
-The method exists on the Web, iOS and Android bindings. Desktop Rust and
-Python have no native video-frame source to pass, so they don't have it.
-The `source` argument is platform-specific:
-
-- **Web**: `HTMLVideoElement` (or anything that decodes into one).
-- **iOS**: a raw `UInt64` pointer to a `CVPixelBuffer`.
-- **Android**: a raw `ULong` pointer to a `SurfaceTexture`.
-
-Every call returns an error for now. The signature is stable, and the
-native decode hookup is on the roadmap. Track support via the typed
-`RendererError` you get back.
-
-#### Example
-
-<Tabs>
-
-<TabItem label="Rust">
-<Code
-code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::Renderer;
-let renderer = Renderer::new();
-// platform-specific source handle passed here
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
-`}
-lang="rust" meta="collapse={1-1, 5-7}"
-/>
-
-</TabItem>
-
-<TabItem label="JavaScript">
-<Code
-code={`
-import { Renderer } from "fragmentcolor";
-
-const renderer = new Renderer();
-const element = document.getElementById("video");
-
-if (element instanceof HTMLVideoElement) {
-  const handle = renderer.createExternalTexture(element);
-  void handle;
-}
-`}
-lang="js"
-/>
-
-</TabItem>
-
-<TabItem label="Python">
-<Code
-code={`
-# Python: decode video frames host-side and upload via Texture.write().
-# A native external-texture source equivalent is not exposed on this binding.
-`}
-lang="python"
-/>
-
-</TabItem>
-
-<TabItem label="Swift">
-<Code
-code={`
-import FragmentColor
-// Once supported:
-//   let renderer = Renderer()
-//   let pixelBuffer: CVPixelBuffer = /* from AVPlayerItemVideoOutput */
-//   let ptr = UInt64(UInt(bitPattern: Unmanaged.passUnretained(pixelBuffer).toOpaque()))
-//   let handle = try renderer.createExternalTexture(sourcePtr: ptr)
-`}
-lang="swift"
-/>
-
-</TabItem>
-
-<TabItem label="Kotlin">
-<Code
-code={`
-import org.fragmentcolor.*
-// Once supported:
-//   val renderer = Renderer()
-//   val surfaceTexture: SurfaceTexture = /* from MediaCodec / Camera2 */
-//   val ptr: ULong = surfaceTexture.nativeHandle()  // hypothetical helper
-//   val handle = renderer.createExternalTexture(ptr)
-`}
-lang="kotlin"
-/>
-
-</TabItem>
-
-</Tabs>
-
-
----
-
 ### Renderer::create_storage_texture \{#create_storage_texture\}
 
 Create a storage-class texture for compute shaders, image store/load, or as a render target.
@@ -364,12 +252,14 @@ Create a storage-class texture for compute shaders, image store/load, or as a re
 Common forms:
 
 - `(size, format)`: empty storage texture, no initial data.
-- `(size, format, bytes)`: storage texture pre-seeded with `bytes`.
+- `(size, format, bytes)`: storage texture pre-seeded with `bytes`, exactly the size's pixel count times the format's bytes per pixel.
 - A full `TextureInput { data, options }` literal: pass `options.usage` (via `TextureOptions::with_usage(...)`) for non-default usage flags.
 
 `size` is required; storage textures have no source to infer dimensions from. Missing it returns `RendererError::CreateTextureError`.
 
-`options.usage` overrides the default mask of `STORAGE_BINDING | TEXTURE_BINDING | COPY_SRC | COPY_DST`. Every binding has the same named `TextureUsage` flags, combined with `|` (`or` in Kotlin). The other bindings take the size, format, optional bytes and optional usage as separate arguments.
+A depth of 1, or none, makes a 2D texture, and a larger depth makes a 3D texture. A side of zero, or a size past the device's limits for that kind of texture, is an error that reaches no GPU call: `TextureError::InvalidInput` inside `RendererError::TextureError` in Rust, a thrown `Error` named `InvalidInputError` in JavaScript, `InvalidInputError` (a `FragmentColorError`) in Python, `FragmentColorError` in Swift and `FragmentColorException` in Kotlin.
+
+`options.usage` overrides the default mask of `STORAGE_BINDING | TEXTURE_BINDING | COPY_SRC | COPY_DST`. Every binding has the same named `TextureUsage` flags, combined with `|` (`or` in Kotlin). The other bindings take the size, format, optional bytes and optional usage as separate arguments. An empty mask, or a bit outside the five `TextureUsage` flags, is the same `InvalidInput` error. So is a usage the format can't take on this device, such as `STORAGE_BINDING` on `Depth32Float` or `Rgba8UnormSrgb`, and a depth texture with a depth past 1.
 
 #### Example
 
@@ -378,26 +268,20 @@ Common forms:
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, TextureFormat};
 
 let r = Renderer::new();
 
 // Empty storage texture.
 let tex = r.create_storage_texture(([64, 64], TextureFormat::Rgba)).await?;
-_ = tex;
 
 // Pre-seeded with bytes.
 let pixels = vec![0; 64 * 64 * 4];
 let tex2 = r
     .create_storage_texture(([64, 64], TextureFormat::Rgba, pixels))
     .await?;
-_ = tex2;
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 8-8, 15-18}"
+lang="rust"
 />
 
 </TabItem>
@@ -488,6 +372,8 @@ Creates a [Target](/api/targets/target) attached to a platform-specific canvas o
 
 In Rust, we officially support Winit. Check the examples folder for details.
 
+A window with no area yet gets one pixel on that side, and `resize` gives it the real size later. A side past the device limit is an error, the one `resize` returns: `TextureError::InvalidInput` inside `InitializationError::TextureError` in Rust, a thrown `Error` named `InvalidInputError` in JavaScript, `InvalidInputError` (a `FragmentColorError`) in Python, `FragmentColorError` in Swift and `FragmentColorException` in Kotlin.
+
 #### Example
 
 <Tabs>
@@ -495,23 +381,14 @@ In Rust, we officially support Winit. Check the examples folder for details.
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-let canvas = fragmentcolor::headless_window([800, 600]);
-
 use fragmentcolor::{Renderer, Target};
 
 let renderer = Renderer::new();
 
 // The canvas comes from your platform's windowing system.
 let target = renderer.create_target(canvas).await?;
-
-let s = target.size();
-assert_eq!([s.width, s.height], [800, 600]);
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-2, 11-15}"
+lang="rust"
 />
 
 </TabItem>
@@ -564,7 +441,7 @@ let canvas = CAMetalLayer()
 let renderer = Renderer()
 
 // The canvas comes from your platform's windowing system.
-let target = try await renderer.createTarget(canvas)
+let target = try renderer.createTarget(canvas)
 `}
 lang="swift" meta="collapse={2-3}"
 />
@@ -599,29 +476,38 @@ lang="kotlin" meta="collapse={2-3, 9-9}"
 
 Create a [Texture](/api/texture/texture) from bytes, a file path, a URL, a KTX2 container, or a pre-built [Mipmap](/api/texture/mipmap).
 
-When you pass a `size`, the bytes are treated as raw pixels in the chosen format. Without a size, the bytes (or the file/URL contents) are decoded as PNG, JPEG, BMP, HDR, etc.
+When you pass a `size`, the bytes are treated as raw pixels in the chosen format. Without a size, the bytes (or the file/URL contents) are decoded as PNG, JPEG, BMP, HDR, etc. A size applies to bytes only: a path, a URL, a KTX2 file and a `Mipmap` carry their own, so a size with one is an `InvalidInput` error, raised before any file read or fetch.
+
+A size with a side of zero, or one past the device's limits, is an error that reaches no GPU call, and so is an image larger than the device takes, which is checked from its header before the pixels decode: `TextureError::InvalidInput` inside `RendererError::TextureError` in Rust, a thrown `Error` named `InvalidInputError` in JavaScript, `InvalidInputError` (a `FragmentColorError`) in Python, `FragmentColorError` in Swift and `FragmentColorException` in Kotlin.
 
 Decode and mipmap generation run on a background worker on native platforms. On the web they run inline on the caller's thread; move heavy decode into a Web Worker if you need parallelism.
 
 #### Per-language shapes
 
-- **Rust:** `create_texture(input)`. `input` accepts bare bytes, `(bytes, [w, h])`, `(bytes, format)`, `(bytes, options)`, a path, a URL string, a `Texture`, a `Mipmap`, or a KTX2 input. A string that starts with `http://` or `https://` is a URL; any other string is a path.
-- **JS:** `await renderer.createTexture(input, options?)`. `input` is `Uint8Array` / `ArrayBuffer` / URL string / CSS selector / `HTMLImageElement` / `HTMLCanvasElement` / `OffscreenCanvas` / `ImageData` / a `Texture` / a `Mipmap`. `options` is `{ size?, format?, mipmaps?, sampler?, usage? }`; when `size` is set, `input` is read as raw pixel bytes. `ImageData` and canvases bring their own size.
-- **Python:** `renderer.create_texture(input, size=None, format=None, mipmaps=None, sampler=None, usage=None)`. `input` is `bytes` / `bytearray` / `memoryview` / a list or tuple of ints / a path or URL `str` / `os.PathLike` / uint8 numpy `ndarray[H, W, C]` / `Texture` / `Mipmap`. Numpy arrays fill in `size` for you.
-- **Swift / Kotlin:** `try await renderer.createTexture(bytes)`, `createTexture(bytes, format)`, `createTexture(bytes, [w, h])`, `createTexture(bytes, options)`, `createTexture(path)` or `createTexture(chain)`. Bytes are `Data` or `[UInt8]` in Swift and `ByteArray` in Kotlin. Every bytes form also takes an optional `usage`.
+- **Rust:** `create_texture(input)`. `input` accepts bare bytes, `(bytes, [w, h])`, `(bytes, format)`, `(bytes, options)`, a path or a URL string, alone or as `(path, format)` or `(path, options)`, a `Texture`, a `Mipmap`, alone or as `(chain, options)`, or a KTX2 input. A string that starts with `http://` or `https://` is a URL; any other string is a path.
+- **JS:** `await renderer.createTexture(input, options?)`. `input` is `Uint8Array` / `ArrayBuffer` / URL string / CSS selector / `HTMLImageElement` / `HTMLCanvasElement` / `OffscreenCanvas` / `ImageData` / a `Texture` / a `Mipmap`. `options` is `{ size?, format?, mipmaps?, sampler?, usage? }`; when `size` is set, `input` is read as raw pixel bytes. `ImageData` and canvases bring their own size and RGBA pixels, so their options may repeat that size and pick an 8-bit RGBA or BGRA format, and anything else throws. The options object takes the size under `size`, and a `width` or `height` beside another option throws. A `Texture` keeps the options it was created with, so options beside one throw an `InvalidInputError`.
+- **Python:** `renderer.create_texture(input, size=None, format=None, mipmaps=None, sampler=None, usage=None)`. `input` is `bytes` / `bytearray` / `memoryview` / a list or tuple of ints / a path or URL `str` / `os.PathLike` / uint8 numpy `ndarray[H, W, C]` / `Texture` / `Mipmap`. Numpy arrays fill in `size` for you, and a `size` that differs from the array's raises `InvalidInputError`, as does any keyword beside a `Texture`, which keeps the options it was created with. An array is raw bytes in the named format: one whose channels match the format's bytes per pixel uploads as it is, such as an `(H, W)` array as `R8Unorm` or a 4-channel array as `Bgra8Unorm` with no swap, and one with 1 or 3 channels gains an opaque alpha for an 8-bit RGBA or BGRA format. Any other shape raises `InvalidInputError`.
+- **Swift / Kotlin:** `try await renderer.createTexture(bytes)`, `createTexture(bytes, format)`, `createTexture(bytes, [w, h])`, `createTexture(bytes, size)`, `createTexture(bytes, options)`, `createTexture(path)`, `createTexture(path, format)`, `createTexture(path, options)`, `createTexture(chain)` or `createTexture(chain, options)`. Bytes are `Data`, `[UInt8]` or `[Int]` in Swift and `ByteArray` or `List<Int>` in Kotlin, in every bytes form, and an `Int` outside 0 to 255 throws. The bytes forms without `options` also take an optional `usage`.
 
 #### How the discriminator works
 
 | Form | Treatment |
 |------|-----------|
 | `bytes` (no size) | Encoded image; decoded internally (PNG, JPEG, BMP, HDR, etc.). |
-| `(bytes, size)` / options with `size` set | Raw pixel bytes; `bpp(format) * width * height` long, no decode. The default `Rgba` format uploads them as linear `Rgba8Unorm`. |
-| `(bytes, format)` / options with `format` set | Encoded image reinterpreted as `format` (e.g. `Rgba8Unorm` for normal-map data, `R16Unorm` for 16-bit grayscale). |
-| `path` / `URL` | File or HTTP fetch, then decoded. |
-| `Mipmap` | Pre-built CPU mip chain; GPU-only upload. Build via [Mipmap::build](/api/texture/mipmap#build) on a worker thread. |
-| `Ktx2Bytes` / `Ktx2Path` / `Ktx2Url` | KTX2 container (BC / ETC2 / ASTC / uncompressed); the file's declared format and pre-baked mip chain win. |
+| `(bytes, size)` / options with `size` set | Raw pixel bytes; exactly `bpp(format) * width * height * depth` long, no decode, and any other length is an `InvalidInput` error. The default `Rgba` format uploads them as linear `Rgba8Unorm`. |
+| `(bytes, format)` / options with `format` set | Encoded image reinterpreted as `format` (e.g. `Rgba8Unorm` for normal-map data, `R16Unorm` for 16-bit grayscale, `Rgba32Float` for full float precision). |
+| `path` / `URL` | File or HTTP fetch, then decoded. A size with it is an error. |
+| `Mipmap` | Pre-built CPU mip chain; GPU-only upload, in the format it was built in. Build via [Mipmap::build](/api/texture/mipmap#build) on a worker thread. A `format` option may pick that format's sRGB twin, which reads the same bytes, and any other format is an `InvalidInput` error that names `create_texture`. |
+| `Texture` | Returned as it is. It keeps the options it was created with, so any option beside it is an `InvalidInput` error that names the call. |
+| `Ktx2Bytes` / `Ktx2Path` / `Ktx2Url` | KTX2 container (BC / ETC2 / ASTC / uncompressed), found by its identifier in plain bytes or a plain path too; the file's declared format and pre-baked mip chain win. A `format` option may pick that format's sRGB twin, which reads the same bytes, and any other format is an `InvalidInput` error that names `create_texture`. |
 
-A full mipmap chain is generated for source images by default (`options.mipmaps = true`). Set to `false` to skip the CPU work for textures that won't be sampled at distance.
+A full mipmap chain is generated by default (`options.mipmaps = true`), for source images and for raw bytes in a color or float format, float data included. Set to `false` to skip the CPU work for textures that won't be sampled at distance, and for any texture you update in parts with `write_region`, which refuses a partial write into a chain. Raw bytes upload as given at level 0, and the levels below it are resampled from them.
+
+An HDR image decodes into `Rgba16Float`. A value past the half float range saturates at 65504, or -65504, and never becomes infinity, the way Three.js converts it. An explicit `Rgba32Float` keeps the full range, and a linear sampler filters it where the device has `FLOAT32_FILTERABLE`. Every mip level of a float texture averages the f32 values of the level above it with a box filter, so values below 0 and above 1 keep their size at every level. For `Rgba16Float` those are the values before the level is stored as half floats, and only storing a level saturates it.
+
+A decoded image, an `ImageData` or a canvas holds RGBA by definition, so it uploads into `Bgra8Unorm` blue first and its colors sample right. Every path that takes an `ImageData` or a canvas does this: `createTexture`, the Material texture setters, `Texture.write` and `writeRegion`, `Mipmap.build` and the `createStorageTexture` seed. Raw bytes, a NumPy array among them, are texels in the named format and upload as given, never swapped. A decoded image fills the 8-bit and 16-bit color formats and `Rgba16Float` or `Rgba32Float`. An integer format such as `Rgba32Uint`, or `Depth32Float`, is an `InvalidInput` error: pass raw bytes with a size for an integer texture, and draw into a depth texture.
+
+`options.usage` adds `TextureUsage` flags to the `TEXTURE_BINDING | COPY_DST` every texture made from data has, such as `COPY_SRC` to read it back. A bit outside the five `TextureUsage` flags is an `InvalidInput` error.
 
 #### Example
 
@@ -630,17 +516,11 @@ A full mipmap chain is generated for source images by default (`options.mipmaps 
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-let image = std::fs::read("examples/assets/logo.png")?;
 use fragmentcolor::Renderer;
 let renderer = Renderer::new();
 let tex = renderer.create_texture(&image).await?;
-_ = tex.size();
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-2, 6-9}"
+lang="rust"
 />
 
 </TabItem>
@@ -709,6 +589,8 @@ Render to an offscreen texture without a Window or Canvas.
 
 This is useful for tests, server-side rendering, or running examples in CI.
 
+A width or height of zero, a side past the device limit, or a depth other than 1 is an error, the one `resize` returns: `TextureError::InvalidInput` inside `InitializationError::TextureError` in Rust, a thrown `Error` named `InvalidInputError` in JavaScript, `InvalidInputError` (a `FragmentColorError`) in Python, `FragmentColorError` in Swift and `FragmentColorException` in Kotlin.
+
 #### Example
 
 <Tabs>
@@ -716,8 +598,6 @@ This is useful for tests, server-side rendering, or running examples in CI.
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-
 use fragmentcolor::{Renderer, Shader, Target};
 let renderer = Renderer::new();
 
@@ -727,15 +607,9 @@ let target = renderer.create_texture_target([64, 64]).await?;
 renderer.render(&Shader::default(), &target)?;
 
 // get the rendered image
-let image = target.get_image().await;
-
-// RGBA8
-assert_eq!(image.len(), 64 * 64 * 4);
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+let image = target.get_image().await?;
 `}
-lang="rust" meta="collapse={1-1, 14-18}"
+lang="rust"
 />
 
 </TabItem>
@@ -829,25 +703,48 @@ lang="kotlin"
 
 ### Renderer::load \{#load\}
 
-Realize every pending GPU upload referenced by a renderable. Material's
-texture setters (`base_color_texture`, `metallic_roughness_texture`, …)
-accept paths, bytes, and URLs in addition to
+Uploads into this `Renderer` every Material map of a renderable that it
+lacks, or holds from an older set. Material's texture setters
+(`base_color_texture`, `metallic_roughness_texture`, …) take an
 already-uploaded [`Texture`](/api/texture/texture)
-handles; the path / bytes / URL variants are stored on the Material's
-Shader as *pending* uploads. `load` walks every Shader the renderable
-visits, drains its pending list, calls
-[`Renderer::create_texture`](/api/core/renderer#create_texture)
-for each, and writes the resulting `Texture` into the matching uniform.
+or a source: bytes, a path, a URL or a `Mipmap`. The Material keeps a source
+as a map with one texture id. `load` walks every Shader the renderable visits
+and decodes each map this `Renderer` needs into a copy of its own, under that id.
 
-On native targets, [`Renderer::render`](/api/core/renderer)
-runs `load` first whenever the renderable has pending uploads, so an
-explicit `load` is optional there. Reach for it when you want to pay the
-decode and upload cost outside the render loop, for example in a loading
-screen that prepares the scene before the first frame goes out.
+An upload that fails keeps no copy, and the others still upload: a good
+normal map draws even when the base color path is missing. `load` returns
+the first failure, as does every later `load` and every native `render`,
+until the source is fixed or replaced. The latest setter call for a map
+wins, even one made while `load` is uploading the older source. That older
+upload stands in, so this `Renderer` always holds a copy, until the next
+`load` uploads the latest. A slot the shader doesn't declare never becomes a map, since
+the setter logs a warning and leaves the Material as it was.
 
-On the web, `render` can't wait for an upload, so it leaves pending uploads
-alone. Await `load` before the first `render`. Until then, a PBR Material
-draws with its 1×1 default maps.
+Each `Renderer` holds copies of its own. One Material draws with every
+`Renderer` that loads it, and a copy goes when its `Renderer` or the
+Material drops. A map set again draws its old copy until this `Renderer`
+loads the new one.
+
+On native targets, [`Renderer::render`](/api/core/renderer#render)
+runs `load` first, which makes an explicit `load` optional there. Reach for
+it when you want to pay the decode and upload cost outside the render loop,
+for example in a loading screen that prepares the scene before the first
+frame goes out.
+
+On the web, `render` can't wait for an upload and uploads nothing. Await
+`load` in each `Renderer` before its first `render`. Until then, each map
+draws its 1×1 PBR default wherever that default fits the slot, in the
+built-in shader or a custom one. A slot it doesn't fit, such as an integer
+texture, and a map in a compute shader fail the render with a
+`BindingError` that asks for `load`.
+
+On native, a map that another thread sets while `render` runs, on a slot
+this `Renderer` holds no copy for, draws the same way for that one frame,
+and the next `render` uploads it.
+
+In JavaScript, `load` first waits for the frames rendered before it to
+report their GPU errors, and throws the first one, as
+[`Renderer::render`](/api/core/renderer#render) describes.
 
 #### Example
 
@@ -856,17 +753,19 @@ draws with its 1×1 default maps.
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-let image = std::fs::read("examples/assets/logo.png")?;
 use fragmentcolor::{Material, Mesh, Model, Renderer, Scene, Vertex};
 
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([64, 64]).await?;
 
 let mesh = Mesh::new();
-mesh.add_vertex(Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]));
+mesh.add_vertices([
+    Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]),
+    Vertex::pbr([-0.5, -0.5, 0.0]).set(Vertex::UV0, [0.0, 0.0]),
+    Vertex::pbr([0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]),
+]);
 
-// The material keeps the encoded image as a pending upload.
+// The material keeps the encoded image as a map.
 let material = Material::pbr().base_color_texture(&image);
 let model = Model::new(mesh, material);
 let scene = Scene::new();
@@ -875,11 +774,14 @@ scene.add(&model)?;
 // Decode and upload it now, so the first render only draws.
 renderer.load(&scene).await?;
 renderer.render(&scene, &target)?;
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+
+// A second Renderer draws the same map from a copy of its own.
+let other = Renderer::new();
+let frame = other.create_texture_target([64, 64]).await?;
+other.load(&scene).await?;
+other.render(&scene, &frame)?;
 `}
-lang="rust" meta="collapse={1-2, 20-22}"
+lang="rust"
 />
 
 </TabItem>
@@ -894,9 +796,9 @@ const renderer = new Renderer();
 const target = await renderer.createTextureTarget([64, 64]);
 
 const mesh = new Mesh();
-mesh.addVertex(Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]));
+mesh.addVertices([ Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]), Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]), ]);
 
-// The material keeps the encoded image as a pending upload.
+// The material keeps the encoded image as a map.
 const material = Material.pbr().baseColorTexture(image);
 const model = new Model(mesh, material);
 const scene = new Scene();
@@ -905,6 +807,12 @@ scene.add(model);
 // Decode and upload it now, so the first render only draws.
 await renderer.load(scene);
 renderer.render(scene, target);
+
+// A second Renderer draws the same map from a copy of its own.
+const other = new Renderer();
+const frame = await other.createTextureTarget([64, 64]);
+await other.load(scene);
+other.render(scene, frame);
 `}
 lang="js" meta="collapse={2-2}"
 />
@@ -921,9 +829,13 @@ renderer = Renderer()
 target = renderer.create_texture_target([64, 64])
 
 mesh = Mesh()
-mesh.add_vertex(Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]))
+mesh.add_vertices([
+    Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
+    Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+    Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+])
 
-# The material keeps the encoded image as a pending upload.
+# The material keeps the encoded image as a map.
 material = Material.pbr().base_color_texture(image)
 model = Model(mesh, material)
 scene = Scene()
@@ -932,6 +844,12 @@ scene.add(model)
 # Decode and upload it now, so the first render only draws.
 renderer.load(scene)
 renderer.render(scene, target)
+
+# A second Renderer draws the same map from a copy of its own.
+other = Renderer()
+frame = other.create_texture_target([64, 64])
+other.load(scene)
+other.render(scene, frame)
 `}
 lang="python" meta="collapse={2-2}"
 />
@@ -949,9 +867,13 @@ let renderer = Renderer()
 let target = try await renderer.createTextureTarget([64, 64])
 
 let mesh = Mesh()
-try mesh.addVertex(Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]))
+mesh.addVertices([
+    try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
+    try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+    try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+])
 
-// The material keeps the encoded image as a pending upload.
+// The material keeps the encoded image as a map.
 let material = Material.pbr().baseColorTexture(image)
 let model = Model(mesh, material)
 let scene = Scene()
@@ -960,6 +882,12 @@ try scene.add(model)
 // Decode and upload it now, so the first render only draws.
 try await renderer.load(scene)
 try renderer.render(scene, target)
+
+// A second Renderer draws the same map from a copy of its own.
+let other = Renderer()
+let frame = try await other.createTextureTarget([64, 64])
+try await other.load(scene)
+try other.render(scene, frame)
 `}
 lang="swift" meta="collapse={2-3}"
 />
@@ -976,9 +904,9 @@ val renderer = Renderer()
 val target = renderer.createTextureTarget(listOf(64u, 64u))
 
 val mesh = Mesh()
-mesh.addVertex(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)))
+mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
 
-// The material keeps the encoded image as a pending upload.
+// The material keeps the encoded image as a map.
 val material = Material.pbr().baseColorTexture(image)
 val model = Model(mesh, material)
 val scene = Scene()
@@ -987,6 +915,12 @@ scene.add(model)
 // Decode and upload it now, so the first render only draws.
 renderer.load(scene)
 renderer.render(scene, target)
+
+// A second Renderer draws the same map from a copy of its own.
+val other = Renderer()
+val frame = other.createTextureTarget(listOf(64u, 64u))
+other.load(scene)
+other.render(scene, frame)
 `}
 lang="kotlin" meta="collapse={2-2}"
 />
@@ -1019,20 +953,12 @@ build one is through this renderer:
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-
 use fragmentcolor::{Renderer, Target};
 
 let renderer = Renderer::new();
 let texture_target = renderer.create_texture_target([16, 16]).await?;
-
-let s = texture_target.size();
-assert_eq!([s.width, s.height], [16, 16]);
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 8-12}"
+lang="rust"
 />
 
 </TabItem>
@@ -1123,6 +1049,13 @@ declare a storage binding called `binding`, or when no render pass has yet
 materialized the GPU-side buffer (storage buffers are allocated lazily on
 first bind).
 
+In JavaScript, `readStorage` waits for the frames rendered before it to
+report their GPU errors and throws the first one, as
+[`Renderer::render`](/api/core/renderer#render)
+describes. An error throws only once, so when another call, such as the next
+`render`, has already thrown it, `readStorage` returns the bytes the failed
+frame left behind.
+
 #### Example
 
 <Tabs>
@@ -1130,8 +1063,6 @@ first bind).
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use bytemuck;
 use fragmentcolor::{Pass, Renderer, Shader};
 
 let renderer = Renderer::new();
@@ -1152,17 +1083,12 @@ let compute = Shader::new(
 
 let pass = Pass::compute("seed");
 pass.set_compute_dispatch(1, 1, 1);
-pass.add_shader(&compute);
+pass.add_shader(&compute)?;
 renderer.render(&pass, &target)?;
 
 let bytes = renderer.read_storage(&compute, "out").await?;
-let values: &[f32] = bytemuck::cast_slice(&bytes);
-assert_eq!(values, &[1.0, 2.0, 3.0, 4.0]);
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-2, 27-31}"
+lang="rust"
 />
 
 </TabItem>
@@ -1254,7 +1180,7 @@ let compute = try Shader("""
 
 let pass = Pass.compute("seed")
 pass.setComputeDispatch(1, 1, 1)
-pass.addShader(compute)
+try pass.addShader(compute)
 try renderer.render(pass, target)
 
 let bytes = try await renderer.readStorage(compute, "out")
@@ -1308,6 +1234,9 @@ Read back the mip-0 contents of a registered texture as tightly-packed bytes in 
 - Works on native and on the web; the call awaits the GPU readback mapping.
 - Equivalent to calling [`Texture::get_image`] on the texture handle. Use this entry point when you only kept the `TextureId` around.
 - The texture must have `COPY_SRC` usage. Creation helpers like `create_storage_texture` enable it by default.
+- GLES and WebGL2 can't copy a depth texture to a buffer, so reading one back there returns `TextureError::Readback`. So does a texture whose readback needs a buffer past the device's largest, `max_buffer_size`.
+- A block-compressed texture, such as one loaded from a BC7 or ASTC KTX2 file, has no size per pixel, so reading it back is an `InvalidInput` error.
+- In JavaScript, `readTexture` first waits for the frames rendered before it to report their GPU errors and throws the first one, as [`Renderer::render`](/api/core/renderer#render) describes.
 
 #### Example
 
@@ -1316,19 +1245,14 @@ Read back the mip-0 contents of a registered texture as tightly-packed bytes in 
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, TextureFormat};
 let renderer = Renderer::new();
 let texture = renderer.create_storage_texture(([64, 64], TextureFormat::Rgba)).await?;
 texture.write(&vec![0; 64 * 64 * 4])?;
 
 let bytes = renderer.read_texture(texture.id()).await?;
-assert_eq!(bytes.len(), 64 * 64 * 4);
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 8-11}"
+lang="rust"
 />
 
 </TabItem>
@@ -1404,6 +1328,24 @@ Renders the given object to the given [Target](/api/targets/target).
 
 `renderable` can be a `Shader`, a `Pass`, a `Mesh`, a `Scene`, or any iterable of `Pass` (`Vec<Pass>`, `&[Pass]`, `&[&Pass]`). Passes in an iterable are rendered in order.
 
+A window that is hidden or minimized has no frame to draw on. `render` then returns `RendererError::SurfaceError(SurfaceError::Occluded)`, which Python raises as `OccludedSurfaceError`, a `FragmentColorError`, Swift throws as `FragmentColorError.Occluded` and Kotlin as `FragmentColorException.Occluded`. Skip that frame and draw the next one.
+
+A shader that reads `@location` vertex inputs needs a mesh. Without one, `render` returns `ShaderError::InvalidKey` naming the input. The inputs are the `@location` arguments of the vertex entry point and the `@location` members of its struct arguments, and each one reads the mesh attribute of its own name. The checks on the shader and its textures come first, so an input past `max_vertex_attributes` returns `RendererError::LimitError` instead.
+
+Each mesh a shader draws is checked against the device, and a mesh past one of its limits returns `RendererError::LimitError`, as a shader does: a vertex or instance stride past `max_vertex_buffer_array_stride`, and mesh data that needs a buffer past `max_buffer_size`. Its `item` names the stride or the buffer. WebGL2 takes strides up to 255 bytes. A mesh draws with every `Renderer` that renders it, each from buffers of its own. These checks, and the mesh's own, apply only to the meshes the frame draws: the mesh of a hidden `Model`, or of a `Model` in another pass, isn't checked.
+
+`render(mesh)` draws the mesh with a shader of its own, built from its first vertex. That shader reads `position`, and `color` when the first vertex sets it as four numbers. It checks the mesh again on every render that draws it after the mesh changed, a render of a pass that requires the mesh included, and adds nothing that vertices must hold for the mesh's other shaders. The types it gives plain numbers stay for as long as the mesh lives, as any shader's do: once it reads `color` as four floats, a shader that reads `color` as `vec4<u32>` fails to attach with `ShaderError::AttributeConflict`. A mesh it refuses returns the error an attach would, such as `ShaderError::AttributeMismatch` for a vertex without `color`, where a shader the mesh is attached to returns `MeshError::InvalidVertex`. It draws only what its check saw, and a mesh that another thread keeps changing through each of its tries returns `MeshError::Busy`.
+
+Before it takes a frame, `render` checks each shader against the device and each texture uniform against its slot, so every language returns these errors from the call that caused them, the web included. A group, binding, binding count, buffer size or workgroup past the device's limits, or a vertex input at a location past `max_vertex_attributes`, returns `RendererError::LimitError`, a feature the device lacks `RendererError::FeatureError`, a texture uniform that was never set or whose texture its slot can't take `RendererError::BindingError`, and a render shader without its vertex or fragment entry point `RendererError::EntryError`, each with its fields. An unset PBR map slot binds its 1x1 default instead, when the slot takes a 2D float texture. A texture `unregister_texture` removed, or one from another `Renderer`, returns `RendererError::TextureNotFoundError`, in a PBR map slot too. The [Shader](/api/core/shader) page lists the checks and each language's form of these errors.
+
+A `Renderer` draws only into the targets it created. A target from another `Renderer` returns `RendererError::ForeignTarget`, unless every pass is a compute pass, which draws into no target, and a pass target or texture uniform from another `Renderer` returns `RendererError::TextureNotFoundError`. A `Material` map set from bytes, a path, a URL or a `Mipmap` belongs to no `Renderer`: each one draws it from a copy of its own. These checks come before `render` uploads a map or opens a device, so a refused render changes nothing. A `Renderer` that has opened no device yet returns `RendererError::NoContext` for a target without an owner. Each pass is checked against what it draws into before it records: a [depth target](/api/core/pass#set_depth_target) of the color attachment's size and sample count, shader outputs and blending the [target](/api/core/pass#set_target)'s format takes, a [viewport](/api/core/pass#set_viewport) and a [compute dispatch](/api/core/pass#set_compute_dispatch) the device takes, and textures that one pass doesn't both write and read. A render pass can't bind a texture it draws into, and no pass can read a texture one of its bindings writes, so a compute dispatch that samples a texture and stores into it returns `PassError::TextureConflict` too.
+
+`render` also returns what the GPU rejects. When a pipeline fails to build or a frame's commands fail, it returns a [DeviceError](/api/core/deviceerror), `RendererError::DeviceError` in Rust. Its `kind` tells validation errors, internal errors such as a shader the backend compiler refuses, and running out of memory apart, and its `label` names the step that failed: the render pipeline, the compute pipeline, the light binning pipeline, the frame, or a bind group or texture view inside the frame. When one error causes another, `render` returns the first. In Rust, Python, Swift and Kotlin, a pipeline that failed is never kept, and the next frame builds it again and returns the same error.
+
+A frame that fails is still presented. wgpu clears an image that no valid command drew into, so after a GPU error the window usually shows a cleared frame. On Apple GPUs the renderer submits the commands recorded so far before each compute pass that follows another compute pass. When a pass after that point fails, what the earlier passes drew stays on the image. A shader without its mesh, an instance count past the mesh's instances, a mesh the device's limits or its own checks refuse, a shader or texture the device checks refuse, a target from another `Renderer`, a pass target that is missing, a viewport past the device's 2D limit, and a pass whose own target or compute dispatch fails its checks fail before `render` takes a frame, and the window keeps its last image.
+
+JavaScript gets the GPU's errors late, because WebGPU reports them after `render` has returned. Each error logs a `console.error` when it lands, and the next `render` still throws the first one, as an `Error` named `DeviceError`, with `kind`, `label` and `detail` properties, before doing any work. `load`, `readTexture`, `readStorage`, and `getImage` on a `Texture` or `TextureTarget` wait for the frames before them to report, so they throw a frame's error even when called right after it. A call that waits throws only the error of a frame rendered before it began: the error of a frame rendered while it waits, even one rendered in the same task right after the call, stays for the next call. Only the first error to land throws, and only once; the ones that land after it, before a call takes it, only log. The label names the render pipeline, the compute pipeline, the light binning pipeline or the frame. A pipeline that failed stays in the cache until its error lands, and a frame that draws with it before then reports a frame error. Once the error lands, the pipeline leaves the cache. In a loop that renders each frame, the next `render` throws the error before doing any work, and the one after it builds the pipeline again and reports the same error.
+
 #### Example
 
 <Tabs>
@@ -1411,8 +1353,6 @@ Renders the given object to the given [Target](/api/targets/target).
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-
 use fragmentcolor::{Renderer, Shader};
 
 let renderer = Renderer::new();
@@ -1420,12 +1360,8 @@ let target = renderer.create_texture_target([10, 10]).await?;
 let shader = Shader::default();
 
 renderer.render(&shader, &target)?;
-
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 11-13}"
+lang="rust"
 />
 
 </TabItem>
@@ -1505,12 +1441,11 @@ lang="kotlin"
 
 ---
 
-### Renderer::unregister_texture(id) \{#unregister_texture\}
+### Renderer::set_log_level(level: LogLevel) \{#set_log_level\}
 
-Explicitly remove a texture from the renderer’s registry.
+Sets how much FragmentColor logs, for the whole process. The `LogLevel` values run from quiet to verbose: `Off`, `Error`, `Warn`, `Info`, `Debug` and `Trace`.
 
-- Call this when you replace a texture, stop a video stream, or tear down a scene, to release GPU memory.
-- If the texture is still referenced elsewhere, it will remain alive until all strong references are dropped.
+The web build prints to the browser console and starts at `Info`. Raise it to `Debug` to see naga's notes on each shader. On other platforms FragmentColor logs through Rust's `log` crate, and the level limits what an installed logger prints.
 
 #### Example
 
@@ -1519,18 +1454,111 @@ Explicitly remove a texture from the renderer’s registry.
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{LogLevel, Renderer, Shader};
+
+// Log naga's notes while this shader builds, then go back to the usual level.
+Renderer::set_log_level(LogLevel::Debug);
+let shader = Shader::default();
+Renderer::set_log_level(LogLevel::Info);
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { LogLevel, Renderer, Shader } from "fragmentcolor";
+
+// Log naga's notes while this shader builds, then go back to the usual level.
+Renderer.setLogLevel(LogLevel.Debug);
+const shader = Shader.default();
+Renderer.setLogLevel(LogLevel.Info);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import LogLevel, Renderer, Shader
+
+# Log naga's notes while this shader builds, then go back to the usual level.
+Renderer.set_log_level(LogLevel.Debug)
+shader = Shader.default()
+Renderer.set_log_level(LogLevel.Info)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+// Log naga's notes while this shader builds, then go back to the usual level.
+Renderer.setLogLevel(LogLevel.debug)
+let shader = Shader.default()
+Renderer.setLogLevel(LogLevel.info)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+// Log naga's notes while this shader builds, then go back to the usual level.
+Renderer.setLogLevel(LogLevel.DEBUG)
+val shader = Shader.default()
+Renderer.setLogLevel(LogLevel.INFO)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Renderer::unregister_texture(id) \{#unregister_texture\}
+
+Remove a texture from the renderer’s registry now.
+
+The renderer releases a texture on its own when the last thing holding it
+drops: every `Texture` handle, the `TextureTarget` that owns it, and each
+shader uniform or pass target that binds it. Call this to release one sooner,
+for example when a video stream stops.
+
+- After the call, the id names no texture, and shaders and passes that bind it can't draw it. A pass that keeps it as its color or depth target makes `render` return `TextureNotFoundError`.
+- A `Texture` handle you still hold keeps its GPU memory until it drops.
+- The id of a `Material` map removes this `Renderer`'s copy of it. The Material keeps the map, and the next `load`, or native `render`, uploads it again.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
 use fragmentcolor::{Renderer, TextureFormat};
 let renderer = Renderer::new();
 let texture = renderer.create_storage_texture(([16, 16], TextureFormat::Rgba)).await?;
 let id = texture.id();
 
 renderer.unregister_texture(id)?;
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 8-10}"
+lang="rust"
 />
 
 </TabItem>

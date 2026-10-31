@@ -4,6 +4,8 @@ Render to an offscreen texture without a Window or Canvas.
 
 This is useful for tests, server-side rendering, or running examples in CI.
 
+A width or height of zero, a side past the device limit, or a depth other than 1 is an error, the one `resize` returns: `TextureError::InvalidInput` inside `InitializationError::TextureError` in Rust, a thrown `Error` named `InvalidInputError` in JavaScript, `InvalidInputError` (a `FragmentColorError`) in Python, `FragmentColorError` in Swift and `FragmentColorException` in Kotlin.
+
 ## Example
 
 ```rust
@@ -18,7 +20,7 @@ let target = renderer.create_texture_target([64, 64]).await?;
 renderer.render(&Shader::default(), &target)?;
 
 // get the rendered image
-let image = target.get_image().await;
+let image = target.get_image().await?;
 
 # // RGBA8
 # assert_eq!(image.len(), 64 * 64 * 4);

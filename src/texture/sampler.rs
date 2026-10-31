@@ -1,4 +1,8 @@
 #[cfg(wasm)]
+use crate::bindings::web::{read_flag, read_given};
+#[cfg(wasm)]
+use crate::error::WebError;
+#[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
 #[cfg_attr(wasm, wasm_bindgen)]
@@ -6,12 +10,18 @@ use wasm_bindgen::prelude::*;
 #[cfg_attr(mobile, derive(uniffi::Record))]
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct SamplerOptions {
+    // wasm-bindgen gives each pub field an unchecked setter.
+    // JavaScript uses the checked `repeat_x`, `repeat_y`, `smooth` and `compare` accessors instead.
+    #[cfg_attr(wasm, wasm_bindgen(skip))]
     #[cfg_attr(mobile, uniffi(default = false))]
     pub repeat_x: bool,
+    #[cfg_attr(wasm, wasm_bindgen(skip))]
     #[cfg_attr(mobile, uniffi(default = false))]
     pub repeat_y: bool,
+    #[cfg_attr(wasm, wasm_bindgen(skip))]
     #[cfg_attr(mobile, uniffi(default = true))]
     pub smooth: bool,
+    #[cfg_attr(wasm, wasm_bindgen(skip))]
     #[cfg_attr(mobile, uniffi(default = None))]
     pub compare: Option<CompareFunction>,
 }
@@ -25,18 +35,97 @@ impl SamplerOptions {
     #[doc(hidden)]
     #[wasm_bindgen(constructor)]
     pub fn new_js(
-        repeat_x: Option<bool>,
-        repeat_y: Option<bool>,
-        smooth: Option<bool>,
-        compare: Option<CompareFunction>,
-    ) -> SamplerOptions {
+        #[wasm_bindgen(unchecked_optional_param_type = "boolean | null")] repeat_x: Option<JsValue>,
+        #[wasm_bindgen(unchecked_optional_param_type = "boolean | null")] repeat_y: Option<JsValue>,
+        #[wasm_bindgen(unchecked_optional_param_type = "boolean | null")] smooth: Option<JsValue>,
+        #[wasm_bindgen(unchecked_optional_param_type = "CompareFunction | null")] compare: Option<
+            JsValue,
+        >,
+    ) -> Result<SamplerOptions, WebError> {
+        let compare = match compare {
+            Some(compare) => super::parse_compare(&compare)?,
+            None => None,
+        };
         let defaults = SamplerOptions::default();
-        SamplerOptions {
-            repeat_x: repeat_x.unwrap_or(defaults.repeat_x),
-            repeat_y: repeat_y.unwrap_or(defaults.repeat_y),
-            smooth: smooth.unwrap_or(defaults.smooth),
+        let flag = |value: Option<JsValue>, label: &str, default: bool| match read_given(value) {
+            Some(value) => read_flag(&value, label),
+            None => Ok(default),
+        };
+        Ok(SamplerOptions {
+            repeat_x: flag(repeat_x, "SamplerOptions: repeat_x", defaults.repeat_x)?,
+            repeat_y: flag(repeat_y, "SamplerOptions: repeat_y", defaults.repeat_y)?,
+            smooth: flag(smooth, "SamplerOptions: smooth", defaults.smooth)?,
             compare: compare.or(defaults.compare),
-        }
+        })
+    }
+
+    #[doc(hidden)]
+    #[wasm_bindgen(getter = repeat_x)]
+    pub fn repeat_x_js(&self) -> bool {
+        self.repeat_x
+    }
+
+    /// A value that isn't a boolean throws a `TypeError` and keeps the old one.
+    #[doc(hidden)]
+    #[wasm_bindgen(setter = repeat_x)]
+    pub fn set_repeat_x_js(
+        &mut self,
+        #[wasm_bindgen(unchecked_param_type = "boolean")] value: JsValue,
+    ) -> Result<(), WebError> {
+        self.repeat_x = read_flag(&value, "SamplerOptions.repeat_x")?;
+        Ok(())
+    }
+
+    #[doc(hidden)]
+    #[wasm_bindgen(getter = repeat_y)]
+    pub fn repeat_y_js(&self) -> bool {
+        self.repeat_y
+    }
+
+    /// A value that isn't a boolean throws a `TypeError` and keeps the old one.
+    #[doc(hidden)]
+    #[wasm_bindgen(setter = repeat_y)]
+    pub fn set_repeat_y_js(
+        &mut self,
+        #[wasm_bindgen(unchecked_param_type = "boolean")] value: JsValue,
+    ) -> Result<(), WebError> {
+        self.repeat_y = read_flag(&value, "SamplerOptions.repeat_y")?;
+        Ok(())
+    }
+
+    #[doc(hidden)]
+    #[wasm_bindgen(getter = smooth)]
+    pub fn smooth_js(&self) -> bool {
+        self.smooth
+    }
+
+    /// A value that isn't a boolean throws a `TypeError` and keeps the old one.
+    #[doc(hidden)]
+    #[wasm_bindgen(setter = smooth)]
+    pub fn set_smooth_js(
+        &mut self,
+        #[wasm_bindgen(unchecked_param_type = "boolean")] value: JsValue,
+    ) -> Result<(), WebError> {
+        self.smooth = read_flag(&value, "SamplerOptions.smooth")?;
+        Ok(())
+    }
+
+    #[doc(hidden)]
+    #[wasm_bindgen(getter = compare)]
+    pub fn compare_js(&self) -> Option<CompareFunction> {
+        self.compare
+    }
+
+    /// `undefined` or `null` clears the compare function, and any other value
+    /// that isn't one throws and keeps the old one.
+    #[doc(hidden)]
+    #[wasm_bindgen(setter = compare)]
+    pub fn set_compare_js(
+        &mut self,
+        #[wasm_bindgen(unchecked_param_type = "CompareFunction | null | undefined")] value: JsValue,
+    ) -> Result<(), WebError> {
+        self.compare = super::parse_compare(&value)?;
+        Ok(())
     }
 }
 
@@ -58,11 +147,11 @@ impl Default for SamplerOptions {
     }
 }
 
-pub fn create_default_sampler(device: &wgpu::Device) -> wgpu::Sampler {
+pub(crate) fn create_default_sampler(device: &wgpu::Device) -> wgpu::Sampler {
     create_sampler(device, SamplerOptions::default())
 }
 
-pub fn create_sampler(device: &wgpu::Device, options: SamplerOptions) -> wgpu::Sampler {
+pub(crate) fn create_sampler(device: &wgpu::Device, options: SamplerOptions) -> wgpu::Sampler {
     let label = format!("{:?}", options);
     let address_mode_u = match options.repeat_x {
         true => wgpu::AddressMode::Repeat,
@@ -91,7 +180,7 @@ pub fn create_sampler(device: &wgpu::Device, options: SamplerOptions) -> wgpu::S
         mipmap_filter,
         lod_min_clamp: 0.0,
         lod_max_clamp: 100.0,
-        compare: options.compare.map(Into::into),
+        compare: options.compare.map(CompareFunction::to_wgpu),
         anisotropy_clamp: 1,
         border_color: None,
     })
@@ -124,24 +213,10 @@ pub enum CompareFunction {
     Always = 8,
 }
 
-impl From<wgpu::CompareFunction> for CompareFunction {
-    fn from(v: wgpu::CompareFunction) -> Self {
-        match v {
-            wgpu::CompareFunction::Never => CompareFunction::Never,
-            wgpu::CompareFunction::Less => CompareFunction::Less,
-            wgpu::CompareFunction::Equal => CompareFunction::Equal,
-            wgpu::CompareFunction::LessEqual => CompareFunction::LessEqual,
-            wgpu::CompareFunction::Greater => CompareFunction::Greater,
-            wgpu::CompareFunction::NotEqual => CompareFunction::NotEqual,
-            wgpu::CompareFunction::GreaterEqual => CompareFunction::GreaterEqual,
-            wgpu::CompareFunction::Always => CompareFunction::Always,
-        }
-    }
-}
-
-impl From<CompareFunction> for wgpu::CompareFunction {
-    fn from(v: CompareFunction) -> Self {
-        match v {
+impl CompareFunction {
+    /// The wgpu `CompareFunction` this `CompareFunction` stands for.
+    pub(crate) fn to_wgpu(self) -> wgpu::CompareFunction {
+        match self {
             CompareFunction::Never => wgpu::CompareFunction::Never,
             CompareFunction::Less => wgpu::CompareFunction::Less,
             CompareFunction::Equal => wgpu::CompareFunction::Equal,

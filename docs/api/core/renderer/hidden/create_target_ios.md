@@ -1,16 +1,17 @@
 # Renderer::create_target_ios()
 
 iOS-only constructor that wraps an existing `CAMetalLayer` into a
-`WindowTarget`. Swift sees it as `createTarget(metalLayerPtr:)`. The Swift
-extension file re-exposes it as `Renderer.createTarget(layer)` so the public
-API reads the same as every other platform.
+`WindowTarget`. The Swift extension file exposes it as
+`Renderer.createTarget(layer)`, so the public API reads the same as every
+other platform.
 
-The extension passes the layer pointer as `UInt64`:
+The extension passes the layer's address. The constructor checks that the
+address names a `CAMetalLayer` before it reads the layer's drawable size, and
+throws `FragmentColorError` for any other object and for a null address.
 
-```swift
-let ptr = UInt64(UInt(bitPattern: Unmanaged.passUnretained(layer).toOpaque()))
-let target = try renderer.createTarget(metalLayerPtr: ptr)
-```
+The system reports the drawable size in floats. A fraction rounds down, a side of
+0 becomes 1 pixel, and a side that is negative, NaN, infinite or past
+`UInt32.max` throws `FragmentColorError`.
 
 Exposed as synchronous because `wgpu::SurfaceTargetUnsafe` holds a raw
 pointer and can't be held across an `await` in a `Send` future.

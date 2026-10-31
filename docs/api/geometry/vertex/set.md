@@ -25,6 +25,10 @@ Locations and mapping:
   then looks by the property's own location (instance first, then vertex).
 - The first shader that reads a property fixes its type for that mesh. A
   shader that declares another type for it fails to attach.
+- `position` names the position `Vertex::new` sets, so no property takes it.
+  A mesh with a vertex that sets `position` fails to attach with
+  `ShaderError::InvalidKey`, and `Renderer.render` returns
+  `MeshError::InvalidVertex` for one added later. Both name the vertex.
 
 ## Example
 
@@ -40,14 +44,18 @@ let shader = Shader::new(r#"
   @fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0, 0.0, 0.0, 1.0); }
 "#)?;
 
-let vertex = Vertex::new([0.0, 0.0])
+let vertex = Vertex::new([0.0, 0.5])
     .set("id", 7)
     .set("weight", 0.5);
 
 let mesh = Mesh::new();
-mesh.add_vertex(vertex);
+mesh.add_vertices([
+    vertex,
+    Vertex::new([-0.5, -0.5]).set("id", 8).set("weight", 1.0),
+    Vertex::new([0.5, -0.5]).set("id", 9).set("weight", 1.0),
+]);
 
-// id uploads as the u32 7 and weight as the f32 0.5.
+// The first id uploads as the u32 7 and its weight as the f32 0.5.
 shader.add_mesh(&mesh)?;
 # Ok(())
 # }

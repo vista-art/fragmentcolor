@@ -18,19 +18,19 @@ NumPy installs with the package as a required dependency. `TextureTarget.get_ima
 ## Quick start
 
 ```python
+import math
+import time
+
 from fragmentcolor import Renderer, Shader, Pass
 from rendercanvas.auto import RenderCanvas, loop
 
-# Initializes a renderer and a target compatible with the given canvas
+# A renderer and a target that draws into the canvas
 canvas = RenderCanvas(size=(800, 600))
 renderer = Renderer()
 target = renderer.create_target(canvas)
 
-# You can pass the shader as a source string, a file path, a registry slug,
-# or an https URL pointing at a .wgsl file.
-circle = Shader("./path/to/circle.wgsl")
-triangle = Shader("https://fragmentcolor.org/shaders/sdf2d/circle.wgsl")
-shader = Shader("""
+# A shader from WGSL source. Its uniforms are ready to set by name.
+background = Shader("""
 struct VertexOutput {
     @builtin(position) coords: vec4<f32>,
 }
@@ -42,17 +42,10 @@ struct MyStruct {
 @group(0) @binding(0)
 var<uniform> my_struct: MyStruct;
 
-@group(0) @binding(1)
-var<uniform> my_vec2: vec2<f32>;
-
 @vertex
-fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput {
-    const vertices = array(
-        vec2( -1., -1.),
-        vec2(  3., -1.),
-        vec2( -1.,  3.)
-    );
-    return VertexOutput(vec4<f32>(vertices[in_vertex_index], 0.0, 1.0));
+fn vs_main(@builtin(vertex_index) index: u32) -> VertexOutput {
+    let vertices = array(vec2(-1., -1.), vec2(3., -1.), vec2(-1., 3.));
+    return VertexOutput(vec4<f32>(vertices[index], 0.0, 1.0));
 }
 
 @fragment
@@ -60,30 +53,43 @@ fn fs_main() -> @location(0) vec4<f32> {
     return vec4<f32>(my_struct.my_field, 1.0);
 }
 """)
+background.set("my_struct.my_field", [0.1, 0.8, 0.9])
 
-# The library binds and updates the uniforms automatically
-shader.set("my_struct.my_field", [0.1, 0.8, 0.9])
-shader.set("my_vec2", [1.0, 1.0])
+# Library functions join your own source, which calls them.
+# The package carries the library, so this works offline.
+circle = Shader(["sdf2d/circle", """
+@group(0) @binding(0)
+var<uniform> center: vec2<f32>;
 
-# One shader is all you need to render
-renderer.render(shader, target)
+@vertex
+fn vs_main(@builtin(vertex_index) index: u32) -> @builtin(position) vec4<f32> {
+    let vertices = array(vec2(-1., -1.), vec2(3., -1.), vec2(-1., 3.));
+    return vec4<f32>(vertices[index], 0.0, 1.0);
+}
 
-# But you can also combine multiple shaders in a render Pass
-rpass = Pass("single pass")
-rpass.add_shader(circle)
-rpass.add_shader(triangle)
-rpass.add_shader(shader)
-renderer.render(rpass, target)
+@fragment
+fn fs_main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+    if circle(pos.xy - center, 100.0) > 0.0 {
+        discard;
+    }
+    return vec4<f32>(1.0, 0.4, 0.2, 1.0);
+}
+"""])
 
-# Finally, you can render a list of passes in order. No extra type needed.
-passes = [rpass, Pass("GUI pass")]
-renderer.render(passes, target)
+# Passes render in order, and the second one keeps what the first drew.
+# One shader on its own renders too: renderer.render(background, target).
+circle_pass = Pass.from_shader("circle", circle)
+circle_pass.load_previous()
+passes = [Pass.from_shader("background", background), circle_pass]
 
-# To animate, simply update the uniforms in a loop
+# To animate, update the uniforms and render again on each frame
 @canvas.request_draw
 def animate():
-    circle.set("position", [0.0, 0.0])
+    size = target.size()
+    x = size.width / 2 + math.cos(time.time()) * 100
+    circle.set("center", [x, size.height / 2])
     renderer.render(passes, target)
+    canvas.request_draw()
 
 loop.run()
 ```

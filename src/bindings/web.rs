@@ -1,0 +1,250 @@
+//! The wasm entry point, and the readers that turn JavaScript values into Rust ones.
+
+#![cfg(wasm)]
+
+use crate::error::WebError;
+
+/// Install a panic hook and console logger when running in WASM so browser console shows
+/// readable errors instead of a generic "unreachable" trap.
+#[wasm_bindgen::prelude::wasm_bindgen(start)]
+pub fn wasm_start() {
+    console_error_panic_hook::set_once();
+    let _ = console_log::init_with_level(log::Level::Info);
+    // Pre-grow WASM linear memory to reduce mid-frame memory.grow events
+    const PREALLOC_BYTES: usize = 64 * 1024 * 1024; // 64 MiB
+    let prealloc = vec![0u8; PREALLOC_BYTES];
+    drop(prealloc);
+}
+
+/// Resolves after one turn of the browser event loop (a zero-delay timer).
+/// Lets GPU fences advance between device polls, which the WebGL2 backend
+/// needs before a buffer map callback can fire.
+pub(crate) async fn yield_to_event_loop() {
+    use wasm_bindgen::JsCast;
+    let promise = js_sys::Promise::new(&mut |resolve, _reject| {
+        let callback: &js_sys::Function = resolve.unchecked_ref();
+        let scheduled = web_sys::window()
+            .map(|window| {
+                window
+                    .set_timeout_with_callback_and_timeout_and_arguments_0(callback, 0)
+                    .is_ok()
+            })
+            .unwrap_or(false);
+        if !scheduled {
+            let _ = callback.call0(&wasm_bindgen::JsValue::NULL);
+        }
+    });
+    let _ = wasm_bindgen_futures::JsFuture::from(promise).await;
+}
+
+/// Reads a JS number as an unsigned 32-bit integer, such as an index or a count.
+/// Negative, fractional, NaN and out-of-range values fail with an error that names `what`.
+pub(crate) fn read_unsigned(value: f64, what: &str) -> Result<u32, WebError> {
+    Ok(super::numbers::read_unsigned(value, what)?)
+}
+
+/// What a JS value is, in JavaScript's own words, for an error message: `undefined`, `null`,
+/// `array`, the brand of a FragmentColor class such as `Texture`, the constructor of a typed array
+/// such as `Uint8Array`, or its `typeof`. The value's contents never reach the message.
+pub(crate) fn describe(value: &wasm_bindgen::JsValue) -> String {
+    use js_sys::{Array, ArrayBuffer, Reflect};
+    if value.is_undefined() {
+        return "undefined".into();
+    }
+    if value.is_null() {
+        return "null".into();
+    }
+    if Array::is_array(value) {
+        return "array".into();
+    }
+    let field = |name: &str| Reflect::get(value, &name.into()).ok();
+    if value.is_object() {
+        if let Some(brand) = field("__fc_kind").and_then(|brand| brand.as_string()) {
+            return brand;
+        }
+        let constructor = field("constructor").and_then(|constructor| {
+            Reflect::get(&constructor, &"name".into())
+                .ok()
+                .and_then(|name| name.as_string())
+        });
+        if let Some(name) = constructor.filter(|_| ArrayBuffer::is_view(value)) {
+            return name;
+        }
+    }
+    value.js_typeof().as_string().unwrap_or_default()
+}
+
+/// A number argument. Any other value is a `TypeError` that names `label`, as Python raises one.
+/// The label is written only when the read fails, so an item's label costs nothing on success.
+pub(crate) fn read_number(
+    value: &wasm_bindgen::JsValue,
+    label: impl std::fmt::Display,
+) -> Result<f64, WebError> {
+    value.as_f64().ok_or_else(|| {
+        let kind = describe(value);
+        WebError::type_error(&format!("{label} must be a number, got {kind}"))
+    })
+}
+
+/// A number argument for a 32-bit float, such as a roughness or an angle, read as [`read_number`] reads it.
+pub(crate) fn read_float(value: &wasm_bindgen::JsValue, label: &str) -> Result<f32, WebError> {
+    Ok(read_number(value, label)? as f32)
+}
+
+/// A count or index, read first as [`read_number`] reads a number.
+/// A negative or out-of-range one is an `InvalidInputError`, as Python raises.
+/// A fraction is one too, though Python refuses every float, 2.0 included, with a `TypeError`.
+pub(crate) fn read_count(value: &wasm_bindgen::JsValue, label: &str) -> Result<u32, WebError> {
+    read_unsigned(read_number(value, label)?, label)
+}
+
+/// A string argument. Any other value is a `TypeError` that names `label`.
+pub(crate) fn read_text(value: &wasm_bindgen::JsValue, label: &str) -> Result<String, WebError> {
+    value.as_string().ok_or_else(|| {
+        let kind = describe(value);
+        WebError::type_error(&format!("{label} must be a string, got {kind}"))
+    })
+}
+
+/// A boolean argument. Any other value is a `TypeError` that names `label`, so `'yes'` is no `true`.
+pub(crate) fn read_flag(value: &wasm_bindgen::JsValue, label: &str) -> Result<bool, WebError> {
+    value.as_bool().ok_or_else(|| {
+        let kind = describe(value);
+        WebError::type_error(&format!("{label} must be a boolean, got {kind}"))
+    })
+}
+
+/// An optional argument, `None` for `undefined` or `null`.
+pub(crate) fn read_given(value: Option<wasm_bindgen::JsValue>) -> Option<wasm_bindgen::JsValue> {
+    value.filter(|value| !value.is_undefined() && !value.is_null())
+}
+
+/// The numbers of a plain or typed array, or `None` for a value that isn't one.
+/// An item that isn't a number is a `TypeError` that names `label` and the item,
+/// and so is a `DataView`, which holds bytes with no numbers to read.
+pub(crate) fn read_list(
+    value: &wasm_bindgen::JsValue,
+    label: &str,
+) -> Result<Option<Vec<f64>>, WebError> {
+    use js_sys::{Array, ArrayBuffer, DataView};
+    use wasm_bindgen::JsCast;
+    if value.is_instance_of::<DataView>() {
+        return Err(WebError::type_error(&format!(
+            "{label} takes a plain or typed array of numbers, got a DataView"
+        )));
+    }
+    if !(Array::is_array(value) || ArrayBuffer::is_view(value)) {
+        return Ok(None);
+    }
+    let items = Array::from(value)
+        .iter()
+        .enumerate()
+        .map(|(index, item)| read_number(&item, format_args!("{label}: item {index}")))
+        .collect::<Result<Vec<f64>, WebError>>()?;
+    Ok(Some(items))
+}
+
+/// The brand of a FragmentColor class instance, or `None` for any other value.
+/// Every exported class carries `__wbg_ptr`; most also carry the `__fc_kind` brand.
+pub(crate) fn read_class(value: &wasm_bindgen::JsValue) -> Option<String> {
+    use js_sys::Reflect;
+    if !value.is_object() || !Reflect::has(value, &"__wbg_ptr".into()).unwrap_or(false) {
+        return None;
+    }
+    let brand = Reflect::get(value, &"__fc_kind".into()).ok();
+    Some(
+        brand
+            .and_then(|brand| brand.as_string())
+            .unwrap_or_else(|| "a class instance".into()),
+    )
+}
+
+/// The numbers of a float vector or matrix from JavaScript: an array or a `Float32Array`.
+/// Any other value, or an item that isn't a number, fails with an error that names `label`.
+pub(crate) fn read_items(value: &wasm_bindgen::JsValue, label: &str) -> Result<Vec<f64>, WebError> {
+    use js_sys::{Array, Float32Array};
+    use wasm_bindgen::JsCast;
+    if !(Array::is_array(value) || value.is_instance_of::<Float32Array>()) {
+        let kind = describe(value);
+        return Err(WebError::type_error(&format!(
+            "{label} takes an array or a Float32Array of numbers, got {kind}"
+        )));
+    }
+    Array::from(value)
+        .iter()
+        .enumerate()
+        .map(|(index, item)| read_number(&item, format_args!("{label}: item {index}")))
+        .collect()
+}
+
+/// The numbers of a float vector of any length, each checked by [`super::numbers::read_floats`].
+pub(crate) fn read_floats(
+    value: &wasm_bindgen::JsValue,
+    label: &str,
+) -> Result<Vec<f32>, WebError> {
+    let items = read_items(value, label)?;
+    Ok(super::numbers::read_floats(items, label)?)
+}
+
+/// Exactly `N` numbers of a float vector, such as a position, each checked by [`super::numbers::read_floats`].
+pub(crate) fn read_vector<const N: usize>(
+    value: &wasm_bindgen::JsValue,
+    label: &str,
+) -> Result<[f32; N], WebError> {
+    let items = read_items(value, label)?;
+    Ok(super::numbers::read_vector::<N>(items, label)?)
+}
+
+/// A color from `[r, g, b]` or `[r, g, b, a]`, each channel checked by [`super::numbers::read_floats`].
+pub(crate) fn read_color(
+    value: &wasm_bindgen::JsValue,
+    label: &str,
+) -> Result<crate::Color, WebError> {
+    let items = read_items(value, label)?;
+    Ok(super::numbers::read_color(items, label)?)
+}
+
+/// Reads a plain array of numbers or a numeric typed array.
+/// Returns `None` for any other value, or when an item is not a number.
+pub(crate) fn read_numbers(value: &wasm_bindgen::JsValue) -> Option<Vec<f64>> {
+    use wasm_bindgen::JsCast;
+    let is_list = js_sys::Array::is_array(value)
+        || (js_sys::ArrayBuffer::is_view(value) && !value.is_instance_of::<js_sys::DataView>());
+    if !is_list {
+        return None;
+    }
+    js_sys::Array::from(value)
+        .iter()
+        .map(|item| item.as_f64())
+        .collect()
+}
+
+/// Reads an array whose items are each an array or typed array of numbers,
+/// such as the columns of a matrix. Returns `None` for any other value.
+pub(crate) fn read_rows(value: &wasm_bindgen::JsValue) -> Option<Vec<Vec<f64>>> {
+    if !js_sys::Array::is_array(value) {
+        return None;
+    }
+    js_sys::Array::from(value)
+        .iter()
+        .map(|row| read_numbers(&row))
+        .collect()
+}
+
+/// Reads the bytes of an `ArrayBuffer`, or the bytes a view such as a `DataView` or
+/// a typed array covers. Returns `None` for any other value.
+pub(crate) fn read_bytes(value: &wasm_bindgen::JsValue) -> Option<Vec<u8>> {
+    use js_sys::{ArrayBuffer, Reflect, Uint8Array};
+    use wasm_bindgen::JsCast;
+    if let Some(buffer) = value.dyn_ref::<ArrayBuffer>() {
+        return Some(Uint8Array::new(buffer).to_vec());
+    }
+    if !ArrayBuffer::is_view(value) {
+        return None;
+    }
+    let field = |name: &str| Reflect::get(value, &name.into()).ok();
+    let buffer = field("buffer")?;
+    let offset = field("byteOffset")?.as_f64()? as u32;
+    let length = field("byteLength")?.as_f64()? as u32;
+    Some(Uint8Array::new_with_byte_offset_and_length(&buffer, offset, length).to_vec())
+}

@@ -1,6 +1,7 @@
 # Shader::clear_meshes
 
-Remove all meshes attached to this Shader.
+Remove all meshes attached to this Shader. A vertex or instance added to one
+of them afterwards may leave out what this shader reads.
 
 ## Example
 
@@ -21,7 +22,11 @@ let shader = Shader::new(r#"
 "#)?;
 
 let mesh = Mesh::new();
-mesh.add_vertex([0.0, 0.0]);
+mesh.add_vertices([
+    [-0.5, -0.5],
+    [0.5, -0.5],
+    [0.0, 0.5],
+]);
 shader.add_mesh(&mesh)?;
 
 // Clear all

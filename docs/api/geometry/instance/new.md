@@ -6,7 +6,7 @@ attributes.
 ## Example
 
 ```rust
-use fragmentcolor::mesh::Instance;
+use fragmentcolor::Instance;
 
 let instance = Instance::new();
 # _ = instance;

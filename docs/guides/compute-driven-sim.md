@@ -13,7 +13,7 @@ Why this matters
 ```rust
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, Shader, Pass, Target};
-use fragmentcolor::mesh::{Mesh, Vertex};
+use fragmentcolor::{Mesh, Vertex};
 
 let n: u32 = 1_000_000;
 # let n: u32 = std::env::var("FC_PARTICLES").ok()
@@ -140,7 +140,7 @@ pass_fs.add_mesh(&mesh)?;
 renderer.render(&vec![pass_cs, pass_fs], &target)?;
 
 // 8) Quick check
-let image = target.get_image().await;
+let image = target.get_image().await?;
 assert_eq!(image.len(), 64 * 64 * 4);
 # Ok(())
 # }

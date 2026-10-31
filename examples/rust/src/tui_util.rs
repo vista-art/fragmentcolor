@@ -46,10 +46,9 @@ impl<W: Write> TerminalRenderer<W> {
         let rows = sz.height;
 
         let renderer = Renderer::new();
-        let target = pollster::block_on(
-            // texture is double height for half-block mapping
-            renderer.create_texture_target([cols as u32, (rows as u32) * 2]),
-        )?;
+        // The texture is double height for half-block mapping, and at least one pixel each way.
+        let size = [(cols as u32).max(1), (rows as u32 * 2).max(1)];
+        let target = pollster::block_on(renderer.create_texture_target(size))?;
 
         Ok(Self {
             term,
@@ -63,19 +62,22 @@ impl<W: Write> TerminalRenderer<W> {
 
     pub fn handle_resize(&mut self) -> anyhow::Result<()> {
         let sz = self.term.size()?;
-        if sz.width != self.cols || sz.height != self.rows {
-            self.cols = sz.width;
-            self.rows = sz.height;
-            self.target
-                .resize([self.cols as u32, (self.rows as u32) * 2]);
+        // A terminal with no rows or columns has nothing to draw into, so the target keeps its size.
+        let empty = sz.width == 0 || sz.height == 0;
+        if empty || (sz.width == self.cols && sz.height == self.rows) {
+            return Ok(());
         }
+        self.target
+            .resize([sz.width as u32, (sz.height as u32) * 2])?;
+        self.cols = sz.width;
+        self.rows = sz.height;
         Ok(())
     }
 
     pub fn draw_shader(&mut self, shader: &Shader) -> anyhow::Result<()> {
         self.renderer.render(shader, &self.target)?;
         // `Target::get_image` is async; the TUI loop is sync — block here.
-        let rgba = pollster::block_on(self.target.get_image());
+        let rgba = pollster::block_on(self.target.get_image())?;
         let size = self.target.size();
         let widget = match self.color_mode {
             ColorMode::TrueColor => rgba_to_half_block_cells_true(&rgba, size.width, size.height),

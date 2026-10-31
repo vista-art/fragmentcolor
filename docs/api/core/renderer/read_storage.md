@@ -21,6 +21,13 @@ declare a storage binding called `binding`, or when no render pass has yet
 materialized the GPU-side buffer (storage buffers are allocated lazily on
 first bind).
 
+In JavaScript, `readStorage` waits for the frames rendered before it to
+report their GPU errors and throws the first one, as
+[`Renderer::render`](https://fragmentcolor.org/api/core/renderer#render)
+describes. An error throws only once, so when another call, such as the next
+`render`, has already thrown it, `readStorage` returns the bytes the failed
+frame left behind.
+
 ## Example
 
 ```rust
@@ -46,7 +53,7 @@ let compute = Shader::new(
 
 let pass = Pass::compute("seed");
 pass.set_compute_dispatch(1, 1, 1);
-pass.add_shader(&compute);
+pass.add_shader(&compute)?;
 renderer.render(&pass, &target)?;
 
 let bytes = renderer.read_storage(&compute, "out").await?;

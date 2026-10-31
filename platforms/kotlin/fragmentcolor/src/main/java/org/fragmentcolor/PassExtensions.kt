@@ -55,7 +55,12 @@ fun Pass.setTarget(target: TextureTarget) {
     setTarget(TargetHandle.Texture(target))
 }
 
-/** Render into a [Texture], such as one from `Renderer.createTexture`. */
+/**
+ * Render into a [Texture] with `RENDER_ATTACHMENT` usage, a color format,
+ * one mip level and one layer, such as a [TextureTarget]'s `texture()`, or a 2D
+ * texture from `Renderer.createStorageTexture` with a usage that has `RENDER_ATTACHMENT`.
+ * A texture without that usage, with a depth format, or with a mip chain or layers, throws.
+ */
 fun Pass.setTarget(texture: Texture) {
     setTargetTexture(texture)
 }
@@ -75,16 +80,21 @@ fun Pass.setDepthTarget(texture: Texture) {
 
 // ── Clear color ──────────────────────────────────────────────────────────────
 
-/** Set the clear color as separate RGBA components (0..1 linear space). */
-fun Pass.setClearColor(r: Float, g: Float, b: Float, a: Float = 1.0f) {
-    setClearColor(listOf(r, g, b, a))
-}
+/** Set the clear color from `[r, g, b]` or `[r, g, b, a]`, each channel passed to the GPU as given. */
+fun Pass.setClearColor(color: FloatArray) = setClearColor(color.toList())
+
+/** Set the clear color from `[r, g, b]` or `[r, g, b, a]` as doubles. */
+@JvmName("setClearColorDoubles")
+fun Pass.setClearColor(color: List<Double>) = setClearColor(readFloats(color, "Pass.setClearColor"))
+
+/** Set the clear color from `[r, g, b]` or `[r, g, b, a]` as doubles. */
+fun Pass.setClearColor(color: DoubleArray) = setClearColor(readFloats(color, "Pass.setClearColor"))
 
 // ── Viewport ──────────────────────────────────────────────────────────────────
 
 /**
  * Set the viewport from `[x, y, width, height]`, or `[width, height]` at the origin.
- * Throws [FragmentColorException] for any other length.
+ * Throws [FragmentColorException] for any other length, and for a width or height of 0.
  */
 fun Pass.setViewport(rect: List<UInt>) {
     val region = when (rect.size) {
@@ -98,9 +108,25 @@ fun Pass.setViewport(rect: List<UInt>) {
 }
 
 /**
+ * Set the viewport from an origin and a size, `listOf(listOf(x, y), listOf(width, height))`,
+ * as Rust's `((x, y), (w, h))` and `ScreenRegion(origin, size)` read them.
+ * Throws [FragmentColorException] unless it holds two pairs, and for a side of 0.
+ */
+@JvmName("setViewportPairs")
+fun Pass.setViewport(originAndSize: List<List<UInt>>) {
+    if (originAndSize.size != 2) {
+        throw FragmentColorException.Render(
+            "setViewport: expected [[x, y], [width, height]], got ${originAndSize.size} pairs",
+        )
+    }
+    setViewport(ScreenRegion(originAndSize[0], originAndSize[1]))
+}
+
+/**
  * A region at [origin] `[x, y]` that is [size] `[width, height]` large,
  * as Rust's `ScreenRegion::new(origin, size)` reads them.
- * Throws [FragmentColorException] unless each holds two numbers.
+ * Throws [FragmentColorException] unless each holds two numbers, for a side of 0,
+ * and for a far edge past [UInt.MAX_VALUE].
  */
 operator fun ScreenRegion.Companion.invoke(origin: List<UInt>, size: List<UInt>): ScreenRegion {
     if (origin.size != 2 || size.size != 2) {
@@ -108,13 +134,15 @@ operator fun ScreenRegion.Companion.invoke(origin: List<UInt>, size: List<UInt>)
     }
     val (x, y) = origin
     val (width, height) = size
-    return ScreenRegion(
-        minX = x,
-        minY = y,
-        maxX = saturatingAdd(x, width),
-        maxY = saturatingAdd(y, height),
-    )
+    if (width == 0u || height == 0u) {
+        throw FragmentColorException.Render(
+            "ScreenRegion: a region needs a width and a height of at least 1, got $width by $height",
+        )
+    }
+    if (x > UInt.MAX_VALUE - width || y > UInt.MAX_VALUE - height) {
+        throw FragmentColorException.Render(
+            "ScreenRegion: a region at $x, $y sized $width by $height reaches past ${UInt.MAX_VALUE}",
+        )
+    }
+    return ScreenRegion(minX = x, minY = y, maxX = x + width, maxY = y + height)
 }
-
-/** `a + b`, or [UInt.MAX_VALUE] when the sum doesn't fit. */
-private fun saturatingAdd(a: UInt, b: UInt): UInt = if (a > UInt.MAX_VALUE - b) UInt.MAX_VALUE else a + b

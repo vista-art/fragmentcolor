@@ -2,7 +2,15 @@
 
 Toggle the Model in or out of the next frame. Hidden Models are skipped
 by the renderer in both the opaque-batched and blend-sorted draw paths;
-no Pass rebuild needed.
+no Pass rebuild needed. Hiding a Model hides what its Material draws.
+The skip holds per shader and Mesh: a shader that draws any of the pass's
+Models skips the hidden Model's Mesh, unless a visible Model of the pass
+draws the same Mesh through the same shader, as Models that share a Mesh
+and a Material do. A shader of your own that draws none of the pass's Models,
+such as an outline, still draws the Mesh when it reads no Model columns
+(`model_0` to `model_3`). One that reads them makes `Renderer::render`
+return `MeshError::InvalidInstance`, which names the columns it reads,
+whether the Model is hidden or not.
 
 The flag is Arc-shared with `ModelEntry` (the renderer's queue), so
 toggles take effect on the very next `Renderer::render` call. Cheap:
@@ -23,7 +31,11 @@ Typical uses:
 use fragmentcolor::{Material, Mesh, Model, Vertex};
 
 let mesh = Mesh::new();
-mesh.add_vertex(Vertex::pbr([0.0, 0.5, 0.0]));
+mesh.add_vertices([
+    Vertex::pbr([0.0, 0.5, 0.0]),
+    Vertex::pbr([-0.5, -0.5, 0.0]),
+    Vertex::pbr([0.5, -0.5, 0.0]),
+]);
 let detail = Model::new(mesh, Material::pbr());
 
 // Far from the camera, hide the detail Model.

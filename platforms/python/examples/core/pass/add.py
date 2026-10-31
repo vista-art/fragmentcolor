@@ -3,9 +3,11 @@ from fragmentcolor import Camera, Light, Material, Mesh, Model, Pass, Renderer, 
 renderer = Renderer()
 
 mesh = Mesh()
-mesh.add_vertex(
+mesh.add_vertices([
     Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
-)
+    Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+    Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+])
 model = Model(mesh, Material.pbr())
 
 camera = Camera.perspective(1.047, 1.0, 0.1, 100.0).look_at([0.0, 0.0, 2.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])

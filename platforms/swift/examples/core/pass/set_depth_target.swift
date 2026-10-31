@@ -10,8 +10,7 @@ let mesh = Mesh()
 try mesh.addVertex([0.0, 0.0, 0.0])
 try mesh.addVertex([1.0, 0.0, 0.0])
 try mesh.addVertex([0.0, 1.0, 0.0])
-try mesh.addVertex([1.0, 1.0, 0.0])
-let shader = Shader.fromMesh(mesh)
+let shader = try Shader.fromMesh(mesh)
 let pass = Pass.fromShader("meshes", shader)
 
 // Depth test on: closer fragments win, and the pass writes the depth

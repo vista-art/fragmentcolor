@@ -6,9 +6,13 @@ let renderer = Renderer()
 let target = try await renderer.createTextureTarget([64, 64])
 
 let mesh = Mesh()
-try mesh.addVertex(Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]))
+mesh.addVertices([
+    try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
+    try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+    try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+])
 
-// The material keeps the encoded image as a pending upload.
+// The material keeps the encoded image as a map.
 let material = Material.pbr().baseColorTexture(image)
 let model = Model(mesh, material)
 let scene = Scene()
@@ -17,3 +21,9 @@ try scene.add(model)
 // Decode and upload it now, so the first render only draws.
 try await renderer.load(scene)
 try renderer.render(scene, target)
+
+// A second Renderer draws the same map from a copy of its own.
+let other = Renderer()
+let frame = try await other.createTextureTarget([64, 64])
+try await other.load(scene)
+try other.render(scene, frame)

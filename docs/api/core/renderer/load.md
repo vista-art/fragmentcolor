@@ -1,24 +1,47 @@
 # Renderer::load
 
-Realize every pending GPU upload referenced by a renderable. Material's
-texture setters (`base_color_texture`, `metallic_roughness_texture`, …)
-accept paths, bytes, and URLs in addition to
+Uploads into this `Renderer` every Material map of a renderable that it
+lacks, or holds from an older set. Material's texture setters
+(`base_color_texture`, `metallic_roughness_texture`, …) take an
 already-uploaded [`Texture`](https://fragmentcolor.org/api/texture/texture)
-handles; the path / bytes / URL variants are stored on the Material's
-Shader as *pending* uploads. `load` walks every Shader the renderable
-visits, drains its pending list, calls
-[`Renderer::create_texture`](https://fragmentcolor.org/api/core/renderer#create_texture)
-for each, and writes the resulting `Texture` into the matching uniform.
+or a source: bytes, a path, a URL or a `Mipmap`. The Material keeps a source
+as a map with one texture id. `load` walks every Shader the renderable visits
+and decodes each map this `Renderer` needs into a copy of its own, under that id.
 
-On native targets, [`Renderer::render`](https://fragmentcolor.org/api/core/renderer)
-runs `load` first whenever the renderable has pending uploads, so an
-explicit `load` is optional there. Reach for it when you want to pay the
-decode and upload cost outside the render loop, for example in a loading
-screen that prepares the scene before the first frame goes out.
+An upload that fails keeps no copy, and the others still upload: a good
+normal map draws even when the base color path is missing. `load` returns
+the first failure, as does every later `load` and every native `render`,
+until the source is fixed or replaced. The latest setter call for a map
+wins, even one made while `load` is uploading the older source. That older
+upload stands in, so this `Renderer` always holds a copy, until the next
+`load` uploads the latest. A slot the shader doesn't declare never becomes a map, since
+the setter logs a warning and leaves the Material as it was.
 
-On the web, `render` can't wait for an upload, so it leaves pending uploads
-alone. Await `load` before the first `render`. Until then, a PBR Material
-draws with its 1×1 default maps.
+Each `Renderer` holds copies of its own. One Material draws with every
+`Renderer` that loads it, and a copy goes when its `Renderer` or the
+Material drops. A map set again draws its old copy until this `Renderer`
+loads the new one.
+
+On native targets, [`Renderer::render`](https://fragmentcolor.org/api/core/renderer#render)
+runs `load` first, which makes an explicit `load` optional there. Reach for
+it when you want to pay the decode and upload cost outside the render loop,
+for example in a loading screen that prepares the scene before the first
+frame goes out.
+
+On the web, `render` can't wait for an upload and uploads nothing. Await
+`load` in each `Renderer` before its first `render`. Until then, each map
+draws its 1×1 PBR default wherever that default fits the slot, in the
+built-in shader or a custom one. A slot it doesn't fit, such as an integer
+texture, and a map in a compute shader fail the render with a
+`BindingError` that asks for `load`.
+
+On native, a map that another thread sets while `render` runs, on a slot
+this `Renderer` holds no copy for, draws the same way for that one frame,
+and the next `render` uploads it.
+
+In JavaScript, `load` first waits for the frames rendered before it to
+report their GPU errors, and throws the first one, as
+[`Renderer::render`](https://fragmentcolor.org/api/core/renderer#render) describes.
 
 ## Example
 
@@ -44,9 +67,13 @@ let renderer = Renderer::new();
 let target = renderer.create_texture_target([64, 64]).await?;
 
 let mesh = Mesh::new();
-mesh.add_vertex(Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]));
+mesh.add_vertices([
+    Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]),
+    Vertex::pbr([-0.5, -0.5, 0.0]).set(Vertex::UV0, [0.0, 0.0]),
+    Vertex::pbr([0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]),
+]);
 
-// The material keeps the encoded image as a pending upload.
+// The material keeps the encoded image as a map.
 let material = Material::pbr().base_color_texture(&image);
 let model = Model::new(mesh, material);
 let scene = Scene::new();
@@ -55,6 +82,12 @@ scene.add(&model)?;
 // Decode and upload it now, so the first render only draws.
 renderer.load(&scene).await?;
 renderer.render(&scene, &target)?;
+
+// A second Renderer draws the same map from a copy of its own.
+let other = Renderer::new();
+let frame = other.create_texture_target([64, 64]).await?;
+other.load(&scene).await?;
+other.render(&scene, &frame)?;
 # Ok(())
 # }
 # fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }

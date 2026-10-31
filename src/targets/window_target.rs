@@ -1,0 +1,136 @@
+//! `WindowTarget`: a window's surface, and the frame it hands out.
+
+use crate::texture::TextureError;
+use crate::{RenderContext, Size, SurfaceError, Target, TargetFrame};
+use lsp_doc::lsp_doc;
+use std::sync::Arc;
+
+#[derive(Debug)]
+#[lsp_doc("docs/api/targets/window_target/window_target.md")]
+pub struct WindowTarget {
+    pub(crate) context: Arc<RenderContext>,
+    pub(crate) surface: wgpu::Surface<'static>,
+    pub(crate) config: wgpu::SurfaceConfiguration,
+}
+
+impl WindowTarget {
+    pub(crate) fn new(
+        context: Arc<RenderContext>,
+        surface: wgpu::Surface<'static>,
+        config: wgpu::SurfaceConfiguration,
+    ) -> Self {
+        Self {
+            context,
+            surface,
+            config,
+        }
+    }
+}
+
+impl crate::targets::FrameSource for WindowTarget {
+    fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, SurfaceError> {
+        let frame = self.acquire_frame()?;
+        Ok(Box::new(frame))
+    }
+
+    fn owner(&self) -> Option<Arc<RenderContext>> {
+        Some(self.context.clone())
+    }
+}
+
+impl Target for WindowTarget {
+    #[lsp_doc("docs/api/targets/target/size.md")]
+    fn size(&self) -> Size {
+        [self.config.width, self.config.height].into()
+    }
+
+    #[lsp_doc("docs/api/targets/target/resize.md")]
+    fn resize(&mut self, size: impl Into<Size>) -> Result<(), TextureError> {
+        let size = size.into();
+        // A minimized window reports a size with no area. The surface keeps its
+        // last configuration and draws again on the next resize that has one.
+        if size.width == 0 || size.height == 0 {
+            return Ok(());
+        }
+        let limit = self.context.device.limits().max_texture_dimension_2d;
+        crate::texture::check_size(size.width, size.height, limit)?;
+        self.config.width = size.width;
+        self.config.height = size.height;
+        self.surface.configure(&self.context.device, &self.config);
+        Ok(())
+    }
+
+    #[lsp_doc("docs/api/targets/target/get_image.md")]
+    async fn get_image(&self) -> Result<Vec<u8>, TextureError> {
+        Err(refuse_read())
+    }
+}
+
+/// What `get_image` returns for every window target, in each binding.
+pub(crate) fn refuse_read() -> TextureError {
+    TextureError::Readback(
+        "a window target can't be read back. Render to a TextureTarget to read its pixels".into(),
+    )
+}
+
+impl WindowTarget {
+    /// Try to acquire a frame; on Lost/Outdated, reconfigure and retry once.
+    fn acquire_frame(&self) -> Result<WindowFrame, SurfaceError> {
+        match crate::targets::surface_texture_from(self.surface.get_current_texture()) {
+            Ok(surface_texture) => {
+                let view = surface_texture
+                    .texture
+                    .create_view(&wgpu::TextureViewDescriptor::default());
+                Ok(WindowFrame {
+                    surface_texture,
+                    format: self.config.format,
+                    view,
+                })
+            }
+            Err(err) => {
+                match err {
+                    SurfaceError::Lost | SurfaceError::Outdated => {
+                        // Reconfigure with the last known good config and retry once.
+                        self.surface.configure(&self.context.device, &self.config);
+                        let surface_texture = crate::targets::surface_texture_from(
+                            self.surface.get_current_texture(),
+                        )?;
+                        let view = surface_texture
+                            .texture
+                            .create_view(&wgpu::TextureViewDescriptor::default());
+                        Ok(WindowFrame {
+                            surface_texture,
+                            format: self.config.format,
+                            view,
+                        })
+                    }
+                    _ => Err(err),
+                }
+            }
+        }
+    }
+}
+
+struct WindowFrame {
+    surface_texture: wgpu::SurfaceTexture,
+    format: wgpu::TextureFormat,
+    view: wgpu::TextureView,
+}
+
+impl TargetFrame for WindowFrame {
+    fn view(&self) -> &wgpu::TextureView {
+        &self.view
+    }
+
+    fn format(&self) -> wgpu::TextureFormat {
+        self.format
+    }
+
+    fn size(&self) -> wgpu::Extent3d {
+        self.surface_texture.texture.size()
+    }
+
+    fn present(self: Box<Self>, queue: &wgpu::Queue) {
+        queue.present(self.surface_texture);
+    }
+}

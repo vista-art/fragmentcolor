@@ -1,3 +1,6 @@
+# The crate's own uniffi config. uniffi-bindgen finds it at the crate root in library mode,
+# so the build tools pass no --config, which takes a global file of another layout.
+
 [bindings.swift]
 module_name = "FragmentColor"
 

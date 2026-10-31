@@ -8,41 +8,24 @@
 #   <doc> <platform> <Type.method>: <binding shape> | rust <rust shape>
 # A `?` marks a parameter a caller may leave out.
 
-docs/api/core/renderer/create_depth_texture.md kotlin Renderer.createDepthTexture: (int, int) -> Texture throws async | rust (into Size) -> Texture throws async
-docs/api/core/renderer/create_depth_texture.md swift Renderer.createDepthTexture: (int, int) -> Texture throws async | rust (into Size) -> Texture throws async
 docs/api/core/renderer/create_storage_texture.md kotlin Renderer.createStorageTexture: (Size, TextureFormat, bytes?, int?) -> Texture throws async | rust (into TextureInput) -> Texture throws async
-docs/api/core/renderer/create_storage_texture.md python Renderer.create_storage_texture: (PySize, TextureFormat, bytes?, PyTextureUsage?, int?) -> Texture throws | rust (into TextureInput) -> Texture throws async
+docs/api/core/renderer/create_storage_texture.md python Renderer.create_storage_texture: (PySize, TextureFormat, PyTextureBytes?, PyTextureUsage?, PyUnsigned?) -> Texture throws | rust (into TextureInput) -> Texture throws async
 docs/api/core/renderer/create_storage_texture.md swift Renderer.createStorageTexture: (Size, TextureFormat, bytes?, int?) -> Texture throws async | rust (into TextureInput) -> Texture throws async
-docs/api/core/renderer/create_storage_texture.md web Renderer.createStorageTexture: (any, TextureFormat, any?, any?) -> Texture throws async | rust (into TextureInput) -> Texture throws async
-docs/api/core/renderer/create_target.md kotlin Renderer.createTarget: (int) -> WindowTarget throws | rust (into SurfaceTarget) -> RenderTarget throws async
-docs/api/core/renderer/create_target.md swift Renderer.createTarget: (int) -> WindowTarget throws | rust (into SurfaceTarget) -> RenderTarget throws async
+docs/api/core/renderer/create_storage_texture.md web Renderer.createStorageTexture: (any, any, any?, any?) -> Texture throws async | rust (into TextureInput) -> Texture throws async
+docs/api/core/renderer/create_target.md kotlin Renderer.createTarget: (int) -> WindowTarget throws | rust (impl HasWindowHandle) -> RenderTarget throws async
+docs/api/core/renderer/create_target.md swift Renderer.createTarget: (int) -> WindowTarget throws | rust (impl HasWindowHandle) -> RenderTarget throws async
 docs/api/core/renderer/create_texture.md kotlin Renderer.createTexture: (TextureInputMobile, TextureOptions) -> Texture throws async | rust (into TextureInput) -> Texture throws async
 docs/api/core/renderer/create_texture.md swift Renderer.createTexture: (TextureInputMobile, TextureOptions) -> Texture throws async | rust (into TextureInput) -> Texture throws async
-docs/api/core/renderer/create_texture_target.md kotlin Renderer.createTextureTarget: (int, int) -> TextureTarget throws async | rust (into Size) -> TextureTarget throws async
-docs/api/core/renderer/create_texture_target.md swift Renderer.createTextureTarget: (int, int) -> TextureTarget throws async | rust (into Size) -> TextureTarget throws async
+docs/api/core/renderer/set_log_level.md kotlin Renderer.useLogLevel: (LogLevel) -> self | rust (LogLevel) -> unit
+docs/api/core/renderer/set_log_level.md swift Renderer.useLogLevel: (LogLevel) -> self | rust (LogLevel) -> unit
 docs/api/core/shader/set_registry.md kotlin Shader.useRegistry: (text) -> self | rust (text) -> unit
 docs/api/core/shader/set_registry.md swift Shader.useRegistry: (text) -> self | rust (text) -> unit
-docs/api/scene/camera/view_proj.md kotlin Camera.viewProj: () -> floats | rust () -> matrix
-docs/api/scene/camera/view_proj.md swift Camera.viewProj: () -> floats | rust () -> matrix
-docs/api/scene/camera/view_proj.md web Camera.viewProj: () -> floats | rust () -> matrix
-docs/api/scene/light/kind.md kotlin Light.kind: () -> text | rust () -> LightKind
-docs/api/scene/light/kind.md python Light.kind: () -> text | rust () -> LightKind
-docs/api/scene/light/kind.md swift Light.kind: () -> text | rust () -> LightKind
-docs/api/scene/light/kind.md web Light.kind: () -> text | rust () -> LightKind
+docs/api/geometry/mesh/add_vertex.md python Mesh.add_vertex: (PyIntoVertex) -> unit throws | rust (into Vertex) -> unit
+docs/api/geometry/mesh/add_vertices.md python Mesh.add_vertices: (list(PyIntoVertex)) -> unit throws | rust (list(into Vertex)) -> unit
+docs/api/geometry/mesh/from_vertices.md python Mesh.from_vertices: (list(PyIntoVertex)) -> self throws | rust (list(into Vertex)) -> self
 docs/api/scene/model/set_transform.md kotlin Model.setTransform: (floats) -> unit throws | rust (matrix) -> unit
 docs/api/scene/model/set_transform.md swift Model.setTransform: (floats) -> unit throws | rust (matrix) -> unit
-docs/api/scene/model/transform.md kotlin Model.transform: () -> floats | rust () -> matrix
-docs/api/scene/model/transform.md swift Model.transform: () -> floats | rust () -> matrix
-docs/api/scene/model/transform.md web Model.transform: () -> floats | rust () -> matrix
-docs/api/targets/texture_target/get_image.md python TextureTarget.get_image: () -> bytes throws | rust () -> bytes async
-docs/api/targets/texture_target/resize.md kotlin TextureTarget.resize: (int, int) -> unit | rust (into Size) -> unit
-docs/api/targets/texture_target/resize.md swift TextureTarget.resize: (int, int) -> unit | rust (into Size) -> unit
-docs/api/targets/window_target/resize.md kotlin WindowTarget.resize: (int, int) -> unit | rust (into Size) -> unit
-docs/api/targets/window_target/resize.md swift WindowTarget.resize: (int, int) -> unit | rust (into Size) -> unit
 docs/api/texture/mipmap/build.md kotlin Mipmap.build: (bytes, TextureFormat, Size?) -> self throws | rust (into TextureInput) -> self throws
 docs/api/texture/mipmap/build.md python Mipmap.build: (PyTextureBytes, TextureFormat, PySize?) -> self throws | rust (into TextureInput) -> self throws
 docs/api/texture/mipmap/build.md swift Mipmap.build: (bytes, TextureFormat, Size?) -> self throws | rust (into TextureInput) -> self throws
-docs/api/texture/mipmap/build.md web Mipmap.build: (any, TextureFormat, any?) -> self throws | rust (into TextureInput) -> self throws
-docs/api/texture/mipmap/size.md kotlin Mipmap.size: () -> Size | rust () -> ints(2)
-docs/api/texture/mipmap/size.md swift Mipmap.size: () -> Size | rust () -> ints(2)
-docs/api/texture/mipmap/size.md web Mipmap.size: () -> Size | rust () -> ints(2)
+docs/api/texture/mipmap/build.md web Mipmap.build: (any, any, any?) -> self throws | rust (into TextureInput) -> self throws

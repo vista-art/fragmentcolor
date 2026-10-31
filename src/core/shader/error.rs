@@ -1,0 +1,496 @@
+//! `ShaderError`, and the diagnostics naga reports with their source locations.
+
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum ShaderError {
+    /// A shader that can't be read, such as one whose vertex inputs share a name.
+    #[error("Failed to parse shader: {0}")]
+    ParseError(String),
+    /// A feature that isn't built yet.
+    #[error("Planned feature not yet implemented: {0}")]
+    PlannedFeature(String),
+    /// A uniform name the shader doesn't declare.
+    #[error("Uniform not found: {0}")]
+    UniformNotFound(String),
+    /// A value whose type doesn't fit the uniform it's set on.
+    #[error("Type mismatch for uniform {0}")]
+    TypeMismatch(String),
+    /// A uniform key, or a mesh, that doesn't fit what the shader declares.
+    #[error("Invalid key: {0}")]
+    InvalidKey(String),
+    /// A struct field a uniform key names, which the struct lacks.
+    #[error("Field not found in struct: {0}")]
+    FieldNotFound(String),
+    /// A module naga's writer can't write as WGSL.
+    #[error("WGSL error: {0}")]
+    WgslError(Diagnostic),
+    /// A WGSL source naga's parser refuses.
+    #[error("WGSL Parse error: {0}")]
+    WgslParseError(Diagnostic),
+    /// A type whose layout naga can't compute, such as one past its size limit,
+    /// or a struct whose explicit layout the WGSL the browser gets can't keep.
+    #[error("Layout error: {0}")]
+    LayoutError(String),
+    /// A module naga's validator refuses, from WGSL or GLSL.
+    #[error("Validation error: {0}")]
+    ValidationError(Diagnostic),
+    /// A GLSL source naga's parser refuses.
+    #[error("GLSL Parse errors: {0}")]
+    GlslParseErrors(Diagnostic),
+    /// A shader URL whose request failed.
+    #[cfg(not(wasm))]
+    #[error("URL Request Error: {0}")]
+    RequestError(#[from] crate::NetworkError),
+    /// A shader file that can't be read.
+    #[error("File not found: {0}")]
+    FileNotFound(#[from] std::io::Error),
+    /// An array index in a uniform key past the array's length.
+    #[error("Index out of bounds for {key}: index {index} >= len {len}")]
+    IndexOutOfBounds {
+        key: String,
+        index: usize,
+        len: usize,
+    },
+    /// A read of a shader whose storage another thread holds.
+    #[error("Shader busy: {0}")]
+    Busy(String),
+    /// A mesh value that doesn't fit the type its attribute takes.
+    #[error("Mesh attribute {name}: expected {expected}, got {found}")]
+    AttributeMismatch {
+        name: String,
+        expected: String,
+        found: String,
+    },
+    /// An attribute one shader typed, which this shader declares another way.
+    #[error("Mesh attribute {name} is {fixed} on this mesh, but the shader declares {declared}")]
+    AttributeConflict {
+        name: String,
+        fixed: String,
+        declared: String,
+    },
+    /// A Material map's id set on a slot that doesn't hold the map.
+    /// The map's copies go when the map does, so the slot couldn't keep them.
+    #[error(
+        "Texture id {id} is a Material map of another slot, so '{key}' can't bind it. Set the map's source or a Texture on '{key}' instead"
+    )]
+    ForeignMap { key: String, id: u64 },
+    /// A failure on the web, such as a path or URL the constructor can't read there.
+    #[cfg(wasm)]
+    #[error("WASM Shader Error: {0}")]
+    Error(String),
+}
+
+/// What naga reports about a shader: its message, with the source lines it points at
+/// when it has the source, and each place in the source it labels.
+///
+/// The types are FragmentColor's own, so a naga release that reworks its errors
+/// changes no API. The message is naga's text as it emits it, without the `error: `
+/// its first line starts with, so each binding shows the same message, and
+/// `locations` holds the same places as numbers.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Diagnostic {
+    /// naga's message, with the lines of source it points at.
+    pub message: String,
+    /// The places naga labels, in its order. Empty when it labels none, or has no source.
+    pub locations: Vec<SourceLocation>,
+}
+
+/// A place naga labels in a shader source, with its label. `line` and `column`
+/// count from 1, and `column` and `length` count characters, as naga's message does.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SourceLocation {
+    pub line: u32,
+    pub column: u32,
+    pub length: u32,
+    pub label: String,
+}
+
+impl std::fmt::Display for Diagnostic {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.message.trim_end())
+    }
+}
+
+/// A shader source and the file name naga's report shows for it,
+/// `wgsl` for WGSL and `vertex.glsl` or `fragment.glsl` for a GLSL stage.
+#[derive(Clone, Copy)]
+pub(crate) struct Source<'text> {
+    pub(crate) text: &'text str,
+    pub(crate) path: &'static str,
+}
+
+impl<'text> Source<'text> {
+    /// WGSL `text`, which naga's report names `wgsl`.
+    pub(crate) fn wgsl(text: &'text str) -> Self {
+        Self { text, path: "wgsl" }
+    }
+}
+
+/// A GLSL stage naga's WGSL writer refuses, with the source its report names.
+pub(crate) struct WriteFailure<'text> {
+    pub(crate) source: Source<'text>,
+    pub(crate) error: naga::back::wgsl::Error,
+}
+
+/// The writer's reason, after the name of the stage's source, since the writer points at no line.
+impl From<WriteFailure<'_>> for ShaderError {
+    fn from(failure: WriteFailure<'_>) -> Self {
+        let message = format!("{}: {}", failure.source.path, describe(&failure.error));
+        ShaderError::WgslError(Diagnostic {
+            message,
+            locations: Vec::new(),
+        })
+    }
+}
+
+impl Diagnostic {
+    /// naga's report on WGSL `source` that its parser refuses.
+    pub(crate) fn from_parse(error: &naga::front::wgsl::ParseError, source: &str) -> Self {
+        let labels = error
+            .labels()
+            .map(|(span, label)| (span, label.to_string()));
+        Self {
+            message: trim_severity(error.emit_to_string(source)),
+            locations: locate(labels, source),
+        }
+    }
+
+    /// naga's report on a module its validator refuses, with the places located
+    /// in `source` when the module came from it.
+    pub(crate) fn from_validation(
+        error: &naga::WithSpan<naga::valid::ValidationError>,
+        source: Option<Source<'_>>,
+    ) -> Self {
+        match source {
+            Some(source) => Self {
+                message: trim_severity(error.emit_to_string_with_path(source.text, source.path)),
+                locations: locate(error.spans().cloned(), source.text),
+            },
+            None => Self::from_error(error),
+        }
+    }
+
+    /// naga's report on the GLSL `source` of one stage that its parser refuses.
+    pub(crate) fn from_glsl(errors: &naga::front::glsl::ParseErrors, source: Source<'_>) -> Self {
+        let labels = errors
+            .errors
+            .iter()
+            .map(|error| (error.meta, error.kind.to_string()));
+        Self {
+            message: trim_severity(errors.emit_to_string_with_path(source.text, source.path)),
+            locations: locate(labels, source.text),
+        }
+    }
+
+    /// A report with `error`'s message and no places, for an error with no source to point at.
+    pub(crate) fn from_error(error: &dyn std::error::Error) -> Self {
+        Self {
+            message: describe(error),
+            locations: Vec::new(),
+        }
+    }
+}
+
+/// naga's report without the `error: ` its first line starts with,
+/// which the variant's own prefix already says.
+fn trim_severity(report: String) -> String {
+    match report.strip_prefix("error: ") {
+        Some(rest) => rest.to_owned(),
+        None => report,
+    }
+}
+
+/// Each labeled span in `source`, counted in characters, as naga's message counts its column.
+/// A span naga leaves undefined, or one that falls outside `source`, is skipped.
+/// naga's spans are `u32` byte offsets, so every count fits a `u32`.
+fn locate(labels: impl Iterator<Item = (naga::Span, String)>, source: &str) -> Vec<SourceLocation> {
+    labels
+        .filter_map(|(span, label)| {
+            let range = span.to_range()?;
+            let before = source.get(..range.start)?;
+            let text = source.get(range)?;
+            let line = before.rsplit_once('\n').map_or(before, |(_, tail)| tail);
+            Some(SourceLocation {
+                line: before.matches('\n').count() as u32 + 1,
+                column: line.chars().count() as u32 + 1,
+                length: text.chars().count() as u32,
+                label,
+            })
+        })
+        .collect()
+}
+
+/// `error` and each error under it, joined into one line.
+/// A cause whose text the line already ends with, as an error that prints its source does, is left out.
+pub(crate) fn describe(error: &dyn std::error::Error) -> String {
+    let mut text = error.to_string();
+    let mut cause = error.source();
+    while let Some(inner) = cause {
+        let part = inner.to_string();
+        if !text.ends_with(&part) {
+            text.push_str(": ");
+            text.push_str(&part);
+        }
+        cause = inner.source();
+    }
+    text
+}
+
+// Python-specific conversions
+
+#[cfg(python)]
+impl From<pyo3::PyErr> for ShaderError {
+    fn from(e: pyo3::PyErr) -> Self {
+        ShaderError::ParseError(e.to_string())
+    }
+}
+
+#[cfg(any(python, wasm, test))]
+impl crate::error::Classify for ShaderError {
+    fn classify(&self) -> crate::error::ErrorClass {
+        crate::error::ErrorClass::Base
+    }
+}
+
+#[cfg(python)]
+impl From<ShaderError> for pyo3::PyErr {
+    fn from(e: ShaderError) -> Self {
+        crate::error::raise_error(&e)
+    }
+}
+
+// WASM-specific conversions
+
+#[cfg(wasm)]
+impl From<wasm_bindgen::JsValue> for ShaderError {
+    fn from(value: wasm_bindgen::JsValue) -> Self {
+        let error_string = if let Some(s) = value.as_string() {
+            s
+        } else {
+            format!("{:?}", value)
+        };
+        ShaderError::Error(error_string)
+    }
+}
+
+#[cfg(wasm)]
+impl From<ShaderError> for wasm_bindgen::JsValue {
+    fn from(error: ShaderError) -> Self {
+        crate::error::WebError::from(error).into()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Story: ShaderError formats carry details for various failure kinds.
+    #[test]
+    fn formats_shader_error_variants() {
+        let a = ShaderError::ParseError("p".into());
+        let b = ShaderError::PlannedFeature("pf".into());
+        let c = ShaderError::UniformNotFound("u".into());
+        let d = ShaderError::TypeMismatch("k".into());
+        let e = ShaderError::InvalidKey("k".into());
+        let f = ShaderError::IndexOutOfBounds {
+            key: "arr".into(),
+            index: 3,
+            len: 2,
+        };
+        let g = ShaderError::FieldNotFound("x".into());
+        let h = ShaderError::AttributeMismatch {
+            name: "id".into(),
+            expected: "u32".into(),
+            found: "-1 at vertex 2".into(),
+        };
+        let i = ShaderError::AttributeConflict {
+            name: "id".into(),
+            fixed: "u32".into(),
+            declared: "f32".into(),
+        };
+
+        assert!(a.to_string().contains("parse"));
+        assert!(b.to_string().contains("Planned feature"));
+        assert!(c.to_string().contains("Uniform not found"));
+        assert!(d.to_string().contains("Type mismatch"));
+        assert!(e.to_string().contains("Invalid key"));
+        assert!(f.to_string().contains("Index out of bounds"));
+        assert!(g.to_string().contains("Field not found"));
+        assert_eq!(
+            h.to_string(),
+            "Mesh attribute id: expected u32, got -1 at vertex 2"
+        );
+        assert_eq!(
+            i.to_string(),
+            "Mesh attribute id is u32 on this mesh, but the shader declares f32"
+        );
+    }
+
+    /// The diagnostic in `result`, which the test expects to be the error `pick` reads.
+    fn take_diagnostic<T>(
+        result: Result<T, ShaderError>,
+        pick: impl FnOnce(ShaderError) -> Option<Diagnostic>,
+    ) -> Diagnostic {
+        let Err(error) = result else {
+            panic!("expected an error");
+        };
+        let text = error.to_string();
+        let Some(diagnostic) = pick(error) else {
+            panic!("expected another error, got {text}");
+        };
+        diagnostic
+    }
+
+    // Story: a WGSL source naga's parser refuses keeps naga's own message, with the source
+    // line it points at, and the place it labels as a line, a column and a length.
+    #[test]
+    fn wgsl_parse_errors_keep_naga_message_and_place() {
+        let source =
+            "@fragment fn fs_main() -> @location(0) vec4<f32> {\n  return vec4<f32>(1.0;\n}";
+        let naga = naga::front::wgsl::parse_str(source)
+            .err()
+            .map(|error| trim_severity(error.emit_to_string(source)));
+
+        let diagnostic = take_diagnostic(crate::Shader::new(source), |error| match error {
+            ShaderError::WgslParseError(diagnostic) => Some(diagnostic),
+            _ => None,
+        });
+
+        assert_eq!(Some(diagnostic.message.clone()), naga);
+        assert!(diagnostic.message.starts_with("expected"), "{diagnostic}");
+        assert!(
+            diagnostic.message.contains("wgsl:2:"),
+            "{}",
+            diagnostic.message
+        );
+        let place = diagnostic.locations.first().expect("a place");
+        assert_eq!(place.line, 2);
+        assert!(place.column > 1 && place.length > 0, "{place:?}");
+    }
+
+    // Story: a module naga's validator refuses keeps naga's own message, emitted
+    // with the source, and the places it labels, which are none for this error.
+    #[test]
+    fn validation_errors_keep_naga_message() {
+        let source = "@fragment fn fs_main() -> @location(0) vec4<f32> {\n  let x = 1.0;\n}";
+        let module = naga::front::wgsl::parse_str(source).expect("parses");
+        let naga = super::super::create_validator()
+            .validate(&module)
+            .err()
+            .map(|error| {
+                (
+                    trim_severity(error.emit_to_string(source)),
+                    error.spans().len(),
+                )
+            });
+
+        let diagnostic = take_diagnostic(crate::Shader::new(source), |error| match error {
+            ShaderError::ValidationError(diagnostic) => Some(diagnostic),
+            _ => None,
+        });
+
+        let found = (diagnostic.message.clone(), diagnostic.locations.len());
+        assert_eq!(Some(found), naga);
+    }
+
+    // Story: a GLSL source naga's parser refuses keeps naga's message and the place it labels.
+    #[test]
+    fn glsl_errors_keep_naga_message_and_place() {
+        let vertex = "#version 450\nvoid main() {\n  gl_Position = vec4(1.0)\n}";
+        let fragment = "#version 450\nlayout(location = 0) out vec4 color;\nvoid main() { color = vec4(1.0); }";
+        let options = naga::front::glsl::Options::from(naga::ShaderStage::Vertex);
+        let naga = naga::front::glsl::Frontend::default()
+            .parse(&options, vertex)
+            .err()
+            .map(|errors| trim_severity(errors.emit_to_string_with_path(vertex, "vertex.glsl")));
+
+        let result = crate::ShaderObject::glsl(vertex, fragment);
+
+        let diagnostic = take_diagnostic(result, |error| match error {
+            ShaderError::GlslParseErrors(diagnostic) => Some(diagnostic),
+            _ => None,
+        });
+        assert_eq!(Some(diagnostic.message.clone()), naga);
+        assert!(diagnostic.message.contains("vertex.glsl:"), "{diagnostic}");
+        let place = diagnostic.locations.first().expect("a place");
+        assert!(place.line >= 3, "{place:?}");
+    }
+
+    // Story: a GLSL stage that parses and then fails validation
+    // names its own source, `fragment.glsl`, in the report's place lines.
+    #[test]
+    fn glsl_validation_errors_name_the_stage() {
+        let vertex = "#version 450\nvoid main() { gl_Position = vec4(1.0); }";
+        let fragment = "#version 450\nlayout(location = 0) out vec4 color;\nvoid main() {\n  double x = 1.0;\n  color = vec4(1.0);\n}";
+
+        let result = crate::ShaderObject::glsl(vertex, fragment);
+
+        let diagnostic = take_diagnostic(result, |error| match error {
+            ShaderError::ValidationError(diagnostic) => Some(diagnostic),
+            _ => None,
+        });
+        assert!(
+            diagnostic.message.contains("fragment.glsl"),
+            "{}",
+            diagnostic.message
+        );
+        assert!(
+            !diagnostic.message.contains("wgsl"),
+            "{}",
+            diagnostic.message
+        );
+    }
+
+    // Story: a GLSL stage the WGSL writer refuses names the stage's source in its report.
+    #[test]
+    fn glsl_write_errors_name_the_stage() {
+        let vertex = "#version 450\nvoid main() { gl_Position = vec4(1.0); }";
+        let fragment = "#version 450\nlayout(location = 0) out vec4 color;\nvoid main() {\n  float x = 0.0;\n  int i = int(gl_FragCoord.x);\n  switch (i) {\n    case 0: x = 1.0;\n    case 1: x = 2.0; break;\n    default: break;\n  }\n  color = vec4(x);\n}";
+
+        let result = crate::ShaderObject::glsl(vertex, fragment);
+
+        let diagnostic = take_diagnostic(result, |error| match error {
+            ShaderError::WgslError(diagnostic) => Some(diagnostic),
+            _ => None,
+        });
+        assert!(
+            diagnostic.message.starts_with("fragment.glsl: "),
+            "{}",
+            diagnostic.message
+        );
+    }
+
+    // Story: a column counts characters, as the `wgsl:L:C` of naga's message does,
+    // so a non-ASCII character before the error moves both the same way.
+    #[test]
+    fn columns_count_characters() {
+        let source = "@fragment fn fs_main() -> @location(0) vec4<f32> {\n  let x = 1.0; /* señal ñ */ return vec4<f32>(x;\n}";
+
+        let diagnostic = take_diagnostic(crate::Shader::new(source), |error| match error {
+            ShaderError::WgslParseError(diagnostic) => Some(diagnostic),
+            _ => None,
+        });
+
+        let place = diagnostic.locations.first().expect("a place");
+        let header = format!("wgsl:{}:{}", place.line, place.column);
+        assert!(
+            diagnostic.message.contains(&header),
+            "{header} not in {}",
+            diagnostic.message
+        );
+    }
+
+    // Story: no report repeats the severity its variant's prefix already says.
+    #[test]
+    fn reports_say_error_once() {
+        let source =
+            "@fragment fn fs_main() -> @location(0) vec4<f32> {\n  return vec4<f32>(1.0;\n}";
+        let text = crate::Shader::new(source)
+            .err()
+            .map(|error| error.to_string());
+        let text = text.unwrap_or_default();
+        assert!(text.starts_with("WGSL Parse error: expected"), "{text}");
+        assert!(!text.contains("error: error:"), "{text}");
+    }
+}

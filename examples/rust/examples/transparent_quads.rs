@@ -61,11 +61,10 @@ fn main() {
         let blue = Model::new(quad(), blue_glass);
         blue.translate([0.0, 0.0, 1.0]);
 
-        let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0).look_at(
-            [0.0, 0.0, 5.0],
-            [0.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0],
-        );
+        let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0)
+            .expect("camera")
+            .look_at([0.0, 0.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+            .expect("camera");
         let sun = Light::directional([0.2, -0.5, -1.0], [1.0, 1.0, 1.0]);
 
         let scene = Scene::new();
@@ -84,7 +83,7 @@ fn main() {
 
         renderer.render(&scene, &target).expect("render");
 
-        let image = target.get_image().await;
+        let image = target.get_image().await.expect("read back");
         assert_eq!(image.len(), 512 * 512 * 4);
 
         // Count pixels where the color is "obviously translucent": any

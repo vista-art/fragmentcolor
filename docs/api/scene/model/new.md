@@ -8,14 +8,27 @@ as the `model_0` to `model_3` instance attributes, the four columns of a
 
 If you want several Models that share a look, clone the Material before each
 `Model::new`. `Material::clone` shares the handle and copies nothing, so the
-Models share one pipeline and one bind-group setup. The transform belongs to
+Models share one bind-group setup, and Models whose meshes lay out their
+vertices alike share one pipeline. The transform belongs to
 the Model, not to the Material's Shader or the Mesh, so Models can share
 both. Models with the same Material and Mesh draw in one instanced call.
 
-`Material::pbr` requires the Mesh's first vertex to declare position
-(`vec3`), normal (`vec3`), and uv0 (`vec2`) in that exact insertion order,
-so the locations align with the PBR shader's vertex inputs. Custom shaders
-via `Material::custom(...)` can use any layout.
+`Material::pbr` reads six attributes from every vertex: a 3D position
+(`vec3`), `normal` (`vec3`), `uv0` (`vec2`), `color0` (`vec4`), `uv1`
+(`vec2`) and `tangent` (`vec4`). Each input finds its attribute by name,
+then by the location
+[`Vertex::set`](https://fragmentcolor.org/api/geometry/vertex#set) gave the
+attribute, so a vertex that sets them under these names can set them in any
+order. An attribute under another name stands in for an input when it sits
+at the input's location and fits its type. The shader has no default for any
+input, so `Scene.add` and `Pass.add` refuse a Model when an input finds no
+attribute by either rule. The error names the input, or the attribute at the
+input's location when that attribute has the wrong type: a vertex that sets
+only `uv0` fails on `uv0`, which sits where `normal` is read. `Vertex::pbr`
+sets all five after the position to neutral values, and `.set(...)`
+replaces the ones your mesh has data for. The `model_0` to `model_3`
+columns come from the Model, not the mesh. Custom shaders via
+`Material::custom(...)` can use any layout.
 
 ## Example
 
@@ -24,11 +37,11 @@ via `Material::custom(...)` can use any layout.
 use fragmentcolor::{Material, Mesh, Model, Vertex};
 
 let mesh = Mesh::new();
-mesh.add_vertex(
-    Vertex::new([0.0, 0.0, 0.0])
-        .set(Vertex::NORMAL, [0.0, 1.0, 0.0])
-        .set(Vertex::UV0, [0.0, 0.0]),
-);
+mesh.add_vertices([
+    Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]),
+    Vertex::pbr([-0.5, -0.5, 0.0]).set(Vertex::UV0, [0.0, 0.0]),
+    Vertex::pbr([0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]),
+]);
 
 let model = Model::new(mesh, Material::pbr());
 

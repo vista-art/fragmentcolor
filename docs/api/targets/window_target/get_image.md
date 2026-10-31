@@ -1,14 +1,14 @@
 # WindowTarget::get_image()
 
-This operation returns an empty array for [WindowTarget](https://fragmentcolor.org/api/targets/windowtarget).
+Returns an error for a [WindowTarget](https://fragmentcolor.org/api/targets/windowtarget): a frame on screen can't be read back. JavaScript throws an `Error` named `FragmentColorError`, Python and Swift throw a `FragmentColorError`, and Kotlin throws a `FragmentColorException`.
 
-Use a [TextureTarget](https://fragmentcolor.org/api/targets/texturetarget) instead.
+To read the pixels of a frame, draw it into a [TextureTarget](https://fragmentcolor.org/api/targets/texturetarget) and call `get_image` there, as the example does.
 
 ## Example
 
 ```rust
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-# let canvas = fragmentcolor::headless_window([800, 600]);
+# let canvas = fragmentcolor::HeadlessWindow::new([800, 600]);
 # /*[js]
 # const canvas = document.createElement("canvas");
 # */
@@ -32,13 +32,17 @@ use fragmentcolor::{Renderer, Shader, Target};
 
 let renderer = Renderer::new();
 let target = renderer.create_target(canvas).await?;
-renderer.render(&Shader::default(), &target)?;
+let shader = Shader::default();
+renderer.render(&shader, &target)?;
 
-let image = target.get_image().await;
+// The same frame, drawn where it can be read back.
+let offscreen = renderer.create_texture_target([800, 600]).await?;
+renderer.render(&shader, &offscreen)?;
+let image = offscreen.get_image().await?;
 # /*[kotlin]
 # surfaceTexture.release()
 # */
-# _ = image;
+# assert_eq!(image.len(), 800 * 600 * 4);
 # Ok(())
 # }
 # fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }

@@ -21,8 +21,8 @@ The [Pass](/api/core/pass) represents a single RenderPass or a ComputePass in th
 
 The constructor creates a RenderPass by default. To create a ComputePass, call [Pass](/api/core/pass)::compute().
 
-After creation, it will only accept a compatible [Shader](/api/core/shader) object. If you try to add a Compute [Shader](/api/core/shader) to a Render [Pass](/api/core/pass) or vice-versa,
-it won't add the shader to its internal list and log a warning message in the console.
+The first [Shader](/api/core/shader) added sets the pass's kind, and the pass then takes only shaders of that kind.
+[`add_shader`](/api/core/pass#add_shader) returns `PassError::ShaderKind` for a compute shader on a render pass, or the reverse, and leaves the pass as it was.
 
 
 
@@ -33,9 +33,6 @@ it won't add the shader to its internal list and log a warning message in the co
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-let canvas = fragmentcolor::headless_window([100, 100]);
-
 use fragmentcolor::{ Shader, Pass, Renderer };
 
 let renderer = Renderer::new();
@@ -43,22 +40,18 @@ let target = renderer.create_target(canvas).await?;
 let shader = Shader::default();
 
 let mut pass = Pass::new("First Pass");
-pass.add_shader(&shader);
+pass.add_shader(&shader)?;
 
 let mut pass2 = Pass::new("Second Pass");
-pass2.add_shader(&shader);
+pass2.add_shader(&shader)?;
 
 // standalone
 renderer.render(&pass, &target)?;
 
 // vector of passes rendered in order (any iterable of Pass is renderable)
 renderer.render(&vec![pass, pass2], &target)?;
-
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-2, 22-24}"
+lang="rust"
 />
 
 </TabItem>
@@ -135,14 +128,14 @@ import QuartzCore
 let canvas = CAMetalLayer()
 
 let renderer = Renderer()
-let target = try await renderer.createTarget(canvas)
+let target = try renderer.createTarget(canvas)
 let shader = Shader.default()
 
 let pass = Pass("First Pass")
-pass.addShader(shader)
+try pass.addShader(shader)
 
 let pass2 = Pass("Second Pass")
-pass2.addShader(shader)
+try pass2.addShader(shader)
 
 // standalone
 try renderer.render(pass, target)
@@ -213,10 +206,8 @@ code={`
 use fragmentcolor::Pass;
 
 let pass = Pass::new("first pass");
-
-_ = pass;
 `}
-lang="rust" meta="collapse={5-5}"
+lang="rust"
 />
 
 </TabItem>
@@ -283,7 +274,12 @@ Creates a new [Pass](/api/core/pass) configured for compute workloads.
 Only [Shader](/api/core/shader) objects that compile to compute pipelines can be added.
 
 The first shader added decides the pass kind, whichever constructor made the
-pass. After that, a shader of the other kind is dropped with a logged warning.
+pass. After that, `add_shader` returns `PassError::ShaderKind` for a shader of
+the other kind and leaves the pass as it was.
+
+Each shader of a compute pass dispatches on its own. A shader that reads a
+texture through one binding and writes it through another makes `render` return
+`PassError::TextureConflict`, so read the result in a later pass.
 
 #### Example
 
@@ -292,17 +288,13 @@ pass. After that, a shader of the other kind is dropped with a logged warning.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Pass, Shader};
 
 let cs = Shader::new("@compute @workgroup_size(8,8,1) fn cs_main() {}")?;
 let pass = Pass::compute("compute");
-pass.add_shader(&cs);
-assert!(pass.is_compute());
-Ok(())
-}
+pass.add_shader(&cs)?;
 `}
-lang="rust" meta="collapse={1-1, 7-9}"
+lang="rust"
 />
 
 </TabItem>
@@ -342,7 +334,7 @@ import FragmentColor
 
 let cs = try Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}")
 let pass = Pass.compute("compute")
-pass.addShader(cs)
+try pass.addShader(cs)
 `}
 lang="swift"
 />
@@ -459,10 +451,8 @@ locate a pass in a scene's graph, and it's the label graphics debuggers
 (RenderDoc, Xcode GPU capture) show for the pass.
 
 Names aren't required to be unique. If two passes share a name, name lookup
-returns the first one. `require` tells dependencies apart by name, though: a
-pass can't require two passes with the same name
-(`PassError::DuplicateDependency`), or a pass with its own name
-(`PassError::SelfDependency`).
+returns the first one. `require` tells passes apart by identity, so a pass can
+require two passes of one name, or another pass of its own name.
 
 #### Example
 
@@ -471,16 +461,12 @@ pass can't require two passes with the same name
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Pass;
 
 let shadow = Pass::new("shadow");
 let label = shadow.name();
-assert_eq!(label, "shadow");
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 6-8}"
+lang="rust"
 />
 
 </TabItem>
@@ -555,8 +541,6 @@ This is useful when layering multiple passes where the next pass should blend wi
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-
 use fragmentcolor::{Renderer, Pass, Shader};
 
 let renderer = Renderer::new();
@@ -564,16 +548,12 @@ let target = renderer.create_texture_target([64, 64]).await?;
 
 let shader = Shader::default();
 let mut pass = Pass::new("blend with previous");
-pass.add_shader(&shader);
+pass.add_shader(&shader)?;
 pass.load_previous();
 
 renderer.render(&pass, &target)?;
-
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 15-17}"
+lang="rust"
 />
 
 </TabItem>
@@ -633,7 +613,7 @@ let target = try await renderer.createTextureTarget([64, 64])
 
 let shader = Shader.default()
 let pass = Pass("blend with previous")
-pass.addShader(shader)
+try pass.addShader(shader)
 pass.loadPrevious()
 
 try renderer.render(pass, target)
@@ -676,6 +656,18 @@ Add a [Shader](/api/core/shader) to the
 they were added, sharing the pass's targets, viewport, clear color, and
 load policy.
 
+The first shader sets the pass's kind. After that, a compute shader on a
+render pass, or a render shader on a compute pass, returns
+`PassError::ShaderKind`, which names both kinds.
+
+A shader that declares the light roots, as
+[`Material::custom`](/api/scene/material#custom)
+lists them, takes every [Light](/api/scene/light)
+the pass holds. When those lights would take it past the most it holds on
+the device, `add_shader` returns `PassError::LightCapReached`.
+
+Either error leaves the pass and the shader as they were.
+
 #### Example
 
 <Tabs>
@@ -687,7 +679,7 @@ use fragmentcolor::{Pass, Shader};
 
 let shader = Shader::default();
 let pass = Pass::new("p");
-pass.add_shader(&shader);
+pass.add_shader(&shader)?;
 `}
 lang="rust"
 />
@@ -729,7 +721,7 @@ import FragmentColor
 
 let shader = Shader.default()
 let pass = Pass("p")
-pass.addShader(shader)
+try pass.addShader(shader)
 `}
 lang="swift"
 />
@@ -777,11 +769,14 @@ A Pass with no shaders has nothing to attach the mesh to and returns
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Pass, Shader, Mesh};
 
 let mesh = Mesh::new();
-mesh.add_vertex([0.0, 0.0]);
+mesh.add_vertices([
+    [-0.5, -0.5],
+    [0.5, -0.5],
+    [0.0, 0.5],
+]);
 
 let shader = Shader::new(r#"
   struct VOut { @builtin(position) pos: vec4<f32> };
@@ -798,11 +793,8 @@ let shader = Shader::new(r#"
 let pass = Pass::from_shader("pass", &shader);
 
 pass.add_mesh(&mesh)?;
-
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 23-24}"
+lang="rust"
 />
 
 </TabItem>
@@ -813,7 +805,7 @@ code={`
 import { Pass, Shader, Mesh } from "fragmentcolor";
 
 const mesh = new Mesh();
-mesh.addVertex([0.0, 0.0]);
+mesh.addVertices([ [-0.5, -0.5], [0.5, -0.5], [0.0, 0.5], ]);
 
 const shader = new Shader(\`
 
@@ -845,7 +837,11 @@ code={`
 from fragmentcolor import Pass, Shader, Mesh
 
 mesh = Mesh()
-mesh.add_vertex([0.0, 0.0])
+mesh.add_vertices([
+    [-0.5, -0.5],
+    [0.5, -0.5],
+    [0.0, 0.5],
+])
 
 shader = Shader("""
   struct VOut { @builtin(position) pos: vec4<f32> };
@@ -876,7 +872,11 @@ code={`
 import FragmentColor
 
 let mesh = Mesh()
-try mesh.addVertex([0.0, 0.0])
+try mesh.addVertices([
+    [-0.5, -0.5],
+    [0.5, -0.5],
+    [0.0, 0.5],
+])
 
 let shader = try Shader("""
   struct VOut { @builtin(position) pos: vec4<f32> };
@@ -906,7 +906,7 @@ code={`
 import org.fragmentcolor.*
 
 val mesh = Mesh()
-mesh.addVertex(listOf(0.0f, 0.0f))
+mesh.addVertices(listOf(listOf(-0.5f, -0.5f), listOf(0.5f, -0.5f), listOf(0.0f, 0.5f)))
 
 val shader = Shader("""
   struct VOut { @builtin(position) pos: vec4<f32> };
@@ -943,20 +943,29 @@ Absorb any `SceneObject` (a
 [Light](/api/scene/light), or, in Rust, a
 user-defined node that implements the trait) into the pass. The other
 bindings take the built-in kinds. Each kind brings its
-own attach behavior: a Model queues a draw with its own per-instance
-transform; a Camera or Light wires its uniforms into every shader the
-pass renders, both the ones already there and the ones added afterwards.
+own attach behavior. A Model queues a draw with its own per-instance
+transform. A Camera writes its uniforms into every shader on the pass and
+into the shaders that later Models bring. A Light reaches every shader on
+the pass that declares the light roots, both the ones already there and
+the ones added afterwards, through a Model or
+[`add_shader`](/api/core/pass#add_shader).
 
-Camera and Light hold Arc-shared state, so subsequent mutations on the
-same value (`camera.look_at(...)`, `light.set_color(...)`) propagate to
-every shader on the pass with no further `add` call.
+Camera and Light hold Arc-shared state, so a later `camera.look_at(...)`
+or `light.set_color(...)` reaches those shaders with no further `add`
+call.
 
-Returns `Result<&Pass, PassError>`. Models can fail at attach time when
-the Mesh layout doesn't match the Material's shader, and Cameras always
-succeed. A Light fails with `PassError::LightCapReached` when a shader
-on the pass already holds 32 lights. Lights added before their shaders
-join the pass don't fail: a shader past the cap drops the extra ones
-with a logged warning instead. Chain with `?` between calls.
+The pass holds every Light added to it, so a Light keeps lighting after
+the caller drops its handle.
+
+Returns `Result<&Pass, PassError>`. A Model fails at attach time when
+the Mesh layout doesn't match the Material's shader, and with
+`PassError::ShaderKind` on a pass of compute shaders. A Model that fails
+leaves the pass and its mesh as they were. Cameras always
+succeed. A Light fails with `PassError::LightCapReached { cap }` when a
+shader on the pass already holds as many lights as it takes on this
+device, and a Model fails the same way when its shader would take more
+than that from the pass. See [Light](/api/scene/light)
+for the cap on each kind of device. Chain with `?` between calls.
 
 #### Example
 
@@ -965,19 +974,20 @@ with a logged warning instead. Chain with `?` between calls.
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Camera, Light, Material, Mesh, Model, Pass, Renderer, Vertex};
 
 let renderer = Renderer::new();
 
 let mesh = Mesh::new();
-mesh.add_vertex(
+mesh.add_vertices([
     Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]),
-);
+    Vertex::pbr([-0.5, -0.5, 0.0]).set(Vertex::UV0, [0.0, 0.0]),
+    Vertex::pbr([0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]),
+]);
 let model = Model::new(mesh, Material::pbr());
 
-let camera = Camera::perspective(1.047, 1.0, 0.1, 100.0)
-    .look_at([0.0, 0.0, 2.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+let camera = Camera::perspective(1.047, 1.0, 0.1, 100.0)?
+    .look_at([0.0, 0.0, 2.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])?;
 let sun = Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]);
 
 let pass = Pass::new("scene");
@@ -987,13 +997,9 @@ pass.add(&sun)?;
 
 // Updating the camera later is enough. Every Model already on the pass
 // picks up the new view_proj at the next render.
-camera.look_at([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
-let _ = renderer;
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+camera.look_at([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])?;
 `}
-lang="rust" meta="collapse={1-1, 24-27}"
+lang="rust"
 />
 
 </TabItem>
@@ -1006,7 +1012,7 @@ import { Camera, Light, Material, Mesh, Model, Pass, Renderer, Vertex } from "fr
 const renderer = new Renderer();
 
 const mesh = new Mesh();
-mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), );
+mesh.addVertices([ Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]), Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]), ]);
 const model = new Model(mesh, Material.pbr());
 
 const camera = Camera.perspective(1.047, 1.0, 0.1, 100.0).lookAt([0.0, 0.0, 2.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
@@ -1034,9 +1040,11 @@ from fragmentcolor import Camera, Light, Material, Mesh, Model, Pass, Renderer, 
 renderer = Renderer()
 
 mesh = Mesh()
-mesh.add_vertex(
+mesh.add_vertices([
     Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
-)
+    Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+    Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+])
 model = Model(mesh, Material.pbr())
 
 camera = Camera.perspective(1.047, 1.0, 0.1, 100.0).look_at([0.0, 0.0, 2.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
@@ -1064,9 +1072,11 @@ import FragmentColor
 let renderer = Renderer()
 
 let mesh = Mesh()
-try mesh.addVertex(
-    try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0])
-)
+mesh.addVertices([
+    try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
+    try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+    try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+])
 let model = Model(mesh, Material.pbr())
 
 let camera = try Camera.perspective(1.047, 1.0, 0.1, 100.0).lookAt([0.0, 0.0, 2.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
@@ -1094,7 +1104,7 @@ import org.fragmentcolor.*
 val renderer = Renderer()
 
 val mesh = Mesh()
-mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
+mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
 val model = Model(mesh, Material.pbr())
 
 val camera = Camera.perspective(1.047f, 1.0f, 0.1f, 100.0f).lookAt(listOf(0.0f, 0.0f, 2.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
@@ -1125,9 +1135,11 @@ Sets the viewport region for this [Pass](/api/core/pass).
 
 The pass's shaders draw only inside this rectangle of the [Target](/api/targets/target), and each shader's output scales to fill it.
 
-The `viewport` argument accepts anything convertible into a `ScreenRegion`: an `[x, y, w, h]` array, a `(w, h)` tuple, or a `ScreenRegion` constructed explicitly. Pixels count from the top-left corner of the target.
+The `viewport` argument accepts anything convertible into a `ScreenRegion`: an `[x, y, w, h]` array, a `(w, h)` tuple, an origin and a size as two pairs, `((x, y), (w, h))`, in each language's list or tuple form, or a `ScreenRegion` constructed explicitly. Pixels count from the top-left corner of the target.
 
-A region that reaches past the target keeps its size and loses the part outside, and a region wholly outside the target draws nothing. When the pass has its own target from `set_target`, the region is measured against that target.
+A width or height of 0 is an error that leaves the pass's viewport as it was, and so is a far edge past `u32::MAX`, the largest pixel coordinate. A region whose max lies before its min, which a region built field by field or a JavaScript `{ minX, minY, maxX, maxY }` object can hold, returns `ScreenRegionError::Reversed` and is never swapped back. To draw on the whole target, leave the viewport unset.
+
+A region that reaches past the target keeps its size and loses the part outside, and a region wholly outside the target draws nothing. When the pass has its own target from `set_target`, the region is measured against that target. A side past the device's largest 2D texture, `max_texture_dimension_2d`, makes `render` return `PassError::ViewportLimit`, which names the size and the limit, before it takes a frame.
 
 The clear color still fills the whole target. To split one target between passes, call `load_previous` on each pass after the first. In the fragment stage, `@builtin(position)` counts pixels from the target's corner, not the region's.
 
@@ -1138,8 +1150,6 @@ The clear color still fills the whole target. To split one target between passes
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-
 use fragmentcolor::{Renderer, Pass, Shader, ScreenRegion};
 
 let renderer = Renderer::new();
@@ -1147,17 +1157,13 @@ let target = renderer.create_texture_target([64, 64]).await?;
 
 let shader = Shader::default();
 let mut pass = Pass::new("clipped");
-pass.add_shader(&shader);
+pass.add_shader(&shader)?;
 
-pass.set_viewport(ScreenRegion::new((0, 0), (32, 32)));
+pass.set_viewport(ScreenRegion::new((0, 0), (32, 32))?)?;
 
 renderer.render(&pass, &target)?;
-
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 16-18}"
+lang="rust"
 />
 
 </TabItem>
@@ -1219,9 +1225,9 @@ let target = try await renderer.createTextureTarget([64, 64])
 
 let shader = Shader.default()
 let pass = Pass("clipped")
-pass.addShader(shader)
+try pass.addShader(shader)
 
-pass.setViewport(ScreenRegion((0, 0), (32, 32)))
+try pass.setViewport(try ScreenRegion((0, 0), (32, 32)))
 
 try renderer.render(pass, target)
 `}
@@ -1263,6 +1269,10 @@ Sets the clear color for this [Pass](/api/core/pass).
 
 When the pass is configured to clear, the render target is cleared to the given RGBA color before drawing.
 
+The color is linear, as `[r, g, b, a]` or as `[r, g, b]` with an opaque alpha. Each channel reaches the GPU as given. A float target such as `Rgba16Float` keeps a value above 1 or below 0, and a unorm target such as `Rgba8Unorm` clamps it to the 0 to 1 range when it clears.
+
+A channel that is NaN or infinite is an error that leaves the pass unchanged.
+
 #### Example
 
 <Tabs>
@@ -1270,8 +1280,6 @@ When the pass is configured to clear, the render target is cleared to the given 
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-
 use fragmentcolor::{Renderer, Pass, Shader};
 
 let renderer = Renderer::new();
@@ -1279,17 +1287,13 @@ let target = renderer.create_texture_target([64, 64]).await?;
 
 let shader = Shader::default();
 let mut pass = Pass::new("solid background");
-pass.add_shader(&shader);
+pass.add_shader(&shader)?;
 
-pass.set_clear_color([0.1, 0.2, 0.3, 1.0]);
+pass.set_clear_color([0.1, 0.2, 0.3, 1.0])?;
 
 renderer.render(&pass, &target)?;
-
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 16-18}"
+lang="rust"
 />
 
 </TabItem>
@@ -1351,7 +1355,7 @@ let target = try await renderer.createTextureTarget([64, 64])
 
 let shader = Shader.default()
 let pass = Pass("solid background")
-pass.addShader(shader)
+try pass.addShader(shader)
 
 try pass.setClearColor([0.1, 0.2, 0.3, 1.0])
 
@@ -1395,7 +1399,17 @@ Set the workgroup-grid size for a compute pass. The three numbers are the
 number of workgroups to dispatch in each dimension; total invocations are
 `x * y * z * workgroup_size_x * workgroup_size_y * workgroup_size_z`,
 where the per-workgroup size comes from the WGSL `@workgroup_size`
-attribute. A 0 in any dimension becomes 1. Has no effect on render passes.
+attribute. A 0 in any dimension dispatches nothing, and the pass's storage keeps
+what it holds. Has no effect on render passes.
+
+Each count must fit the device, which takes at most 65535 workgroups per
+dimension on most GPUs. A larger one makes `render` return
+`PassError::DispatchLimit`, which names the counts and the limit, before
+anything runs.
+
+One shader can't read a texture it writes in the same dispatch. A shader that
+samples a texture and stores into it through a storage binding returns
+`PassError::TextureConflict`, which names both bindings. Read it in a later pass.
 
 #### Example
 
@@ -1477,6 +1491,16 @@ Attach a per-pass color render target. When set, this pass renders into the prov
 
 A Pass has at most one color target. Call `set_target` again to swap it. Use this to render intermediate results (e.g., a shadow map) that later passes can sample.
 
+The texture needs `RENDER_ATTACHMENT` usage, a color format, one mip level and one layer. A pass draws into one level of one layer, so a texture with a mip chain or with layers returns `PassError::InvalidColorTarget`, and so does a depth format. `create_texture` builds a mip chain unless `mipmaps` is false. A texture from another `Renderer`, or one that `unregister_texture` removed, makes `render` return `RendererError::TextureNotFoundError`.
+
+`render` checks the pass against its target before it takes a frame:
+
+- Each shader writes at `@location(0)` the values the format takes: the same scalar type, in at least as many channels. An `Rgba32Uint` target takes `vec4<u32>`, so a shader that writes `vec4<f32>` returns `PassError::InvalidColorTarget`.
+- A shader with `AlphaMode::Blend` needs a format the device blends. The integer formats never blend and return the same error. `Rgba32Float` blends only on a device with float32 blending, and on any other one returns `RendererError::FeatureError`, which Python raises as `FeatureError` and Swift and Kotlin throw as `Feature`. Blending reads the alpha channel, so the shader writes a `vec4`, whatever the format holds. The device's own blending is the last check of a pass, so a pass that fails another check, such as a format that never blends or an output without alpha, gets the same error on every device.
+- The pass can't bind the texture it draws into. A shader that samples it returns `PassError::TextureConflict`. Sample it in a later pass.
+
+A shader that writes nothing at `@location(0)`, such as one that only tests depth, leaves the target's color as it is.
+
 #### Example
 
 <Tabs>
@@ -1484,7 +1508,6 @@ A Pass has at most one color target. Call `set_target` again to swap it. Use thi
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, Pass, TextureFormat};
 
 let r = Renderer::new();
@@ -1492,12 +1515,8 @@ let tex_target = r.create_texture_target([512, 512]).await?;
 
 let p = Pass::new("shadow");
 p.set_target(&tex_target)?;
-
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 10-12}"
+lang="rust"
 />
 
 </TabItem>
@@ -1579,9 +1598,11 @@ Attach a depth texture to this pass. Once attached, the renderer builds the pipe
 
 A Pass has at most one depth attachment. Call `set_depth_target` again to swap it.
 
-The target must be a depth `Texture` (`Depth32Float` is the canonical format) created by the same `Renderer` via [`create_depth_texture`](/api/core/renderer#create_depth_texture). A `TextureTarget` always has a color format, so passing one returns an error. The depth attachment's sample count must match the color attachments'. Mixing 1× and 4× MSAA in the same pass returns `RendererError::DepthSampleCountMismatch`.
+The target must be a depth `Texture` (`Depth32Float` is the canonical format) created by the same `Renderer` via [`create_depth_texture`](/api/core/renderer#create_depth_texture). A `TextureTarget` always has a color format, so passing one returns an error. A depth texture from another `Renderer`, or one that `unregister_texture` removed, makes `render` return `RendererError::TextureNotFoundError`.
 
-To **opt out** of depth testing, simply don't call `set_depth_target`. The pass then renders without depth-state, painter's-algorithm style (later draws win).
+The depth attachment matches the pass's color attachment, the pass's own target or the frame it draws into. A different width or height returns `RendererError::DepthSizeMismatch`, which names both sizes, so a window that resizes needs a depth texture of the new size, or a `resize` of the one it has. A different sample count returns `RendererError::DepthSampleCountMismatch`, so mixing 1× and 4× MSAA in the same pass fails. A shader in the pass that reads the depth texture returns `PassError::TextureConflict`. Read it in a later pass. A shader whose fragment entry point writes no color, such as `@fragment fn fs_main() {}`, fills the depth texture and leaves the color as it is.
+
+A pass that draws a `Model` and has no depth target gets a depth buffer from the renderer. It matches the pass's color attachment in size and sample count and clears at the start of the pass. In a pass that draws models, the shaders that draw none, such as a fullscreen backdrop or an overlay, ignore depth and draw in order, with that buffer or a depth target you set. A pass without models draws without depth unless you call `set_depth_target`, and then every shader in it tests depth.
 
 #### Example
 
@@ -1590,7 +1611,6 @@ To **opt out** of depth testing, simply don't call `set_depth_target`. The pass 
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, Pass, Shader, Mesh};
 
 let renderer = Renderer::new();
@@ -1603,8 +1623,7 @@ let mut mesh = Mesh::new();
 mesh.add_vertex([0.0, 0.0, 0.0]);
 mesh.add_vertex([1.0, 0.0, 0.0]);
 mesh.add_vertex([0.0, 1.0, 0.0]);
-mesh.add_vertex([1.0, 1.0, 0.0]);
-let shader = Shader::from_mesh(&mesh);
+let shader = Shader::from_mesh(&mesh)?;
 let pass = Pass::from_shader("meshes", &shader);
 
 // Depth test on: closer fragments win, and the pass writes the depth
@@ -1612,11 +1631,8 @@ let pass = Pass::from_shader("meshes", &shader);
 pass.set_depth_target(&depth)?;
 
 renderer.render(&pass, &target)?;
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 23-25}"
+lang="rust"
 />
 
 </TabItem>
@@ -1636,7 +1652,6 @@ const mesh = new Mesh();
 mesh.addVertex([0.0, 0.0, 0.0]);
 mesh.addVertex([1.0, 0.0, 0.0]);
 mesh.addVertex([0.0, 1.0, 0.0]);
-mesh.addVertex([1.0, 1.0, 0.0]);
 const shader = Shader.fromMesh(mesh);
 const pass = Pass.fromShader("meshes", shader);
 
@@ -1666,7 +1681,6 @@ mesh = Mesh()
 mesh.add_vertex([0.0, 0.0, 0.0])
 mesh.add_vertex([1.0, 0.0, 0.0])
 mesh.add_vertex([0.0, 1.0, 0.0])
-mesh.add_vertex([1.0, 1.0, 0.0])
 shader = Shader.from_mesh(mesh)
 rpass = Pass.from_shader("meshes", shader)
 
@@ -1696,8 +1710,7 @@ let mesh = Mesh()
 try mesh.addVertex([0.0, 0.0, 0.0])
 try mesh.addVertex([1.0, 0.0, 0.0])
 try mesh.addVertex([0.0, 1.0, 0.0])
-try mesh.addVertex([1.0, 1.0, 0.0])
-let shader = Shader.fromMesh(mesh)
+let shader = try Shader.fromMesh(mesh)
 let pass = Pass.fromShader("meshes", shader)
 
 // Depth test on: closer fragments win, and the pass writes the depth
@@ -1726,7 +1739,6 @@ val mesh = Mesh()
 mesh.addVertex(listOf(0.0f, 0.0f, 0.0f))
 mesh.addVertex(listOf(1.0f, 0.0f, 0.0f))
 mesh.addVertex(listOf(0.0f, 1.0f, 0.0f))
-mesh.addVertex(listOf(1.0f, 1.0f, 0.0f))
 val shader = Shader.fromMesh(mesh)
 val pass = Pass.fromShader("meshes", shader)
 
@@ -1757,7 +1769,6 @@ Returns true if this Pass is a compute pass (has only compute shaders).
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Shader, Pass};
 
 let shader = Shader::new(r#"
@@ -1768,13 +1779,8 @@ let pass = Pass::from_shader("p", &shader);
 
 // Call the method
 let is_compute = pass.is_compute();
-
-_ = is_compute;
-assert!(pass.is_compute());
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 13-16}"
+lang="rust"
 />
 
 </TabItem>
@@ -1876,7 +1882,7 @@ All dependencies will render before this Pass.
 
 - Ok(()) on success
 - Err(PassError::SelfDependency) if a pass requires itself
-- Err(PassError::DuplicateDependency(name)) if the dependency is already present
+- Err(PassError::DuplicateDependency(name)) if the same pass is already a dependency
 - Err(PassError::DependencyCycle &#123; via &#125;) if adding the dependency would create a cycle
 
 #### Description
@@ -1886,6 +1892,7 @@ All dependencies will render before this Pass.
 This allows you to build DAG render graphs directly from passes.
 The graph is validated at build time and does not perform cycle checks at render time.
 
+- A pass is the same pass by identity, never by name, so two passes that share a name are two dependencies.
 - Dependencies are stored in insertion order.
 - Traversal is dependencies-first, then the current pass, with deduplication.
 - Creation order of passes does not matter.
@@ -1897,7 +1904,6 @@ The graph is validated at build time and does not perform cycle checks at render
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Pass, Renderer};
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([100,100]).await?;
@@ -1910,11 +1916,8 @@ let compose = Pass::new("compose");
 compose.require(&color)?;
 compose.require(&blury)?; // fan-in; color and blur_y before compose
 renderer.render(&compose, &target)?; // compose renders last
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 14-16}"
+lang="rust"
 />
 
 </TabItem>

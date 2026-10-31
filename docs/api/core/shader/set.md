@@ -4,14 +4,14 @@ Sets the value of the uniform identified by the given key.
 
 If the key does not exist or the value format is incorrect, the `set` method throws an exception. The shader remains valid, and if the exception is caught, the shader can still be used with the renderer.
 
-`set` never blocks. When another thread holds the shader's storage, the value is queued and applied before the next draw. A bad value that can't be checked right away is dropped later with a logged warning instead of throwing.
+`set` never waits for a draw. When another thread holds the shader's storage, the value is queued and applied before the next draw. A texture can wait a moment while another thread binds a texture to the same shader, or while the renderer applies the shader's queued values, so the latest one wins. A bad value that can't be checked right away is dropped later with a logged warning instead of throwing.
 
 The uniform's declared WGSL type decides how the value is read, so a call behaves the same in every language:
 
 - A number fits an `f32`, `i32`, or `u32` uniform. Integer uniforms take whole numbers in range.
 - A vector takes exactly as many numbers as it has components. A `mat2x2`, `mat3x3`, or `mat4x4` takes 4, 9, or 16.
 - A `Texture` created by a `Renderer` binds to a texture uniform.
-- Raw bytes replace a whole storage-buffer or push-constant root: a byte slice in Rust, a `Uint8Array` in JavaScript, `bytes` (or a `bytearray` or `memoryview`) in Python, `Data` in Swift, or a `ByteArray` in Kotlin.
+- Raw bytes replace a whole storage-buffer or push-constant root: a byte slice in Rust, a `Uint8Array` in JavaScript, `bytes` (or a `bytearray` or `memoryview`) in Python, `Data` in Swift, or a `ByteArray` in Kotlin. The byte count must equal the root's size, and any other length throws.
 
 ## Example
 

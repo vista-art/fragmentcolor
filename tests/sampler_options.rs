@@ -52,7 +52,7 @@ async fn sample(renderer: &Renderer, shader: &Shader, u: f32) -> Vec<u8> {
     renderer
         .render(&Pass::from_shader("sample", shader), &target)
         .expect("render failed");
-    target.get_image().await[..4].to_vec()
+    target.get_image().await.expect("read back")[..4].to_vec()
 }
 
 // Story: Turning on repeat makes the bound sampler wrap past the edge instead of clamping.
@@ -151,6 +151,8 @@ fn smooth_blends_neighboring_texels() {
 }
 
 // Story: A depth texture owns a comparison sampler, and a plain sampler next to it still binds.
+// The plain sampler samples a color texture: a filtering sampler never samples depth,
+// which the web refuses, so `Shader::new` refuses that pair.
 #[test]
 fn depth_texture_binds_to_a_plain_sampler() {
     pollster::block_on(async move {
@@ -164,10 +166,15 @@ fn depth_texture_binds_to_a_plain_sampler() {
             .create_depth_texture([4, 4])
             .await
             .expect("create_depth_texture failed");
+        let color = renderer
+            .create_texture((vec![255u8; 4 * 4 * 4], [4, 4]))
+            .await
+            .expect("create_texture failed");
         let shader = Shader::new(
             r#"
 @group(0) @binding(0) var depth: texture_depth_2d;
 @group(0) @binding(1) var smp: sampler;
+@group(0) @binding(2) var image: texture_2d<f32>;
 
 @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
   let p = array<vec2<f32>, 3>(vec2<f32>(-1.0, -1.0), vec2<f32>(3.0, -1.0), vec2<f32>(-1.0, 3.0));
@@ -175,13 +182,15 @@ fn depth_texture_binds_to_a_plain_sampler() {
 }
 
 @fragment fn fs_main() -> @location(0) vec4<f32> {
-  let d = textureSampleLevel(depth, smp, vec2<f32>(0.5, 0.5), 0);
-  return vec4<f32>(d, d, d, 1.0);
+  let d = textureLoad(depth, vec2<i32>(0, 0), 0);
+  let c = textureSampleLevel(image, smp, vec2<f32>(0.5, 0.5), 0.0);
+  return vec4<f32>(c.rgb * d, 1.0);
 }
 "#,
         )
         .expect("shader failed");
         shader.set("depth", &depth).expect("set depth");
+        shader.set("image", &color).expect("set image");
 
         // Act
         let result = renderer.render(&Pass::from_shader("depth", &shader), &target);

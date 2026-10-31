@@ -186,12 +186,14 @@ WATCHDOG.unref?.();
   await page.goto(url, { waitUntil: 'load', timeout: 60000 });
   console.log('[playwright] page loaded');
 
-  // Optional: probe WebGPU to report adapter details if available.
+  // Probe WebGPU to report adapter details if available.
   // Race against a 10-second deadline so a stuck adapter never blocks
   // the script — `requestAdapter` is known to hang on misconfigured
-  // headless GPUs.
+  // headless GPUs. With FC_REQUIRE_WEBGPU=1, as CI sets it, a missing
+  // adapter fails the run, since the clustered lights check needs one.
+  let probe = null;
   try {
-    const probe = await Promise.race([
+    probe = await Promise.race([
       page.evaluate(async () => {
         if (!('gpu' in navigator)) return { supported: false };
         const adapter = await navigator.gpu.requestAdapter();
@@ -205,6 +207,11 @@ WATCHDOG.unref?.();
     console.log('[gpu-probe]', JSON.stringify(probe));
   } catch (e) {
     console.log('[gpu-probe] threw:', e?.message || String(e));
+  }
+  if (process.env.FC_REQUIRE_WEBGPU === '1' && !probe?.gotAdapter) {
+    const item = `FC_REQUIRE_WEBGPU=1, but the probe found no WebGPU adapter: ${JSON.stringify(probe)}`;
+    console.error(item);
+    errors.push({ type: 'webgpu', message: item });
   }
 
   console.log('[playwright] waiting for healthcheck console marker (90 s)…');

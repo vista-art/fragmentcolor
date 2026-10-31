@@ -86,6 +86,18 @@ extension Texture {
         setSamplerOptions(opts: opts)
     }
 
+    // MARK: - resize convenience
+
+    /// Resize the texture from a `[width, height]` array. Throws for any other length.
+    public func resize(_ size: [UInt32]) throws {
+        try resize(size: try sizeRecord(size, "resize"))
+    }
+
+    /// Resize the texture to `size`, such as a target's `size()`.
+    public func resize(_ size: Size) throws {
+        try resize(size: size)
+    }
+
     // MARK: - id convenience
 
     /// Return the raw UInt64 numeric id (convenience over `.id().id`).
@@ -98,14 +110,15 @@ extension TextureTarget {
     // MARK: - resize convenience
 
     /// Resize the target from a `[width, height]` array.
-    /// A length other than 2 or 3 stops the program.
-    public func resize(_ size: [UInt32]) {
-        resize(targetSize(size))
+    /// Throws for any other length, or when the target can't take the size.
+    public func resize(_ size: [UInt32]) throws {
+        try resize(try sizeRecord(size, "resize"))
     }
 
     /// Resize the target to `size`, such as another target's `size()`.
-    public func resize(_ size: Size) {
-        resize(width: size.width, height: size.height)
+    /// Throws when the target can't take it.
+    public func resize(_ size: Size) throws {
+        try resize(size: size)
     }
 }
 
@@ -113,14 +126,15 @@ extension WindowTarget {
     // MARK: - resize convenience
 
     /// Resize the target from a `[width, height]` array.
-    /// A length other than 2 or 3 stops the program.
-    public func resize(_ size: [UInt32]) {
-        resize(targetSize(size))
+    /// Throws for any other length, or when the target can't take the size.
+    public func resize(_ size: [UInt32]) throws {
+        try resize(try sizeRecord(size, "resize"))
     }
 
     /// Resize the target to `size`, such as another target's `size()`.
-    public func resize(_ size: Size) {
-        resize(width: size.width, height: size.height)
+    /// Throws when the target can't take it.
+    public func resize(_ size: Size) throws {
+        try resize(size: size)
     }
 }
 
@@ -170,15 +184,5 @@ extension TextureUsage {
     /// Both sets of flags, as Rust's `|` combines them.
     public static func | (lhs: TextureUsage, rhs: TextureUsage) -> TextureUsage {
         TextureUsage(bits: lhs.bits | rhs.bits)
-    }
-}
-
-/// The `Size` a resize array names. A bad array stops the program,
-/// since the resize methods return nothing to throw through.
-private func targetSize(_ size: [UInt32]) -> Size {
-    do {
-        return try sizeRecord(size, "resize")
-    } catch {
-        preconditionFailure("\(error)")
     }
 }

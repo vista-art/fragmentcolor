@@ -15,7 +15,7 @@ Why this matters
 
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, Shader, Pass, Target};
-use fragmentcolor::mesh::{Mesh, Vertex};
+use fragmentcolor::{Mesh, Vertex};
 
 // Visible target count for the guide (stress test): one million
 let n: u32 = 1_000_000;
@@ -90,7 +90,7 @@ pass.add_mesh(&mesh)?;
 renderer.render(&pass, &target)?;
 
 // 5) Quick check
-let image = target.get_image().await;
+let image = target.get_image().await?;
 assert_eq!(image.len(), 64 * 64 * 4);
 # Ok(())
 # }

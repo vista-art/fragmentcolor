@@ -3,11 +3,15 @@
 Resizes the [WindowTarget](https://fragmentcolor.org/api/targets/windowtarget) to the given width and height.
 Call it when the window or canvas changes size.
 
+A width or height of zero, such as the 0×0 a minimized window reports, is no error: the target keeps
+its last size and draws at the new one once the window has an area again. A side past the device limit
+returns an error.
+
 ## Example
 
 ```rust
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-# let canvas = fragmentcolor::headless_window([800, 600]);
+# let canvas = fragmentcolor::HeadlessWindow::new([800, 600]);
 # /*[js]
 # const canvas = document.createElement("canvas");
 # */
@@ -32,7 +36,7 @@ use fragmentcolor::{Renderer, Target};
 let renderer = Renderer::new();
 let mut target = renderer.create_target(canvas).await?;
 
-target.resize([1024, 768]);
+target.resize([1024, 768])?;
 # /*[kotlin]
 # surfaceTexture.release()
 # */

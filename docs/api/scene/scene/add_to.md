@@ -12,7 +12,8 @@ or a name (matching [`find_pass`](https://fragmentcolor.org/api/scene/scene#find
 An index out of range, or a name that matches nothing, is an error. The
 Scene-level bookkeeping is identical to `add`: the object surfaces in
 `models()` / `cameras()` / `lights()`, and a Camera or Light there still
-suppresses the matching default-injection.
+suppresses the matching default-injection. A Model that fails to attach
+leaves the pass and its mesh as they were, as with `add`.
 
 ## Example
 
@@ -21,9 +22,11 @@ suppresses the matching default-injection.
 use fragmentcolor::{Material, Mesh, Model, Pass, Scene, Vertex};
 
 let mesh = Mesh::new();
-mesh.add_vertex(
+mesh.add_vertices([
     Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]),
-);
+    Vertex::pbr([-0.5, -0.5, 0.0]).set(Vertex::UV0, [0.0, 0.0]),
+    Vertex::pbr([0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]),
+]);
 let model = Model::new(mesh, Material::pbr());
 
 let scene = Scene::new();

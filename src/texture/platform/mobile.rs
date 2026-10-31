@@ -1,4 +1,5 @@
-//! Mobile (Swift / Kotlin) uniffi bindings for `Texture`.
+//! Mobile (Swift / Kotlin) uniffi bindings for `Texture` and `Mipmap`,
+//! and the input types they take, `TextureInputMobile` and `TextureRegionMobile`.
 //!
 //! Mirrors the `wasm_bindgen` shim in `web.rs` and the `pyo3` shim in
 //! `python.rs`: each foreign binding gets a thin wrapper around the
@@ -11,9 +12,78 @@
 use lsp_doc::lsp_doc;
 use std::sync::Arc;
 
-use crate::renderer::platform::mobile::FragmentColorError;
-use crate::texture::TextureRegionMobile;
-use crate::{Mipmap, SamplerOptions, Size, Texture, TextureFormat, TextureId};
+use crate::error::platform::mobile::FragmentColorError;
+use crate::{
+    Mipmap, SamplerOptions, Size, Texture, TextureData, TextureFormat, TextureId, TextureRegion,
+};
+
+/// Uniffi mirror of [`TextureData`], which it converts into.
+///
+/// It leaves out `Empty`. Paths travel as `String`, handles as `Arc`.
+///
+/// The Rust core stays on `TextureData`. This enum exists only so the mobile
+/// bindings can carry a concrete variant. Web and Python use their own dispatch
+/// (`TryFrom<JsValue>` and Python kwargs) and never see this type.
+#[derive(Debug, Clone, uniffi::Enum)]
+pub enum TextureInputMobile {
+    Bytes(Vec<u8>),
+    Path(String),
+    Url(String),
+    CloneOf(std::sync::Arc<Texture>),
+    Prepared(std::sync::Arc<Mipmap>),
+    Ktx2Bytes(Vec<u8>),
+    Ktx2Path(String),
+    Ktx2Url(String),
+}
+
+impl From<TextureInputMobile> for TextureData {
+    fn from(input: TextureInputMobile) -> Self {
+        match input {
+            TextureInputMobile::Bytes(b) => TextureData::Bytes(b),
+            TextureInputMobile::Path(s) => TextureData::Path(std::path::PathBuf::from(s)),
+            TextureInputMobile::Url(s) => TextureData::Url(s),
+            TextureInputMobile::CloneOf(t) => TextureData::CloneOf((*t).clone()),
+            TextureInputMobile::Prepared(c) => TextureData::Prepared((*c).clone()),
+            TextureInputMobile::Ktx2Bytes(b) => TextureData::Ktx2Bytes(b),
+            TextureInputMobile::Ktx2Path(s) => TextureData::Ktx2Path(std::path::PathBuf::from(s)),
+            TextureInputMobile::Ktx2Url(s) => TextureData::Ktx2Url(s),
+        }
+    }
+}
+
+/// Mobile-only flat version of [`TextureRegion`] for uniffi FFI.
+///
+/// Uniffi cannot marshal fixed-size arrays (`[u32; 3]`), so the mobile
+/// binding exposes the 3D origin and size as individual `u32` fields.
+/// Each size is at least 1, and a write without a region covers the whole texture.
+///
+/// Swift and Kotlin see it as `TextureRegion`, the name every other binding uses.
+#[derive(Debug, Clone, uniffi::Record)]
+#[uniffi(name = "TextureRegion")]
+pub struct TextureRegionMobile {
+    pub origin_x: u32,
+    pub origin_y: u32,
+    pub origin_z: u32,
+    /// Width of the region to write, at least 1.
+    pub size_width: u32,
+    /// Height of the region to write, at least 1.
+    pub size_height: u32,
+    /// Depth of the region to write, at least 1.
+    pub size_depth: u32,
+    pub bytes_per_row: Option<u32>,
+    pub rows_per_image: Option<u32>,
+}
+
+impl From<TextureRegionMobile> for TextureRegion {
+    fn from(m: TextureRegionMobile) -> Self {
+        TextureRegion {
+            origin: [m.origin_x, m.origin_y, m.origin_z],
+            size: [m.size_width, m.size_height, m.size_depth],
+            bytes_per_row: m.bytes_per_row,
+            rows_per_image: m.rows_per_image,
+        }
+    }
+}
 
 #[uniffi::export]
 impl Texture {
@@ -41,12 +111,8 @@ impl Texture {
         self.aspect()
     }
 
-    /// Update the texture sampler options (filtering, wrapping, optional
-    /// depth-compare). Mirrors the Web `setSamplerOptions` and Python
-    /// `set_sampler_options` entry points; foreign bindings see this
-    /// method as `setSamplerOptions(opts:)` (Swift) /
-    /// `setSamplerOptions(opts)` (Kotlin) once the extension shims map
-    /// the camelCase form back onto a single overload.
+    /// Sets the sampler options: filtering, wrapping and an optional depth compare.
+    /// Swift calls it as `setSamplerOptions(opts)` through its extension, and Kotlin as is.
     #[uniffi::method(name = "setSamplerOptions")]
     #[lsp_doc("docs/api/texture/texture/set_sampler_options.md")]
     pub fn set_sampler_options_mobile(&self, opts: SamplerOptions) {
@@ -59,12 +125,11 @@ impl Texture {
     #[uniffi::method(name = "write")]
     #[lsp_doc("docs/api/texture/texture/write.md")]
     pub fn write_mobile(&self, bytes: Vec<u8>) -> Result<(), FragmentColorError> {
-        self.write(&bytes).map_err(FragmentColorError::from)
+        Ok(self.write(&bytes)?)
     }
 
-    /// Upload raw pixel data into a sub-region of the texture. Pass a
-    /// `TextureRegionMobile` with all-zero `size_*` fields for a whole-texture
-    /// write (equivalent to `write()`). Mirrors `Texture::write_region`.
+    /// Upload raw pixel data into a sub-region of the texture, each side at least 1.
+    /// Call `write()` for the whole texture. Mirrors `Texture::write_region`.
     #[uniffi::method(name = "writeRegion")]
     #[lsp_doc("docs/api/texture/texture/write_region.md")]
     pub fn write_region_mobile(
@@ -72,8 +137,14 @@ impl Texture {
         bytes: Vec<u8>,
         region: TextureRegionMobile,
     ) -> Result<(), FragmentColorError> {
-        self.write_region(&bytes, region)
-            .map_err(FragmentColorError::from)
+        Ok(self.write_region(&bytes, region)?)
+    }
+
+    /// Recreates the texture at `size`. Its pixels start blank.
+    #[uniffi::method(name = "resize")]
+    #[lsp_doc("docs/api/texture/texture/resize.md")]
+    pub fn resize_mobile(&self, size: Size) -> Result<(), FragmentColorError> {
+        Ok(self.resize(size)?)
     }
 
     /// Read back the mip-0 contents of this texture as tightly-packed bytes
@@ -84,7 +155,7 @@ impl Texture {
     #[uniffi::method(name = "getImage")]
     #[lsp_doc("docs/api/texture/texture/get_image.md")]
     pub async fn get_image_mobile(self: Arc<Self>) -> Result<Vec<u8>, FragmentColorError> {
-        self.get_image().await.map_err(FragmentColorError::from)
+        Ok(self.get_image().await?)
     }
 }
 
@@ -116,22 +187,19 @@ impl Mipmap {
                 ..Default::default()
             },
         };
-        Self::build(input)
-            .map(Arc::new)
-            .map_err(FragmentColorError::from)
+        Ok(Arc::new(Self::build(input)?))
     }
 
     #[uniffi::method(name = "format")]
     #[lsp_doc("docs/api/texture/mipmap/format.md")]
     pub fn format_mobile(&self) -> TextureFormat {
-        self.format.into()
+        TextureFormat::from_wgpu(self.format)
     }
 
     #[uniffi::method(name = "size")]
     #[lsp_doc("docs/api/texture/mipmap/size.md")]
     pub fn size_mobile(&self) -> Size {
-        let (w, h) = self.size();
-        Size::from([w, h])
+        self.size()
     }
 
     #[uniffi::method(name = "count")]
@@ -152,15 +220,6 @@ impl Mipmap {
     #[uniffi::method(name = "level")]
     #[lsp_doc("docs/api/texture/mipmap/level.md")]
     pub fn level_mobile(&self, index: u32) -> Result<Vec<u8>, FragmentColorError> {
-        let levels = self.levels();
-        let idx = index as usize;
-        if idx >= levels.len() {
-            return Err(FragmentColorError::Render(format!(
-                "level {} out of range; chain has {} levels",
-                idx,
-                levels.len()
-            )));
-        }
-        Ok(levels[idx].clone())
+        Ok(self.level(index as usize)?.to_vec())
     }
 }
