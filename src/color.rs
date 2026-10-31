@@ -3,16 +3,19 @@ use wasm_bindgen::prelude::*;
 
 pub mod error;
 use error::{ColorError, CssFailure};
+use std::str::FromStr;
 
 /// A linear RGBA color with one float per channel.
 ///
 /// A color is a list in every language, `[r, g, b]` with an opaque alpha or `[r, g, b, a]`,
-/// and `from_css` reads a CSS color. Values past 0 to 1 survive: a float target clears to them,
+/// and `str::parse` reads a CSS color. Values past 0 to 1 survive: a float target clears to them,
 /// and a unorm target clamps them on the GPU.
 ///
 /// ```
 /// let color: fragmentcolor::Color = [1.0, 0.5, 0.0].into();
-/// assert_eq!(color.to_f32_array(), [1.0, 0.5, 0.0, 1.0]);
+/// let channels: [f32; 4] = color.into();
+/// assert_eq!(channels, [1.0, 0.5, 0.0, 1.0]);
+/// assert!("#ff8000".parse::<fragmentcolor::Color>().is_ok());
 /// ```
 ///
 /// A tuple or a packed `u32` is not a color:
@@ -49,27 +52,6 @@ impl Color {
         Self::new(0.0, 0.0, 0.0, 1.0)
     }
 
-    pub fn from_rgba(channels: [f32; 4]) -> Self {
-        Self(channels)
-    }
-
-    pub fn from_rgb_alpha(rgb: [f32; 3], alpha: f32) -> Self {
-        Self::new(rgb[0], rgb[1], rgb[2], alpha)
-    }
-
-    /// A color from hex text such as `#ff8000`,
-    /// or `ColorError::Css` with the parser's reason.
-    pub fn from_hex(hex: &str) -> Result<Self, ColorError> {
-        Self::from_css(hex)
-    }
-
-    /// A color from CSS text such as `#ff8000` or `rgb(255 128 0)`,
-    /// or `ColorError::Css` with the text and the parser's reason.
-    pub fn from_css(text: &str) -> Result<Self, ColorError> {
-        let color = parse_css(text)?;
-        Ok(Self::new(color.r, color.g, color.b, color.a))
-    }
-
     pub fn red(self) -> f32 {
         self.0[0]
     }
@@ -84,26 +66,6 @@ impl Color {
 
     pub fn alpha(self) -> f32 {
         self.0[3]
-    }
-
-    pub fn r(self) -> f32 {
-        self.red()
-    }
-
-    pub fn g(self) -> f32 {
-        self.green()
-    }
-
-    pub fn b(self) -> f32 {
-        self.blue()
-    }
-
-    pub fn a(self) -> f32 {
-        self.alpha()
-    }
-
-    pub fn to_f32_array(self) -> [f32; 4] {
-        self.0
     }
 
     /// The color as wgpu clears to it, each channel widened to `f64`.
@@ -126,16 +88,26 @@ impl Color {
 crate::impl_from_into_with_refs!(
     Color,
     [f32; 4],
-    |c: Color| c.to_f32_array(),
-    |a: [f32; 4]| Color::from_rgba(a)
+    |color: Color| color.0,
+    |channels: [f32; 4]| Color(channels)
 );
 
 crate::impl_from_into_with_refs!(
     Color,
     [f32; 3],
-    |c: Color| [c.red(), c.green(), c.blue()],
-    |rgb: [f32; 3]| Color::from_rgb_alpha(rgb, 1.0)
+    |color: Color| [color.red(), color.green(), color.blue()],
+    |[red, green, blue]: [f32; 3]| Color::new(red, green, blue, 1.0)
 );
+
+/// A color from CSS text such as `#ff8000` or `rgb(255 128 0)`, or `ColorError::Css`.
+impl FromStr for Color {
+    type Err = ColorError;
+
+    fn from_str(text: &str) -> Result<Self, Self::Err> {
+        let color = parse_css(text)?;
+        Ok(Self::new(color.r, color.g, color.b, color.a))
+    }
+}
 
 /// The parsed CSS color, or the failure that keeps the text.
 fn parse_css(text: &str) -> Result<csscolorparser::Color, CssFailure<'_>> {
@@ -182,7 +154,7 @@ mod tests {
     #[test]
     fn keeps_every_channel_exactly() {
         let color = Color::from([4.0, -1.0, 0.25, 1.0]);
-        assert_eq!(color.to_f32_array(), [4.0, -1.0, 0.25, 1.0]);
+        assert_eq!(<[f32; 4]>::from(color), [4.0, -1.0, 0.25, 1.0]);
         let clear = color.to_wgpu();
         assert_eq!([clear.r, clear.g, clear.b, clear.a], [4.0, -1.0, 0.25, 1.0]);
         assert_eq!(Color::from([0.3, 0.6, 0.9]).green(), 0.6);
@@ -204,12 +176,12 @@ mod tests {
     // fails with a `ColorError` that quotes it.
     #[test]
     fn reads_css_colors() {
-        let orange = Color::from_css("#ff8000").map(Color::to_f32_array).ok();
+        let orange = "#ff8000".parse::<Color>().map(<[f32; 4]>::from).ok();
         let [red, green, blue, alpha] = orange.unwrap_or_default();
         assert_eq!([red, blue, alpha], [1.0, 0.0, 1.0]);
         assert!((green - 128.0 / 255.0).abs() < 1e-6, "{green}");
-        assert_eq!(Color::from_hex("#000").ok(), Some(Color::black()));
-        let error = Color::from_css("not a color").err();
+        assert_eq!("#000".parse::<Color>().ok(), Some(Color::black()));
+        let error = "not a color".parse::<Color>().err();
         assert!(
             matches!(&error, Some(ColorError::Css { text, .. }) if text == "not a color"),
             "{error:?}"

@@ -125,15 +125,6 @@ impl ScreenRegion {
         }
     }
 
-    pub fn to_array(&self) -> [f32; 4] {
-        [
-            self.min_x as f32,
-            self.min_y as f32,
-            self.max_x as f32,
-            self.max_y as f32,
-        ]
-    }
-
     /// The one pixel at `x`, `y`. A pixel at `u32::MAX` has no far edge, so it is an error.
     pub fn from_pixel(x: u32, y: u32) -> Result<Self, ScreenRegionError> {
         Self::build(x, y, 1, 1)
@@ -525,11 +516,9 @@ impl TryFrom<&((u32, u32), (u32, u32))> for ScreenRegion {
     }
 }
 
-// Outbound conversions for convenience
 impl From<&ScreenRegion> for [f32; 4] {
-    #[inline]
-    fn from(r: &ScreenRegion) -> Self {
-        r.to_array()
+    fn from(region: &ScreenRegion) -> Self {
+        [region.min_x, region.min_y, region.max_x, region.max_y].map(|bound| bound as f32)
     }
 }
 
