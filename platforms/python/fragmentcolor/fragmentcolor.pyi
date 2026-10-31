@@ -1798,6 +1798,9 @@ class Mesh:
         holds every attribute that shader reads, or `Renderer.render` returns
         `MeshError::InvalidVertex` naming the attribute and the vertex.
 
+        The vertices land as one change, so a render on another thread sees all of
+        them or none, and a batch of whole triangles never draws part of one.
+
         Example:
 
         ```python
@@ -1845,6 +1848,9 @@ class Mesh:
 
         Adding instances also clears any previously set instance count override
         (see `Mesh::set_instance_count`).
+
+        The instances land as one change, so a render on another thread sees all of
+        them or none.
 
         Every instance counts, even one without attributes: three empty instances
         draw the mesh three times, and the shader tells them apart with
@@ -3229,11 +3235,13 @@ class Model:
         `Material::pbr` reads six attributes from every vertex: a 3D position
         (`vec3`), `normal` (`vec3`), `uv0` (`vec2`), `color0` (`vec4`), `uv1`
         (`vec2`) and `tangent` (`vec4`). Each input finds its attribute by name,
-        then by the attribute's own location, as
-        [Mesh](https://fragmentcolor.org/api/geometry/mesh) describes, so a vertex
-        that sets them under these names can set them in any order. The shader has
-        no default for any of them, and `Scene.add` and `Pass.add` refuse a Model
-        whose mesh lacks one. The error names the input, or the attribute at the
+        then by the location
+        [`Vertex::set`](https://fragmentcolor.org/api/geometry/vertex#set) gave the
+        attribute, so a vertex that sets them under these names can set them in any
+        order. An attribute under another name stands in for an input when it sits
+        at the input's location and fits its type. The shader has no default for any
+        input, so `Scene.add` and `Pass.add` refuse a Model when an input finds no
+        attribute by either rule. The error names the input, or the attribute at the
         input's location when that attribute has the wrong type: a vertex that sets
         only `uv0` fails on `uv0`, which sits where `normal` is read. `Vertex::pbr`
         sets all five after the position to neutral values, and `.set(...)`
@@ -4423,10 +4431,7 @@ class Material:
           target's format, through the shader's `override ENCODE_SRGB: bool`. A custom
           shader that declares the same override gets the same value.
 
-        The vertex inputs the shader reads from the mesh. Each finds its attribute by
-        name, then by the attribute's own location, as
-        [Mesh](https://fragmentcolor.org/api/geometry/mesh) describes, so a vertex
-        that sets them under these names can set them in any order:
+        The shader reads these vertex inputs from the mesh:
 
         - `@location(0) position : vec3<f32>`, a 3D position from `Vertex::new([...])` or `Vertex::pbr([...])`.
         - `@location(1) normal   : vec3<f32>`, set as `.set(Vertex::NORMAL, ...)`.
@@ -4435,13 +4440,19 @@ class Material:
         - `@location(8) uv1      : vec2<f32>`, set as `.set(Vertex::UV1, ...)`, which the texture slots on UV set 1 sample.
         - `@location(9) tangent  : vec4<f32>`, set as `.set(Vertex::TANGENT, ...)`, with the bitangent sign in `w`.
 
-        Locations 3 to 6 hold `model_0` to `model_3`, the columns of the Model's
-        transform, which come from the Model rather than the mesh. The shader has
-        no default for any mesh input, so a Model whose mesh lacks one fails to
-        attach. The error names the input, or the attribute at the input's location
-        when that attribute has the wrong type. `Vertex::pbr` sets every input
-        after the position to a neutral value. Use `Material::custom(...)` to bring
-        your own vertex layout.
+        Each input finds its attribute by name, then by the location
+        [`Vertex::set`](https://fragmentcolor.org/api/geometry/vertex#set) gave the
+        attribute. A vertex that sets them under these names can set them in any
+        order. Locations 3 to 6 hold `model_0` to `model_3`, the columns of the
+        Model's transform, which come from the Model rather than the mesh.
+
+        The shader has no default for any mesh input. An attribute under another name
+        stands in for one when it sits at the input's location and fits its type, and
+        a Model fails to attach when an input finds no attribute by either rule. The
+        error names the input, or the attribute at the input's location when that
+        attribute has the wrong type. `Vertex::pbr` sets every input after the
+        position to a neutral value. Use `Material::custom(...)` to bring your own
+        vertex layout.
 
         ## Defaults (post-construction)
 

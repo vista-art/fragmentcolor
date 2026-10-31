@@ -16,11 +16,13 @@ both. Models with the same Material and Mesh draw in one instanced call.
 `Material::pbr` reads six attributes from every vertex: a 3D position
 (`vec3`), `normal` (`vec3`), `uv0` (`vec2`), `color0` (`vec4`), `uv1`
 (`vec2`) and `tangent` (`vec4`). Each input finds its attribute by name,
-then by the attribute's own location, as
-[Mesh](https://fragmentcolor.org/api/geometry/mesh) describes, so a vertex
-that sets them under these names can set them in any order. The shader has
-no default for any of them, and `Scene.add` and `Pass.add` refuse a Model
-whose mesh lacks one. The error names the input, or the attribute at the
+then by the location
+[`Vertex::set`](https://fragmentcolor.org/api/geometry/vertex#set) gave the
+attribute, so a vertex that sets them under these names can set them in any
+order. An attribute under another name stands in for an input when it sits
+at the input's location and fits its type. The shader has no default for any
+input, so `Scene.add` and `Pass.add` refuse a Model when an input finds no
+attribute by either rule. The error names the input, or the attribute at the
 input's location when that attribute has the wrong type: a vertex that sets
 only `uv0` fails on `uv0`, which sits where `normal` is read. `Vertex::pbr`
 sets all five after the position to neutral values, and `.set(...)`

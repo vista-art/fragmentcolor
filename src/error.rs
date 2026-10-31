@@ -504,6 +504,10 @@ mod tests {
             ),
             (Box::new(RendererError::NoContext), "FragmentColorError"),
             (
+                Box::new(RendererError::MeshError(crate::mesh::MeshError::Busy(4))),
+                "FragmentColorError",
+            ),
+            (
                 Box::new(RendererError::SurfaceError(SurfaceError::Lost)),
                 "FragmentColorError",
             ),
