@@ -1182,7 +1182,7 @@ impl TextureObject {
     }
 
     pub fn size(&self) -> Size {
-        self.size.into()
+        Size::from_extent(self.size, self.inner.dimension())
     }
 
     pub fn aspect(&self) -> f32 {

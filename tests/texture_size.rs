@@ -2,7 +2,7 @@
 
 use fragmentcolor::renderer::error::RendererError;
 use fragmentcolor::texture::TextureError;
-use fragmentcolor::{Mipmap, Renderer, Texture, TextureData, TextureFormat};
+use fragmentcolor::{Mipmap, Renderer, Size, Target, Texture, TextureData, TextureFormat};
 
 // Wider than any device's 2D limit, in one row of RGBA pixels.
 const WIDE: u32 = 131_072;
@@ -142,5 +142,84 @@ fn seeded_storage_textures_report_the_size() {
             refused(&result),
             "the size, not the seed, should be refused"
         );
+    });
+}
+
+fn small_png() -> Vec<u8> {
+    let image = image::RgbaImage::from_pixel(2, 2, image::Rgba([255, 0, 0, 255]));
+    let mut bytes = Vec::new();
+    image
+        .write_to(
+            &mut std::io::Cursor::new(&mut bytes),
+            image::ImageFormat::Png,
+        )
+        .expect("encode png");
+    bytes
+}
+
+// Story: every path that makes a plain 2D texture reports its size with no
+// depth, so two sizes of one shape compare equal in every binding, where some
+// paths reported a depth of 1 and others none. A 3D texture keeps its depth.
+#[test]
+fn every_2d_path_reports_one_size() {
+    pollster::block_on(async move {
+        let renderer = Renderer::new();
+        let flat = Size::new(2, 2, None);
+        let pixels = vec![255u8; 2 * 2 * 4];
+        let chain =
+            Mipmap::build((pixels.as_slice(), TextureFormat::Rgba, [2, 2])).expect("Mipmap::build");
+        let created = [
+            (
+                "raw pixels and [w, h]",
+                renderer.create_texture((pixels.as_slice(), [2, 2])).await,
+            ),
+            (
+                "raw pixels and [w, h, 1]",
+                renderer
+                    .create_texture((pixels.as_slice(), [2, 2, 1]))
+                    .await,
+            ),
+            (
+                "an encoded image",
+                renderer.create_texture(small_png()).await,
+            ),
+            ("a Mipmap", renderer.create_texture(chain).await),
+            (
+                "a storage texture",
+                renderer
+                    .create_storage_texture(([2, 2], TextureFormat::Rgba))
+                    .await,
+            ),
+            (
+                "a storage texture of depth 1",
+                renderer
+                    .create_storage_texture(([2, 2, 1], TextureFormat::Rgba))
+                    .await,
+            ),
+        ];
+        for (label, texture) in created {
+            let texture = texture.unwrap_or_else(|error| panic!("{label}: {error}"));
+            assert_eq!(texture.size(), flat, "{label}");
+        }
+        let depth = renderer
+            .create_depth_texture([2, 2])
+            .await
+            .expect("create_depth_texture");
+        assert_eq!(depth.size(), flat, "a depth texture");
+        let target = renderer
+            .create_texture_target([2, 2])
+            .await
+            .expect("create_texture_target");
+        assert_eq!(target.size(), flat, "a texture target");
+        assert_eq!(target.texture().size(), flat, "a texture target's texture");
+
+        depth.resize([2, 2, 1]).expect("resize");
+        assert_eq!(depth.size(), flat, "a resized texture");
+
+        let deep = renderer
+            .create_storage_texture(([2, 2, 3], TextureFormat::Rgba))
+            .await
+            .expect("a 3D storage texture");
+        assert_eq!(deep.size(), Size::new(2, 2, Some(3)), "a 3D texture");
     });
 }
