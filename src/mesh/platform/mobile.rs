@@ -119,9 +119,7 @@ impl Mesh {
     #[lsp_doc("docs/api/geometry/mesh/from_vertices.md")]
     pub fn from_vertices_mobile(vertices: Vec<Arc<Vertex>>) -> Arc<Self> {
         let mesh = Mesh::new();
-        for v in vertices {
-            mesh.add_vertex((*v).clone());
-        }
+        mesh.add_vertices(vertices.iter().map(|vertex| (**vertex).clone()));
         Arc::new(mesh)
     }
 
@@ -136,9 +134,7 @@ impl Mesh {
     #[uniffi::method(name = "addVertices")]
     #[lsp_doc("docs/api/geometry/mesh/add_vertices.md")]
     pub fn add_vertices_mobile(&self, vertices: Vec<Arc<Vertex>>) {
-        for v in vertices {
-            self.add_vertex((*v).clone());
-        }
+        self.add_vertices(vertices.iter().map(|vertex| (**vertex).clone()));
     }
 
     /// Append a single instance data record to the mesh.
@@ -152,9 +148,7 @@ impl Mesh {
     #[uniffi::method(name = "addInstances")]
     #[lsp_doc("docs/api/geometry/mesh/add_instances.md")]
     pub fn add_instances_mobile(&self, instances: Vec<Arc<Instance>>) {
-        for inst in instances {
-            self.add_instance((*inst).clone());
-        }
+        self.add_instances(instances.iter().map(|instance| (**instance).clone()));
     }
 
     /// Remove all per-instance attribute data, resetting to single-instance rendering.

@@ -75,7 +75,7 @@ impl Mesh {
 
     #[lsp_doc("docs/api/geometry/mesh/add_vertex.md")]
     pub fn add_vertex<V: Into<Vertex>>(&self, v: V) {
-        self.object.add_vertex(v.into());
+        self.object.add_vertices(vec![v.into()]);
     }
 
     #[lsp_doc("docs/api/geometry/mesh/add_vertices.md")]
@@ -84,14 +84,13 @@ impl Mesh {
         I: IntoIterator<Item = V>,
         V: Into<Vertex>,
     {
-        for vertex in vertices {
-            self.object.add_vertex(vertex.into());
-        }
+        self.object
+            .add_vertices(vertices.into_iter().map(Into::into).collect());
     }
 
     #[lsp_doc("docs/api/geometry/mesh/add_instance.md")]
     pub fn add_instance<T: Into<Instance>>(&self, instance_buffer: T) {
-        self.object.add_instance(instance_buffer.into());
+        self.object.add_instances(vec![instance_buffer.into()]);
     }
 
     #[lsp_doc("docs/api/geometry/mesh/add_instances.md")]
@@ -100,9 +99,8 @@ impl Mesh {
         I: IntoIterator<Item = T>,
         T: Into<Instance>,
     {
-        for instance in instances {
-            self.object.add_instance(instance.into());
-        }
+        self.object
+            .add_instances(instances.into_iter().map(Into::into).collect());
     }
 
     #[lsp_doc("docs/api/geometry/mesh/clear_instances.md")]
@@ -422,19 +420,27 @@ impl MeshObject {
         }
     }
 
-    fn add_vertex(&self, v: Vertex) {
-        // Grow the local-space AABB before stashing the Vertex. 2D positions
+    /// Adds `vertices` as one change, under one hold of the list, so a render
+    /// on another thread sees all of them or none. An empty list changes nothing.
+    fn add_vertices(&self, vertices: Vec<Vertex>) {
+        if vertices.is_empty() {
+            return;
+        }
+        // Grow the local-space AABB before stashing the vertices. 2D positions
         // contribute z = 0, which is the same value the vertex shader sees
         // (the `position` slot zero-pads the missing components).
-        let p = glam::Vec3::new(v.position.0.x, v.position.0.y, v.position.0.z);
         let mut lo = self.aabb_min.write();
         let mut hi = self.aabb_max.write();
-        *lo = lo.min(p);
-        *hi = hi.max(p);
+        for vertex in vertices.iter() {
+            let [x, y, z, _] = vertex.position.0.to_array();
+            let point = glam::Vec3::new(x, y, z);
+            *lo = lo.min(point);
+            *hi = hi.max(point);
+        }
         drop(lo);
         drop(hi);
         let mut verts = self.verts.write();
-        verts.push(v);
+        verts.extend(vertices);
         #[cfg(test)]
         crate::hooks::run("pushed");
         self.touch_vertices();
@@ -451,9 +457,14 @@ impl MeshObject {
         (*self.aabb_min.read(), *self.aabb_max.read())
     }
 
-    fn add_instance(&self, i: Instance) {
+    /// Adds `instances` as one change, under one hold of the list, so a render
+    /// on another thread sees all of them or none. An empty list changes nothing.
+    fn add_instances(&self, instances: Vec<Instance>) {
+        if instances.is_empty() {
+            return;
+        }
         let mut insts = self.insts.write();
-        insts.push(i);
+        insts.extend(instances);
         // Adding a real instance invalidates any prior set_instance_count override
         // (otherwise the GPU would draw past the actual buffer end).
         *self.override_instances.write() = None;
@@ -1837,6 +1848,38 @@ mod tests {
         assert_eq!(vertex.get(), Some(true), "add_vertex");
         assert_eq!(instance.get(), Some(true), "add_instance");
         assert_eq!(cleared.get(), Some(true), "clear_instances");
+    }
+
+    // Story: a batch of vertices or instances lands as one change, so a render on
+    // another thread sees all of the batch or none of it, never part of a triangle.
+    #[test]
+    fn a_batch_lands_as_one_change() {
+        let mesh = Mesh::new();
+        let (object, seen) = (
+            mesh.object.clone(),
+            std::rc::Rc::new(std::cell::Cell::new(0)),
+        );
+        let kept = seen.clone();
+        crate::hooks::once("added", move || kept.set(object.verts.read().len()));
+        let hidden = watch_change(&mesh.object, "pushed", |object| {
+            object.verts.try_read().is_none()
+        });
+
+        let before = mesh.object.generation();
+        mesh.add_vertices([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]]);
+        let vertices = mesh.object.generation() - before;
+        let before = mesh.object.generation();
+        mesh.add_instances([Instance::new(), Instance::new()]);
+        let instances = mesh.object.generation() - before;
+        let before = mesh.object.generation();
+        mesh.add_vertices(Vec::<Vertex>::new());
+        let nothing = mesh.object.generation() - before;
+
+        assert_eq!(seen.get(), 3, "the first reader sees the whole batch");
+        assert_eq!(hidden.get(), Some(true), "and none of it before the count");
+        assert_eq!(vertices, 1, "one change for three vertices");
+        assert_eq!(instances, 1, "one change for two instances");
+        assert_eq!(nothing, 0, "an empty batch changes nothing");
     }
 
     // Story: the quick view reads the first vertex in a statement of its own,
