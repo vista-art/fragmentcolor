@@ -8,6 +8,11 @@ on:
       - 'build.rs'
       - 'platforms/web/**'
       - 'docs/api/**'
+      - 'scripts/**'
+      - 'docs/website/public/shaders/**'
+      - 'docs/guides/**'
+      - 'examples/assets/**'
+      - 'path/**'
       - 'tools/**'
       - '.github/workflows/healthcheck_web.yml'
   workflow_dispatch:

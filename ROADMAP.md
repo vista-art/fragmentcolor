@@ -40,7 +40,7 @@ Items found while reviewing 0.12.6.
 - [x] Swift extensions throw where they stopped the app with `preconditionFailure` on input they can't read, as rule 5 asks: `Vertex.set` and `Instance.set` since 0.12.6, and `setViewport`, the `ScreenRegion` inits and `TextureRegion.from` since 0.12.7
 - [x] `Texture::resize` for textures a pass draws into, in every binding. Clones, pass targets, shader uniforms and `TextureTarget::texture()` handles follow it and `TextureTarget::resize`
 - [x] Clustered lights with no fixed cap. A compute pass sorts each pass's lights with a range into a grid of cells over its camera view, and a fragment shades only its cell's lights and the lights without one. WebGL2 and native OpenGL take the lights through a uniform block sized to the device. The cap comes from the device, and the storage `lights` and `light_grid` roots are what a custom shader declares (0.12.7)
-- [ ] A push that changes only the website reruns every healthcheck. The `paths` filter on `pull_request` compares the whole PR with its base, not the last push. Skip a check when the files it reads match a commit where it already passed, for example with a cache key built from the tree hash of those paths, and keep the skipped job reporting success for branch protection
+- [x] Each healthcheck's `paths` filter lists every file the crate compiles in, the shader library and the fixtures included, so a PR that changes only the website, a post or a tutorial runs no healthcheck. A branch that touches `src`, such as a release, runs them all on every push
 
 ### First, because 0.13.0 needs them
 
