@@ -1170,7 +1170,7 @@ Sets the viewport region for this [Pass](/api/core/pass).
 
 The pass's shaders draw only inside this rectangle of the [Target](/api/targets/target), and each shader's output scales to fill it.
 
-The `viewport` argument accepts anything convertible into a `ScreenRegion`: an `[x, y, w, h]` array, a `(w, h)` tuple, an origin and a size as `((x, y), (w, h))`, or a `ScreenRegion` constructed explicitly. Pixels count from the top-left corner of the target.
+The `viewport` argument accepts anything convertible into a `ScreenRegion`: an `[x, y, w, h]` array, a `(w, h)` tuple, an origin and a size as two pairs, `((x, y), (w, h))`, in each language's list or tuple form, or a `ScreenRegion` constructed explicitly. Pixels count from the top-left corner of the target.
 
 A width or height of 0 is an error that leaves the pass's viewport as it was, and so is a far edge past `u32::MAX`, the largest pixel coordinate. A region whose max lies before its min, which a region built field by field or a JavaScript `{ minX, minY, maxX, maxY }` object can hold, returns `ScreenRegionError::Reversed` and is never swapped back. To draw on the whole target, leave the viewport unset.
 

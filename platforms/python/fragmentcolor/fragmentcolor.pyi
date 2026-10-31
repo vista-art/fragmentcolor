@@ -1453,13 +1453,13 @@ class Pass:
         renderer.render(rpass, target)
         ```
         """
-    def set_viewport(self, viewport: ScreenRegion | Sequence[SupportsIndex] | npt.NDArray[numpy.integer[Any]]) -> None:
+    def set_viewport(self, viewport: ScreenRegion | Sequence[Sequence[SupportsIndex] | npt.NDArray[numpy.integer[Any]]] | Sequence[SupportsIndex] | npt.NDArray[numpy.integer[Any]]) -> None:
         """
         Sets the viewport region for this [Pass](https://fragmentcolor.org/api/core/pass).
 
         The pass's shaders draw only inside this rectangle of the [Target](https://fragmentcolor.org/api/targets/target), and each shader's output scales to fill it.
 
-        The `viewport` argument accepts anything convertible into a `ScreenRegion`: an `[x, y, w, h]` array, a `(w, h)` tuple, an origin and a size as `((x, y), (w, h))`, or a `ScreenRegion` constructed explicitly. Pixels count from the top-left corner of the target.
+        The `viewport` argument accepts anything convertible into a `ScreenRegion`: an `[x, y, w, h]` array, a `(w, h)` tuple, an origin and a size as two pairs, `((x, y), (w, h))`, in each language's list or tuple form, or a `ScreenRegion` constructed explicitly. Pixels count from the top-left corner of the target.
 
         A width or height of 0 is an error that leaves the pass's viewport as it was, and so is a far edge past `u32::MAX`, the largest pixel coordinate. A region whose max lies before its min, which a region built field by field or a JavaScript `{ minX, minY, maxX, maxY }` object can hold, returns `ScreenRegionError::Reversed` and is never swapped back. To draw on the whole target, leave the viewport unset.
 
@@ -1689,11 +1689,11 @@ class ScreenRegion:
     def max_x(self) -> int: ...
     @property
     def max_y(self) -> int: ...
-    def __new__(cls, origin: tuple[SupportsIndex, SupportsIndex], size: tuple[SupportsIndex, SupportsIndex]) -> ScreenRegion: ...
+    def __new__(cls, origin: Sequence[SupportsIndex] | npt.NDArray[numpy.integer[Any]], size: Sequence[SupportsIndex] | npt.NDArray[numpy.integer[Any]]) -> ScreenRegion: ...
     @staticmethod
     def from_region(x: SupportsIndex, y: SupportsIndex, width: SupportsIndex, height: SupportsIndex) -> ScreenRegion: ...
     @staticmethod
-    def from_tuple(size: tuple[SupportsIndex, SupportsIndex]) -> ScreenRegion: ...
+    def from_tuple(size: Sequence[SupportsIndex] | npt.NDArray[numpy.integer[Any]]) -> ScreenRegion: ...
     def width(self) -> int: ...
     def height(self) -> int: ...
 
@@ -5502,11 +5502,11 @@ class Texture:
         """
         Same as `Texture::write`, but writes into a sub-region of the texture and/or with explicit source data layout.
 
-        The `region` argument is required; use `Texture::write` to replace the whole texture. A region with a width, height or depth of 0 is an `InvalidInput` error. It accepts anything convertible into a `TextureRegion`:
+        The `region` argument is required; use `Texture::write` to replace the whole texture. An array, tuple or `TextureRegion` with a width, height or depth of 0 is an `InvalidInput` error. It accepts anything convertible into a `TextureRegion`:
         - `[w, h]` / `(w, h)`: a `w` by `h` rectangle at origin `(0, 0, 0)`
         - `[x, y, w, h]` / `(x, y, w, h)`: 2D rectangle
         - `[x, y, z, w, h, d]`: 3D box (for layered or 3D textures)
-        - A `ScreenRegion`: its pixel rectangle at `z = 0`, one layer deep. One whose max lies before its min, which a region built field by field can hold, returns `TextureError::Region` with `ScreenRegionError::Reversed`
+        - A `ScreenRegion`: its pixel rectangle at `z = 0`, one layer deep. A region built field by field can be invalid: one whose max lies before its min, or with a width or height of 0, returns `TextureError::Region` with `ScreenRegionError::Reversed` or `ScreenRegionError::Empty`
         - A `TextureRegion` constructed explicitly with `.with_stride(...)` / `.with_rows(...)` for advanced data-layout control
 
         ## Notes
