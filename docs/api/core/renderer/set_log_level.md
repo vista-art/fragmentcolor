@@ -7,7 +7,14 @@ The web build prints to the browser console and starts at `Info`. Raise it to `D
 ## Example
 
 ```rust
-use fragmentcolor::{LogLevel, Renderer};
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{LogLevel, Renderer, Shader};
 
+// Log naga's notes while this shader builds, then go back to the usual level.
 Renderer::set_log_level(LogLevel::Debug);
+let shader = Shader::default();
+Renderer::set_log_level(LogLevel::Info);
+# let _ = shader;
+# Ok(())
+# }
 ```
