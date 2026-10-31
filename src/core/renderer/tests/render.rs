@@ -2,13 +2,16 @@
 //! textures, samplers, vertex inputs, depth, MSAA and pools.
 
 use crate::TextureOptions;
+use crate::core::renderer::frame::draws::{MeshDraws, PREVIEW_TRIES};
+use crate::core::renderer::pipelines::vertex_layouts::vertex_buffer_layouts;
 use crate::core::renderer::*;
+use std::sync::atomic::Ordering;
 use std::thread;
 use std::time::Duration;
 
 use crate::targets::TargetFrame;
 use crate::testing::device::request_small_device;
-use crate::{Pass, Shader};
+use crate::{Pass, PassObject, Shader};
 
 // Story: Creating a texture from RGBA8 raw bytes with explicit size succeeds and yields expected size.
 #[test]

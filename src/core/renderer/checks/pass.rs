@@ -4,7 +4,8 @@
 use super::texture_conflicts::{TextureUse, UsageScope, Writer};
 use crate::AlphaMode;
 use crate::PassError;
-use crate::core::renderer::{PassDraws, RenderContext, RendererError};
+use crate::core::renderer::frame::draws::PassDraws;
+use crate::core::renderer::{RenderContext, RendererError};
 use crate::texture::{Registration, format_features};
 use crate::{
     PassObject, Renderable, ShaderObject, Target, TargetFrame, TextureObject, UniformData,

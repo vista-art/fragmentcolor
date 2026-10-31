@@ -3,8 +3,9 @@
 //! The device checks and the pipeline builds read the same `Layout`, so what a
 //! check passes is what the pipeline binds.
 
+use crate::core::renderer::RenderContext;
 use crate::core::renderer::lights::{self, LightPath};
-use crate::core::renderer::{PushMode, RenderContext};
+use crate::core::renderer::pipelines::PushMode;
 use crate::core::{PushEntry, StorageEntry, Uniform, UniformData};
 use crate::core::{list_explicit, lower_immediates, name_entries, validate_module, write_layouts};
 use crate::texture::{TextureClass, TextureDim, TextureMeta, TextureScalarKind};

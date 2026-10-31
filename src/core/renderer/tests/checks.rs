@@ -3,13 +3,15 @@
 use super::{SpyTarget, Uncaptured, setup};
 use crate::core::LayoutLoss;
 use crate::core::renderer::checks::shader::{TextureFacts, Verdict, check_texture, refuse_layout};
+use crate::core::renderer::lights::LightPath;
 use crate::core::renderer::pipelines::layout::build_module;
 use crate::core::renderer::pipelines::layout::{
     describe_texture, find_entry, pick_source, plan_layout,
 };
 use crate::core::renderer::*;
 use crate::texture::{Registration, Texture, TextureObject};
-use crate::{Material, Shader};
+use crate::{Material, Shader, ShaderError};
+use std::sync::atomic::Ordering;
 
 const VERTEX: &str = r#"
 @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {

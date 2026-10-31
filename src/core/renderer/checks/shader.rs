@@ -1,11 +1,13 @@
 //! Checks a shader against the device before any wgpu call:
 //! limits, features, entry points and the textures its slots take.
 
+use crate::core::renderer::frame::bind_groups::{PbrDefaults, report_missing};
 use crate::core::renderer::lights::LightPath;
+use crate::core::renderer::pipelines::PushMode;
 use crate::core::renderer::pipelines::layout::{
     Layout, Slot, build_module, describe_texture, plan_layout,
 };
-use crate::core::renderer::{PbrDefaults, PushMode, RenderContext, RendererError, report_missing};
+use crate::core::renderer::{RenderContext, RendererError};
 use crate::core::shader::error::describe;
 use crate::core::{LayoutLoss, list_explicit, write_layouts};
 use crate::texture::format_features;

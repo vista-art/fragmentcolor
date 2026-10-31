@@ -1,9 +1,10 @@
 //! The renderer's tests, one file for each thing they cover,
 //! and the fixtures they share: `SpyTarget`, `setup` and `Uncaptured`.
 
+use crate::TargetFrame;
 use crate::core::renderer::*;
 use parking_lot::Mutex;
-use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 mod checks;
 mod error_scopes;

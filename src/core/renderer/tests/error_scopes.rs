@@ -2,8 +2,10 @@
 //! its scopes catch, and that every frame it acquires presents.
 
 use super::{SPY_SIZE, SpyTarget, is_validation, record_uncaptured, setup};
+use crate::core::renderer::device_errors::scopes::SCOPES;
+use crate::core::renderer::lights::LightPath;
 use crate::core::renderer::*;
-use crate::{Instance, Mesh, Shader, Vertex};
+use crate::{Instance, Mesh, Shader, TargetFrame, Vertex};
 
 /// The fragment stage reads `@location(0)`, which the vertex stage never writes.
 /// Naga accepts each entry point alone, and only the pipeline build fails.

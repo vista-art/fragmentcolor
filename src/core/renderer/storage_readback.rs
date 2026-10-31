@@ -1,8 +1,35 @@
 //! Reads a shader's storage buffer back to the CPU through a pooled readback buffer.
 
+use crate::Shader;
 #[cfg(not(wasm))]
 use crate::core::renderer::{MAP_LIMIT, poll_map};
-use crate::core::renderer::{PendingReadback, RenderContext, RendererError};
+use crate::core::renderer::{PendingReadback, RenderContext, Renderer, RendererError, Start};
+
+impl Renderer {
+    /// Reads a storage binding back once the frames rendered before `start`
+    /// have reported their GPU errors.
+    pub(crate) async fn read_storage_from(
+        &self,
+        shader: &Shader,
+        binding: &str,
+        start: Start,
+    ) -> Result<Vec<u8>, RendererError> {
+        if !shader.object.has_storage(binding) {
+            return Err(RendererError::StorageBindingNotFound(binding.to_string()));
+        }
+        let context = self.context(None).await?;
+        #[cfg(wasm)]
+        start.settle(&context).await?;
+        #[cfg(not(wasm))]
+        let _ = start;
+        let (buffer, span) = context
+            .storage_registry
+            .get(binding)
+            .map(|entry| (entry.0.clone(), entry.1))
+            .ok_or_else(|| RendererError::StorageBindingNotFound(binding.to_string()))?;
+        read_buffer_bytes(&context, &buffer, span).await
+    }
+}
 
 /// Copy `[0, span)` of `buffer` into a pooled readback buffer, map it,
 /// extract the bytes, and return them.
@@ -11,7 +38,7 @@ use crate::core::renderer::{PendingReadback, RenderContext, RendererError};
 ///   - the shader declares the storage binding,
 ///   - the renderer's `storage_registry` has materialized the GPU buffer
 ///     (i.e. at least one render pass with this binding has fired).
-pub(crate) async fn read_buffer_bytes(
+async fn read_buffer_bytes(
     context: &RenderContext,
     buffer: &wgpu::Buffer,
     span: u64,
