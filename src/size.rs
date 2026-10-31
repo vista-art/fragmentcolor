@@ -15,7 +15,6 @@ use pyo3::prelude::*;
 use pyo3::types::PyMapping;
 
 pub mod error;
-#[cfg(any(wasm, python, test))]
 use error::SizeError;
 
 #[cfg_attr(wasm, wasm_bindgen)]
