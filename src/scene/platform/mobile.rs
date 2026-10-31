@@ -53,13 +53,8 @@ impl Model {
 
     #[uniffi::method(name = "transform")]
     #[lsp_doc("docs/api/scene/model/transform.md")]
-    pub fn transform_mobile(self: Arc<Self>) -> Vec<f32> {
-        let cols = self.transform();
-        let mut out = Vec::with_capacity(16);
-        for col in cols.iter() {
-            out.extend_from_slice(col);
-        }
-        out
+    pub fn transform_mobile(self: Arc<Self>) -> Vec<Vec<f32>> {
+        self.transform().map(Vec::from).to_vec()
     }
 
     #[uniffi::method(name = "setTransform")]
@@ -182,13 +177,8 @@ impl Camera {
 
     #[uniffi::method(name = "viewProj")]
     #[lsp_doc("docs/api/scene/camera/view_proj.md")]
-    pub fn view_proj_mobile(self: Arc<Self>) -> Vec<f32> {
-        let cols = self.view_proj();
-        let mut out = Vec::with_capacity(16);
-        for col in cols.iter() {
-            out.extend_from_slice(col);
-        }
-        out
+    pub fn view_proj_mobile(self: Arc<Self>) -> Vec<Vec<f32>> {
+        self.view_proj().map(Vec::from).to_vec()
     }
 
     #[uniffi::method(name = "position")]

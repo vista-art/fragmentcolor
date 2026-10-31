@@ -37,13 +37,8 @@ impl Model {
 
     #[wasm_bindgen(js_name = "transform")]
     #[lsp_doc("docs/api/scene/model/transform.md")]
-    pub fn transform_js(&self) -> Vec<f32> {
-        let cols = self.transform();
-        let mut flat = Vec::with_capacity(16);
-        for col in cols.iter() {
-            flat.extend_from_slice(col);
-        }
-        flat
+    pub fn transform_js(&self) -> Vec<js_sys::Float32Array> {
+        list_columns(self.transform())
     }
 
     #[wasm_bindgen(js_name = "setTransform")]
@@ -173,13 +168,8 @@ impl Camera {
 
     #[wasm_bindgen(js_name = "viewProj")]
     #[lsp_doc("docs/api/scene/camera/view_proj.md")]
-    pub fn view_proj_js(&self) -> Vec<f32> {
-        let cols = self.view_proj();
-        let mut flat = Vec::with_capacity(16);
-        for col in cols.iter() {
-            flat.extend_from_slice(col);
-        }
-        flat
+    pub fn view_proj_js(&self) -> Vec<js_sys::Float32Array> {
+        list_columns(self.view_proj())
     }
 
     #[wasm_bindgen(js_name = "position")]
@@ -575,6 +565,14 @@ fn read_matrix(value: &JsValue) -> Result<[[f32; 4]; 4], WebError> {
                 ));
             }
         };
+/// A 4x4 matrix as its four columns, each a `Float32Array` of four, as Rust's `[[f32; 4]; 4]` holds it.
+fn list_columns(matrix: [[f32; 4]; 4]) -> Vec<js_sys::Float32Array> {
+    matrix
+        .iter()
+        .map(|column| js_sys::Float32Array::from(column.as_slice()))
+        .collect()
+}
+
     }
     Ok(matrix)
 }
