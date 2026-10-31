@@ -2,8 +2,8 @@ use crate::error::WebError;
 use crate::platforms::web::read_text;
 use crate::texture::{js_to_texture_bytes, read_format, read_texture_input, read_usage};
 use crate::{
-    Mesh, Pass, PassObject, Renderable, Renderer, RendererError, Scene, Shader, Size, Texture,
-    TextureData, TextureTarget, target::CanvasTarget,
+    Mesh, Pass, PassObject, Renderable, Renderer, Scene, Shader, Size, Texture, TextureData,
+    TextureTarget, target::CanvasTarget,
 };
 use js_sys::Array;
 use lsp_doc::lsp_doc;
