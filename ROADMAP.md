@@ -28,7 +28,7 @@ Items found while reviewing 0.12.6.
 - [x] Lift the `wasm-bindgen` pin (`=0.2.118`): `impl_js_bridge!` reads a class through wasm-bindgen's public `TryFromJsValue`, from a fresh handle the class shares, where it handed `RefFromWasmAbi` a raw `u32`. The family moves in step from 0.2.126
 - [x] `headless_window` is the constructor `HeadlessWindow::new`, so the public API has no free function. Only the window-target doctests and tests use it (0.12.7)
 - [x] Remove `Renderer::create_external_texture` until it works. Every binding returns "not implemented yet", and an API that does nothing doesn't belong in the public surface
-- [x] Doc comments that described planned behavior state what the code does: `SceneSource` in `src/scene/loader.rs` and `set_sampler_options` in `src/texture/platform/mobile.rs` (0.12.7)
+- [x] Doc comments that described planned behavior state what the code does: `SceneSource` in `src/scene/loader/mod.rs` and `set_sampler_options` in `src/texture/platform/mobile.rs` (0.12.7)
 - [x] The Swift transpiler picks `try` and `await` from the overloads a call's arguments fit, by count and by the shape of each argument, where it merged `throws` across every overload of a name. The generated examples compile with no `try` or `await` that Swift warns about (0.12.7)
 - [x] The public `From` conversions between `wgpu::Extent3d` and `Size` go, as rule 14 asks, along with those of `TextureFormat`, `TextureUsage`, `CompareFunction` and the `TextureMeta` reflection types, and every public signature that named wgpu: `create_target`, `create_sampler`, `create_default_sampler` and the web `Canvas`. `ScreenRegion`'s went in 0.12.7 too
 - [x] Two pairs read as an origin and a size, in Rust's `((x, y), (w, h))` and in a viewport of two pairs in every binding, where Rust read them as inclusive corners in any order. It changes what existing Rust code draws without a compile error, so it ships here, ahead of 0.13.0
@@ -62,7 +62,7 @@ Items found while reviewing 0.12.6.
 - [x] Fix three stale references, on the hidden `create_target_ios` page, in the mobile texture enum's doc comment and in the mobile-methods note in `AGENTS.md`, and correct the trait note in `docs/api/PARITY` (0.12.6)
 - [x] Replace the `mesh.model` advice on the custom material page with the `model_0` to `model_3` instance inputs the PBR shader reads (0.12.6)
 - [x] The `UniformData` doc comments call `Mat2`, `Mat3` and `Mat4` column-major, as their bytes are (0.12.6)
-- [x] `src/pass/AGENTS.md` states that FC holds no host object but a target's canvas and that `render` and `submit` never call host code (0.12.6)
+- [x] `src/core/pass/AGENTS.md` states that FC holds no host object but a target's canvas and that `render` and `submit` never call host code (0.12.6)
 
 ### Bug fixes
 
