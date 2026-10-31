@@ -391,12 +391,7 @@ Return the base level (level 0) dimensions as a [Size](/api/texture/texture#size
 code={`
 use fragmentcolor::{Mipmap, TextureFormat};
 
-let pixels: Vec<u8> = vec![0; 16 * 16 * 4];
-let chain = Mipmap::build((
-    pixels.as_slice(),
-    TextureFormat::Rgba8UnormSrgb,
-    [16, 16],
-))?;
+let chain = Mipmap::build((pixels.as_slice(), TextureFormat::Rgba8UnormSrgb, [16, 16]))?;
 let size = chain.size();
 let width = size.width;
 let height = size.height;
@@ -409,15 +404,15 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { TextureFormat, Mipmap } from "fragmentcolor";
-
+import { Mipmap, TextureFormat } from "fragmentcolor";
 const pixels = new Uint8Array(16 * 16 * 4);
+
 const chain = Mipmap.build(pixels, TextureFormat.Rgba8UnormSrgb, [16, 16]);
-const sz = chain.size();
-const width = sz.width;
-const height = sz.height;
+const size = chain.size();
+const width = size.width;
+const height = size.height;
 `}
-lang="js"
+lang="js" meta="collapse={2-2}"
 />
 
 </TabItem>
@@ -425,14 +420,15 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import TextureFormat, Mipmap
+from fragmentcolor import Mipmap, TextureFormat
+pixels = bytes(16 * 16 * 4)
 
-pixels = [0] * (16 * 16 * 4)
-chain = Mipmap.build(pixels, TextureFormat.Rgba8UnormSrgb, [16, 16])
-(width, height) = chain.size()
-_ = (width, height)
+chain = Mipmap.build(pixels, TextureFormat.Rgba8UnormSrgb, size=[16, 16])
+size = chain.size()
+width = size.width
+height = size.height
 `}
-lang="python"
+lang="python" meta="collapse={2-2}"
 />
 
 </TabItem>
@@ -442,19 +438,14 @@ lang="python"
 code={`
 import FragmentColor
 import Foundation
-
 let pixels = Data(repeating: 0, count: 16 * 16 * 4)
-let chain = try Mipmap.build(
-    bytes: pixels,
-    format: .rgba8UnormSrgb,
-    size: Size(width: 16, height: 16, depth: nil)
-)
-let sz = chain.size()
-let width = sz.width
-let height = sz.height
-let _ = (width, height)
+
+let chain = try Mipmap.build(pixels, TextureFormat.rgba8UnormSrgb, [16, 16])
+let size = chain.size()
+let width = size.width
+let height = size.height
 `}
-lang="swift"
+lang="swift" meta="collapse={2-3}"
 />
 
 </TabItem>
@@ -463,14 +454,14 @@ lang="swift"
 <Code
 code={`
 import org.fragmentcolor.*
-
 val pixels = ByteArray(16 * 16 * 4)
+
 val chain = Mipmap.build(pixels, TextureFormat.RGBA8_UNORM_SRGB, listOf(16u, 16u))
 val size = chain.size()
 val width = size.width
 val height = size.height
 `}
-lang="kotlin"
+lang="kotlin" meta="collapse={2-2}"
 />
 
 </TabItem>
