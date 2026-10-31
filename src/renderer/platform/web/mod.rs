@@ -1,4 +1,5 @@
 use crate::error::WebError;
+use crate::error::defer;
 use crate::platforms::web::read_text;
 use crate::texture::{js_to_texture_bytes, read_format, read_texture_input, read_usage};
 use crate::{
@@ -10,7 +11,6 @@ use lsp_doc::lsp_doc;
 use std::sync::Arc;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
-use wasm_bindgen_futures::future_to_promise;
 
 /// A canvas a window target draws into.
 pub(crate) enum Canvas {
@@ -173,7 +173,7 @@ impl Renderer {
         let start = self.start();
         let renderer = self.share();
         let id = crate::texture::js_to_texture_id(texture_id);
-        future_to_promise(async move {
+        defer(async move {
             let id = id?;
             let bytes = renderer.read_texture_from(id, start).await?;
             Ok(js_sys::Uint8Array::from(bytes.as_slice()).into())
@@ -201,7 +201,7 @@ impl Renderer {
         let start = self.start();
         let renderer = self.share();
         let renderables = RenderableList::read(renderable, "Renderer.load");
-        future_to_promise(async move {
+        defer(async move {
             let renderables = renderables?;
             renderer.load_from(&renderables, start).await?;
             Ok(JsValue::UNDEFINED)
@@ -219,7 +219,7 @@ impl Renderer {
         let renderer = self.share();
         let shader = shader.clone();
         let binding = read_text(binding, "Renderer.readStorage: binding");
-        future_to_promise(async move {
+        defer(async move {
             let binding = binding?;
             let bytes = renderer.read_storage_from(&shader, &binding, start).await?;
             Ok(js_sys::Uint8Array::from(bytes.as_slice()).into())

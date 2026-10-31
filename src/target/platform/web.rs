@@ -113,7 +113,7 @@ impl TextureTarget {
     pub fn get_image_js(&self) -> js_sys::Promise {
         let start = crate::renderer::Start::now(Some(&self.context));
         let target = self.clone();
-        wasm_bindgen_futures::future_to_promise(async move {
+        crate::error::defer(async move {
             let pixels = target.read_image_from(start).await?;
             Ok(js_sys::Uint8Array::from(pixels.as_slice()).into())
         })

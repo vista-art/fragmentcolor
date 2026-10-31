@@ -10,9 +10,10 @@ mod binding_checks {
     //!   still name a class some binding declares.
     //! - **JS errors.** Every JS error is a `WebError`, an `Error` named after the class
     //!   Python raises. A `#[wasm_bindgen]` function that returns `Result<_, E>` returns
-    //!   `WebError`, or an `E` whose `From<E> for JsValue` goes through `WebError`, and every
-    //!   such `From` in the crate does. A function that returns a `Promise` rejects with no
-    //!   string, `JsError` or bare `js_sys::Error`, so JS never catches an unnamed error.
+    //!   `WebError`, or an `E` whose `From<E> for JsValue` is exactly
+    //!   `WebError::from(error).into()`, and so is every such `From` in the crate. A function
+    //!   that returns a `Promise` builds it with `error::defer`, whose future fails with a
+    //!   `WebError`, and nothing outside `src/error.rs` calls `future_to_promise`.
 
     use std::collections::{BTreeMap, BTreeSet};
     use std::fs;
@@ -588,13 +589,15 @@ mod binding_checks {
         body: TokenStream,
     }
 
-    /// What the scan of `src` finds: the fallible and deferred exports,
-    /// and each `From<E> for JsValue` by the name of `E`.
+    /// What the scan of `src` finds: the fallible and deferred exports, each
+    /// `From<E> for JsValue` by the name of `E` with whether it goes through `WebError`,
+    /// and the files that build a promise without `error::defer`.
     #[derive(Default)]
     struct Exports {
         fallible: Vec<Fallible>,
         deferred: Vec<Deferred>,
-        conversions: BTreeMap<String, (PathBuf, TokenStream)>,
+        conversions: BTreeMap<String, (PathBuf, bool)>,
+        builders: Vec<PathBuf>,
     }
 
     fn check_errors(root: &Path) -> Vec<String> {
@@ -608,6 +611,10 @@ mod binding_checks {
             };
             let relative = file.strip_prefix(root).unwrap_or(&file);
             scan_items(&parsed.items, relative, &mut exports);
+            let home = relative == Path::new("src/error.rs");
+            if !home && names(&parsed.to_token_stream(), "future_to_promise") {
+                exports.builders.push(relative.to_path_buf());
+            }
         }
 
         let mut problems = Vec::new();
@@ -627,23 +634,30 @@ mod binding_checks {
                 f.name
             ));
         }
-        for (source, (file, body)) in &exports.conversions {
-            if source != "WebError" && !names_class(body) {
+        for (source, (file, named)) in &exports.conversions {
+            if source != "WebError" && !named {
                 problems.push(format!(
-                    "{}: `From<{source}> for JsValue` builds a value no class names. Convert through `WebError`.",
+                    "{}: write `From<{source}> for JsValue` as `WebError::from(error).into()`, \
+                     and put per-variant logic in `From<{source}> for WebError`.",
                     file.display()
                 ));
             }
         }
         for d in &exports.deferred {
-            if rejects_plainly(&d.body) {
+            if !names(&d.body, "defer") {
                 problems.push(format!(
-                    "{}: `{}` returns a `Promise` that rejects with a string, a `JsError` or a bare `js_sys::Error`. \
-                     Reject with a `WebError`, or an error whose `From<E> for JsValue` goes through it.",
+                    "{}: `{}` returns a `Promise` that `error::defer` didn't build. \
+                     Build it with `defer`, whose future fails with a `WebError`.",
                     d.file.display(),
                     d.name
                 ));
             }
+        }
+        for file in &exports.builders {
+            problems.push(format!(
+                "{}: calls `future_to_promise`, whose promise can reject with any `JsValue`. Use `error::defer`.",
+                file.display()
+            ));
         }
         problems
     }
@@ -682,7 +696,7 @@ mod binding_checks {
                     }) && read_ident(&imp.self_ty).as_deref() == Some("JsValue");
                     if into_js {
                         if let Some(source) = read_source(imp).and_then(read_ident) {
-                            let conversion = (file.to_path_buf(), imp.to_token_stream());
+                            let conversion = (file.to_path_buf(), converts_through(imp));
                             exports.conversions.insert(source, conversion);
                         }
                         continue;
@@ -769,30 +783,53 @@ mod binding_checks {
         read_ident(ty).as_deref() == Some("Promise")
     }
 
-    /// Whether a conversion into `JsValue` goes through `WebError`, which names its class.
-    fn names_class(body: &TokenStream) -> bool {
-        body.to_string().contains("WebError")
+    /// Whether a `From<E> for JsValue` impl's `from` is exactly `WebError::from(error).into()`,
+    /// with `error` its own parameter. A `From<E> for WebError` outside `src/error.rs` can only
+    /// build its value through a constructor that names a class, so this form always names one.
+    fn converts_through(imp: &syn::ItemImpl) -> bool {
+        let Some(from) = imp.items.iter().find_map(|item| match item {
+            ImplItem::Fn(f) if f.sig.ident == "from" => Some(f),
+            _ => None,
+        }) else {
+            return false;
+        };
+        let Some(syn::FnArg::Typed(argument)) = from.sig.inputs.first() else {
+            return false;
+        };
+        let syn::Pat::Ident(param) = &*argument.pat else {
+            return false;
+        };
+        let [syn::Stmt::Expr(syn::Expr::MethodCall(call), None)] = &from.block.stmts[..] else {
+            return false;
+        };
+        if call.method != "into" || !call.args.is_empty() {
+            return false;
+        }
+        let syn::Expr::Call(inner) = &*call.receiver else {
+            return false;
+        };
+        let syn::Expr::Path(function) = &*inner.func else {
+            return false;
+        };
+        let segments: Vec<String> = function
+            .path
+            .segments
+            .iter()
+            .map(|segment| segment.ident.to_string())
+            .collect();
+        let named = segments.ends_with(&["WebError".to_string(), "from".to_string()]);
+        let passes = matches!(
+            inner.args.iter().collect::<Vec<_>>()[..],
+            [syn::Expr::Path(value)] if value.path.is_ident(&param.ident)
+        );
+        named && passes
     }
 
-    /// Whether a function body hands `Err`, `map_err`, `ok_or` or `ok_or_else` an error
-    /// no class names: a string, a `format!`, a `JsValue` made from one, a `JsError` or
-    /// a bare `js_sys::Error`, with no `WebError` around it.
-    fn rejects_plainly(body: &TokenStream) -> bool {
-        const PLAIN: [&str; 5] = ["\"", "format!", "JsValue::from", "JsError", "js_sys::Error"];
-        let tokens: Vec<TokenTree> = body.clone().into_iter().collect();
-        tokens.iter().enumerate().any(|(i, token)| match token {
-            TokenTree::Ident(ident)
-                if matches!(
-                    ident.to_string().as_str(),
-                    "Err" | "map_err" | "ok_or" | "ok_or_else"
-                ) =>
-            {
-                matches!(tokens.get(i + 1), Some(TokenTree::Group(g)) if {
-                    let text = g.stream().to_string().replace(' ', "");
-                    !text.contains("WebError") && PLAIN.iter().any(|mark| text.contains(mark))
-                })
-            }
-            TokenTree::Group(group) => rejects_plainly(&group.stream()),
+    /// Whether `tokens` name the identifier `name` anywhere, string literals and comments aside.
+    fn names(tokens: &TokenStream, name: &str) -> bool {
+        tokens.clone().into_iter().any(|token| match token {
+            TokenTree::Ident(ident) => ident == name,
+            TokenTree::Group(group) => names(&group.stream(), name),
             _ => false,
         })
     }

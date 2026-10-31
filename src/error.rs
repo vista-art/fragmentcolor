@@ -150,6 +150,15 @@ impl From<WebError> for wasm_bindgen::JsValue {
     }
 }
 
+/// The promise a web export returns for `future`. It rejects only with a `WebError`, so every
+/// rejection is an `Error` named after its class, and any other error type fails to compile.
+#[cfg(wasm)]
+pub(crate) fn defer(
+    future: impl std::future::Future<Output = Result<wasm_bindgen::JsValue, WebError>> + 'static,
+) -> js_sys::Promise {
+    wasm_bindgen_futures::future_to_promise(async move { Ok(future.await?) })
+}
+
 /// Each error type that throws as an `Error` named after its class, with no fields.
 #[cfg(wasm)]
 macro_rules! throw_by_class {
