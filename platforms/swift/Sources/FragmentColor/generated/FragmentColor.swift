@@ -813,112 +813,6 @@ public func FfiConverterTypeCamera_lower(_ value: Camera) -> UInt64 {
 
 
 
-public protocol ExternalTextureHandleProtocol: AnyObject, Sendable {
-    
-}
-open class ExternalTextureHandle: ExternalTextureHandleProtocol, @unchecked Sendable {
-    fileprivate let handle: UInt64
-
-    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
-    public struct NoHandle {
-        public init() {}
-    }
-
-    // TODO: We'd like this to be `private` but for Swifty reasons,
-    // we can't implement `FfiConverter` without making this `required` and we can't
-    // make it `required` without making it `public`.
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
-    required public init(unsafeFromHandle handle: UInt64) {
-        self.handle = handle
-    }
-
-    // This constructor can be used to instantiate a fake object.
-    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
-    //
-    // - Warning:
-    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
-    public init(noHandle: NoHandle) {
-        self.handle = 0
-    }
-
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
-    public func uniffiCloneHandle() -> UInt64 {
-        return try! rustCall { uniffi_fragmentcolor_fn_clone_externaltexturehandle(self.handle, $0) }
-    }
-    // No primary constructor declared for this class.
-
-    deinit {
-        if handle == 0 {
-            // Mock objects have handle=0 don't try to free them
-            return
-        }
-
-        try! rustCall { uniffi_fragmentcolor_fn_free_externaltexturehandle(handle, $0) }
-    }
-
-    
-
-    
-
-    
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeExternalTextureHandle: FfiConverter {
-    typealias FfiType = UInt64
-    typealias SwiftType = ExternalTextureHandle
-
-    public static func lift(_ handle: UInt64) throws -> ExternalTextureHandle {
-        return ExternalTextureHandle(unsafeFromHandle: handle)
-    }
-
-    public static func lower(_ value: ExternalTextureHandle) -> UInt64 {
-        return value.uniffiCloneHandle()
-    }
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ExternalTextureHandle {
-        let handle: UInt64 = try readInt(&buf)
-        return try lift(handle)
-    }
-
-    public static func write(_ value: ExternalTextureHandle, into buf: inout [UInt8]) {
-        writeInt(&buf, lower(value))
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeExternalTextureHandle_lift(_ handle: UInt64) throws -> ExternalTextureHandle {
-    return try FfiConverterTypeExternalTextureHandle.lift(handle)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeExternalTextureHandle_lower(_ value: ExternalTextureHandle) -> UInt64 {
-    return FfiConverterTypeExternalTextureHandle.lower(value)
-}
-
-
-
-
-
-
 public protocol InstanceProtocol: AnyObject, Sendable {
     
     /**
@@ -3067,17 +2961,6 @@ public protocol RendererProtocol: AnyObject, Sendable {
     func createDepthTexture(size: Size) async throws  -> Texture
     
     /**
-     * Wrap a native platform video-frame source as an external texture.
-     * The Web binding accepts an `HTMLVideoElement`; the mobile bindings
-     * take a raw pointer (`u64`) to a `CVPixelBuffer` (iOS) or
-     * `SurfaceTexture` (Android) because uniffi cannot marshal those
-     * types directly. Returns `FragmentColorError::Render` until the
-     * per-platform plumbing converts the native source into a
-     * `wgpu::ExternalTexture`.
-     */
-    func createExternalTexture(sourcePtr: UInt64) throws  -> ExternalTextureHandle
-    
-    /**
      * Allocate a storage-class texture, optionally pre-seeded with `data`.
      * Mirrors the canonical `Renderer::create_storage_texture(impl Into<TextureInput>)`
      * — uniffi can't marshal `impl Into`, so the mobile shim takes the
@@ -3224,25 +3107,6 @@ open func createDepthTexture(size: Size)async throws  -> Texture  {
             liftFunc: FfiConverterTypeTexture_lift,
             errorHandler: FfiConverterTypeFragmentColorError_lift
         )
-}
-    
-    /**
-     * Wrap a native platform video-frame source as an external texture.
-     * The Web binding accepts an `HTMLVideoElement`; the mobile bindings
-     * take a raw pointer (`u64`) to a `CVPixelBuffer` (iOS) or
-     * `SurfaceTexture` (Android) because uniffi cannot marshal those
-     * types directly. Returns `FragmentColorError::Render` until the
-     * per-platform plumbing converts the native source into a
-     * `wgpu::ExternalTexture`.
-     */
-open func createExternalTexture(sourcePtr: UInt64)throws  -> ExternalTextureHandle  {
-    return try  FfiConverterTypeExternalTextureHandle_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
-        uniffiCallStatus in
-    uniffi_fragmentcolor_fn_method_renderer_createexternaltexture(
-            self.uniffiCloneHandle(),
-        FfiConverterUInt64.lower(sourcePtr),uniffiCallStatus
-    )
-})
 }
     
     /**
@@ -8072,7 +7936,9 @@ public func FfiConverterTypeTextureStorageFormat_lower(_ value: TextureStorageFo
 
 
 /**
- * Converts from User Input
+ * A uniform value, as `Shader::get` reads it back.
+ * A helper names it to forward one value to `Shader::set` on several shaders.
+ * It is the plumbing behind `impl Into<UniformData>`, like `ShaderInput`, with no page of its own.
  */
 
 public indirect enum UniformData: Equatable, Hashable {
@@ -9407,9 +9273,6 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_renderer_createdepthtexture() != 43106) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_renderer_createexternaltexture() != 14702) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_renderer_createstoragetexture() != 5214) {

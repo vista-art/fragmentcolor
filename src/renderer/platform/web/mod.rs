@@ -2,8 +2,8 @@ use crate::error::WebError;
 use crate::platforms::web::read_text;
 use crate::texture::{js_to_texture_bytes, read_format, read_texture_input, read_usage};
 use crate::{
-    Mesh, Pass, PassObject, Renderable, Renderer, RendererError, Scene, Shader, Size, Texture,
-    TextureData, TextureTarget, target::CanvasTarget,
+    Mesh, Pass, PassObject, Renderable, Renderer, Scene, Shader, Size, Texture, TextureData,
+    TextureTarget, target::CanvasTarget,
 };
 use js_sys::Array;
 use lsp_doc::lsp_doc;
@@ -177,15 +177,6 @@ impl Renderer {
             let bytes = renderer.read_texture_from(id, start).await?;
             Ok(js_sys::Uint8Array::from(bytes.as_slice()).into())
         })
-    }
-
-    #[wasm_bindgen(js_name = "createExternalTexture")]
-    #[lsp_doc("docs/api/core/renderer/hidden/create_external_texture_js.md")]
-    pub fn create_external_texture_js(
-        &self,
-        video: &web_sys::HtmlVideoElement,
-    ) -> Result<crate::renderer::external_texture::ExternalTextureHandle, RendererError> {
-        self.create_external_texture(video)
     }
 
     #[wasm_bindgen(js_name = "load", unchecked_return_type = "Promise<void>")]

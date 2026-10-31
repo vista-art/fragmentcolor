@@ -49,7 +49,6 @@ mod layout;
 use layout::{Layout, build_module, create_bind_group_layouts, create_pipeline_layout};
 use layout::{PipelineSource, find_entry, pick_source, plan_layout, read_immediate_size};
 pub(crate) mod background;
-mod external_texture;
 pub(crate) mod lights;
 use lights::LightPath;
 mod sampler_pairs;
@@ -429,15 +428,6 @@ impl Renderer {
             .get_texture(&texture_id)
             .ok_or(RendererError::TextureNotFoundError(texture_id))?;
         Ok(crate::texture::copy_pixels(&context, &texture).await?)
-    }
-
-    #[cfg(wasm)]
-    #[lsp_doc("docs/api/web/hidden/external_texture.md")]
-    pub fn create_external_texture(
-        &self,
-        video: &web_sys::HtmlVideoElement,
-    ) -> Result<external_texture::ExternalTextureHandle, RendererError> {
-        external_texture::ExternalTextureHandle::from_video(self, video)
     }
 
     /// Uploads into this Renderer every Material map of `renderable` that it lacks
@@ -1324,9 +1314,11 @@ impl RenderContext {
                 counts,
                 schemas,
                 ..
-            } = match passed {
-                Some(passed) => self.upload_checked(&shader, mesh, passed)?,
-                None => mesh.upload(self)?,
+            } = match &passed {
+                Some(kept) if Arc::ptr_eq(&kept.mesh, mesh) => {
+                    self.upload_checked(&shader, mesh, kept.generation)?
+                }
+                _ => mesh.upload(self)?,
             };
             #[cfg(test)]
             crate::hooks::run("uploaded");
@@ -2674,7 +2666,7 @@ fn require_mesh(shader: &ShaderObject) -> Result<(), ShaderError> {
 }
 
 /// The vertex layouts `shader` reads from `mesh`.
-/// Its buffers follow `schemas`, and it keeps the layouts until it changes
+/// Its buffers follow `schemas`, and the mesh keeps the layouts until it packs again
 /// (`MeshObject::fetch_layouts`). `check_strides` checks them against each device.
 fn vertex_buffer_layouts(
     shader: &crate::ShaderObject,
@@ -4833,6 +4825,84 @@ struct VOut { @builtin(position) pos: vec4<f32>, @location(0) @interpolate(flat)
 
             assert!(is_blue(pixel(&images[0], LEFT)), "opaque");
             assert!(is_blue(pixel(&images[1], LEFT)), "blended");
+        });
+    }
+
+    /// Changes `mesh` at the start of each upload, `left` more times at most.
+    fn churn(mesh: crate::Mesh, uploads: Arc<std::sync::atomic::AtomicUsize>, left: usize) {
+        if left == 0 {
+            return;
+        }
+        crate::hooks::once("upload", move || {
+            uploads.fetch_add(1, Ordering::SeqCst);
+            mesh.set_indices([0, 1, 2]);
+            churn(mesh, uploads, left - 1);
+        });
+    }
+
+    // Story: a quick view whose mesh changes during every upload fails the render
+    // with MeshError::Busy after PREVIEW_TRIES uploads and draws none of them.
+    #[test]
+    fn a_mesh_that_keeps_changing_fails_its_quick_view() {
+        pollster::block_on(async move {
+            use crate::error::Classify;
+            let renderer = Renderer::new();
+            let target = renderer
+                .create_texture_target([8, 8])
+                .await
+                .expect("texture target");
+            let mesh = crate::Mesh::new();
+            mesh.add_vertices([[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]]);
+            let uploads = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+            // Twice the limit, so a loop without one fails here instead of hanging.
+            churn(mesh.clone(), uploads.clone(), 2 * PREVIEW_TRIES);
+
+            let error = renderer
+                .render(&mesh, &target)
+                .expect_err("the mesh never holds still");
+            // The churn left over drops here, not with the thread's storage.
+            crate::hooks::once("upload", || {});
+
+            let busy = crate::mesh::MeshError::Busy(PREVIEW_TRIES);
+            let expected = matches!(&error, RendererError::MeshError(found) if found.to_string() == busy.to_string());
+            assert!(expected, "{error:?}");
+            assert_eq!(
+                uploads.load(Ordering::SeqCst),
+                PREVIEW_TRIES,
+                "one upload per try"
+            );
+            assert_eq!(error.classify().name(), "FragmentColorError");
+        });
+    }
+
+    // Story: the quick view draws only a pack of the state its check passed, so an
+    // instance added during the pack and cleared after it never reaches the frame.
+    #[test]
+    fn the_quick_view_draws_only_a_checked_pack() {
+        pollster::block_on(async move {
+            let (_, device, queue) = create_device_and_queue().await;
+            let ctx = RenderContext::new(device, queue);
+            let mesh = crate::Mesh::new();
+            let corners = [[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]];
+            mesh.add_vertices(
+                corners.map(|corner| crate::Vertex::new(corner).set("color", [1.0; 4])),
+            );
+            // The quick view reads the instance color before the vertex one.
+            mesh.add_instance(crate::Instance::new().set("color", [1.0; 4]));
+            let (added, cleared) = (mesh.clone(), mesh.clone());
+            crate::hooks::once("pack", move || added.add_instance(crate::Instance::new()));
+            crate::hooks::once("packed", move || cleared.clear_instances());
+
+            let draws = ctx.plan_pass(&mesh.pass).expect("the pass plans");
+
+            let MeshDraws::Batched(list) = &draws.shaders[0].draws else {
+                panic!("a batched draw");
+            };
+            assert_eq!(list[0].instances.count, 1, "the drawn instances");
+            assert!(
+                list[0].instances.buffer.is_none(),
+                "no instance buffer after the clear"
+            );
         });
     }
 

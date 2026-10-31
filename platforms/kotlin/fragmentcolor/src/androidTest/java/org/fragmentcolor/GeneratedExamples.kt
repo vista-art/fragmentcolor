@@ -258,15 +258,6 @@ class GeneratedExamples : ExampleCase() {
     }
 
     @Test
-    fun core_renderer_create_external_texture() = example("docs/api/core/renderer/create_external_texture.md") {
-        // Once supported:
-        //   val renderer = Renderer()
-        //   val surfaceTexture: SurfaceTexture = /* from MediaCodec / Camera2 */
-        //   val ptr: ULong = surfaceTexture.nativeHandle()  // hypothetical helper
-        //   val handle = renderer.createExternalTexture(ptr)
-    }
-
-    @Test
     fun core_renderer_create_storage_texture() = example("docs/api/core/renderer/create_storage_texture.md") {
         val r = Renderer()
 

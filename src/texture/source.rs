@@ -14,6 +14,9 @@ pub(crate) struct TextureSource {
     /// Whether `options.format` is a Material slot's hint rather than the caller's pick.
     /// A Mipmap or KTX2 container takes a hint only where its bytes read in it.
     pub(crate) hinted: bool,
+    /// What an error names the source by, such as a glTF image, when a failed upload
+    /// can't say on its own which image it read.
+    pub(crate) label: Option<Arc<str>>,
 }
 
 /// The forms a texture uploads from. Each one holds data.
@@ -36,7 +39,14 @@ impl TextureSource {
             data,
             options,
             hinted: false,
+            label: None,
         }
+    }
+
+    /// This source, which an error from its upload names by `label`.
+    pub(crate) fn named(mut self, label: impl Into<Arc<str>>) -> Self {
+        self.label = Some(label.into());
+        self
     }
 
     /// Takes `format` as a hint where the caller picked no format. An image uploads in it,
