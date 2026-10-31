@@ -1,19 +1,22 @@
-//! `VertexPosition`: a position from one to four numbers, with `w` at 1 when left out.
+//! `VertexPosition`, the `position` attribute that holds it, and the forms it takes:
+//! one to four numbers, with `w` at 1 when left out.
 
 use glam::Vec4;
+
+/// The built-in position attribute, a name no property takes.
+pub(crate) const POSITION: &str = "position";
+
+/// Why vertex `index`, which sets a property named `position`, is refused.
+pub(crate) fn explain_position(index: usize) -> String {
+    format!(
+        "vertex {index} sets a property named '{POSITION}', and a vertex takes its position from Vertex::new"
+    )
+}
 
 /// Vertex position stored as a Vec4, mirroring GPU conventions (xyzw),
 /// with w defaulting to 1.0 when not provided.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct VertexPosition(pub(crate) Vec4);
-
-/// Vertex index stored as a u32
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct _VertexIndex(pub(crate) u32);
-
-/// Instance index stored as a u32
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct _InstanceIndex(pub(crate) u32);
 
 impl From<f32> for VertexPosition {
     fn from(x: f32) -> Self {
@@ -71,6 +74,71 @@ impl From<[u32; 2]> for VertexPosition {
 impl From<[u32; 3]> for VertexPosition {
     fn from(a: [u32; 3]) -> Self {
         VertexPosition::from([a[0] as f32, a[1] as f32, a[2] as f32])
+    }
+}
+
+pub(crate) trait IntoVertexPositionFull {
+    fn into_v4_and_dimensions(self) -> ([f32; 4], u8);
+}
+
+impl IntoVertexPositionFull for [f32; 2] {
+    fn into_v4_and_dimensions(self) -> ([f32; 4], u8) {
+        ([self[0], self[1], 0.0, 1.0], 2)
+    }
+}
+impl IntoVertexPositionFull for [f32; 3] {
+    fn into_v4_and_dimensions(self) -> ([f32; 4], u8) {
+        ([self[0], self[1], self[2], 1.0], 3)
+    }
+}
+impl IntoVertexPositionFull for [f32; 4] {
+    fn into_v4_and_dimensions(self) -> ([f32; 4], u8) {
+        (self, 4)
+    }
+}
+impl IntoVertexPositionFull for (f32, f32) {
+    fn into_v4_and_dimensions(self) -> ([f32; 4], u8) {
+        ([self.0, self.1, 0.0, 1.0], 2)
+    }
+}
+impl IntoVertexPositionFull for (f32, f32, f32) {
+    fn into_v4_and_dimensions(self) -> ([f32; 4], u8) {
+        ([self.0, self.1, self.2, 1.0], 3)
+    }
+}
+impl IntoVertexPositionFull for (f32, f32, f32, f32) {
+    fn into_v4_and_dimensions(self) -> ([f32; 4], u8) {
+        ([self.0, self.1, self.2, self.3], 4)
+    }
+}
+impl IntoVertexPositionFull for [f32; 1] {
+    fn into_v4_and_dimensions(self) -> ([f32; 4], u8) {
+        ([self[0], 0.0, 0.0, 1.0], 1)
+    }
+}
+impl IntoVertexPositionFull for f32 {
+    fn into_v4_and_dimensions(self) -> ([f32; 4], u8) {
+        ([self, 0.0, 0.0, 1.0], 1)
+    }
+}
+impl IntoVertexPositionFull for (u32, u32) {
+    fn into_v4_and_dimensions(self) -> ([f32; 4], u8) {
+        ([self.0 as f32, self.1 as f32, 0.0, 1.0], 2)
+    }
+}
+impl IntoVertexPositionFull for (u32, u32, u32) {
+    fn into_v4_and_dimensions(self) -> ([f32; 4], u8) {
+        ([self.0 as f32, self.1 as f32, self.2 as f32, 1.0], 3)
+    }
+}
+impl IntoVertexPositionFull for [u32; 2] {
+    fn into_v4_and_dimensions(self) -> ([f32; 4], u8) {
+        ([self[0] as f32, self[1] as f32, 0.0, 1.0], 2)
+    }
+}
+impl IntoVertexPositionFull for [u32; 3] {
+    fn into_v4_and_dimensions(self) -> ([f32; 4], u8) {
+        ([self[0] as f32, self[1] as f32, self[2] as f32, 1.0], 3)
     }
 }
 

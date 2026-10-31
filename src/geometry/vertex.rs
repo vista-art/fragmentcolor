@@ -1,6 +1,7 @@
-//! `Vertex` and `Instance`: the values a shader reads per vertex and per instance.
+//! `Vertex`: a position and the named properties a shader reads per vertex.
 
-use super::position::VertexPosition;
+use super::instance::Instance;
+use super::position::{IntoVertexPositionFull, VertexPosition};
 use super::vertex_data::VertexData;
 use lsp_doc::lsp_doc;
 use std::collections::HashMap;
@@ -9,16 +10,6 @@ use std::collections::HashMap;
 use pyo3::prelude::*;
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
-
-/// The built-in position attribute, a name no property takes.
-pub(crate) const POSITION: &str = "position";
-
-/// Why vertex `index`, which sets a property named `position`, is refused.
-pub(crate) fn explain_position(index: usize) -> String {
-    format!(
-        "vertex {index} sets a property named '{POSITION}', and a vertex takes its position from Vertex::new"
-    )
-}
 
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(python, pyclass(from_py_object))]
@@ -31,71 +22,6 @@ pub struct Vertex {
     pub(crate) properties: HashMap<String, VertexData>,
     pub(crate) prop_locations: HashMap<String, u32>,
     pub(crate) next_location: u32,
-}
-
-pub(crate) trait IntoVertexPositionFull {
-    fn into_v4_and_dimensions(self) -> ([f32; 4], u8);
-}
-
-impl IntoVertexPositionFull for [f32; 2] {
-    fn into_v4_and_dimensions(self) -> ([f32; 4], u8) {
-        ([self[0], self[1], 0.0, 1.0], 2)
-    }
-}
-impl IntoVertexPositionFull for [f32; 3] {
-    fn into_v4_and_dimensions(self) -> ([f32; 4], u8) {
-        ([self[0], self[1], self[2], 1.0], 3)
-    }
-}
-impl IntoVertexPositionFull for [f32; 4] {
-    fn into_v4_and_dimensions(self) -> ([f32; 4], u8) {
-        (self, 4)
-    }
-}
-impl IntoVertexPositionFull for (f32, f32) {
-    fn into_v4_and_dimensions(self) -> ([f32; 4], u8) {
-        ([self.0, self.1, 0.0, 1.0], 2)
-    }
-}
-impl IntoVertexPositionFull for (f32, f32, f32) {
-    fn into_v4_and_dimensions(self) -> ([f32; 4], u8) {
-        ([self.0, self.1, self.2, 1.0], 3)
-    }
-}
-impl IntoVertexPositionFull for (f32, f32, f32, f32) {
-    fn into_v4_and_dimensions(self) -> ([f32; 4], u8) {
-        ([self.0, self.1, self.2, self.3], 4)
-    }
-}
-impl IntoVertexPositionFull for [f32; 1] {
-    fn into_v4_and_dimensions(self) -> ([f32; 4], u8) {
-        ([self[0], 0.0, 0.0, 1.0], 1)
-    }
-}
-impl IntoVertexPositionFull for f32 {
-    fn into_v4_and_dimensions(self) -> ([f32; 4], u8) {
-        ([self, 0.0, 0.0, 1.0], 1)
-    }
-}
-impl IntoVertexPositionFull for (u32, u32) {
-    fn into_v4_and_dimensions(self) -> ([f32; 4], u8) {
-        ([self.0 as f32, self.1 as f32, 0.0, 1.0], 2)
-    }
-}
-impl IntoVertexPositionFull for (u32, u32, u32) {
-    fn into_v4_and_dimensions(self) -> ([f32; 4], u8) {
-        ([self.0 as f32, self.1 as f32, self.2 as f32, 1.0], 3)
-    }
-}
-impl IntoVertexPositionFull for [u32; 2] {
-    fn into_v4_and_dimensions(self) -> ([f32; 4], u8) {
-        ([self[0] as f32, self[1] as f32, 0.0, 1.0], 2)
-    }
-}
-impl IntoVertexPositionFull for [u32; 3] {
-    fn into_v4_and_dimensions(self) -> ([f32; 4], u8) {
-        ([self[0] as f32, self[1] as f32, self[2] as f32, 1.0], 3)
-    }
 }
 
 impl Vertex {
@@ -218,62 +144,6 @@ impl PartialEq for Vertex {
     }
 }
 impl Eq for Vertex {}
-
-#[cfg_attr(wasm, wasm_bindgen)]
-#[cfg_attr(python, pyclass(from_py_object))]
-#[cfg_attr(mobile, derive(uniffi::Object))]
-#[derive(Clone, Debug, Default)]
-#[lsp_doc("docs/api/geometry/instance/instance.md")]
-pub struct Instance {
-    pub(crate) properties: HashMap<String, VertexData>,
-    pub(crate) prop_locations: HashMap<String, u32>,
-    pub(crate) next_location: u32,
-}
-
-crate::impl_fc_kind!(Instance, "Instance");
-
-impl Instance {
-    #[lsp_doc("docs/api/geometry/instance/new.md")]
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    #[lsp_doc("docs/api/geometry/instance/set.md")]
-    #[must_use = "set returns the updated Instance"]
-    pub fn set(mut self, key: &str, value: impl Into<VertexData>) -> Self {
-        let k = key.to_string();
-        if !self.prop_locations.contains_key(&k) {
-            self.prop_locations.insert(k.clone(), self.next_location);
-            self.next_location = self.next_location.saturating_add(1);
-        }
-        self.properties.insert(k, value.into());
-        self
-    }
-}
-
-/// An instance from named values, set in key order so attribute locations stay stable.
-impl From<HashMap<String, VertexData>> for Instance {
-    fn from(values: HashMap<String, VertexData>) -> Self {
-        let mut entries: Vec<(String, VertexData)> = values.into_iter().collect();
-        entries.sort_by(|a, b| a.0.cmp(&b.0));
-        entries
-            .into_iter()
-            .fold(Instance::new(), |instance, (key, value)| {
-                instance.set(&key, value)
-            })
-    }
-}
-
-impl From<Vertex> for Instance {
-    fn from(v: Vertex) -> Self {
-        v.create_instance()
-    }
-}
-impl From<&Vertex> for Instance {
-    fn from(v: &Vertex) -> Self {
-        v.create_instance()
-    }
-}
 
 #[cfg(test)]
 mod tests {
