@@ -37,7 +37,7 @@ const MIN_LIGHTS: u64 = 64;
 const MIN_WORDS: u64 = 4096;
 /// Threads per binning workgroup, one per cluster.
 const WORKGROUP: u32 = 64;
-/// The binning shader, which composes after `src/material/light.wgsl`.
+/// The binning shader, which composes after `src/scene/material/light.wgsl`.
 const BINNING: &str = include_str!("binning.wgsl");
 
 /// How a context hands lights to its shaders, picked once per context.
@@ -642,7 +642,7 @@ pub(crate) struct BinningPipeline {
 
 /// The binning module: the light types and constants, then the binning pass.
 fn binning_module() -> Result<naga::Module, crate::ShaderError> {
-    let source = format!("{}\n{}", crate::material::LIGHT, BINNING);
+    let source = format!("{}\n{}", crate::scene::LIGHT, BINNING);
     crate::core::parse_wgsl(&source)
 }
 

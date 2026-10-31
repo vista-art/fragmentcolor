@@ -1,9 +1,4 @@
-//! [`SceneObject`] — a value that can be attached to a [`Pass`](crate::Pass).
-//! [`Model`](crate::Model), [`Camera`](crate::Camera), and
-//! [`Light`](crate::Light) all implement it; together they cover the
-//! three shapes any 3D scene needs (geometry, viewpoint, illumination).
-//! The trait mirrors the glTF / USD node model — every "thing that lives
-//! in a scene" is a node attached to its parent.
+//! `SceneObject`: a value a `Pass` takes, such as a `Model`, a `Camera` or a `Light`.
 //!
 //! Implementors are responsible for whatever bookkeeping makes them part of
 //! the pass — registering themselves in the relevant storage list, applying

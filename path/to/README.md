@@ -10,6 +10,6 @@ real file when the doctests and the Python healthcheck actually run them.
 
 They are committed static assets, not generated at build time. The reference
 builder for the same triangle lives in the `Scene::load` integration tests at
-`src/scene/loader.rs` if the format ever needs to change. The web healthcheck
+`src/scene/loader/mod.rs` if the format ever needs to change. The web healthcheck
 serves its own copy at `platforms/web/healthcheck/public/model.glb`, fetched by
 the JS `Scene.load` override.

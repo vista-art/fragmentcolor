@@ -1716,11 +1716,7 @@ fn an_empty_index_list_draws_nothing() {
             .await
             .expect("texture target");
         let opaque = strip(&red_glow(), -1.0, 1.0);
-        let blended = strip(
-            &red_glow().alpha_mode(crate::material::AlphaMode::Blend),
-            -1.0,
-            1.0,
-        );
+        let blended = strip(&red_glow().alpha_mode(crate::AlphaMode::Blend), -1.0, 1.0);
         let mut images = Vec::new();
         for model in [opaque, blended] {
             model.mesh().set_indices(Vec::new());
@@ -1873,11 +1869,7 @@ fn the_blend_phase_draws_the_planned_buffers() {
             .create_texture_target([SIDE, SIDE])
             .await
             .expect("texture target");
-        let model = strip(
-            &red_glow().alpha_mode(crate::material::AlphaMode::Blend),
-            -1.0,
-            1.0,
-        );
+        let model = strip(&red_glow().alpha_mode(crate::AlphaMode::Blend), -1.0, 1.0);
         let pass = Pass::new("blended");
         pass.set_clear_color(BLUE).expect("set clear color");
         pass.add(&model).expect("add model");
@@ -1921,10 +1913,7 @@ fn models_with_other_layouts_share_a_material() {
             .await
             .expect("texture target");
         let mut images = Vec::new();
-        for material in [
-            red_glow(),
-            red_glow().alpha_mode(crate::material::AlphaMode::Blend),
-        ] {
+        for material in [red_glow(), red_glow().alpha_mode(crate::AlphaMode::Blend)] {
             let pass = Pass::new("layouts");
             pass.set_clear_color(BLUE).expect("set clear color");
             pass.add(&strip(&material, -1.0, -0.2)).expect("add left");

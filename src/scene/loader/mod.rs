@@ -24,8 +24,8 @@ use glam::{Mat4, Quat, Vec3};
 use gltf::Semantic;
 use gltf::accessor::{DataType, Dimensions};
 
-use crate::material::{TextureSlot, UvSet, UvTransform};
 use crate::scene::{Camera, Light, Scene};
+use crate::scene::{TextureSlot, UvSet, UvTransform};
 use crate::texture::{SourceData, TextureSource};
 use crate::{Material, Mesh, Model, TextureOptions};
 
@@ -971,9 +971,9 @@ fn build_material(
         .emissive(gltf_material.emissive_factor())
         .alpha_cutoff(gltf_material.alpha_cutoff().unwrap_or(0.5))
         .alpha_mode(match gltf_material.alpha_mode() {
-            gltf::material::AlphaMode::Opaque => crate::material::AlphaMode::Opaque,
-            gltf::material::AlphaMode::Mask => crate::material::AlphaMode::Mask,
-            gltf::material::AlphaMode::Blend => crate::material::AlphaMode::Blend,
+            gltf::material::AlphaMode::Opaque => crate::AlphaMode::Opaque,
+            gltf::material::AlphaMode::Mask => crate::AlphaMode::Mask,
+            gltf::material::AlphaMode::Blend => crate::AlphaMode::Blend,
         })
         .double_sided(gltf_material.double_sided());
 

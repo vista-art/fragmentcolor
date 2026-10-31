@@ -1,7 +1,7 @@
 //! The depth attachment of a render pass, and how its pipelines use it.
 
+use crate::AlphaMode;
 use crate::core::renderer::{Lease, RenderContext, TextureKey};
-use crate::material::AlphaMode;
 use crate::{PassObject, TextureObject};
 
 /// How a render pipeline uses its pass's depth attachment.

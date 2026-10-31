@@ -856,7 +856,7 @@ struct RenderPipelineKey {
     /// turn blending off, `Blend` flips on standard alpha-over and disables
     /// depth-write. Different modes against the same shader hash therefore
     /// need different pipelines.
-    alpha_mode: crate::material::AlphaMode,
+    alpha_mode: crate::AlphaMode,
     /// `Material::double_sided` flips the `cull_mode` on the primitive
     /// state, so it also baked into the pipeline.
     double_sided: bool,
@@ -1307,7 +1307,7 @@ impl RenderContext {
                 draws: MeshDraws::Fullscreen,
             });
         }
-        let blend = *shader.alpha_mode.read() == crate::material::AlphaMode::Blend;
+        let blend = *shader.alpha_mode.read() == crate::AlphaMode::Blend;
         let shader_ptr = Arc::as_ptr(&shader) as usize;
         let limits = &self.limits;
         let mut layouts: Vec<VertexLayouts> = Vec::new();
@@ -1708,7 +1708,7 @@ impl RenderContext {
             );
             let transform = model_state.transform;
             match alpha_mode {
-                crate::material::AlphaMode::Opaque | crate::material::AlphaMode::Mask => {
+                crate::AlphaMode::Opaque | crate::AlphaMode::Mask => {
                     let m = transform.to_cols_array_2d();
                     let idx = match opaque_groups.iter().position(|(k, _)| *k == key) {
                         Some(i) => i,
@@ -1720,7 +1720,7 @@ impl RenderContext {
                     let slot = &mut opaque_groups[idx].1;
                     slot.extend_from_slice(bytemuck::cast_slice(&m));
                 }
-                crate::material::AlphaMode::Blend => {
+                crate::AlphaMode::Blend => {
                     // Eye-space Z of the mesh's local-space AABB centroid in
                     // world coordinates: `view * transform * vec4(centroid, 1)`.
                     // An elongated translucent mesh centered away from its
@@ -2918,7 +2918,7 @@ fn create_render_pipeline(
     sample_count: u32,
     vertex_layouts: Option<&VertexLayouts>,
     depth: DepthUse,
-    alpha_mode: crate::material::AlphaMode,
+    alpha_mode: crate::AlphaMode,
     double_sided: bool,
     pad_uniforms: bool,
     light_path: LightPath,
@@ -2969,8 +2969,8 @@ fn create_render_pipeline(
                 //   Blend         -> standard SrcAlpha/OneMinusSrcAlpha
                 //                    over-blend.
                 blend: match alpha_mode {
-                    crate::material::AlphaMode::Opaque | crate::material::AlphaMode::Mask => None,
-                    crate::material::AlphaMode::Blend => Some(wgpu::BlendState::ALPHA_BLENDING),
+                    crate::AlphaMode::Opaque | crate::AlphaMode::Mask => None,
+                    crate::AlphaMode::Blend => Some(wgpu::BlendState::ALPHA_BLENDING),
                 },
                 // Custom (non-glTF-MR) blend equations are tracked under
                 // the roadmap's "Custom blending" item — Material's

@@ -27,7 +27,7 @@ use crate::core::share_light;
 use crate::scene::SceneObject;
 
 /// Discriminant for the three light kinds. Wire-compatible with the WGSL
-/// `Light.kind` field in `src/material/light.wgsl`: directional=0, point=1, spot=2.
+/// `Light.kind` field in `src/scene/material/light.wgsl`: directional=0, point=1, spot=2.
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(python, pyo3::pyclass(eq, eq_int, from_py_object))]
 #[cfg_attr(mobile, derive(uniffi::Enum))]

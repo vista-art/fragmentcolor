@@ -184,7 +184,7 @@ impl Shader {
 /// This allows it to be shared between multiple passes and render pipelines.
 ///
 /// `alpha_mode` and `double_sided` are pipeline-state back-references owned
-/// by Material (see `src/material/`). The renderer reads them when building
+/// by Material (see `src/scene/material/`). The renderer reads them when building
 /// a `RenderPipelineKey` so different Material configurations cache to
 /// distinct pipelines. They live here rather than on Material because the
 /// renderer iterates `pass.shaders` (Arc<ShaderObject>) at draw time and
@@ -207,7 +207,7 @@ pub(crate) struct ShaderObject {
     pub(crate) total_bytes: u64,
     pub(crate) pending: DashMap<String, PendingUpdate>,
     pub(crate) meshes: RwLock<Vec<Arc<crate::geometry::MeshObject>>>,
-    pub(crate) alpha_mode: RwLock<crate::material::AlphaMode>,
+    pub(crate) alpha_mode: RwLock<crate::AlphaMode>,
     pub(crate) double_sided: RwLock<bool>,
     /// The `lights` and `light_grid` roots the renderer fills, when the shader declares them.
     pub(crate) light_roots: Option<LightRoots>,
@@ -594,8 +594,8 @@ impl ShaderObject {
 
     /// Set the pipeline-state alpha mode for this shader. Called by
     /// `Material::alpha_mode`; the renderer reads it when building a
-    /// `RenderPipelineKey`. See [`crate::material::AlphaMode`].
-    pub(crate) fn set_alpha_mode(&self, mode: crate::material::AlphaMode) {
+    /// `RenderPipelineKey`. See [`crate::AlphaMode`].
+    pub(crate) fn set_alpha_mode(&self, mode: crate::AlphaMode) {
         *self.alpha_mode.write() = mode;
     }
 
@@ -683,7 +683,7 @@ impl ShaderObject {
             total_bytes,
             pending: DashMap::new(),
             meshes: RwLock::new(Vec::new()),
-            alpha_mode: RwLock::new(crate::material::AlphaMode::default()),
+            alpha_mode: RwLock::new(crate::AlphaMode::default()),
             // Default `double_sided=true` for shaders used directly: this
             // preserves the pre-Material renderer behavior (no back-face
             // cull) for callers who build a Shader without going through

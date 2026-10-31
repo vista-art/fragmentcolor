@@ -6,8 +6,8 @@ use pyo3::prelude::*;
 use crate::Shader;
 use crate::bindings::python::{PyChannels, PyFloat, PyUnsigned};
 use crate::core::{TextureKeywords, py_to_texture_spec};
-use crate::material::{AlphaMode, Material, MaterialError, TextureSlot};
 use crate::texture::{PySamplerOptions, PyTextureSource, PyTextureUsage};
+use crate::{AlphaMode, Material, MaterialError, TextureSlot};
 use crate::{PySize, TextureFormat};
 
 #[pymethods]

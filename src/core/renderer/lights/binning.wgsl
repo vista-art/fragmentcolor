@@ -1,5 +1,5 @@
 // Bins a pass's bounded lights into the clusters of its light grid. Composes
-// after `src/material/light.wgsl`. One thread per cluster: it counts the
+// after `src/scene/material/light.wgsl`. One thread per cluster: it counts the
 // lights whose box holds the cluster and whose sphere reaches it, claims room
 // for their indices, then writes them in ascending order.
 

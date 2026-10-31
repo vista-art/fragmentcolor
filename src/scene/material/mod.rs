@@ -7,7 +7,7 @@
 //! renderer fills them with neutral 1×1 fallbacks at draw time when the
 //! caller hasn't supplied a texture, so a Material that sets no maps still
 //! renders correctly. Each slot samples its own UV set through its own
-//! `KHR_texture_transform` (see the `uv` module). `Material::custom(shader)` wraps an arbitrary
+//! `KHR_texture_transform` (see the `texture_slot` module). `Material::custom(shader)` wraps an arbitrary
 //! `Shader` and reuses the same setter API for any uniform the custom
 //! shader happens to declare under matching paths.
 //!
@@ -32,9 +32,9 @@ use crate::{Shader, TextureInput, UniformData};
 mod alpha_mode;
 pub use alpha_mode::AlphaMode;
 
-mod uv;
-pub use uv::{MaterialError, TextureSlot};
-pub(crate) use uv::{UvSet, UvTransform};
+mod texture_slot;
+pub use texture_slot::{MaterialError, TextureSlot};
+pub(crate) use texture_slot::{UvSet, UvTransform};
 
 mod platform;
 

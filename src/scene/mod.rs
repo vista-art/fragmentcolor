@@ -18,24 +18,26 @@ use pyo3::prelude::*;
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
+use crate::Mesh;
 use crate::core::ShaderObject;
 use crate::geometry::MeshObject;
-use crate::{Material, Mesh};
 
 mod camera;
 mod light;
 mod loader;
-mod object;
+mod material;
 mod platform;
 #[allow(clippy::module_inception)]
 mod scene;
+mod scene_object;
 
 pub use camera::*;
 pub use light::*;
 pub(crate) use light::{GpuLight, LightObject, PassLights, bump_epoch, current_epoch};
 pub use loader::{GltfSource, SceneLoadError, SceneSource};
-pub use object::SceneObject;
+pub use material::*;
 pub use scene::{PassRef, Scene};
+pub use scene_object::SceneObject;
 
 /// Per-Model live state read by the renderer's draw-queue build. Folded
 /// into one lock so the per-frame `build_pass_draws` walk takes a single

@@ -6,8 +6,8 @@ use wasm_bindgen::prelude::*;
 
 use crate::Shader;
 use crate::bindings::web::{describe, read_count, read_flag, read_float, read_vector};
-use crate::material::{AlphaMode, Material, TextureSlot};
 use crate::texture::read_texture_input;
+use crate::{AlphaMode, Material, TextureSlot};
 
 #[wasm_bindgen]
 impl Material {

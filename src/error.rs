@@ -182,7 +182,7 @@ throw_by_class!(
     crate::MeshError,
     crate::ScreenRegionError,
     crate::bindings::numbers::VectorError,
-    crate::material::MaterialError,
+    crate::MaterialError,
     crate::scene::LightError,
     crate::scene::CameraError,
     crate::scene::SceneLoadError,

@@ -1,4 +1,5 @@
-//! The UV source of each texture slot in the built-in PBR shader.
+//! `TextureSlot`, the texture slots of the built-in
+//! PBR shader, and the UV set and transform each one samples through.
 //!
 //! Every slot samples one vertex UV set through its own `KHR_texture_transform`.
 //! The shader keeps them in `material.uv`, an array indexed in `TextureSlot` order.

@@ -19,13 +19,6 @@ pub mod target;
 /// Texture represents an image stored on the GPU that can be sampled in shaders.
 mod texture;
 
-/// # Material Module
-///
-/// Material bundles PBR factors / textures with the Shader that knows how to
-/// shade them. See [Material::pbr](crate::Material::pbr) for the built-in
-/// physically-based default.
-pub mod material;
-
 /// # Scene Module
 ///
 /// Top-level container for the real-world things you render — Models,
@@ -33,7 +26,7 @@ pub mod material;
 /// [Model](crate::Model), [Camera](crate::Camera), and the unified
 /// [Light](crate::Light) type with directional / point / spot
 /// constructors.
-pub mod scene;
+mod scene;
 
 /// # Error module
 ///
@@ -63,7 +56,6 @@ pub use winit_app::*;
 pub use self::core::*;
 pub use error::*;
 pub use geometry::*;
-pub use material::*;
 pub use network::NetworkError;
 pub use scene::*;
 pub use target::*;

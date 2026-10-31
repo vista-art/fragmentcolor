@@ -2,9 +2,9 @@
 //! depth, blending, shader outputs, viewport and dispatch.
 
 use super::texture_conflicts::{TextureUse, UsageScope, Writer};
+use crate::AlphaMode;
 use crate::PassError;
 use crate::core::renderer::{PassDraws, RenderContext, RendererError};
-use crate::material::AlphaMode;
 use crate::texture::{Registration, format_features};
 use crate::{
     PassObject, Renderable, ShaderObject, Target, TargetFrame, TextureObject, UniformData,
