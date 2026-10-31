@@ -2216,8 +2216,8 @@ mod tests {
         bytes
     }
 
-    // Story: a PNG whose pixel data is corrupt names the decoder's reason once,
-    // where the reason was printed again after the text that already held it.
+    // Story: a PNG with corrupt pixel data
+    // names the decoder's reason exactly once in the error.
     #[test]
     fn malformed_images_name_their_reason_once() {
         let mut bytes = encode_png(&DynamicImage::new_rgba8(1, 1));

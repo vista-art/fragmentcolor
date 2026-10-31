@@ -419,9 +419,9 @@ fn zero_region_sides_are_refused() {
     });
 }
 
-// Story: a `ScreenRegion` whose max lies before its min fails the write with the
-// reversed bounds, as Swift's and Kotlin's `writeRegion` do, where it read as a
-// region of width 0 and the error named a size the caller never wrote.
+// Story: as in Swift's and Kotlin's `writeRegion`,
+// a `ScreenRegion` whose max lies before its min fails the write
+// with an error that names the reversed bounds as the caller wrote them.
 #[test]
 fn reversed_screen_regions_are_refused() {
     use fragmentcolor::ScreenRegion;
@@ -454,6 +454,20 @@ fn reversed_screen_regions_are_refused() {
         assert_eq!(
             error.to_string(),
             "a region needs each max past its min, got x from 8 to 2 and y from 0 to 4"
+        );
+        let empty = ScreenRegion {
+            min_x: 2,
+            min_y: 0,
+            max_x: 2,
+            max_y: 4,
+        };
+        let result = texture.write_region(&[0; 4 * 4], empty);
+        assert!(
+            matches!(
+                result,
+                Err(TextureError::Region(ScreenRegionError::Empty { .. }))
+            ),
+            "{result:?}"
         );
         let region = ScreenRegion::new((2, 0), (6, 4)).expect("a region");
         texture

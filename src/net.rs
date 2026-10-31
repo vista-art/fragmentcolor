@@ -13,7 +13,8 @@
 #[cfg(wasm)]
 use wasm_bindgen::JsValue;
 
-/// Single error type for HTTP fetches on every target. `Display` carries a readable message.
+/// The error a native HTTP fetch returns, as readable text.
+/// On the web, `fetch_text` and `fetch_bytes` return the browser's `JsValue` instead.
 #[derive(Debug, thiserror::Error)]
 #[error("{0}")]
 pub struct NetworkError(pub String);

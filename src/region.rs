@@ -723,8 +723,8 @@ mod tests {
         );
     }
 
-    // Story: a viewport from a pair of pairs draws at that origin with that size,
-    // where the pairs read as two corners in any order and `((8, 0), (2, 4))` swapped them.
+    // Story: a pair of pairs reads as origin, then size,
+    // so a viewport of `((8, 0), (2, 4))` covers 2 by 4 pixels from (8, 0).
     #[test]
     fn viewport_pairs_read_origin_and_size() {
         let pass = crate::Pass::new("p");

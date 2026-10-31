@@ -2,11 +2,11 @@
 
 Same as `Texture::write`, but writes into a sub-region of the texture and/or with explicit source data layout.
 
-The `region` argument is required; use `Texture::write` to replace the whole texture. A region with a width, height or depth of 0 is an `InvalidInput` error. It accepts anything convertible into a `TextureRegion`:
+The `region` argument is required; use `Texture::write` to replace the whole texture. An array, tuple or `TextureRegion` with a width, height or depth of 0 is an `InvalidInput` error. It accepts anything convertible into a `TextureRegion`:
 - `[w, h]` / `(w, h)`: a `w` by `h` rectangle at origin `(0, 0, 0)`
 - `[x, y, w, h]` / `(x, y, w, h)`: 2D rectangle
 - `[x, y, z, w, h, d]`: 3D box (for layered or 3D textures)
-- A `ScreenRegion`: its pixel rectangle at `z = 0`, one layer deep. One whose max lies before its min, which a region built field by field can hold, returns `TextureError::Region` with `ScreenRegionError::Reversed`
+- A `ScreenRegion`: its pixel rectangle at `z = 0`, one layer deep. A region built field by field can be invalid: one whose max lies before its min, or with a width or height of 0, returns `TextureError::Region` with `ScreenRegionError::Reversed` or `ScreenRegionError::Empty`
 - A `TextureRegion` constructed explicitly with `.with_stride(...)` / `.with_rows(...)` for advanced data-layout control
 
 ## Notes

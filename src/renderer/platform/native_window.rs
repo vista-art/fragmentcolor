@@ -18,8 +18,8 @@ pub(crate) fn read_size(width: i32, height: i32) -> Result<[u32; 2], Initializat
 mod tests {
     use super::*;
 
-    // Story: a side of 0 becomes 1 pixel and a positive size reads as it is,
-    // while a side below 0 fails, where it wrapped to a huge size.
+    // Story: a side of 0 becomes 1 pixel, a positive size reads as it is,
+    // and a side below 0 fails with an error that names the reported size.
     #[test]
     fn reads_window_sizes() {
         assert_eq!(read_size(0, 0).ok(), Some([1, 1]));
