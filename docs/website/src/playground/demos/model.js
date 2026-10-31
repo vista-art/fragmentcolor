@@ -139,16 +139,16 @@ export function frame(state, renderer, target, time, size, pointer, gesture = { 
 }
 
 // The fish draws into a 16-bit float image, so light brighter than white reaches
-// the tone map, and a depth buffer keeps its far side behind its near side.
-// Neither can change size, so a new canvas size gets new ones, and the fish
-// keeps drawing at the old size until they are ready.
+// the tone map, and a depth texture keeps its far side behind its near side.
+// A new canvas size gets a new pair, and the fish keeps drawing at the old size
+// until they are ready.
 async function fit(state, renderer, size) {
   state.wanted = size;
   const usage = TextureUsage.RENDER_ATTACHMENT | TextureUsage.TEXTURE_BINDING;
   const image = await renderer.createStorageTexture(size, TextureFormat.Rgba16Float, null, usage);
   const depth = await renderer.createDepthTexture(size);
-  // The renderer keeps every texture until it is unregistered. When a newer size
-  // came in during the wait, these two are already out of date.
+  // When a newer size came in during the wait, these two are already out of date.
+  // Unregistering frees them now, where a dropped handle waits for the collector.
   if (state.wanted !== size) {
     renderer.unregisterTexture(image.id());
     renderer.unregisterTexture(depth.id());
@@ -347,8 +347,8 @@ function writeRust({ library, values }) {
     "}",
     "",
     "/// The fish draws into a 16-bit float image, so light brighter than white reaches",
-    "/// the tone map, and a depth buffer keeps its far side behind its near side.",
-    "/// Neither can change size, so a new window size gets new ones.",
+    "/// the tone map, and a depth texture keeps its far side behind its near side.",
+    "/// A new window size gets a new pair.",
     "async fn fit(state: &mut State, renderer: &Renderer, size: [f32; 2]) -> Result<(), Box<dyn Error>> {",
     "    let pixels = [size[0].max(1.0) as u32, size[1].max(1.0) as u32];",
     "    let options = TextureOptions {",
@@ -364,7 +364,7 @@ function writeRust({ library, values }) {
     "    let image = renderer.create_storage_texture(input).await?;",
     "    let depth = renderer.create_depth_texture(pixels).await?;",
     "",
-    "    // The renderer keeps every texture until it is unregistered.",
+    "    // Unregistering frees the old pair now, before its handles go.",
     "    let stale = [state.image.take(), state.depth.take()];",
     "    for old in stale.into_iter().flatten() {",
     "        renderer.unregister_texture(old.id())?;",
@@ -497,8 +497,8 @@ function writePython({ library, values }) {
     "",
     "",
     "# The fish draws into a 16-bit float image, so light brighter than white reaches",
-    "# the tone map, and a depth buffer keeps its far side behind its near side.",
-    "# Neither can change size, so a new canvas size gets new ones.",
+    "# the tone map, and a depth texture keeps its far side behind its near side.",
+    "# A new canvas size gets a new pair.",
     "def fit(state, renderer, size):",
     "    pixels = [max(int(size[0]), 1), max(int(size[1]), 1)]",
     "    usage = TextureUsage.RENDER_ATTACHMENT | TextureUsage.TEXTURE_BINDING",
@@ -507,7 +507,7 @@ function writePython({ library, values }) {
     "    )",
     "    depth = renderer.create_depth_texture(pixels)",
     "",
-    "    # The renderer keeps every texture until it is unregistered.",
+    "    # Unregistering frees the old pair now, before its handles go.",
     "    for old in (state.image, state.depth):",
     "        if old is not None:",
     "            renderer.unregister_texture(old.id())",
@@ -634,23 +634,23 @@ function writeSwift({ library, values }) {
     "        center[2] + reach * cos(state.yaw),",
     "    ]",
     "    let aspect = max(size[0], 1) / height",
-    "    _ = try state.camera.setAspect(aspect).lookAt(eye, center, [0, 1, 0])",
+    "    try state.camera.setAspect(aspect).lookAt(eye, center, [0, 1, 0])",
     "    // Both lights turn with the camera, so the side in view stays lit.",
-    "    _ = try state.key.setDirection(turn(keyDirection, state.yaw))",
-    "    _ = try state.rim.setDirection(turn(rimDirection, state.yaw))",
+    "    try state.key.setDirection(turn(keyDirection, state.yaw))",
+    "    try state.rim.setDirection(turn(rimDirection, state.yaw))",
     "    try renderer.render(state.scene, target)",
     "}",
     "",
     "/// The fish draws into a 16-bit float image, so light brighter than white reaches",
-    "/// the tone map, and a depth buffer keeps its far side behind its near side.",
-    "/// Neither can change size, so a new view size gets new ones.",
+    "/// the tone map, and a depth texture keeps its far side behind its near side.",
+    "/// A new view size gets a new pair.",
     "func fit(_ state: inout State, _ renderer: Renderer, _ size: [Float]) async throws {",
     "    let pixels = [UInt32(max(size[0], 1)), UInt32(max(size[1], 1))]",
     "    let usage = TextureUsage.RENDER_ATTACHMENT | TextureUsage.TEXTURE_BINDING",
     "    let image = try await renderer.createStorageTexture(pixels, .rgba16Float, nil, usage)",
     "    let depth = try await renderer.createDepthTexture(pixels)",
     "",
-    "    // The renderer keeps every texture until it is unregistered.",
+    "    // Unregistering frees the old pair now, before its handles go.",
     "    for old in [state.image, state.depth].compactMap({ $0 }) {",
     "        try renderer.unregisterTexture(old.id())",
     "    }",
@@ -785,8 +785,8 @@ function writeKotlin({ library, values }) {
     "",
     "/**",
     " * The fish draws into a 16-bit float image, so light brighter than white reaches",
-    " * the tone map, and a depth buffer keeps its far side behind its near side.",
-    " * Neither can change size, so a new view size gets new ones.",
+    " * the tone map, and a depth texture keeps its far side behind its near side.",
+    " * A new view size gets a new pair.",
     " */",
     "suspend fun fit(state: State, renderer: Renderer, size: List<Float>) {",
     "    val pixels = listOf(maxOf(size[0].toUInt(), 1u), maxOf(size[1].toUInt(), 1u))",
@@ -794,7 +794,7 @@ function writeKotlin({ library, values }) {
     "    val image = renderer.createStorageTexture(pixels, TextureFormat.RGBA16_FLOAT, usage = usage)",
     "    val depth = renderer.createDepthTexture(pixels)",
     "",
-    "    // The renderer keeps every texture until it is unregistered.",
+    "    // Unregistering frees the old pair now, before its handles go.",
     "    listOfNotNull(state.image, state.depth).forEach { renderer.unregisterTexture(it.id()) }",
     "    state.fish.setTarget(image)",
     "    state.fish.setDepthTarget(depth)",

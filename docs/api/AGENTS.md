@@ -161,10 +161,8 @@ headings of one page that would get the same id.
 
 ## See also
 
-- Project-root `AGENTS.md` — the broader contributor guide.
-- `scripts/convert.rs`, `scripts/kotlin.rs`, `scripts/swift.rs` — the
+- Project-root `AGENTS.md`: the broader contributor guide.
+- `scripts/convert.rs`, `scripts/kotlin.rs`, `scripts/swift.rs`: the
   transpilers that consume what gets written here.
-- `scripts/example.rs` — splits a codefence into Rust's lines and each
+- `scripts/example.rs`: splits a codefence into Rust's lines and each
   language's hidden blocks.
-- `~/.claude/projects/.../memory/transpiler_v2_design.md` — design notes
-  for the next-generation per-language harness scheme.

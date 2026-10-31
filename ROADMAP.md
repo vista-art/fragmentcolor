@@ -52,7 +52,7 @@ Items found while reviewing 0.12.6.
 ### Builds and docs
 
 - [x] Build from read-only sources, so docs.rs documents the crate again (0.12.6)
-- [ ] Confirm a green docs.rs build once 0.12.6 publishes
+- [x] docs.rs builds 0.12.6 green
 - [x] Declare naga's `wgsl-out` feature, which the GLSL path and the WGSL the browser gets use, and `glsl-out`, which `process_overrides` needs (0.12.7)
 - [x] Validation fails on a method without `#[lsp_doc]`, and on a method page whose object has no such method (0.12.6)
 - [x] Fix the dead `Shader::get_bytes` link on the `Renderer::read_storage` page (0.12.6)
@@ -67,7 +67,7 @@ Items found while reviewing 0.12.6.
 
 - [x] JavaScript `renderer.render([...])` records the whole list as one frame, as Rust and Python do, and `renderer.load([...])` loads every item (0.12.6)
 - [ ] A changed storage root uploads only the bytes that changed, where today it uploads the whole root
-- [ ] Compute pipelines take immediates, as render pipelines do
+- [x] Compute pipelines take immediates, as render pipelines do (0.12.7)
 - [x] A shader whose meshes have different vertex layouts gets one pipeline per layout, and meshes with equal layouts share one (0.12.7)
 - [x] Swift and Kotlin `Scene.load` take glTF bytes as well as a path: Swift `Scene.load(_ bytes: Data)` and Kotlin `Scene.load(bytes: ByteArray)`, so the generated examples pass the bytes their comment describes (0.12.6)
 - [ ] The transient MSAA texture survives into a following pass that loads it
@@ -78,9 +78,9 @@ Items found while reviewing 0.12.6.
 - [x] A mesh recounts its instances on every upload, so a mesh whose instance list shrinks stops drawing stale trailing instances (0.12.6)
 - [x] Python raises `FragmentColorError` for renderer and texture errors, as it does for shader errors (0.12.6)
 - [x] `create_target` returns `InitializationError::Error` when the surface reports no formats for the adapter, such as a second canvas on WebGL2 (0.12.6). The case gets its own `InitializationError` variant in 0.13.0, once the error enums are `#[non_exhaustive]`
-- [ ] A shader and mesh pair whose models are all hidden draws nothing. Today it falls back to the mesh's own instance buffer and draws one stray instance with whatever buffer sits in slot 1
+- [x] A shader and mesh pair whose models are all hidden draws nothing, where it drew one stray instance from the mesh's own instance buffer (0.12.7)
 - [ ] `Scene::passes` lists each pass once. Today a member that another member `require`s is listed twice
-- [ ] The glTF loader checks `primitive.mode()` and skips line and point primitives with one warning. Today it reads them as triangles
+- [x] The glTF loader checks `primitive.mode()`: `Scene.load` fails on a primitive drawn as points or lines, where it read them as triangles, and expands triangle strips and fans into lists (0.12.7)
 - [x] Turn on the `gltf` crate's `extras` feature, so `Scene::load` reads files that carry application attributes such as `_ID` (0.12.6). The loader ignores the extras until 0.13.0
 - [x] PBR normals follow the cofactor of the model matrix's upper 3x3, `cross(m1, m2)`, `cross(m2, m0)` and `cross(m0, m1)`, so `Model::scale` with unequal factors lights the way the surfaces face (0.12.7)
 
@@ -103,7 +103,7 @@ These landed in 0.12.6. JavaScript errors and the JavaScript `Shader` constructo
 
 - [ ] Reflect vertex inputs declared through a struct. `VertexInput.docs` in 0.13.0 needs them, since naga keeps no doc comments on function arguments
 - [ ] 16-bit integer shaders (`i16`, `u16` behind `enable wgpu_int16;`) where the adapter supports them, cherry-picked from `v0.13.0-dev` since it adds no call
-- [ ] WGSL parse errors quote the offending source line, cherry-picked from `v0.13.0-dev`. Fields for the line, column and input change `ShaderError::ParseError(String)` and the mobile `FragmentColorError::Shader(String)`, so they wait for 0.13.0
+- [x] A shader naga refuses reports naga's message with the source lines it points at, and the Rust `ShaderError` carries each place as a `SourceLocation` with a line, a column and a length (0.12.7)
 
 ### Internal names
 
@@ -229,7 +229,7 @@ Core holds `Renderer`, the targets, `Shader` with `Pipeline`, `Pass`, `Mesh`, `T
 ### One value conversion and one key grammar for `set`
 
 - [ ] Numbers spread over struct and array keys, in declaration order
-- [ ] Bytes on any key, raw bytes into uniform struct roots included. They must fit the key exactly: the full size of a fixed-size key, or a whole number of elements for a runtime-sized array. Today long input is cut and short input padded with zeros
+- [ ] Bytes on any key, raw bytes into uniform struct roots included. They must fit the key exactly: the full size of a fixed-size key, or a whole number of elements for a runtime-sized array. Today only a storage or immediate root takes bytes, of exactly its size
 - [ ] One key grammar on `Mesh`, `Buffer` and `Shader`. `[7].tint` is one instance, `[200:250].tint` a half-open span and `[200:].tint` runs to the end. `tint` with no index writes every instance and the start value new ones take. `Shader` keys start with the root: `particles[7].pos`, `particles.pos`. Today a key reaches one element at a time (`data.arr[3].field`). `tint`, `pos` and `particles` are example names a shader would declare
 - [ ] A value fills its key exactly: one value, or the span length times the slot size in bytes, and a bare key's one value copies everywhere. `set` never changes a count, an index past the end is a typed error, and instance keys end in a slot name. A bare `get` reads the start value: the identity for a matrix, zero otherwise
 - [x] A value converts by its slot's WGSL type, so a plain `7` fills a `u32` in every language. `Shader::set` converts uniforms, and `Vertex::set` and `Instance::set` values convert when the mesh attaches (0.12.6)

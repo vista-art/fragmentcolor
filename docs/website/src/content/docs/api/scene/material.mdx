@@ -901,10 +901,10 @@ calls `arrayLength` on either root can't run there, and `Renderer::render`
 refuses it with `RendererError::FeatureError` before it takes a frame. Loop to
 `lights.count` instead.
 
-##### The older interface
+##### A fixed-size light array
 
-The 0.12.6 shape is the older interface. It still fills on every device,
-holding up to its own `N` lights, and goes away in 0.13:
+A uniform `LightArray` of a fixed length `N` fills on every device too,
+with up to `N` lights:
 
 ```wgsl
 struct LightArray { count: u32, ambient: vec3<f32>, lights: array<Light, N> }

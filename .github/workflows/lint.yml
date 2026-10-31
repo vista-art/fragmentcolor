@@ -25,14 +25,14 @@ jobs:
         with:
           persist-credentials: false
 
+      # The release's own download script, pinned to the version the workflows were checked with.
       - name: Install actionlint
-        uses: taiki-e/install-action@v2
-        with:
-          tool: actionlint
+        id: actionlint
+        run: bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash) 1.7.12
 
       # actionlint runs shellcheck, which the runner image ships, on every run: block.
       - name: Workflows
-        run: actionlint -color
+        run: ${{ steps.actionlint.outputs.executable }} -color
 
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1

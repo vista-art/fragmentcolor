@@ -233,6 +233,8 @@ ndk-sys = "0.6"
 console_error_panic_hook = "0.1"
 # The wasm-bindgen family moves in step: wasm-bindgen, js-sys, web-sys,
 # wasm-bindgen-futures and wasm-bindgen-test each pin the same wasm-bindgen.
+# Its `JsOption` takes only `undefined` as empty, so platforms/web/patch_glue.mjs
+# hands wgpu 30 `undefined` where WebGPU resolves an error scope or an adapter with `null`.
 wasm-bindgen-futures = "0.4.76"
 wasm-bindgen = "0.2.126"
 console_log = "1"
