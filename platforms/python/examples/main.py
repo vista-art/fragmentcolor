@@ -45,7 +45,6 @@ def run_all():
         ('core/pass/set_viewport.py', 'docs/api/core/pass/set_viewport.md'),
         ('core/renderer/Renderer.py', 'docs/api/core/renderer/renderer.md'),
         ('core/renderer/create_depth_texture.py', 'docs/api/core/renderer/create_depth_texture.md'),
-        ('core/renderer/create_external_texture.py', 'docs/api/core/renderer/create_external_texture.md'),
         ('core/renderer/create_storage_texture.py', 'docs/api/core/renderer/create_storage_texture.md'),
         ('core/renderer/create_target.py', 'docs/api/core/renderer/create_target.md'),
         ('core/renderer/create_texture.py', 'docs/api/core/renderer/create_texture.md'),

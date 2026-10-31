@@ -21,7 +21,6 @@ const EXAMPLES = [
   ['../examples/core/pass/set_viewport.js', 'docs/api/core/pass/set_viewport.md'],
   ['../examples/core/renderer/Renderer.js', 'docs/api/core/renderer/renderer.md'],
   ['../examples/core/renderer/create_depth_texture.js', 'docs/api/core/renderer/create_depth_texture.md'],
-  ['../examples/core/renderer/create_external_texture.js', 'docs/api/core/renderer/create_external_texture.md'],
   ['../examples/core/renderer/create_storage_texture.js', 'docs/api/core/renderer/create_storage_texture.md'],
   ['../examples/core/renderer/create_target.js', 'docs/api/core/renderer/create_target.md'],
   ['../examples/core/renderer/create_texture.js', 'docs/api/core/renderer/create_texture.md'],
