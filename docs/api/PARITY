@@ -79,11 +79,8 @@ docs/api/scene/material/hidden/emissive_source_mobile.md=>docs/api/scene/materia
 # page of its own, docs/api/scene/texture_slot/texture_slot.md, since two
 # methods take it.
 #
-# `LightKind` is what Rust's `Light::kind` returns. JS and Python also export
-# the enum, Swift and Kotlin don't, and `Light.kind()` returns the kind's name
-# as a string ("directional", "point", "spot") in every binding. The values
-# are documented on docs/api/scene/light/kind.md. Returning `LightKind` from
-# every binding is a breaking change, so it waits for 0.13.
+# `LightKind` exists in every binding and is what `Light.kind()` returns.
+# Its three values are documented on docs/api/scene/light/kind.md.
 
 # ---- Old type names kept as deprecated aliases ----
 #

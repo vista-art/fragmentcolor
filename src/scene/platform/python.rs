@@ -297,12 +297,8 @@ impl Light {
 
     #[pyo3(name = "kind")]
     #[lsp_doc("docs/api/scene/light/kind.md")]
-    pub fn kind_py(&self) -> &'static str {
-        match self.kind() {
-            LightKind::Directional => "directional",
-            LightKind::Point => "point",
-            LightKind::Spot => "spot",
-        }
+    pub fn kind_py(&self) -> LightKind {
+        self.kind()
     }
 
     #[pyo3(name = "color")]

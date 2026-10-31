@@ -222,12 +222,8 @@ impl Light {
 
     #[wasm_bindgen(js_name = "kind")]
     #[lsp_doc("docs/api/scene/light/kind.md")]
-    pub fn kind_js(&self) -> String {
-        match self.kind() {
-            LightKind::Directional => "directional".to_string(),
-            LightKind::Point => "point".to_string(),
-            LightKind::Spot => "spot".to_string(),
-        }
+    pub fn kind_js(&self) -> LightKind {
+        self.kind()
     }
 
     #[wasm_bindgen(js_name = "color")]
@@ -565,16 +561,16 @@ fn read_matrix(value: &JsValue) -> Result<[[f32; 4]; 4], WebError> {
                 ));
             }
         };
+    }
+    Ok(matrix)
+}
+
 /// A 4x4 matrix as its four columns, each a `Float32Array` of four, as Rust's `[[f32; 4]; 4]` holds it.
 fn list_columns(matrix: [[f32; 4]; 4]) -> Vec<js_sys::Float32Array> {
     matrix
         .iter()
         .map(|column| js_sys::Float32Array::from(column.as_slice()))
         .collect()
-}
-
-    }
-    Ok(matrix)
 }
 
 /// A matrix of 16 numbers, column after column.

@@ -227,12 +227,8 @@ impl Light {
 
     #[uniffi::method(name = "kind")]
     #[lsp_doc("docs/api/scene/light/kind.md")]
-    pub fn kind_mobile(self: Arc<Self>) -> String {
-        match self.kind() {
-            LightKind::Directional => "directional".to_string(),
-            LightKind::Point => "point".to_string(),
-            LightKind::Spot => "spot".to_string(),
-        }
+    pub fn kind_mobile(self: Arc<Self>) -> LightKind {
+        self.kind()
     }
 
     #[uniffi::method(name = "color")]

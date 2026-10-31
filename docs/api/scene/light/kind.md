@@ -1,9 +1,7 @@
 # Light::kind
 
-Read which kind this Light was constructed as. Returns a `LightKind` value
-(`Directional`, `Point`, or `Spot`). Bindings expose this as a string
-literal (`"directional"`, `"point"`, `"spot"`) so the kind tag round-trips
-the same way it does in glTF's `KHR_lights_punctual`.
+Read which kind this Light was constructed as: a `LightKind` value,
+`Directional`, `Point`, or `Spot`, in every language.
 
 Use this when inspecting a Light built elsewhere (e.g. loaded from a
 glTF scene) to decide which kind-specific setters or getters to call.
