@@ -1454,9 +1454,12 @@ The web build prints to the browser console and starts at `Info`. Raise it to `D
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::{LogLevel, Renderer};
+use fragmentcolor::{LogLevel, Renderer, Shader};
 
+// Log naga's notes while this shader builds, then go back to the usual level.
 Renderer::set_log_level(LogLevel::Debug);
+let shader = Shader::default();
+Renderer::set_log_level(LogLevel::Info);
 `}
 lang="rust"
 />
@@ -1466,9 +1469,12 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { LogLevel, Renderer } from "fragmentcolor";
+import { LogLevel, Renderer, Shader } from "fragmentcolor";
 
+// Log naga's notes while this shader builds, then go back to the usual level.
 Renderer.setLogLevel(LogLevel.Debug);
+const shader = Shader.default();
+Renderer.setLogLevel(LogLevel.Info);
 `}
 lang="js"
 />
@@ -1478,9 +1484,12 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import LogLevel, Renderer
+from fragmentcolor import LogLevel, Renderer, Shader
 
+# Log naga's notes while this shader builds, then go back to the usual level.
 Renderer.set_log_level(LogLevel.Debug)
+shader = Shader.default()
+Renderer.set_log_level(LogLevel.Info)
 `}
 lang="python"
 />
@@ -1492,7 +1501,10 @@ lang="python"
 code={`
 import FragmentColor
 
+// Log naga's notes while this shader builds, then go back to the usual level.
 Renderer.setLogLevel(LogLevel.debug)
+let shader = Shader.default()
+Renderer.setLogLevel(LogLevel.info)
 `}
 lang="swift"
 />
@@ -1504,7 +1516,10 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
+// Log naga's notes while this shader builds, then go back to the usual level.
 Renderer.setLogLevel(LogLevel.DEBUG)
+val shader = Shader.default()
+Renderer.setLogLevel(LogLevel.INFO)
 `}
 lang="kotlin"
 />

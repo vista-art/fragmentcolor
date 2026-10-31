@@ -379,7 +379,10 @@ class GeneratedExamples : ExampleCase() {
 
     @Test
     fun core_renderer_set_log_level() = example("docs/api/core/renderer/set_log_level.md") {
+        // Log naga's notes while this shader builds, then go back to the usual level.
         Renderer.setLogLevel(LogLevel.DEBUG)
+        val shader = Shader.default()
+        Renderer.setLogLevel(LogLevel.INFO)
     }
 
     @Test

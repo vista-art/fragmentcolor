@@ -411,7 +411,10 @@ final class GeneratedExamples: ExampleCase {
 
     func test_core_renderer_set_log_level() async {
         await example("docs/api/core/renderer/set_log_level.md") {
+            // Log naga's notes while this shader builds, then go back to the usual level.
             Renderer.setLogLevel(LogLevel.debug)
+            let shader = Shader.default()
+            Renderer.setLogLevel(LogLevel.info)
         }
     }
 
