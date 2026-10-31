@@ -6447,7 +6447,7 @@ public func FfiConverterTypeFragmentColorError_lower(_ value: FragmentColorError
 
 /**
  * Discriminant for the three light kinds. Wire-compatible with the WGSL
- * `Light.kind` field in `src/material/light.wgsl`: directional=0, point=1, spot=2.
+ * `Light.kind` field in `src/scene/material/light.wgsl`: directional=0, point=1, spot=2.
  */
 
 public enum LightKind: UInt32, Equatable, Hashable {
@@ -9348,217 +9348,157 @@ private let initializationResult: InitializationResult = {
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_material_alphacutoff() != 29721) {
+    if (uniffi_fragmentcolor_checksum_method_pass_add() != 25095) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_material_alphamode() != 29084) {
+    if (uniffi_fragmentcolor_checksum_method_pass_addmesh() != 47938) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_material_basecolor() != 31598) {
+    if (uniffi_fragmentcolor_checksum_method_pass_addshader() != 4217) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_material_basecolorsource() != 62897) {
+    if (uniffi_fragmentcolor_checksum_method_pass_iscompute() != 41172) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_material_basecolortexture() != 33368) {
+    if (uniffi_fragmentcolor_checksum_method_pass_loadprevious() != 11954) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_material_doublesided() != 36719) {
+    if (uniffi_fragmentcolor_checksum_method_pass_name() != 3669) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_material_emissive() != 10867) {
+    if (uniffi_fragmentcolor_checksum_method_pass_require() != 35916) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_material_emissivesource() != 64397) {
+    if (uniffi_fragmentcolor_checksum_method_pass_setclearcolor() != 58043) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_material_emissivetexture() != 12572) {
+    if (uniffi_fragmentcolor_checksum_method_pass_setcomputedispatch() != 22888) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_material_metallic() != 54731) {
+    if (uniffi_fragmentcolor_checksum_method_pass_setdepthtarget() != 8820) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_material_metallicroughnesssource() != 40890) {
+    if (uniffi_fragmentcolor_checksum_method_pass_setdepthtexture() != 46789) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_material_metallicroughnesstexture() != 53146) {
+    if (uniffi_fragmentcolor_checksum_method_pass_settarget() != 12322) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_material_normalscale() != 21579) {
+    if (uniffi_fragmentcolor_checksum_method_pass_settargettexture() != 7266) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_material_normalsource() != 31293) {
+    if (uniffi_fragmentcolor_checksum_method_pass_setviewport() != 19832) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_material_normaltexture() != 24320) {
+    if (uniffi_fragmentcolor_checksum_method_renderer_createdepthtexture() != 57765) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_material_occlusionsource() != 23702) {
+    if (uniffi_fragmentcolor_checksum_method_renderer_createstoragetexture() != 24062) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_material_occlusionstrength() != 7530) {
+    if (uniffi_fragmentcolor_checksum_method_renderer_createtexture() != 25288) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_material_occlusiontexture() != 57329) {
+    if (uniffi_fragmentcolor_checksum_method_renderer_createtexturetarget() != 63315) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_material_roughness() != 63414) {
+    if (uniffi_fragmentcolor_checksum_method_renderer_load() != 44570) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_material_shader() != 3459) {
+    if (uniffi_fragmentcolor_checksum_method_renderer_readstorage() != 16997) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_material_texturetransform() != 4369) {
+    if (uniffi_fragmentcolor_checksum_method_renderer_readtexture() != 32882) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_material_textureuv() != 10868) {
+    if (uniffi_fragmentcolor_checksum_method_renderer_render() != 30226) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_material_uvtransform() != 378) {
+    if (uniffi_fragmentcolor_checksum_method_renderer_unregistertexture() != 23131) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_mesh_addinstance() != 26345) {
+    if (uniffi_fragmentcolor_checksum_method_renderer_createtarget() != 18989) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_mesh_addinstances() != 15548) {
+    if (uniffi_fragmentcolor_checksum_method_shader_addmesh() != 27527) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_mesh_addvertex() != 39036) {
+    if (uniffi_fragmentcolor_checksum_method_shader_clearmeshes() != 55933) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_mesh_addvertices() != 7740) {
+    if (uniffi_fragmentcolor_checksum_method_shader_fetch() != 13169) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_mesh_clearindices() != 2137) {
+    if (uniffi_fragmentcolor_checksum_method_shader_fetchcompose() != 23567) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_mesh_clearinstances() != 38224) {
+    if (uniffi_fragmentcolor_checksum_method_shader_get() != 64321) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_mesh_setindices() != 12046) {
+    if (uniffi_fragmentcolor_checksum_method_shader_iscompute() != 665) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_mesh_setinstancecount() != 19726) {
+    if (uniffi_fragmentcolor_checksum_method_shader_listkeys() != 1329) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_quad_getmesh() != 50418) {
+    if (uniffi_fragmentcolor_checksum_method_shader_listuniforms() != 43706) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_instance_set() != 20798) {
+    if (uniffi_fragmentcolor_checksum_method_shader_removemesh() != 30403) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_vertex_createinstance() != 31105) {
+    if (uniffi_fragmentcolor_checksum_method_shader_removemeshes() != 60481) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_vertex_set() != 50075) {
+    if (uniffi_fragmentcolor_checksum_method_shader_set() != 32852) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_pass_add() != 4541) {
+    if (uniffi_fragmentcolor_checksum_method_shader_validatemesh() != 39812) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_pass_addmesh() != 3682) {
+    if (uniffi_fragmentcolor_checksum_method_mesh_addinstance() != 53644) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_pass_addshader() != 42375) {
+    if (uniffi_fragmentcolor_checksum_method_mesh_addinstances() != 59080) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_pass_iscompute() != 10190) {
+    if (uniffi_fragmentcolor_checksum_method_mesh_addvertex() != 58142) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_pass_loadprevious() != 11703) {
+    if (uniffi_fragmentcolor_checksum_method_mesh_addvertices() != 65406) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_pass_name() != 54036) {
+    if (uniffi_fragmentcolor_checksum_method_mesh_clearindices() != 34430) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_pass_require() != 26754) {
+    if (uniffi_fragmentcolor_checksum_method_mesh_clearinstances() != 57472) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_pass_setclearcolor() != 51774) {
+    if (uniffi_fragmentcolor_checksum_method_mesh_setindices() != 51794) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_pass_setcomputedispatch() != 14571) {
+    if (uniffi_fragmentcolor_checksum_method_mesh_setinstancecount() != 6275) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_pass_setdepthtarget() != 17216) {
+    if (uniffi_fragmentcolor_checksum_method_quad_getmesh() != 32581) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_pass_setdepthtexture() != 62254) {
+    if (uniffi_fragmentcolor_checksum_method_instance_set() != 38756) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_pass_settarget() != 44915) {
+    if (uniffi_fragmentcolor_checksum_method_vertex_createinstance() != 28229) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_pass_settargettexture() != 11684) {
+    if (uniffi_fragmentcolor_checksum_method_vertex_set() != 8037) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_pass_setviewport() != 57239) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_renderer_createdepthtexture() != 43106) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_renderer_createstoragetexture() != 5214) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_renderer_createtexture() != 57813) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_renderer_createtexturetarget() != 43834) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_renderer_load() != 27451) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_renderer_readstorage() != 45648) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_renderer_readtexture() != 50739) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_renderer_render() != 24508) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_renderer_unregistertexture() != 64082) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_renderer_createtarget() != 51357) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_model_material() != 3603) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_model_mesh() != 29004) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_model_rotate() != 39850) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_model_scale() != 9650) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_model_settransform() != 34132) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_model_setvisible() != 57873) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_model_transform() != 51764) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_model_translate() != 28577) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_model_visible() != 27855) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_camera_lookat() != 44037) {
+    if (uniffi_fragmentcolor_checksum_method_camera_lookat() != 16399) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_camera_position() != 27841) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_camera_setaspect() != 61981) {
+    if (uniffi_fragmentcolor_checksum_method_camera_setaspect() != 2415) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_camera_viewproj() != 60984) {
@@ -9588,52 +9528,148 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_light_range() != 15787) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_light_setcolor() != 28873) {
+    if (uniffi_fragmentcolor_checksum_method_light_setcolor() != 52736) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_light_setconeangles() != 58811) {
+    if (uniffi_fragmentcolor_checksum_method_light_setconeangles() != 60352) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_light_setdirection() != 6434) {
+    if (uniffi_fragmentcolor_checksum_method_light_setdirection() != 63053) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_light_setintensity() != 10170) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_light_setposition() != 42495) {
+    if (uniffi_fragmentcolor_checksum_method_light_setposition() != 2362) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_light_setrange() != 43238) {
+    if (uniffi_fragmentcolor_checksum_method_light_setrange() != 36516) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_scene_add() != 13250) {
+    if (uniffi_fragmentcolor_checksum_method_material_alphacutoff() != 31095) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_scene_addpass() != 14901) {
+    if (uniffi_fragmentcolor_checksum_method_material_alphamode() != 6741) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_scene_addto() != 7885) {
+    if (uniffi_fragmentcolor_checksum_method_material_basecolor() != 12809) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_scene_ambient() != 40778) {
+    if (uniffi_fragmentcolor_checksum_method_material_basecolorsource() != 44087) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_material_basecolortexture() != 49707) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_material_doublesided() != 4795) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_material_emissive() != 2618) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_material_emissivesource() != 51079) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_material_emissivetexture() != 48836) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_material_metallic() != 49634) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_material_metallicroughnesssource() != 51374) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_material_metallicroughnesstexture() != 61346) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_material_normalscale() != 63544) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_material_normalsource() != 50376) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_material_normaltexture() != 64640) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_material_occlusionsource() != 54376) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_material_occlusionstrength() != 62867) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_material_occlusiontexture() != 16407) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_material_roughness() != 47595) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_material_shader() != 47089) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_material_texturetransform() != 30264) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_material_textureuv() != 22461) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_material_uvtransform() != 1397) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_model_material() != 8864) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_model_mesh() != 40171) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_model_rotate() != 4748) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_model_scale() != 19237) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_model_settransform() != 19732) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_model_setvisible() != 57873) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_model_transform() != 51764) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_model_translate() != 44476) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_model_visible() != 27855) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_scene_add() != 15900) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_scene_addpass() != 18750) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_scene_addto() != 12927) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_scene_ambient() != 33573) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_scene_cameras() != 10018) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_scene_findpass() != 61567) {
+    if (uniffi_fragmentcolor_checksum_method_scene_findpass() != 48227) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_scene_getpass() != 13717) {
+    if (uniffi_fragmentcolor_checksum_method_scene_getpass() != 21319) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_scene_lights() != 47895) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_scene_listpasses() != 29631) {
+    if (uniffi_fragmentcolor_checksum_method_scene_listpasses() != 45273) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_scene_models() != 45076) {
+    if (uniffi_fragmentcolor_checksum_method_scene_models() != 62587) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_scene_nodefaultcamera() != 58108) {
@@ -9645,7 +9681,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_scene_nodefaults() != 63857) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_scene_removepass() != 35828) {
+    if (uniffi_fragmentcolor_checksum_method_scene_removepass() != 17406) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_scene_setdefaultcamera() != 26204) {
@@ -9654,64 +9690,28 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_scene_setdefaultlight() != 47600) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_scene_setpasses() != 10864) {
+    if (uniffi_fragmentcolor_checksum_method_scene_setpasses() != 7841) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_shader_addmesh() != 8237) {
+    if (uniffi_fragmentcolor_checksum_method_texturetarget_getimage() != 51023) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_shader_clearmeshes() != 28200) {
+    if (uniffi_fragmentcolor_checksum_method_texturetarget_resize() != 42766) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_shader_fetch() != 58090) {
+    if (uniffi_fragmentcolor_checksum_method_texturetarget_size() != 38170) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_shader_fetchcompose() != 49163) {
+    if (uniffi_fragmentcolor_checksum_method_texturetarget_texture() != 60188) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_shader_get() != 35343) {
+    if (uniffi_fragmentcolor_checksum_method_windowtarget_getimage() != 10940) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_shader_iscompute() != 2250) {
+    if (uniffi_fragmentcolor_checksum_method_windowtarget_resize() != 29941) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_shader_listkeys() != 14574) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_shader_listuniforms() != 53327) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_shader_removemesh() != 20522) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_shader_removemeshes() != 20268) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_shader_set() != 8819) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_shader_validatemesh() != 2752) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_texturetarget_getimage() != 24276) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_texturetarget_resize() != 23205) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_texturetarget_size() != 13445) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_texturetarget_texture() != 22004) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_windowtarget_getimage() != 57956) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_windowtarget_resize() != 19729) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_windowtarget_size() != 26325) {
+    if (uniffi_fragmentcolor_checksum_method_windowtarget_size() != 30921) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_mipmap_count() != 17756) {
@@ -9720,124 +9720,124 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_mipmap_format() != 21775) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_mipmap_level() != 51419) {
+    if (uniffi_fragmentcolor_checksum_method_mipmap_level() != 31084) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_mipmap_levels() != 15349) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_mipmap_size() != 10538) {
+    if (uniffi_fragmentcolor_checksum_method_mipmap_size() != 31406) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_texture_aspect() != 39032) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_texture_getimage() != 65145) {
+    if (uniffi_fragmentcolor_checksum_method_texture_getimage() != 42326) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_texture_id() != 15416) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_texture_resize() != 42509) {
+    if (uniffi_fragmentcolor_checksum_method_texture_resize() != 12108) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_texture_setsampleroptions() != 5358) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_texture_size() != 35978) {
+    if (uniffi_fragmentcolor_checksum_method_texture_size() != 9241) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_texture_write() != 15815) {
+    if (uniffi_fragmentcolor_checksum_method_texture_write() != 36263) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_texture_writeregion() != 22138) {
+    if (uniffi_fragmentcolor_checksum_method_texture_writeregion() != 35617) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_constructor_material_custom() != 28686) {
+    if (uniffi_fragmentcolor_checksum_constructor_pass_compute() != 40769) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_constructor_material_pbr() != 7718) {
+    if (uniffi_fragmentcolor_checksum_constructor_pass_fromshader() != 42242) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_constructor_mesh_fromvertices() != 53986) {
+    if (uniffi_fragmentcolor_checksum_constructor_pass_new() != 27376) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_constructor_mesh_new() != 39851) {
+    if (uniffi_fragmentcolor_checksum_constructor_renderer_new() != 31433) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_constructor_quad_new() != 40775) {
+    if (uniffi_fragmentcolor_checksum_constructor_renderer_useloglevel() != 60184) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_constructor_instance_new() != 41358) {
+    if (uniffi_fragmentcolor_checksum_constructor_shader_compose() != 6100) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_constructor_vertex_new() != 62704) {
+    if (uniffi_fragmentcolor_checksum_constructor_shader_default() != 62478) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_constructor_vertex_pbr() != 63949) {
+    if (uniffi_fragmentcolor_checksum_constructor_shader_frommesh() != 31450) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_constructor_pass_compute() != 50670) {
+    if (uniffi_fragmentcolor_checksum_constructor_shader_fromvertex() != 7997) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_constructor_pass_fromshader() != 52942) {
+    if (uniffi_fragmentcolor_checksum_constructor_shader_new() != 63383) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_constructor_pass_new() != 53820) {
+    if (uniffi_fragmentcolor_checksum_constructor_shader_useregistry() != 31433) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_constructor_renderer_new() != 32881) {
+    if (uniffi_fragmentcolor_checksum_constructor_mesh_fromvertices() != 43124) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_constructor_renderer_useloglevel() != 63316) {
+    if (uniffi_fragmentcolor_checksum_constructor_mesh_new() != 62494) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_constructor_model_new() != 51565) {
+    if (uniffi_fragmentcolor_checksum_constructor_quad_new() != 28561) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_constructor_camera_orthographic() != 49241) {
+    if (uniffi_fragmentcolor_checksum_constructor_instance_new() != 18404) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_constructor_camera_perspective() != 55968) {
+    if (uniffi_fragmentcolor_checksum_constructor_vertex_new() != 2336) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_constructor_light_directional() != 7479) {
+    if (uniffi_fragmentcolor_checksum_constructor_vertex_pbr() != 58205) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_constructor_light_point() != 36893) {
+    if (uniffi_fragmentcolor_checksum_constructor_camera_orthographic() != 44511) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_constructor_light_spot() != 35903) {
+    if (uniffi_fragmentcolor_checksum_constructor_camera_perspective() != 13367) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_constructor_scene_load() != 32448) {
+    if (uniffi_fragmentcolor_checksum_constructor_light_directional() != 37985) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_constructor_scene_loadbytes() != 11591) {
+    if (uniffi_fragmentcolor_checksum_constructor_light_point() != 1831) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_constructor_light_spot() != 283) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_constructor_material_custom() != 61628) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_constructor_material_pbr() != 11068) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_constructor_model_new() != 48420) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_constructor_scene_load() != 40723) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_constructor_scene_loadbytes() != 40461) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_constructor_scene_new() != 58352) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_constructor_shader_compose() != 22610) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_constructor_shader_default() != 8333) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_constructor_shader_frommesh() != 51780) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_constructor_shader_fromvertex() != 47937) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_constructor_shader_new() != 55745) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_constructor_shader_useregistry() != 15008) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_constructor_mipmap_build() != 27441) {
+    if (uniffi_fragmentcolor_checksum_constructor_mipmap_build() != 49197) {
         return InitializationResult.apiChecksumMismatch
     }
 
