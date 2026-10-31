@@ -235,6 +235,7 @@ console_error_panic_hook = "0.1"
 # wasm-bindgen-futures and wasm-bindgen-test each pin the same wasm-bindgen.
 # Its `JsOption` takes only `undefined` as empty, so platforms/web/patch_glue.mjs
 # hands wgpu 30 `undefined` where WebGPU resolves an error scope or an adapter with `null`.
+# Drop that rewrite once a wgpu release carries gfx-rs/wgpu#10039 (see ROADMAP.md).
 wasm-bindgen-futures = "0.4.76"
 wasm-bindgen = "0.2.126"
 console_log = "1"
