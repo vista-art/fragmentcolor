@@ -138,6 +138,7 @@
 - `Model.set_transform` raises `InvalidInputError` for a matrix that isn't 16 numbers or 4 columns of 4, naming the call and the column, where pyo3 raised a `TypeError` about a failed enum. A string or a `bool` raises `TypeError`.
 - The type stub takes what the bindings take. A parameter hinted `int` is `SupportsIndex` and one hinted `float` is `SupportsFloat`, so NumPy scalars such as `np.uint32` and `np.float32` fit. A list of ints also takes an integer ndarray, and a color or vector a float or integer ndarray other than the uint8 and bool arrays its reader refuses, so pyright no longer rejects calls that run, such as `Light.point(np.zeros(3), [1, 1, 1])` or `Pass.set_compute_dispatch(np.uint32(64), 1, 1)`, and turns away a uint8 array the call would refuse. A texture source also takes an `os.PathLike`, such as a `pathlib.Path`, which `create_texture` and the Material setters read and the stub left out.
 - A size's fields come in any mapping, as the stub's `Mapping` hint says, such as a `collections.UserDict` or a `types.MappingProxyType`, where only a dict worked and a `UserDict` raised `TypeError`.
+- The type stub says that `CameraError`, `LightError` and `MaterialError` are also `ValueError`s, and `SceneLoadError` a `RuntimeError`, as they are at run time, so a type checker accepts an `except ValueError` that catches them.
 
 ### Swift
 
@@ -149,6 +150,7 @@
 - A list of integer literals compiles wherever a `[Float]` or `[Double]` list goes, such as `setClearColor([0, 0, 0, 1])`, `Light.point([0, 2, 0], [1, 1, 1])` and `model.translate([0, 1, 0])`, and takes the `[Float]` overload. With both overloads to pick from, the colors and vectors of `Light`, `Scene`, `Material`, `Model`, `Camera` and `Mesh` failed to compile with "ambiguous use".
 - The `Camera`, `Light` and `Material` setters that return their receiver, such as `lookAt`, `setAspect` and `setDirection`, are `@discardableResult`, as `Scene` and `Pass` were. A per-frame update no longer needs `_ =` in front.
 - A hidden window's frame throws `FragmentColorError.Occluded`, as Python raises `OccludedSurfaceError`, so a render loop can skip the frame without reading the message. It threw `FragmentColorError.Render` with the text.
+- `Model.setTransform` with a nested list throws `FragmentColorError` unless it holds 4 columns of 4 numbers, naming the column, as JavaScript and Python do, and a `[[Double]]` matrix refuses NaN, an infinity and a number past the `Float` range.
 
 ### Kotlin
 
@@ -156,6 +158,7 @@
 - `setClearColor` takes a `FloatArray`, a `DoubleArray` and a `List<Double>` as well as a `List<Float>`, the forms every other color setter takes.
 - A hidden window's frame throws `FragmentColorException.Occluded`, as Python raises `OccludedSurfaceError`, so a render loop can skip the frame without reading the message. It threw `FragmentColorException.Render` with the text.
 - `Renderer.createTarget(surface)` throws `FragmentColorException.Init`, naming the size, when the window reports a width or height below 0, as `ANativeWindow_getWidth` and `getHeight` do on failure. Its text starts with `Initialization error:`, as the iOS refusal of a bad drawable size does. The negative side wrapped to a huge size and failed later with a size error that named the wrong number.
+- `Model.setTransform` with a nested list throws `FragmentColorException` unless it holds 4 columns of 4 numbers, naming the column, as JavaScript and Python do, and a `List<List<Double>>` matrix refuses NaN, an infinity and a number past the `Float` range.
 
 ### Docs and generated examples
 
@@ -167,6 +170,7 @@
 ### Packaging
 
 - `wasm-bindgen` is no longer pinned to 0.2.118. The bridge that reads a FragmentColor class from a JavaScript value goes through wasm-bindgen's public `TryFromJsValue`, where it named the internal ABI that 0.2.126 changed, and the `wasm-bindgen`, `js-sys`, `web-sys`, `wasm-bindgen-futures` and `wasm-bindgen-test` family moves in step from 0.2.126. Each class gains a hidden `__fc_share` method that the bridge reads.
+- The `naga` dependency declares the `wgsl-out` feature that FragmentColor writes WGSL with, where it relied on wgpu to turn the feature on.
 
 ### Breaking and behavior changes
 
@@ -280,6 +284,12 @@
 - A KTX2 file with more mip levels than its size holds fails to load.
 - A `Light` stops lighting once nothing holds it. A `Pass` and a `Scene` hold the lights added to them, so `scene.add(&light)` keeps lighting after the handle drops, but a shader no longer keeps a light it was given after its passes, scenes and handles are gone.
 - A `Material::custom` shader that declared `uv_offset`, `uv_scale` and `uv_rotation` in its `material` struct no longer gets them from `uv_transform`. `uv_transform`, `texture_transform` and `texture_uv` write `material.uv`, an array of five `TextureUv` entries whose declaration the `Material::custom` docs show, and log a warning for a shader that lacks it.
+- `Model.transform()` and `Camera.viewProj()` return four columns of four numbers in JavaScript, Swift and Kotlin, as Rust's `[[f32; 4]; 4]` and Python's list of lists do, where they returned the 16 numbers in one flat list. Each JavaScript column is a `Float32Array`. `transform()[3]` holds the translation.
+- `Mipmap::size` returns a `Size` with no depth in Rust and Python, as JavaScript, Swift and Kotlin do, where it returned a `(width, height)` tuple.
+- `Light.kind()` returns a `LightKind` in JavaScript, Python, Swift and Kotlin, as in Rust, where it returned the kind's name as a string. Swift and Kotlin gain the `LightKind` enum.
+- JavaScript's free function `set_log_level('debug')` is `Renderer.setLogLevel(LogLevel.Debug)`, a static method that takes the new `LogLevel` enum, so the public API has no free function. Every language has it: `Renderer::set_log_level` in Rust, `Renderer.set_log_level` in Python and `Renderer.setLogLevel` in Swift and Kotlin. A level that isn't a `LogLevel` throws, where an unknown string read as `info`.
+- `Color::from_css` and `Color::from_hex` return `ColorError::Css { text, reason }`, where they returned csscolorparser's `ParseColorError`, so the public API names no csscolorparser type. `ColorError` also gains `NotFinite { channel, value }`, the error inside `PassError::Color` for a clear color channel that is NaN or infinite.
+- `TextureError` gains `FixedSize`, which `Texture.resize` returns for a texture without `RENDER_ATTACHMENT` usage, one no pass can draw into.
 
 ## 0.12.6: Binding and renderer fixes
 
