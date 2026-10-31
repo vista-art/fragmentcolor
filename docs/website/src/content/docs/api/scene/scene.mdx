@@ -92,18 +92,24 @@ Build a `Scene` from a serialized 3D file. Pass a **path** (`.gltf` or `.glb`)
 or in-memory **`.glb` bytes** straight to `Scene::load`. The format is
 inferred from the input, so there's nothing extra to name.
 
-`Scene::load` is synchronous and takes no `Renderer`. Each image the parser
-finds decodes once, and every texture slot that reads it becomes a map of
-those pixels on the resulting Materials.
-[`Renderer::load`](/api/core/renderer#load) uploads
-a copy of each map into that `Renderer`, so the Scene draws with every
-`Renderer` that loads it. On native targets the first render runs it for
-you; on the web, await it in each `Renderer` before its first render.
+`Scene::load` is synchronous and takes no `Renderer`. Each image stays as
+the file holds it, and every texture slot that reads it becomes a map of
+that one source on the resulting Materials.
+[`Renderer::load`](/api/core/renderer#load) decodes
+and uploads a copy of each map into that `Renderer`, so the Scene draws with
+every `Renderer` that loads it. On native targets the first render runs it
+for you; on the web, await it in each `Renderer` before its first render.
 
-The Materials keep each decoded image, `width × height × 4` bytes of RGBA8,
-for as long as a slot holds its map, so a 4096×4096 image keeps 64 MiB in
-RAM beside its copy on each GPU. The Material page's Memory section lists
-what each kind of source keeps.
+The Materials keep each image encoded for as long as a slot holds its map:
+an image inside a `.glb` or a data URI keeps its file bytes, and an image in
+a file beside a `.gltf` keeps only its path, which each `Renderer` reads
+again. A scene keeps about its file's size in RAM beside its copy on each
+GPU. The Material page's Memory section lists what each kind of source keeps.
+
+`Scene::load` reads each image's header, its format and its size, and fails
+with `SceneLoadError::Invalid`, naming the image, for one it can't read. A
+corrupt image body loads with the scene and fails at the first `load` into
+a `Renderer`, with an error that names the image.
 
 The loader reads static glTF: mesh primitives (`POSITION`, `NORMAL`,
 `TEXCOORD_0`, `TEXCOORD_1`, `COLOR_0`, `TANGENT` and indices), PBR-MR

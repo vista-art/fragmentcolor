@@ -552,8 +552,9 @@ texture renders correctly under the factor alone.
 #### Memory
 
 A map holds its source for as long as the slot keeps it. That is the file's
-bytes for an encoded PNG or JPEG, the pixels for raw bytes, a NumPy array or
-a glTF image, the container for KTX2, and the chain for a `Mipmap`. A path or
+bytes for an encoded PNG or JPEG, a glTF image inside its file included, the
+pixels for raw bytes or a NumPy array, the container for KTX2, and the chain
+for a `Mipmap`. A path or
 a URL holds only its string, and each `Renderer` reads or fetches it again.
 `renderer.create_texture` keeps nothing on the CPU, and the texture it returns
 draws in that one `Renderer`.
