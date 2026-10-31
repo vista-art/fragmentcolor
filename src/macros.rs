@@ -114,37 +114,49 @@ macro_rules! impl_tryfrom_tryinto_with_refs {
     };
 }
 
-// One-liner for WASM: implement TryFrom<&JsValue> via __wbg_ptr anchor clone for wasm_bindgen types.
+// One-liner for WASM: implement TryFrom<&JsValue> for a wasm_bindgen class through
+// wasm-bindgen's public `TryFromJsValue`. That trait takes the JS object it reads, so the
+// class hands out a fresh handle to a clone, `__fc_share`, and the bridge takes that one.
+// The caller's object stays usable, and no wasm-bindgen ABI detail is named here.
 #[macro_export]
 macro_rules! impl_tryfrom_js_ref_anchor {
-    ($t:ty, $err:ty, $name:expr) => {
+    ($t:ty, $err:ty, $class:ident) => {
+        #[cfg(wasm)]
+        #[wasm_bindgen::prelude::wasm_bindgen(js_class = $class)]
+        impl $t {
+            #[doc(hidden)]
+            #[wasm_bindgen(js_name = "__fc_share")]
+            pub fn js_fc_share(&self) -> $t {
+                self.clone()
+            }
+        }
+
         #[cfg(wasm)]
         impl TryFrom<&wasm_bindgen::JsValue> for $t {
             type Error = $err;
             fn try_from(value: &wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
-                use js_sys::Reflect;
-                use wasm_bindgen::convert::RefFromWasmAbi;
+                use js_sys::{Function, Reflect};
+                use wasm_bindgen::JsCast;
+                use wasm_bindgen::convert::TryFromJsValue;
 
                 // The brand survives minifiers, which rename classes. A check by
                 // constructor name passed in development builds and failed in production.
                 let brand = Reflect::get(value, &wasm_bindgen::JsValue::from_str("__fc_kind"))
                     .ok()
                     .and_then(|brand| brand.as_string());
-                if brand.as_deref() != Some($name) {
-                    return Err(<$err>::Error(format!("Type mismatch: expected {}", $name)));
+                let name = stringify!($class);
+                if brand.as_deref() != Some(name) {
+                    return Err(<$err>::Error(format!("Type mismatch: expected {name}")));
                 }
-
-                // Safe to anchor now that the brand matches
-                let key = wasm_bindgen::JsValue::from_str("__wbg_ptr");
-                let ptr = Reflect::get(value, &key)
-                    .map_err(|_| <$err>::Error(format!("Missing __wbg_ptr on {}", $name)))?;
-                let id = ptr
-                    .as_f64()
-                    .ok_or_else(|| <$err>::Error(format!("Invalid __wbg_ptr for {}", $name)))?
-                    as u32;
-                let anchor: <$t as RefFromWasmAbi>::Anchor =
-                    unsafe { <$t as RefFromWasmAbi>::ref_from_abi(id) };
-                Ok(anchor.clone())
+                let share = Reflect::get(value, &wasm_bindgen::JsValue::from_str("__fc_share"))
+                    .ok()
+                    .and_then(|share| share.dyn_into::<Function>().ok());
+                let fresh = share.and_then(|share| share.call0(value).ok());
+                match fresh.and_then(|fresh| <$t as TryFromJsValue>::try_from_js_value(fresh).ok())
+                {
+                    Some(shared) => Ok(shared),
+                    None => Err(<$err>::Error(format!("{name} has no handle to share"))),
+                }
             }
         }
     };
@@ -153,16 +165,16 @@ macro_rules! impl_tryfrom_js_ref_anchor {
 // Bridge macro: implement both TryFrom<&JsValue> (anchor) and owned-via-ref in one line.
 #[macro_export]
 macro_rules! impl_js_bridge {
-    ($t:ty, $err:ty) => {
-        $crate::impl_js_bridge!($t, $err, stringify!($t));
+    ($t:ident, $err:ty) => {
+        $crate::impl_js_bridge!($t, $err, $t);
     };
-    ($t:ty, $err:ty, $name:expr) => {
+    ($t:ty, $err:ty, $class:ident) => {
         // A bridged type must carry the brand its check reads, in every build.
         const _: () = assert!(
-            $crate::fc_kind::same_kind(<$t as $crate::FcKind>::KIND, $name),
+            $crate::fc_kind::same_kind(<$t as $crate::FcKind>::KIND, stringify!($class)),
             "a type that goes through impl_js_bridge! needs impl_fc_kind! with the same name",
         );
-        $crate::impl_tryfrom_js_ref_anchor!($t, $err, $name);
+        $crate::impl_tryfrom_js_ref_anchor!($t, $err, $class);
         #[cfg(wasm)]
         $crate::impl_tryfrom_owned_via_ref!($t, wasm_bindgen::JsValue, $err);
     };

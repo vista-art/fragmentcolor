@@ -128,5 +128,5 @@ impl TextureTarget {
     }
 }
 
-crate::impl_js_bridge!(CanvasTarget, ShaderError, "WindowTarget");
+crate::impl_js_bridge!(CanvasTarget, ShaderError, WindowTarget);
 crate::impl_js_bridge!(TextureTarget, ShaderError);
