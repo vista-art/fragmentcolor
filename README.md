@@ -161,13 +161,13 @@ renderer.render(shader, target)
 
 Swap the texture target for a window target. Each platform passes its own surface:
 
-| Language   | Surface                   | Call                                     |
-| ---------- | ------------------------- | ---------------------------------------- |
-| Rust       | a `winit` window          | `renderer.create_target(window).await?`  |
-| JavaScript | a `<canvas>`              | `await renderer.createTarget(canvas)`    |
-| Python     | a `RenderCanvas`          | `renderer.create_target(canvas)`         |
-| Swift      | a `CAMetalLayer`          | `try await renderer.createTarget(layer)` |
-| Kotlin     | an `android.view.Surface` | `renderer.createTarget(surface)`         |
+| Language   | Surface                   | Call                                    |
+| ---------- | ------------------------- | --------------------------------------- |
+| Rust       | a `winit` window          | `renderer.create_target(window).await?` |
+| JavaScript | a `<canvas>`              | `await renderer.createTarget(canvas)`   |
+| Python     | a `RenderCanvas`          | `renderer.create_target(canvas)`        |
+| Swift      | a `CAMetalLayer`          | `try renderer.createTarget(layer)`      |
+| Kotlin     | an `android.view.Surface` | `renderer.createTarget(surface)`        |
 
 ## Compose shaders from the library
 
