@@ -2,3 +2,6 @@
 
 pub(crate) mod renderer;
 pub use renderer::*;
+
+pub(crate) mod shader;
+pub use shader::*;

@@ -219,7 +219,7 @@ pub(crate) struct GltfFailure(#[from] gltf::Error);
 
 impl From<GltfFailure> for SceneLoadError {
     fn from(failure: GltfFailure) -> Self {
-        SceneLoadError::Gltf(crate::shader::error::describe(&failure.0))
+        SceneLoadError::Gltf(crate::core::shader::error::describe(&failure.0))
     }
 }
 
@@ -1169,7 +1169,7 @@ fn read_uri(uri: &str, base: Option<&Path>) -> Result<SourceData, String> {
         let source = gltf::buffer::Source::Uri(uri);
         let read = gltf::buffer::Data::from_source(source, None);
         let mut bytes = read
-            .map_err(|error| crate::shader::error::describe(&error))?
+            .map_err(|error| crate::core::shader::error::describe(&error))?
             .0;
         // The buffer reader pads to four bytes, and the image keeps exactly what the URI holds.
         bytes.truncate(payload.trim_end_matches('=').len() * 3 / 4);

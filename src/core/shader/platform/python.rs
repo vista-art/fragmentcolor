@@ -1,6 +1,6 @@
 #![cfg(python)]
 
-use crate::shader::{UniformInput, lsp_doc};
+use crate::core::shader::{UniformInput, lsp_doc};
 use crate::{Shader, ShaderError, UniformData};
 use pyo3::prelude::*;
 use pyo3::types::{PyAnyMethods, PyByteArray, PyBytes, PyMemoryView};
@@ -138,7 +138,7 @@ pub enum PyShaderInput {
     Parts(Vec<String>),
 }
 
-impl From<PyShaderInput> for crate::shader::ShaderInput {
+impl From<PyShaderInput> for crate::ShaderInput {
     fn from(input: PyShaderInput) -> Self {
         match input {
             PyShaderInput::Source(source) => source.into(),

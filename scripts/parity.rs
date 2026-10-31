@@ -857,7 +857,7 @@ mod parity {
 
     /// Free functions (top-level `pub fn`) can carry a binding marker too —
     /// `#[uniffi::export]` for mobile (e.g. `set_shader_registry` in
-    /// src/shader/platform/mobile.rs), `#[wasm_bindgen]` directly, or
+    /// src/core/shader/platform/mobile.rs), `#[wasm_bindgen]` directly, or
     /// `#[pyfunction]` for Python. If the function carries an `#[lsp_doc(...)]`
     /// annotation, credit the matching platforms.
     fn visit_free_fn(attrs: &[Attribute], b: &mut Bindings, file_platforms: &[Platform]) {

@@ -23,8 +23,8 @@ use pyo3::prelude::*;
 use wasm_bindgen::prelude::*;
 
 use crate::Shader;
+use crate::core::share_light;
 use crate::scene::SceneObject;
-use crate::shader::share_light;
 
 /// Discriminant for the three light kinds. Wire-compatible with the WGSL
 /// `Light.kind` field in `src/material/light.wgsl`: directional=0, point=1, spot=2.
@@ -757,7 +757,7 @@ mod tests {
     #[test]
     fn dropped_lights_leave_room_under_the_cap() {
         // The list keeps dropped lights until it prunes, and the cap counts live ones.
-        crate::shader::lower_test_cap(4);
+        crate::core::lower_test_cap(4);
         let material = Material::pbr();
         let first = crate::Pass::new("first");
         first

@@ -1,4 +1,4 @@
-use crate::shader::uniform::UniformData;
+use crate::UniformData;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 

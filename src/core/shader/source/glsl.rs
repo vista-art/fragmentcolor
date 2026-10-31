@@ -1,5 +1,7 @@
-use super::error::{Diagnostic, Source, WriteFailure};
-use super::validate_module;
+//! Converts one GLSL stage to WGSL with naga.
+
+use crate::core::shader::error::{Diagnostic, Source, WriteFailure};
+use crate::core::shader::validate_module;
 use crate::{ShaderError, ShaderObject};
 use naga::back::wgsl;
 use naga::front::glsl;

@@ -1,5 +1,5 @@
 use super::error::MeshError;
-use crate::shader::is_whole_in;
+use crate::core::is_whole_in;
 use wgpu::VertexFormat;
 
 /// A vertex or instance attribute value, as `Vertex::set` and `Instance::set` take it.

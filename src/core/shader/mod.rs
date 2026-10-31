@@ -1,4 +1,6 @@
-pub mod error;
+//! `Shader`, and `ShaderObject`, the module, uniforms and meshes a shader keeps.
+
+pub(crate) mod error;
 use crate::core::renderer::device::CANDIDATES;
 use crate::texture::{Registration, TextureId};
 use crate::{PassObject, Renderable};
@@ -24,43 +26,30 @@ use pyo3::prelude::*;
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
-mod constants;
-use constants::*;
-pub(crate) mod uniform;
-pub(crate) use uniform::*;
-pub use uniform::{
+mod source;
+use source::defaults::*;
+pub(crate) mod uniforms;
+pub(crate) use uniforms::*;
+pub use uniforms::{
     ArrayElement, PushEntry, StorageAccess, StorageEntry, StructField, StructShape, UniformData,
 };
 
-pub mod composer;
-pub use composer::{ShaderInput, ShaderPart};
+pub use source::{ShaderInput, ShaderPart};
 
-mod coerce;
-pub(crate) use coerce::{UniformInput, is_whole_in};
+pub(crate) use uniforms::input::{UniformInput, is_whole_in};
 
-mod attach;
+mod mesh_attach;
 
-pub(crate) mod registry;
-
-pub(crate) mod embedded;
-
-mod glsl;
-mod immediates;
-pub(crate) use immediates::lower_immediates;
-mod layouts;
-pub(crate) use layouts::{LayoutLoss, list_explicit, name_entries, write_layouts};
-mod input;
-pub(crate) mod light_roots;
-use light_roots::LightRoots;
-mod lights;
-pub(crate) mod map;
+mod rewrites;
+pub(crate) use rewrites::immediates::lower_immediates;
+pub(crate) use rewrites::struct_layouts::{LayoutLoss, list_explicit, name_entries, write_layouts};
+pub(in crate::core) mod lights;
 #[cfg(test)]
 pub(crate) use lights::lower_test_cap;
+use lights::roots::LightRoots;
 pub(crate) use lights::{ShaderLights, lower_light_cap, share_light};
-mod pad_uniforms;
 mod platform;
-mod storage;
-use storage::*;
+use uniforms::bytes::*;
 
 /// The hash of a shader source.
 pub type ShaderHash = [u8; 32];
@@ -97,7 +86,7 @@ impl From<Arc<ShaderObject>> for Shader {
 impl Shader {
     #[lsp_doc("docs/api/core/shader/new.md")]
     pub fn new(input: impl Into<ShaderInput>) -> Result<Self, ShaderError> {
-        Ok(Self::from(input::blocking::resolve(input.into())?))
+        Ok(Self::from(source::blocking::resolve(input.into())?))
     }
 
     /// Async constructor: resolve each part of `input` by fetching URLs and
@@ -112,7 +101,7 @@ impl Shader {
     /// await it as a uniffi async method.
     #[lsp_doc("docs/api/core/shader/fetch.md")]
     pub async fn fetch(input: impl Into<ShaderInput>) -> Result<Self, ShaderError> {
-        Ok(Self::from(input::resolve(input.into()).await?))
+        Ok(Self::from(source::resolve(input.into()).await?))
     }
 
     #[lsp_doc("docs/api/core/shader/set.md")]
@@ -185,7 +174,7 @@ impl Shader {
 
     #[lsp_doc("docs/api/core/shader/set_registry.md")]
     pub fn set_registry(base_url: &str) {
-        registry::set_registry(base_url);
+        source::registry::set_registry(base_url);
     }
 }
 
@@ -228,7 +217,7 @@ pub(crate) struct ShaderObject {
     lowered: RwLock<HashMap<(u32, bool), Module>>,
     /// The texture uniforms filled from a source the shader keeps, such as the Material's
     /// lazy maps. Nothing drains them: each Renderer that loads one uploads a copy of its own.
-    pub(crate) maps: RwLock<Vec<map::TextureMap>>,
+    pub(crate) maps: RwLock<Vec<uniforms::texture_maps::TextureMap>>,
     /// The explicit textures bound to texture uniforms, by uniform name. Holding their
     /// registrations keeps them in the registry after their handles drop. A key is here
     /// or in `maps`, never in both.
@@ -268,7 +257,10 @@ impl Drop for ShaderObject {
 
 /// What a texture write lets go of: the registration bound before, and the key's map.
 /// The caller drops it after `texture_writes`, so no GPU copy is freed under that lock.
-type Released = (Option<Arc<Registration>>, Option<map::TextureMap>);
+type Released = (
+    Option<Arc<Registration>>,
+    Option<uniforms::texture_maps::TextureMap>,
+);
 
 /// A `set` queued while the storage was busy, applied by `flush_pending`.
 #[derive(Debug, Clone)]
@@ -658,10 +650,10 @@ impl ShaderObject {
     pub fn wgsl(source: &str) -> Result<Self, ShaderError> {
         let module = parse_wgsl(source)?;
         let info = validate_module(&module, Some(Source::wgsl(source)))?;
-        immediates::check_immediates(&module)?;
+        rewrites::immediates::check_immediates(&module)?;
         check_samplers(&module, &info)?;
 
-        let light_roots = light_roots::find_roots(&module, &info)?;
+        let light_roots = lights::roots::find_roots(&module, &info)?;
         let filled = light_roots
             .as_ref()
             .map(LightRoots::handles)
@@ -724,7 +716,7 @@ impl ShaderObject {
         if let Some(lowered) = self.lowered.read().get(&key) {
             return Ok(std::borrow::Cow::Owned(lowered.clone()));
         }
-        let lowered = light_roots::lower_roots(module, roots, count)?;
+        let lowered = lights::roots::lower_roots(module, roots, count)?;
         self.lowered.write().insert(key, lowered.clone());
         Ok(std::borrow::Cow::Owned(lowered))
     }
@@ -737,7 +729,8 @@ impl ShaderObject {
         }
         self.padded
             .get_or_init(|| {
-                let padded = pad_uniforms::pad_uniform_blocks(&self.source, &self.module)?;
+                let padded =
+                    rewrites::uniform_padding::pad_uniform_blocks(&self.source, &self.module)?;
                 match naga::front::wgsl::parse_str(&padded) {
                     Ok(module) => {
                         let mut validator =
@@ -1112,7 +1105,7 @@ fn parse_uniforms(
                         group: 0,
                         binding: 0,
                         stages,
-                        data: UniformData::PushConstant(vec![crate::shader::uniform::PushEntry {
+                        data: UniformData::PushConstant(vec![crate::PushEntry {
                             inner: vec![inner],
                             span,
                         }]),
@@ -1156,7 +1149,7 @@ fn parse_uniforms(
                 // convert_type will yield a Struct/Array/etc. shape; wrap it
                 let inner = convert_type(module, ty)?;
                 let span = inner.size();
-                UniformData::Storage(vec![crate::shader::uniform::StorageEntry {
+                UniformData::Storage(vec![crate::StorageEntry {
                     inner: vec![inner],
                     span,
                     access: access.into(),
@@ -1658,7 +1651,7 @@ struct Buf { a: vec4<f32> };
         match u.data.clone() {
             UniformData::Storage(data) => {
                 let entry = data.first().expect("storage data");
-                let crate::shader::uniform::StorageEntry {
+                let crate::StorageEntry {
                     inner,
                     span,
                     access,
@@ -1705,8 +1698,7 @@ struct Buf { a: vec4<f32> };
         let (_, _, u) = s.uniforms.get("sbuf").expect("sbuf uniform");
         match u.data.clone() {
             UniformData::Storage(data) => {
-                let crate::shader::uniform::StorageEntry { access, .. } =
-                    data.first().expect("storage data");
+                let crate::StorageEntry { access, .. } = data.first().expect("storage data");
                 assert!(access == &StorageAccess::ReadWrite);
             }
             _ => panic!("sbuf is not a storage buffer uniform"),
@@ -1731,8 +1723,7 @@ struct Outer { a: vec4<f32>, arr: array<vec4<f32>, 2>, inner: Inner };
         let (_, _, u) = s.uniforms.get("sto").expect("sto uniform");
         match &u.data {
             UniformData::Storage(data) => {
-                let crate::shader::uniform::StorageEntry { inner, span, .. } =
-                    data.first().expect("storage data");
+                let crate::StorageEntry { inner, span, .. } = data.first().expect("storage data");
                 // a:16 + arr:2*16 + inner.c:16 = 64
                 assert_eq!(span.clone(), 64);
                 match inner.first().expect("inner shape") {
@@ -1942,7 +1933,7 @@ struct Buf { items: array<Item, 3> };
         let (_, _, u) = s.uniforms.get("buf").expect("buf uniform");
         let stride = match &u.data {
             UniformData::Storage(data) => {
-                let crate::shader::uniform::StorageEntry { inner, .. } = data.first().unwrap();
+                let crate::StorageEntry { inner, .. } = data.first().unwrap();
                 match inner.first().expect("inner shape") {
                     UniformData::Struct(s) => {
                         // fields[0] should be items: Array

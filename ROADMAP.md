@@ -151,7 +151,7 @@ The breaks, detailed below: `add_mesh` on `Pass` takes a shader and an instance 
 
 Core holds `Renderer`, the targets, `Shader` with `Pipeline`, `Pass`, `Mesh`, `Texture`, `Buffer`, `layout()` and `pack()`, and it names no 3D or scene type. The 3D layer (`Model`, `Material`, `Camera`, `Light`) calls only the core public API, and the scene layer (`Scene`, `SceneNode`, the loaders) calls only the layers below it. An app adopts the layers it needs and never has to import `Scene`. Every package ships all three. The 2D layer, a 0.13.x track, sits beside the 3D layer under the same rule.
 
-- [ ] A `build.rs` check, next to the no-panic scan, fails the build when a core module names a 3D or scene item, or when a higher layer reaches past the public API of the layers below. It exempts the `SceneObject` seal, which the 3D and scene layers both implement, and binding glue: the code that `build.rs` and `#[api]` generate, or each module's `platform/` files on a no-go. Today core still names higher types in `src/pass`, `src/shader` and `src/core/renderer`
+- [ ] A `build.rs` check, next to the no-panic scan, fails the build when a core module names a 3D or scene item, or when a higher layer reaches past the public API of the layers below. It exempts the `SceneObject` seal, which the 3D and scene layers both implement, and binding glue: the code that `build.rs` and `#[api]` generate, or each module's `platform/` files on a no-go. Today core still names higher types in `src/pass`, `src/core/shader` and `src/core/renderer`
 - [ ] Integration points are small core traits that the higher layers implement. `Pass::add` and `Pass::remove` take `SceneObject`, which moves from `src/scene` into `src/pass` as a sealed trait, and `render(&scene)` goes through `Renderable`
 - [ ] The mobile `RenderableHandle` and `SceneObjectHandle` enums, which list concrete types because uniffi cannot take a generic `&impl` argument, move into the binding glue
 - [ ] `Model`, `Camera` and `Light` move from `src/scene` into 3D modules beside `src/material`, so the check reads each layer as a set of modules
@@ -301,7 +301,7 @@ On `Pass`, `add_mesh` and `add_shader` add a draw, and `add` keeps a `SceneObjec
 - [ ] The range is a plain instance range: `..` for every instance or `a..b` in Rust (`impl RangeBounds<u32>`). Elsewhere it is optional, and leaving it out draws every instance: `[a, b]` in JavaScript, `range(a, b)` in Python, `a..<b` in Swift and `a until b` with `UInt` in Kotlin. `@builtin(instance_index)` is the instance's index in the mesh
 - [ ] `scripts/reflect.rs` marks the range parameter, so the transpilers drop a trailing `..` and turn `a..b` into each language's range
 - [ ] A range clamps at render time against the mesh's instance count and logs once per entry, so one bad range never drops the whole render
-- [ ] `add_mesh` checks at add time that the shader's vertex inputs fit the mesh and lays out or checks its instance slots, as `src/shader/AGENTS.md` requires. `shader.validate_mesh` makes the same check without adding an entry
+- [ ] `add_mesh` checks at add time that the shader's vertex inputs fit the mesh and lays out or checks its instance slots, as `src/core/shader/AGENTS.md` requires. `shader.validate_mesh` makes the same check without adding an entry
 - [ ] The shader's mesh list stays. `pass.add_shader` draws the shader's own meshes, every instance of each, where the shader sits
 - [ ] `remove_mesh`, `remove_shader`, `clear_meshes` and `clear_shaders` on `Pass`. There is no `add_range`
 - [ ] Entries run in the order they were added, and FC never reorders them. A group of models that a pass keeps through `pass.add` is the one place FC sorts
@@ -379,7 +379,7 @@ Today the app fills these names and core fills nothing.
 - [ ] The bindings take `Model`, `Camera`, `Light` and `SceneNode`, and only binding glue lists them, such as the mobile `Pass.add`
 - [ ] The pass fields `model_entries`, `scene_objects` and `camera_snapshot` and the renderer's model path give way to one kept group that the renderer fills through a step behind the seal
 - [ ] Rewrite the `Pass::add` page and add one for `remove`
-- [ ] The older uniform `LightArray` light root, which 0.12.7 still fills up to its array length, goes. A custom shader declares the storage `lights` root, and `light_roots.rs` drops the older shape
+- [ ] The older uniform `LightArray` light root, which 0.12.7 still fills up to its array length, goes. A custom shader declares the storage `lights` root, and `lights/roots.rs` drops the older shape
 
 ### The scene layer
 

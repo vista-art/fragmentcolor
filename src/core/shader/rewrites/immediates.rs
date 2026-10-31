@@ -1,7 +1,7 @@
 //! Immediate roots lowered to uniform buffers, the way a device without native immediates binds them.
 
-use super::error::describe;
-use super::{ShaderError, create_validator};
+use crate::core::shader::error::describe;
+use crate::core::shader::{ShaderError, create_validator};
 use naga::{AddressSpace, Module, ResourceBinding};
 use std::collections::HashMap;
 

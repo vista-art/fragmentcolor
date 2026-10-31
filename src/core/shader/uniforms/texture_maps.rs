@@ -4,8 +4,8 @@
 //! it uploads a copy of its own into its registry under that id, so the uniform names
 //! the right texture in every Renderer, and many Renderers hold a copy at once.
 
-use super::{ShaderError, ShaderObject, UniformData};
 use crate::RenderContext;
+use crate::core::shader::{ShaderError, ShaderObject, UniformData};
 use crate::texture::{TextureId, TextureMeta, TextureObject, TextureSource};
 use parking_lot::Mutex;
 use std::collections::BTreeSet;
@@ -404,7 +404,7 @@ mod tests {
             assert!(free, "the map dropped under texture_writes");
         });
 
-        let input = crate::shader::UniformInput::Texture(TextureId { id: 9 });
+        let input = crate::core::shader::UniformInput::Texture(TextureId { id: 9 });
         shader.object.set_input("image", input).expect("a set");
 
         assert!(!shader.object.has_map("image"), "the map stayed");
@@ -440,7 +440,7 @@ mod tests {
             object
                 .set_map("image", build_source([255, 0, 0, 255]))
                 .expect("a map");
-            let input = crate::shader::UniformInput::Texture(TextureId { id: 0 });
+            let input = crate::core::shader::UniformInput::Texture(TextureId { id: 0 });
             object.set_input("image", input).expect("unsets");
             assert!(!object.has_map("image"), "set_input kept the map");
             assert_eq!(read_image(object), 0, "set_input kept the map's id");
@@ -481,7 +481,7 @@ mod tests {
         let stranger = build_shader();
         let foreign = |error: &ShaderError| matches!(error, ShaderError::ForeignMap { id: found, .. } if *found == id.id);
 
-        let input = crate::shader::UniformInput::Texture(id);
+        let input = crate::core::shader::UniformInput::Texture(id);
         let refused = stranger
             .object
             .set_input("image", input)

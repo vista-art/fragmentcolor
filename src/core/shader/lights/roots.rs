@@ -12,7 +12,7 @@ use naga::{
 };
 use std::num::NonZeroU32;
 
-use super::ShaderError;
+use crate::ShaderError;
 
 /// The byte offset of the light array in the storage `Lights` root.
 pub(crate) const LIGHTS_HEADER: u32 = 144;
@@ -684,7 +684,10 @@ mod tests {
     #[test]
     fn the_custom_page_reference_compiles() {
         // The roots and the reference functions on the Material::custom page.
-        let page = include_str!("../../docs/api/scene/material/custom.md");
+        let page = include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/docs/api/scene/material/custom.md"
+        ));
         let blocks: Vec<&str> = page
             .split("```wgsl")
             .skip(1)

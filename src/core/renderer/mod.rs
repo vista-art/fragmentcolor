@@ -689,7 +689,7 @@ impl Renderer {
             context.writes_wgsl.store(browser, Ordering::Relaxed);
             let path = LightPath::pick(&adapter, &context.device);
             *context.light_path.write() = path;
-            crate::shader::lower_light_cap(path.cap());
+            crate::core::lower_light_cap(path.cap());
 
             self.adapter.write().replace(adapter);
             self.context.write().replace(context.clone());
@@ -2051,9 +2051,7 @@ impl RenderContext {
                             .add_sampler(uniform.binding, info.comparison);
                     }
                     UniformData::Storage(data) => {
-                        if let Some(crate::shader::uniform::StorageEntry { span, .. }) =
-                            data.first()
-                        {
+                        if let Some(crate::StorageEntry { span, .. }) = data.first() {
                             let span_u64 = *span as u64;
                             let buf = self.storage_buffer(shader, name, span_u64);
 
@@ -2401,10 +2399,7 @@ impl RenderContext {
                         }
                     }
                     UniformData::Storage(data) => {
-                        if let Some(crate::shader::uniform::StorageEntry {
-                            span: span_u32, ..
-                        }) = data.first()
-                        {
+                        if let Some(crate::StorageEntry { span: span_u32, .. }) = data.first() {
                             let span = *span_u32 as u64;
                             let buf = self.storage_buffer(shader, name, span);
                             groups

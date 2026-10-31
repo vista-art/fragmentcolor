@@ -20,9 +20,9 @@ use pyo3::prelude::*;
 use wasm_bindgen::prelude::*;
 
 use crate::Shader;
+use crate::core::ShaderObject;
 use crate::pass::{CameraSnapshot, PassObject};
 use crate::scene::SceneObject;
-use crate::shader::ShaderObject;
 
 /// Errors from camera parameters that leave no usable view.
 #[derive(Debug, thiserror::Error)]

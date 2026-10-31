@@ -3,7 +3,7 @@
 use lsp_doc::lsp_doc;
 use thiserror::Error;
 
-use crate::shader::error::describe;
+use crate::core::shader::error::describe;
 
 #[cfg(any(python, wasm, test))]
 use crate::error::{Classify, ErrorClass};
@@ -48,7 +48,7 @@ pub enum RendererError {
     #[error("Failed to create texture: {0}")]
     CreateTextureError(String),
     #[error("Shader error: {0}")]
-    ShaderError(#[from] crate::shader::ShaderError),
+    ShaderError(#[from] crate::ShaderError),
     #[error("Mesh error: {0}")]
     MeshError(#[from] crate::mesh::MeshError),
     #[error("Pass error: {0}")]

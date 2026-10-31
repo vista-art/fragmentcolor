@@ -1,3 +1,5 @@
+//! The default shader, and the stage a lone GLSL vertex or fragment shader pairs with.
+
 /// The vertex stage paired with a lone GLSL fragment shader.
 pub(crate) const DEFAULT_VERTEX_SHADER: &str = r#"
     #version 450

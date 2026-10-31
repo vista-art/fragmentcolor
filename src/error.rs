@@ -5,7 +5,7 @@ use thiserror::Error;
 #[derive(Error, Debug)]
 pub enum FragmentColorError {
     #[error(transparent)]
-    Shader(#[from] crate::shader::error::ShaderError),
+    Shader(#[from] crate::ShaderError),
     #[error(transparent)]
     Color(#[from] crate::ColorError),
     #[error(transparent)]
@@ -173,7 +173,7 @@ macro_rules! throw_by_class {
 #[cfg(wasm)]
 throw_by_class!(
     FragmentColorError,
-    crate::shader::error::ShaderError,
+    crate::ShaderError,
     crate::ColorError,
     crate::SizeError,
     crate::pass::error::PassError,
@@ -457,8 +457,7 @@ mod tests {
     #[test]
     fn wraps_inner_errors_and_displays_messages() {
         // Arrange / Act
-        let e1: FragmentColorError =
-            crate::shader::error::ShaderError::UniformNotFound("u".into()).into();
+        let e1: FragmentColorError = crate::ShaderError::UniformNotFound("u".into()).into();
         let e2: FragmentColorError =
             crate::ColorError::Invalid("a color takes 3 or 4 channels".into()).into();
         let e3: FragmentColorError =
@@ -491,9 +490,9 @@ mod tests {
     fn errors_take_the_python_class() {
         use crate::ColorError;
         use crate::ScreenRegionError;
+        use crate::ShaderError;
         use crate::pass::error::PassError;
         use crate::scene::{LightError, SceneLoadError};
-        use crate::shader::error::ShaderError;
         use crate::target::SurfaceError;
         use crate::texture::TextureError;
         use crate::{InitializationError, RendererError};

@@ -1,10 +1,13 @@
+//! `UniformStorage`: the CPU bytes of every uniform,
+//! storage and immediate root, and the keys that address them.
+
 use std::collections::{HashMap, HashSet};
 
 use crate::ShaderError;
 
-use super::coerce::byte_count;
+use super::input::byte_count;
 
-use super::uniform::{ArrayElement, PushEntry, StorageEntry, StructField, StructShape};
+use super::{ArrayElement, PushEntry, StorageEntry, StructField, StructShape};
 use super::{Uniform, UniformData};
 
 #[derive(Debug, Clone)]

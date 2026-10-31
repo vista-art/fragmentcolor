@@ -1,5 +1,8 @@
-use super::error::ShaderError;
-use super::uniform::UniformData;
+//! `UniformInput`: a value as a binding
+//! hands it over, shaped to the type the shader declares.
+
+use super::UniformData;
+use crate::ShaderError;
 use crate::texture::{TextureId, TextureMeta};
 
 /// A uniform value as a host language hands it over, before it has a WGSL type.
@@ -185,7 +188,7 @@ fn mismatch(key: &str, slot: &UniformData, found: &str) -> ShaderError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::shader::uniform::{PushEntry, StorageAccess, StorageEntry, StructShape};
+    use crate::{PushEntry, StorageAccess, StorageEntry, StructShape};
 
     fn resolve(input: UniformInput, slot: UniformData) -> Result<UniformData, String> {
         input.resolve("key", &slot).map_err(|e| e.to_string())

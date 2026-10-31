@@ -1,13 +1,13 @@
 //! Tests that render refuses, before it takes a frame, what the device can't run.
 
 use super::error_scopes::{SpyTarget, Uncaptured, setup};
+use crate::core::LayoutLoss;
 use crate::core::renderer::checks::shader::{TextureFacts, Verdict, check_texture, refuse_layout};
 use crate::core::renderer::pipelines::layout::build_module;
 use crate::core::renderer::pipelines::layout::{
     find_entry, pick_source, plan_layout, texture_binding,
 };
 use crate::core::renderer::*;
-use crate::shader::LayoutLoss;
 use crate::texture::{Registration, Texture, TextureObject};
 use crate::{Material, Shader};
 

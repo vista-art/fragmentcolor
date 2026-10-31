@@ -19,11 +19,6 @@ pub mod target;
 /// Texture represents an image stored on the GPU that can be sampled in shaders.
 mod texture;
 
-/// # Shader Module
-///
-/// Shader represents a GPU program that can be used in Passes to render graphics.
-pub mod shader;
-
 /// # Pass Module
 ///
 /// A Pass represents a single rendering operation; any iterable of Pass is renderable.
@@ -53,10 +48,6 @@ pub mod scene;
 /// # Error module
 ///
 /// Common errors used across the library.
-#[expect(
-    hidden_glob_reexports,
-    reason = "mesh, pass, shader and target glob-export a public `error` module this one hides"
-)]
 mod error;
 
 /// Guides (developer docs)
@@ -85,7 +76,6 @@ pub use mesh::*;
 pub use network::NetworkError;
 pub use pass::*;
 pub use scene::*;
-pub use shader::*;
 pub use target::*;
 pub use texture::*;
 pub use values::*;

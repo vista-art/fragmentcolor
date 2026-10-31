@@ -6,8 +6,8 @@ use crate::core::renderer::pipelines::layout::{
     Layout, Slot, build_module, plan_layout, texture_binding,
 };
 use crate::core::renderer::{PbrDefaults, PushMode, RenderContext, RendererError, report_missing};
-use crate::shader::error::describe;
-use crate::shader::{LayoutLoss, list_explicit, write_layouts};
+use crate::core::shader::error::describe;
+use crate::core::{LayoutLoss, list_explicit, write_layouts};
 use crate::texture::format_features;
 use crate::{ShaderObject, TextureObject, UniformData};
 use naga::ShaderStage;

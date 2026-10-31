@@ -40,7 +40,7 @@ async fn open(mode: Mode, size: u32) -> (Renderer, crate::TextureTarget, Arc<Ren
         Mode::Reference => context.light_probe.no_grid.store(true, Ordering::Relaxed),
         Mode::Uniform(count) => {
             *context.light_path.write() = LightPath::Uniform { count };
-            crate::shader::lower_test_cap(count);
+            crate::core::lower_test_cap(count);
         }
         Mode::Limit(limit) => *context.light_path.write() = LightPath::Clustered { limit },
         Mode::LimitReference(limit) => {

@@ -18,8 +18,8 @@ use pyo3::prelude::*;
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
+use crate::core::ShaderObject;
 use crate::mesh::MeshObject;
-use crate::shader::ShaderObject;
 use crate::{Material, Mesh};
 
 mod camera;

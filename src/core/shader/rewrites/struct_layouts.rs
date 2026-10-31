@@ -6,8 +6,8 @@
 //! `write_layouts` writes the module as wgpu does and puts back a `@size` on each
 //! member of such a struct, which pins every member and the struct's size.
 
-use super::ShaderError;
-use super::error::{Diagnostic, describe};
+use crate::core::shader::ShaderError;
+use crate::core::shader::error::{Diagnostic, describe};
 use naga::keywords::wgsl::{BUILTIN_IDENTIFIER_SET, RESERVED_SET};
 use naga::proc::{CaseInsensitiveKeywordSet, Layouter, NameKey, Namer};
 use naga::valid::ModuleInfo;
@@ -321,7 +321,7 @@ mod tests {
     fn compile(source: &str) -> (Module, ModuleInfo) {
         let shader = Shader::new(source).expect("shader");
         let module = shader.object.module.clone();
-        let info = super::super::create_validator()
+        let info = crate::core::shader::create_validator()
             .validate(&module)
             .expect("validates");
         (module, info)
@@ -419,7 +419,7 @@ struct Foo { a: f32, @align(16) b: f32 };
                 read_layouts(&web),
                 "{source}\n{text}"
             );
-            let checked = super::super::create_validator().validate(&web);
+            let checked = crate::core::shader::create_validator().validate(&web);
             assert!(checked.is_ok(), "{checked:?}\n{text}");
             assert_entries(&module, &text);
         }
@@ -456,7 +456,7 @@ struct Foo { a: f32, @align(16) b: f32 };
 @group(0) @binding(0) var<storage, read_write> buf: Buf;
 @compute @workgroup_size(1) fn cs_main() { buf.data[0] = arrayLength(&buf.data); }";
         let module = naga::front::wgsl::parse_str(source).expect("parses");
-        let info = super::super::create_validator()
+        let info = crate::core::shader::create_validator()
             .validate(&module)
             .expect("validates");
         let text = write_layouts(&module, &info)
@@ -464,7 +464,7 @@ struct Foo { a: f32, @align(16) b: f32 };
             .expect("pins sizes");
         let web = naga::front::wgsl::parse_str(&text).expect("parses");
         assert_eq!(read_layouts(&module), read_layouts(&web), "{text}");
-        let checked = super::super::create_validator().validate(&web);
+        let checked = crate::core::shader::create_validator().validate(&web);
         assert!(checked.is_ok(), "{checked:?}\n{text}");
     }
 

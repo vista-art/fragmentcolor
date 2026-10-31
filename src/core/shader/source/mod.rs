@@ -1,12 +1,25 @@
-use super::{DEFAULT_FRAGMENT_SHADER, DEFAULT_VERTEX_SHADER, ShaderInput, ShaderPart};
+//! Where a shader's code comes from: each part loads as text,
+//! a file, a URL or a registry slug, then compiles from WGSL or GLSL.
+
+use crate::ShaderError;
 use crate::ShaderObject;
-use crate::shader::error::ShaderError;
+use defaults::{DEFAULT_FRAGMENT_SHADER, DEFAULT_VERTEX_SHADER};
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::path::Path;
 #[cfg(not(wasm))]
 use std::path::PathBuf;
 use std::sync::Arc;
+
+mod input;
+pub use input::{ShaderInput, ShaderPart};
+
+pub(crate) mod registry;
+
+pub(crate) mod embedded;
+
+pub(super) mod defaults;
+mod glsl;
 
 /// Async resolve: fetch URLs / slugs / read paths asynchronously, dedup by
 /// source hash, concat in order, then compile as WGSL (or GLSL for a single
@@ -68,13 +81,12 @@ impl RegistrySource {
     /// After `Shader::set_registry`, slugs and registry URLs are fetched first,
     /// and the embedded copy stands in when the fetch fails, as it does without `network`.
     fn locate(part: &ShaderPart) -> RegistrySource {
-        use crate::shader::registry;
         let (url, slug) = match part {
             ShaderPart::Slug(slug) => (registry::slug_to_url(slug), Some(slug.clone())),
             ShaderPart::Url(url) => (url.clone(), registry::url_to_slug(url)),
             ShaderPart::Source(_) | ShaderPart::Path(_) => (String::new(), None),
         };
-        let embedded = slug.as_deref().and_then(crate::shader::embedded::lookup);
+        let embedded = slug.as_deref().and_then(embedded::lookup);
         match embedded {
             Some(body) if !registry::has_override() => RegistrySource::Embedded(body),
             fallback => RegistrySource::Fetch { url, fallback },
@@ -287,8 +299,8 @@ fn glsl_kind_from_url(url: &str) -> Option<GlslKind> {
 
 #[cfg(test)]
 mod tests {
+    use super::registry::with_registry;
     use super::*;
-    use crate::shader::registry::with_registry;
 
     // Story: Load minimal WGSL from a file path with .wgsl extension.
     #[test]
@@ -435,7 +447,7 @@ mod tests {
             // We can't directly assert "no feature" at runtime, but if every
             // category feature is off in this build, the lookup must be None.
             // Tests with features on live in `embedded_lookup_*_feature_*`.
-            let got = crate::shader::embedded::lookup(slug);
+            let got = super::embedded::lookup(slug);
             #[cfg(not(any(
                 feature = "shaders-postfx",
                 feature = "shaders-noise",
@@ -457,8 +469,8 @@ mod tests {
     #[test]
     fn embedded_postfx_serves_without_network() {
         // The lookup itself returns Some.
-        let body = crate::shader::embedded::lookup("postfx/vignette")
-            .expect("expected embedded postfx/vignette");
+        let body =
+            super::embedded::lookup("postfx/vignette").expect("expected embedded postfx/vignette");
         assert!(
             body.contains("fn vignette("),
             "embedded body looks wrong: {body}"
@@ -559,7 +571,7 @@ struct VOut { @builtin(position) pos: vec4<f32>, @location(0) uv: vec2<f32> };
     #[cfg(all(feature = "shaders-postfx", not(feature = "shaders-sdf")))]
     #[test]
     fn embedded_other_categories_still_miss() {
-        let got = crate::shader::embedded::lookup("sdf/sphere");
+        let got = super::embedded::lookup("sdf/sphere");
         assert!(
             got.is_none(),
             "sdf shouldn't be embedded without its feature"

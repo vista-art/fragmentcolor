@@ -1,3 +1,6 @@
+//! Checks each vertex and instance of a mesh
+//! against the inputs a shader reads, when the mesh attaches.
+
 use super::{ShaderError, ShaderObject, VertexInputDesc};
 use crate::mesh::vertex::{POSITION, explain_position};
 use crate::mesh::{AttributeTypes, Binding, Instance, MeshObject, Shape, VertexSchema};

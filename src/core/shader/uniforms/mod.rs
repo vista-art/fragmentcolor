@@ -1,8 +1,15 @@
-use crate::shader::error::ShaderError;
+//! `Uniform` and `UniformData`: what a shader
+//! declares, and the values `Shader::set` and `Shader::get` move.
+
+use crate::ShaderError;
 use naga::{Module, ScalarKind, Type, TypeInner, VectorSize};
 
 #[cfg(python)]
 use pyo3::prelude::*;
+
+pub(super) mod bytes;
+pub(super) mod input;
+pub(crate) mod texture_maps;
 
 #[derive(Debug, Clone)]
 /// Represents a Uniform in the shader

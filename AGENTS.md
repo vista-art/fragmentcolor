@@ -92,7 +92,7 @@ Module‑level invariants (authoritative AGENTS.md files)
 - These short rule files are the source of truth for non‑negotiable behavior. Do not introduce code that violates them.
   - docs/api/AGENTS.md (canonical doc source: no numeric type suffixes in literals, hidden lines and per-language hidden blocks, patterns the transpiler can / can't translate, no drift tolerance)
   - src/core/renderer/AGENTS.md (pipelines, targets/present, MSAA/resolve, bind‑group hygiene, thin public API)
-  - src/shader/AGENTS.md (mesh ownership, strict attach‑time validation, reflection/mapping order, precise errors)
+  - src/core/shader/AGENTS.md (mesh ownership, strict attach‑time validation, reflection/mapping order, precise errors)
   - src/mesh/AGENTS.md (schema derivation, CPU/GPU buffer packing/caching, instance handling, validation contract)
   - src/pass/AGENTS.md (role, targets, compute vs render, delegation to Shader)
   - src/texture/AGENTS.md (creation via Renderer, binding/sampling, MSAA/resolve lifecycle)

@@ -5,10 +5,8 @@
 
 use crate::core::renderer::lights::{self, LightPath};
 use crate::core::renderer::{PushMode, RenderContext};
-use crate::shader::{PushEntry, StorageEntry, Uniform, UniformData};
-use crate::shader::{
-    list_explicit, lower_immediates, name_entries, validate_module, write_layouts,
-};
+use crate::core::{PushEntry, StorageEntry, Uniform, UniformData};
+use crate::core::{list_explicit, lower_immediates, name_entries, validate_module, write_layouts};
 use crate::texture::{TextureClass, TextureDim, TextureMeta, TextureScalarKind};
 use crate::{ShaderError, ShaderObject};
 use std::borrow::Cow;

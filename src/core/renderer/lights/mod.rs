@@ -12,10 +12,12 @@ use std::sync::Arc;
 
 use super::{RenderContext, RendererError};
 use crate::PassObject;
+use crate::core::ShaderObject;
+use crate::core::shader::lights::roots::{
+    ARRAY_HEADER, LIGHT_SIZE, LIGHTS_HEADER, LightRoots, LightShape,
+};
 use crate::pass::PassError;
 use crate::scene::{GpuLight, current_epoch};
-use crate::shader::ShaderObject;
-use crate::shader::light_roots::{ARRAY_HEADER, LIGHT_SIZE, LIGHTS_HEADER, LightRoots, LightShape};
 
 mod grid;
 use grid::{Frustum, GRID_CELLS, Grid, Sphere};
@@ -641,7 +643,7 @@ pub(crate) struct BinningPipeline {
 /// The binning module: the light types and constants, then the binning pass.
 fn binning_module() -> Result<naga::Module, crate::ShaderError> {
     let source = format!("{}\n{}", crate::material::LIGHT, BINNING);
-    crate::shader::parse_wgsl(&source)
+    crate::core::parse_wgsl(&source)
 }
 
 impl BinningPipeline {

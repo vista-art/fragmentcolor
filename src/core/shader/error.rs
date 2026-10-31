@@ -1,3 +1,5 @@
+//! `ShaderError`, and the diagnostics naga reports with their source locations.
+
 use thiserror::Error;
 
 #[derive(Error, Debug)]

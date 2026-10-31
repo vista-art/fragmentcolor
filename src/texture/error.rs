@@ -63,7 +63,7 @@ pub enum TextureError {
     #[error("Failed to create texture: {0}")]
     CreateTextureError(String),
     #[error("Shader error: {0}")]
-    ShaderError(#[from] crate::shader::error::ShaderError),
+    ShaderError(#[from] crate::ShaderError),
     #[error("Bind Group Layout error: {0}")]
     BindGroupLayoutError(String),
     /// A GPU error an earlier frame left, which a readback reports before it reads.
@@ -187,7 +187,7 @@ mod tests {
         assert!(e2.to_string().contains("Failed to create texture"));
 
         // From ShaderError
-        let se = crate::shader::error::ShaderError::UniformNotFound("u".into());
+        let se = crate::ShaderError::UniformNotFound("u".into());
         let e3: TextureError = se.into();
         assert!(matches!(e3, TextureError::ShaderError(_)));
     }

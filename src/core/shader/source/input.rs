@@ -1,11 +1,5 @@
-//! Input classification and value type for `Shader::new`.
-//!
-//! `ShaderInput` is the unified value passed to the shader builder. A single
-//! string is classified into one of four `ShaderPart` variants by a heuristic
-//! over its trimmed contents; an array of strings becomes one `ShaderPart` per
-//! element, each classified independently. The resolver in `input.rs` walks the
-//! parts, fetches/reads/looks up each one, deduplicates by source hash, and
-//! concatenates the results into a single shader source.
+//! `ShaderInput`, what `Shader::new` takes,
+//! and the `ShaderPart` each of its strings classifies as.
 //!
 //! Detection order for `&str -> ShaderPart` (after trimming):
 //!   1. `http://` or `https://` prefix                     -> Url

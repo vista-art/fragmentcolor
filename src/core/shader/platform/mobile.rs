@@ -17,10 +17,10 @@ use std::sync::Arc;
 use lsp_doc::lsp_doc;
 
 use crate::Shader;
+use crate::UniformData;
 use crate::core::renderer::platform::mobile::FragmentColorError;
+use crate::core::shader::UniformInput;
 use crate::mesh::{Mesh, Vertex};
-use crate::shader::UniformInput;
-use crate::shader::uniform::UniformData;
 use crate::texture::TextureId;
 
 /// A `Shader.set` value as Swift and Kotlin hand it over.

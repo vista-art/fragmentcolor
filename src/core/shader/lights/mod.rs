@@ -10,6 +10,8 @@ use super::ShaderObject;
 use crate::PassError;
 use crate::scene::{GpuLight, LightObject, bump_epoch, current_epoch};
 
+pub(crate) mod roots;
+
 /// The most lights one shader takes on every device this process opened.
 static LIGHT_CAP: AtomicU32 = AtomicU32::new(u32::MAX);
 
