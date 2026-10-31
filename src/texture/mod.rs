@@ -824,12 +824,15 @@ impl TextureObject {
     ///
     /// A URL is fetched on the calling thread, and its bytes go to the worker without
     /// being kept. The decode and the GPU upload run on the background worker on native
-    /// and inline on the web. `Renderer::create_texture` and each Material map upload call it.
+    /// and inline on the web. `Renderer::create_texture` and each Material map upload call it,
+    /// and `call` names the one that did in an error that refuses its format.
     pub(crate) async fn from_source(
         context: Arc<RenderContext>,
         source: TextureSource,
+        call: &'static str,
     ) -> Result<Self, TextureError> {
         let options = source.options.clone();
+        let pick = Pick::read(&source, call);
         check_source(source.data.is_sized(), options.size)?;
         let usage = source_usage(options.usage)?;
         let fetched = match &*source.data {
@@ -844,12 +847,16 @@ impl TextureObject {
         crate::renderer::background::run(move || -> Result<Self, TextureError> {
             let context = context.as_ref();
             let object = match &*source.data {
-                SourceData::Bytes(bytes) => Self::from_bytes(context, bytes, &options, usage),
-                SourceData::Url(_) => Self::from_bytes(context, &fetched, &options, usage),
-                SourceData::Ktx2Bytes(bytes) => ktx2_loader::from_ktx2_bytes(context, bytes, usage),
-                SourceData::Ktx2Url(_) => ktx2_loader::from_ktx2_bytes(context, &fetched, usage),
+                SourceData::Bytes(bytes) => Self::from_bytes(context, bytes, &options, pick, usage),
+                SourceData::Url(_) => Self::from_bytes(context, &fetched, &options, pick, usage),
+                SourceData::Ktx2Bytes(bytes) => {
+                    ktx2_loader::from_ktx2_bytes(context, bytes, pick, usage)
+                }
+                SourceData::Ktx2Url(_) => {
+                    ktx2_loader::from_ktx2_bytes(context, &fetched, pick, usage)
+                }
                 SourceData::Path(path) if ktx2_loader::is_ktx2_file(path) => {
-                    read_ktx2_file(context, path, usage)
+                    read_ktx2_file(context, path, pick, usage)
                 }
                 SourceData::Path(path) => {
                     let limit = context.device.limits().max_texture_dimension_2d;
@@ -857,10 +864,9 @@ impl TextureObject {
                     let format = pick_override(&options);
                     Self::from_image(context, &image, format, options.mipmaps, usage)
                 }
-                SourceData::Ktx2Path(path) => read_ktx2_file(context, path, usage),
+                SourceData::Ktx2Path(path) => read_ktx2_file(context, path, pick, usage),
                 SourceData::Prepared(chain) => {
-                    let wanted = pick_override(&options);
-                    Self::from_chain(context, chain.clone(), wanted, usage)
+                    Self::from_chain(context, chain.clone(), pick, usage)
                 }
             }?;
             object.set_sampler_options(&context.device, options.sampler);
@@ -869,16 +875,17 @@ impl TextureObject {
         .await
     }
 
-    /// Builds a texture from `bytes`: a KTX2 container by its magic, raw pixels
-    /// when `options` gives a size, or else an encoded image the worker decodes.
+    /// Builds a texture from `bytes`: a KTX2 container by its magic, which takes `pick`,
+    /// raw pixels when `options` gives a size, or else an encoded image the worker decodes.
     fn from_bytes(
         context: &RenderContext,
         bytes: &[u8],
         options: &TextureOptions,
+        pick: Pick,
         usage: wgpu::TextureUsages,
     ) -> Result<Self, TextureError> {
         if ktx2_loader::is_ktx2(bytes) {
-            return ktx2_loader::from_ktx2_bytes(context, bytes, usage);
+            return ktx2_loader::from_ktx2_bytes(context, bytes, pick, usage);
         }
         let format = pick_override(options);
         match options.size {
@@ -1005,12 +1012,12 @@ impl TextureObject {
         })
     }
 
-    /// Creates a texture from a mip chain built on the CPU, with GPU writes only.
-    /// It takes the chain's own format, or `wanted` when that reads the same bytes.
+    /// Creates a texture from a mip chain built on the CPU, with GPU writes only,
+    /// in the chain's own format or the one `pick` asks for where it reads the same bytes.
     fn from_chain(
         context: &RenderContext,
         chain: Mipmap,
-        wanted: Option<wgpu::TextureFormat>,
+        pick: Pick,
         usage: wgpu::TextureUsages,
     ) -> Result<Self, TextureError> {
         let (w, h) = chain.base_size;
@@ -1025,7 +1032,7 @@ impl TextureObject {
             ));
         }
         let levels = chain.levels.as_slice();
-        let format = match_format(chain.format, wanted)?;
+        let format = pick.apply(chain.format, "a Mipmap")?;
         check_format(context, format, usage, wgpu::TextureDimension::D2)?;
         let bpp = texel_size(format)?;
 
@@ -1272,6 +1279,7 @@ impl TextureObject {
 fn read_ktx2_file(
     context: &RenderContext,
     path: &std::path::Path,
+    pick: Pick,
     usage: wgpu::TextureUsages,
 ) -> Result<TextureObject, TextureError> {
     let bytes = std::fs::read(path).map_err(|e| {
@@ -1281,31 +1289,59 @@ fn read_ktx2_file(
             e
         ))
     })?;
-    ktx2_loader::from_ktx2_bytes(context, &bytes, usage)
+    ktx2_loader::from_ktx2_bytes(context, &bytes, pick, usage)
 }
 
-/// The format `options` names, or `None` for the default, which lets the image pick.
-/// The format a mip chain built in `built` uploads as: its own when the caller picked none,
-/// or `wanted` when it reads the same bytes, such as the sRGB form of an 8-bit format.
-/// Any other format is an error, since the chain's bytes can't be read in it.
-fn match_format(
-    built: wgpu::TextureFormat,
-    wanted: Option<wgpu::TextureFormat>,
-) -> Result<wgpu::TextureFormat, TextureError> {
-    match wanted {
-        None => Ok(built),
-        Some(format) if reads_as(built, format) => Ok(format),
-        Some(format) => Err(TextureError::InvalidInput(format!(
-            "a Mipmap built in {built:?} can't upload as {format:?}; pass its own format, its sRGB form, or none"
-        ))),
+/// The format picked for a source that stores its own, a mip chain or a KTX2 container,
+/// and the call that picked it, which a refusal names.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Pick {
+    /// The format picked, or `None` to take the source's own.
+    pub(crate) format: Option<wgpu::TextureFormat>,
+    /// Whether the format is a Material slot's hint rather than the caller's own pick.
+    /// A hint applies only where the source's bytes read in it, and never refuses.
+    pub(crate) hinted: bool,
+    pub(crate) call: &'static str,
+}
+
+impl Pick {
+    /// What `source` picks, for the call `call`. The default format picks none.
+    pub(crate) fn read(source: &TextureSource, call: &'static str) -> Self {
+        Self {
+            format: pick_override(&source.options),
+            hinted: source.hinted,
+            call,
+        }
+    }
+
+    /// The format a source `what`, stored in `built`, uploads as.
+    ///
+    /// It is the source's own format when nothing was picked, and the pick when the bytes
+    /// read the same in it, as in an sRGB twin. A hint that doesn't read falls back to the own
+    /// format. Any other pick is `InvalidInput`, which names the call, since the bytes can't be read in it.
+    pub(crate) fn apply(
+        self,
+        built: wgpu::TextureFormat,
+        what: &str,
+    ) -> Result<wgpu::TextureFormat, TextureError> {
+        match self.format {
+            None => Ok(built),
+            Some(format) if reads_as(built, format) => Ok(format),
+            Some(_) if self.hinted => Ok(built),
+            Some(format) => Err(TextureError::InvalidInput(format!(
+                "{call}: {what} stored in {built:?} can't upload as {format:?}; pass its own format, its sRGB twin, or none",
+                call = self.call
+            ))),
+        }
     }
 }
 
 /// Whether bytes laid out in `built` read correctly as `format`, which differs at most in sRGB.
-pub(crate) fn reads_as(built: wgpu::TextureFormat, format: wgpu::TextureFormat) -> bool {
+fn reads_as(built: wgpu::TextureFormat, format: wgpu::TextureFormat) -> bool {
     built.remove_srgb_suffix() == format.remove_srgb_suffix()
 }
 
+/// The format `options` names, or `None` for the default, which lets the image pick.
 fn pick_override(options: &TextureOptions) -> Option<wgpu::TextureFormat> {
     match options.format {
         crate::TextureFormat::Rgba => None,
@@ -2958,7 +2994,7 @@ mod tests {
 
             let float = ask_format(crate::TextureFormat::Rgba32Float);
             let result = renderer.create_texture(float).await;
-            assert!(refused(&result, "Mipmap"), "{result:?}");
+            assert!(refused(&result, "create_texture: a Mipmap"), "{result:?}");
         });
     }
 

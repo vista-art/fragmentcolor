@@ -15,7 +15,9 @@ use ktx2::Format as VkFormat;
 
 use crate::RenderContext;
 use crate::texture::error::TextureError;
-use crate::texture::{SamplerOptions, TextureObject, create_default_sampler, mip_level_count_for};
+use crate::texture::{
+    Pick, SamplerOptions, TextureObject, create_default_sampler, mip_level_count_for,
+};
 use parking_lot::RwLock;
 
 /// The identifier every KTX2 file starts with: `«KTX 20»\r\n\x1A\n`.
@@ -125,6 +127,7 @@ pub(crate) fn vk_format_to_wgpu(format: VkFormat) -> Option<wgpu::TextureFormat>
 pub(crate) fn from_ktx2_bytes(
     context: &RenderContext,
     bytes: &[u8],
+    pick: Pick,
     usage: wgpu::TextureUsages,
 ) -> Result<TextureObject, TextureError> {
     let reader = ktx2::Reader::new(bytes)
@@ -167,6 +170,8 @@ pub(crate) fn from_ktx2_bytes(
             vk_format
         ))
     })?;
+    // A format picked for the container reads its bytes only as their sRGB twin.
+    let wgpu_format = pick.apply(wgpu_format, "a KTX2 container")?;
 
     // The device may lack the compression feature the format needs.
     crate::texture::check_feature(context.device.features(), wgpu_format)?;
@@ -492,7 +497,12 @@ mod tests {
             let scope = context
                 .device
                 .push_error_scope(wgpu::ErrorFilter::Validation);
-            let texture = from_ktx2_bytes(&context, &bytes, usage).expect("an 8x8 BC1 chain");
+            let pick = Pick {
+                format: None,
+                hinted: false,
+                call: "a test",
+            };
+            let texture = from_ktx2_bytes(&context, &bytes, pick, usage).expect("an 8x8 BC1 chain");
             let error = scope.pop().await;
 
             assert!(error.is_none(), "{error:?}");
@@ -594,6 +604,55 @@ mod tests {
             renderer.render(&shader, &target).expect("render");
             let image = crate::Target::get_image(&target).await.expect("read back");
             assert_eq!(image, [255, 255, 255, 255], "level 1 follows the write");
+        });
+    }
+
+    // Story: a KTX2 container uploads in its own format, or in that format's sRGB twin, which
+    // reads the same bytes. Any other format is refused with an error that names the call,
+    // from KTX2 bytes and from plain bytes that hold a container alike.
+    #[test]
+    fn a_container_takes_only_a_format_its_bytes_read_as() {
+        use crate::renderer::error::RendererError;
+        use crate::{TextureData, TextureFormat, TextureInput, TextureOptions};
+        pollster::block_on(async move {
+            let renderer = crate::Renderer::new();
+            let bytes = Ktx2Test {
+                format: VkFormat::R8G8B8A8_UNORM,
+                width: 4,
+                height: 4,
+                levels: vec![vec![0; 4 * 4 * 4]],
+            }
+            .build();
+            let ask = |data: TextureData, format: TextureFormat| TextureInput {
+                data,
+                options: TextureOptions {
+                    format,
+                    ..Default::default()
+                },
+            };
+
+            let srgb = ask(
+                TextureData::Ktx2Bytes(bytes.clone()),
+                TextureFormat::Rgba8UnormSrgb,
+            );
+            let texture = renderer.create_texture(srgb).await.expect("the sRGB twin");
+            assert_eq!(texture.object().format, wgpu::TextureFormat::Rgba8UnormSrgb);
+
+            for data in [
+                TextureData::Ktx2Bytes(bytes.clone()),
+                TextureData::Bytes(bytes),
+            ] {
+                let result = renderer
+                    .create_texture(ask(data, TextureFormat::Rgba32Float))
+                    .await;
+                let named = |message: &str| {
+                    message.starts_with("create_texture:") && message.contains("KTX2")
+                };
+                assert!(
+                    matches!(&result, Err(RendererError::TextureError(TextureError::InvalidInput(message))) if named(message)),
+                    "{result:?}"
+                );
+            }
         });
     }
 

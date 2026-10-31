@@ -1,8 +1,6 @@
 //! What a texture uploads from, kept apart from any device.
 
-use super::{
-    Mipmap, TextureData, TextureError, TextureInput, TextureOptions, ktx2_loader, reads_as,
-};
+use super::{Mipmap, TextureData, TextureError, TextureInput, TextureOptions, ktx2_loader};
 use crate::TextureFormat;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -13,6 +11,9 @@ use std::sync::Arc;
 pub(crate) struct TextureSource {
     pub(crate) data: Arc<SourceData>,
     pub(crate) options: TextureOptions,
+    /// Whether `options.format` is a Material slot's hint rather than the caller's pick.
+    /// A Mipmap or KTX2 container takes a hint only where its bytes read in it.
+    pub(crate) hinted: bool,
 }
 
 /// The forms a texture uploads from. Each one holds data.
@@ -31,15 +32,19 @@ pub(crate) enum SourceData {
 impl TextureSource {
     /// A source that reads `data`, which other sources may share, with `options`.
     pub(crate) fn new(data: Arc<SourceData>, options: TextureOptions) -> Self {
-        Self { data, options }
+        Self {
+            data,
+            options,
+            hinted: false,
+        }
     }
 
-    /// Whether the data uploads in `format`. A Mipmap holds the bytes of the format
-    /// it was built in, so it takes that format or its sRGB form, and every other form takes any.
-    pub(crate) fn takes_format(&self, format: TextureFormat) -> bool {
-        match &*self.data {
-            SourceData::Prepared(chain) => reads_as(chain.format, format.into()),
-            _ => true,
+    /// Takes `format` as a hint where the caller picked no format. An image uploads in it,
+    /// and a Mipmap or KTX2 container only where its bytes read in it, as in an sRGB twin.
+    pub(crate) fn take_hint(&mut self, format: TextureFormat) {
+        if self.options.format == TextureFormat::default() {
+            self.options.format = format;
+            self.hinted = true;
         }
     }
 }

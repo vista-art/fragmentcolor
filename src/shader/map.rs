@@ -280,7 +280,7 @@ mod tests {
     /// Uploads the source `job` reads into `context`.
     async fn upload(job: &MapJob, context: &Arc<RenderContext>) -> TextureObject {
         let source = job.source.clone();
-        let uploaded = TextureObject::from_source(context.clone(), source).await;
+        let uploaded = TextureObject::from_source(context.clone(), source, "load").await;
         uploaded.expect("an upload")
     }
 
