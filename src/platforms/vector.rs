@@ -2,10 +2,9 @@
 
 use crate::{Color, Vertex};
 
-/// A float vector from a binding that no setter can use, such as a color or a position.
+/// A float vector that can't be used, such as a color or a position.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum VectorError {
-    /// An item that is NaN, an infinity, or a finite number past the `f32` range.
     #[error(
         "{label}: item {index} must be a finite number that fits a 32-bit float, got {}",
         show(*value)
@@ -15,7 +14,6 @@ pub(crate) enum VectorError {
         index: usize,
         value: f64,
     },
-    /// A list with another number of items than the call takes.
     #[error("{label} takes {expected} numbers, got {count}")]
     Length {
         label: String,
@@ -34,7 +32,7 @@ fn show(value: f64) -> String {
 }
 
 /// Reads each number of a float vector as an `f32`, the rule every binding shares.
-/// NaN, an infinity, or a finite number past the `f32` range fails, naming the item.
+/// NaN, an infinity, or a finite number past the `f32` range fails.
 pub(crate) fn read_floats(
     numbers: impl IntoIterator<Item = impl Into<f64>>,
     label: &str,

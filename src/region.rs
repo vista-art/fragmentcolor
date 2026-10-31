@@ -57,13 +57,18 @@ impl ScreenRegion {
         size: impl Into<(u32, u32)>,
     ) -> Result<Self, ScreenRegionError> {
         let (x, y) = origin.into();
-        let (w, h) = size.into();
-        Self::from_region(x, y, w, h)
+        let (width, height) = size.into();
+        Self::from_region(x, y, width, height)
     }
 
     /// A region at `x`, `y` that is `width` by `height` large.
     /// A side of 0, or a far edge past `u32::MAX`, is an error.
     pub fn from_region(x: u32, y: u32, width: u32, height: u32) -> Result<Self, ScreenRegionError> {
+        Self::build(x, y, width, height)
+    }
+
+    /// The region [`ScreenRegion::from_region`] describes, checked.
+    fn build(x: u32, y: u32, width: u32, height: u32) -> Result<Self, ScreenRegionError> {
         let overflow = ScreenRegionError::Overflow {
             x,
             y,
@@ -473,16 +478,16 @@ impl TryFrom<[u32; 2]> for ScreenRegion {
     type Error = ScreenRegionError;
 
     #[inline]
-    fn try_from(a: [u32; 2]) -> Result<Self, Self::Error> {
-        ScreenRegion::from_size(a[0], a[1])
+    fn try_from([width, height]: [u32; 2]) -> Result<Self, Self::Error> {
+        ScreenRegion::from_size(width, height)
     }
 }
 impl TryFrom<&[u32; 2]> for ScreenRegion {
     type Error = ScreenRegionError;
 
     #[inline]
-    fn try_from(a: &[u32; 2]) -> Result<Self, Self::Error> {
-        ScreenRegion::from_size(a[0], a[1])
+    fn try_from(&[width, height]: &[u32; 2]) -> Result<Self, Self::Error> {
+        ScreenRegion::from_size(width, height)
     }
 }
 
@@ -490,16 +495,16 @@ impl TryFrom<(u32, u32, u32, u32)> for ScreenRegion {
     type Error = ScreenRegionError;
 
     #[inline]
-    fn try_from(t: (u32, u32, u32, u32)) -> Result<Self, Self::Error> {
-        ScreenRegion::from_region(t.0, t.1, t.2, t.3)
+    fn try_from((x, y, width, height): (u32, u32, u32, u32)) -> Result<Self, Self::Error> {
+        ScreenRegion::from_region(x, y, width, height)
     }
 }
 impl TryFrom<&(u32, u32, u32, u32)> for ScreenRegion {
     type Error = ScreenRegionError;
 
     #[inline]
-    fn try_from(t: &(u32, u32, u32, u32)) -> Result<Self, Self::Error> {
-        ScreenRegion::from_region(t.0, t.1, t.2, t.3)
+    fn try_from(&(x, y, width, height): &(u32, u32, u32, u32)) -> Result<Self, Self::Error> {
+        ScreenRegion::from_region(x, y, width, height)
     }
 }
 
@@ -507,16 +512,16 @@ impl TryFrom<[u32; 4]> for ScreenRegion {
     type Error = ScreenRegionError;
 
     #[inline]
-    fn try_from(a: [u32; 4]) -> Result<Self, Self::Error> {
-        ScreenRegion::from_region(a[0], a[1], a[2], a[3])
+    fn try_from([x, y, width, height]: [u32; 4]) -> Result<Self, Self::Error> {
+        ScreenRegion::from_region(x, y, width, height)
     }
 }
 impl TryFrom<&[u32; 4]> for ScreenRegion {
     type Error = ScreenRegionError;
 
     #[inline]
-    fn try_from(a: &[u32; 4]) -> Result<Self, Self::Error> {
-        ScreenRegion::from_region(a[0], a[1], a[2], a[3])
+    fn try_from(&[x, y, width, height]: &[u32; 4]) -> Result<Self, Self::Error> {
+        ScreenRegion::from_region(x, y, width, height)
     }
 }
 

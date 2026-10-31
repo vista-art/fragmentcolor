@@ -2,7 +2,7 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum SizeError {
-    /// A size a binding can't use, such as a wrong count of numbers or a negative one, which the message names.
+    /// A size that can't be used, such as an incorrect number of values or a negative one.
     #[error("{0}")]
     Invalid(String),
 }

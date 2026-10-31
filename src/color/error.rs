@@ -13,7 +13,7 @@ pub enum ColorError {
     Css { text: String, reason: String },
 }
 
-/// CSS color text the parser refuses, with the parser's error.
+/// CSS color text the parser refuses.
 pub(crate) struct CssFailure<'text> {
     pub(crate) text: &'text str,
     pub(crate) error: csscolorparser::ParseColorError,

@@ -2,13 +2,13 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum ScreenRegionError {
-    /// A region a binding can't use, such as a wrong count of numbers or a negative one, which the message names.
+    /// A region that can't be used, such as an incorrect number of values or a negative one.
     #[error("{0}")]
     Invalid(String),
     /// A region with no pixels, which no viewport or scissor can use.
     #[error("a region needs a width and a height of at least 1, got {width} by {height}")]
     Empty { width: u32, height: u32 },
-    /// A region whose max lies before its min on an axis, which no binding swaps back.
+    /// A region whose max lies before its min on an axis.
     #[error(
         "a region needs each max past its min, got x from {min_x} to {max_x} and y from {min_y} to {max_y}"
     )]

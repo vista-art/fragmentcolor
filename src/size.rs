@@ -319,13 +319,13 @@ impl Size {
     }
 }
 
-/// A size from Python: a `Size`, a mapping of its fields such as a dict, or `[w, h]` or `[w, h, d]`
-/// in any sequence. Each number is an int that [`PyUnsigned::read`] checks.
+/// A size from Python: a `Size`, a mapping of its fields such as a dict,
+/// or `[w, h]` or `[w, h, d]` in any sequence, each number an int that [`PyUnsigned::read`] checks.
+/// pyo3 tries them in that order, so a mapping such as `UserDict` isn't read as a list of its keys.
 #[cfg(python)]
 #[derive(FromPyObject)]
 pub enum PySize<'py> {
     Size(Size),
-    /// Tried before the list, which a mapping such as `UserDict` also passes as its keys.
     #[pyo3(annotation = "Mapping[str, int]")]
     Fields(Bound<'py, PyMapping>),
     Numbers(Vec<PyUnsigned<'py>>),
