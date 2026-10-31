@@ -2,13 +2,13 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum ColorError {
-    /// A color a binding can't use, such as a wrong count of channels, which the message names.
+    /// A color that can't be used, such as an incorrect number of channels.
     #[error("{0}")]
     Invalid(String),
     /// A channel that is NaN or infinite, which no target can clear to.
     #[error("the {channel} channel must be a finite number, got {value}")]
     NotFinite { channel: &'static str, value: f32 },
-    /// Text that isn't a CSS color, with the parser's reason.
+    /// Text that isn't a CSS color.
     #[error("{text:?} is not a CSS color: {reason}")]
     Css { text: String, reason: String },
 }

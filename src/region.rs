@@ -27,6 +27,8 @@ use error::ScreenRegionError;
 /// A size alone, `[w, h]` or `(w, h)`, covers exactly `w` by `h` pixels from the origin.
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq, PartialOrd)]
 pub struct ScreenRegion {
+    // wasm-bindgen gives each pub field an unchecked setter.
+    // JavaScript reads them through the `minX`, `minY`, `maxX` and `maxY` getters.
     #[cfg_attr(wasm, wasm_bindgen(skip))]
     pub min_x: u32,
     #[cfg_attr(wasm, wasm_bindgen(skip))]

@@ -18,7 +18,6 @@ use thiserror::Error;
 /// Why the WGSL the browser's WebGPU gets can't keep a module's explicit layouts.
 #[derive(Debug, Error)]
 pub(crate) enum LayoutLoss {
-    /// A pinned struct that the text leaves out or lays out otherwise, as `reason` says.
     #[error("struct `{name}` loses its layout in the WGSL the web gets: {reason}")]
     Moved { name: String, reason: String },
     #[error(transparent)]

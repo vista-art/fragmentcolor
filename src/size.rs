@@ -23,6 +23,8 @@ use error::SizeError;
 #[cfg_attr(mobile, derive(uniffi::Record))]
 #[derive(Clone, Copy, Debug, Default, Hash, PartialEq, PartialOrd)]
 pub struct Size {
+    // wasm-bindgen gives each pub field a setter that wraps a number modulo 2^32.
+    // JavaScript uses the checked `width`, `height` and `depth` accessors instead.
     #[cfg_attr(wasm, wasm_bindgen(skip))]
     pub width: u32,
     #[cfg_attr(wasm, wasm_bindgen(skip))]

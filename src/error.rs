@@ -31,7 +31,6 @@ pub enum FragmentColorError {
 #[cfg(any(python, wasm, test))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ErrorClass {
-    /// `FragmentColorError`, the class every other one extends.
     Base,
     InvalidInput,
     UnsupportedMipmapFormat,
