@@ -1,7 +1,7 @@
 #[cfg(mobile)]
 mod mobile;
 #[cfg(mobile)]
-pub use mobile::TextureInputMobile;
+pub use mobile::{TextureInputMobile, TextureRegionMobile};
 #[cfg(python)]
 mod python;
 #[cfg(python)]

@@ -22,12 +22,12 @@ mod usage;
 pub use usage::TextureUsage;
 
 mod platform;
-#[cfg(mobile)]
-pub use platform::TextureInputMobile;
 #[cfg(python)]
 pub(crate) use platform::{
     PySamplerOptions, PyTextureBytes, PyTextureId, PyTextureSource, PyTextureUsage, read_ndarray,
 };
+#[cfg(mobile)]
+pub use platform::{TextureInputMobile, TextureRegionMobile};
 #[cfg(wasm)]
 pub(crate) use platform::{
     js_to_texture_bytes, js_to_texture_id, parse_compare, read_format, read_texture_input,
@@ -60,8 +60,6 @@ pub(crate) use object::{TextureObject, pick_dimension};
 pub(crate) use read::read_pixels;
 pub(crate) use read::{copy_pixels, read_pixels_from};
 pub use region::TextureRegion;
-#[cfg(mobile)]
-pub use region::TextureRegionMobile;
 pub(crate) use registration::Registration;
 pub(crate) use resize::{check_extent, check_plane, check_size, resize};
 pub(crate) use usage::check_usage;

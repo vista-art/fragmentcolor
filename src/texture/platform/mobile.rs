@@ -1,5 +1,5 @@
 //! Mobile (Swift / Kotlin) uniffi bindings for `Texture` and `Mipmap`,
-//! and `TextureInputMobile`, the texture data they take.
+//! and the input types they take, `TextureInputMobile` and `TextureRegionMobile`.
 //!
 //! Mirrors the `wasm_bindgen` shim in `web.rs` and the `pyo3` shim in
 //! `python.rs`: each foreign binding gets a thin wrapper around the
@@ -13,8 +13,9 @@ use lsp_doc::lsp_doc;
 use std::sync::Arc;
 
 use crate::error::platform::mobile::FragmentColorError;
-use crate::texture::TextureRegionMobile;
-use crate::{Mipmap, SamplerOptions, Size, Texture, TextureData, TextureFormat, TextureId};
+use crate::{
+    Mipmap, SamplerOptions, Size, Texture, TextureData, TextureFormat, TextureId, TextureRegion,
+};
 
 /// Uniffi mirror of [`TextureData`], which it converts into.
 ///
@@ -46,6 +47,40 @@ impl From<TextureInputMobile> for TextureData {
             TextureInputMobile::Ktx2Bytes(b) => TextureData::Ktx2Bytes(b),
             TextureInputMobile::Ktx2Path(s) => TextureData::Ktx2Path(std::path::PathBuf::from(s)),
             TextureInputMobile::Ktx2Url(s) => TextureData::Ktx2Url(s),
+        }
+    }
+}
+
+/// Mobile-only flat version of [`TextureRegion`] for uniffi FFI.
+///
+/// Uniffi cannot marshal fixed-size arrays (`[u32; 3]`), so the mobile
+/// binding exposes the 3D origin and size as individual `u32` fields.
+/// Each size is at least 1, and a write without a region covers the whole texture.
+///
+/// Swift and Kotlin see it as `TextureRegion`, the name every other binding uses.
+#[derive(Debug, Clone, uniffi::Record)]
+#[uniffi(name = "TextureRegion")]
+pub struct TextureRegionMobile {
+    pub origin_x: u32,
+    pub origin_y: u32,
+    pub origin_z: u32,
+    /// Width of the region to write, at least 1.
+    pub size_width: u32,
+    /// Height of the region to write, at least 1.
+    pub size_height: u32,
+    /// Depth of the region to write, at least 1.
+    pub size_depth: u32,
+    pub bytes_per_row: Option<u32>,
+    pub rows_per_image: Option<u32>,
+}
+
+impl From<TextureRegionMobile> for TextureRegion {
+    fn from(m: TextureRegionMobile) -> Self {
+        TextureRegion {
+            origin: [m.origin_x, m.origin_y, m.origin_z],
+            size: [m.size_width, m.size_height, m.size_depth],
+            bytes_per_row: m.bytes_per_row,
+            rows_per_image: m.rows_per_image,
         }
     }
 }
