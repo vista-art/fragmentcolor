@@ -1,4 +1,4 @@
-use super::error::{Diagnostic, Source};
+use super::error::{Diagnostic, Source, WriteFailure};
 use super::validate_module;
 use crate::{ShaderError, ShaderObject};
 use naga::back::wgsl;
@@ -35,8 +35,17 @@ fn convert_stage(
         }
     };
     let info = validate_module(&module, Some(source))?;
-    match wgsl::write_string(&module, &info, wgsl::WriterFlags::empty()) {
+    Ok(write_stage(&module, &info, source)?)
+}
+
+/// The WGSL naga writes for one stage's module, or the failure that names the stage's source.
+fn write_stage<'text>(
+    module: &naga::Module,
+    info: &naga::valid::ModuleInfo,
+    source: Source<'text>,
+) -> Result<String, WriteFailure<'text>> {
+    match wgsl::write_string(module, info, wgsl::WriterFlags::empty()) {
         Ok(text) => Ok(text),
-        Err(error) => Err(ShaderError::WgslError(Diagnostic::from_error(&error))),
+        Err(error) => Err(WriteFailure { source, error }),
     }
 }

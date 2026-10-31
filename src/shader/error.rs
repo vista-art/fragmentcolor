@@ -114,6 +114,23 @@ impl<'text> Source<'text> {
     }
 }
 
+/// A GLSL stage naga's WGSL writer refuses, with the source its report names.
+pub(crate) struct WriteFailure<'text> {
+    pub(crate) source: Source<'text>,
+    pub(crate) error: naga::back::wgsl::Error,
+}
+
+/// The writer's reason, after the name of the stage's source, since the writer points at no line.
+impl From<WriteFailure<'_>> for ShaderError {
+    fn from(failure: WriteFailure<'_>) -> Self {
+        let message = format!("{}: {}", failure.source.path, describe(&failure.error));
+        ShaderError::WgslError(Diagnostic {
+            message,
+            locations: Vec::new(),
+        })
+    }
+}
+
 impl Diagnostic {
     /// naga's report on WGSL `source` that its parser refuses.
     pub(crate) fn from_parse(error: &naga::front::wgsl::ParseError, source: &str) -> Self {
@@ -387,8 +404,8 @@ mod tests {
         assert!(place.line >= 3, "{place:?}");
     }
 
-    // Story: a GLSL stage that parses and then fails validation names its own source,
-    // where the report pointed at `wgsl` lines and left out which stage failed.
+    // Story: a GLSL stage that parses and then fails validation
+    // names its own source, `fragment.glsl`, in the report's place lines.
     #[test]
     fn glsl_validation_errors_name_the_stage() {
         let vertex = "#version 450\nvoid main() { gl_Position = vec4(1.0); }";
@@ -407,6 +424,25 @@ mod tests {
         );
         assert!(
             !diagnostic.message.contains("wgsl"),
+            "{}",
+            diagnostic.message
+        );
+    }
+
+    // Story: a GLSL stage the WGSL writer refuses names the stage's source in its report.
+    #[test]
+    fn glsl_write_errors_name_the_stage() {
+        let vertex = "#version 450\nvoid main() { gl_Position = vec4(1.0); }";
+        let fragment = "#version 450\nlayout(location = 0) out vec4 color;\nvoid main() {\n  float x = 0.0;\n  int i = int(gl_FragCoord.x);\n  switch (i) {\n    case 0: x = 1.0;\n    case 1: x = 2.0; break;\n    default: break;\n  }\n  color = vec4(x);\n}";
+
+        let result = crate::ShaderObject::glsl(vertex, fragment);
+
+        let diagnostic = take_diagnostic(result, |error| match error {
+            ShaderError::WgslError(diagnostic) => Some(diagnostic),
+            _ => None,
+        });
+        assert!(
+            diagnostic.message.starts_with("fragment.glsl: "),
             "{}",
             diagnostic.message
         );
