@@ -259,7 +259,8 @@ impl Renderer {
 
         let source = crate::texture::TextureSource::try_from(input)?;
         let context = self.context(None).await?;
-        let object = crate::TextureObject::from_source(context.clone(), source).await?;
+        let object =
+            crate::TextureObject::from_source(context.clone(), source, "create_texture").await?;
         let object = std::sync::Arc::new(object);
         let registration = crate::texture::Registration::create(&context, object);
         Ok(crate::texture::Texture::new(context, registration))
@@ -558,7 +559,8 @@ impl Renderer {
         }
         let mut first = None;
         for job in jobs {
-            let upload = crate::TextureObject::from_source(context.clone(), job.source.clone());
+            let upload =
+                crate::TextureObject::from_source(context.clone(), job.source.clone(), "load");
             let upload = upload.await;
             #[cfg(test)]
             crate::hooks::run("map uploaded");

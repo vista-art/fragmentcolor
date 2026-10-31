@@ -15,6 +15,13 @@ Each language spells these inputs the way its `create_texture` does, and the oth
 - **Python:** `base_color_texture(input, size=None, format=None, mipmaps=None, sampler=None, usage=None)`. A NumPy array brings its own size, and a `size` that differs from it raises `InvalidInputError`.
 - **Swift and Kotlin:** `baseColorTexture(texture)`, `baseColorTexture(bytes)`, `baseColorTexture(bytes, format)`, `baseColorTexture(bytes, [w, h])`, `baseColorTexture(bytes, size)`, `baseColorTexture(bytes, options)`, `baseColorTexture(path)`, `baseColorTexture(path, format)`, `baseColorTexture(path, options)`, `baseColorTexture(chain)` and `baseColorTexture(chain, options)`. Bytes are `Data`, `[UInt8]` or `[Int]` in Swift and `ByteArray` or `List<Int>` in Kotlin, in every bytes form. The bytes forms without `options` take an optional `usage`. An `Int` outside 0 to 255 throws, and so does a `[w, h]` that isn't 2 or 3 numbers.
 
+A source with no format of its own reads as sRGB in this slot, as glTF's
+base color does. A `Mipmap` or a KTX2 container keeps the format it stores,
+and takes that sRGB reading only where its bytes read the same in it, so a
+float chain or container stays linear. A format you pass yourself is the
+one it uploads in, and a `Mipmap` or KTX2 container whose bytes can't be
+read in it fails the `load` with an `InvalidInput` error that names `load`.
+
 Unset, this slot resolves to a 1×1 white default the renderer hands out
 lazily, so calling `Material::pbr()` without binding a
 texture renders correctly under the factor alone.
