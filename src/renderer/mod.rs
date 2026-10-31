@@ -33,6 +33,9 @@ pub use error::*;
 pub mod renderable;
 pub use renderable::*;
 
+mod logging;
+pub use logging::LogLevel;
+
 mod buffer_pool;
 pub(crate) use buffer_pool::*;
 
@@ -160,6 +163,11 @@ impl Renderer {
     #[lsp_doc("docs/api/core/renderer/new.md")]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    #[lsp_doc("docs/api/core/renderer/set_log_level.md")]
+    pub fn set_log_level(level: LogLevel) {
+        log::set_max_level(level.to_filter());
     }
 
     /// A second handle on this renderer's instance, adapter and context,

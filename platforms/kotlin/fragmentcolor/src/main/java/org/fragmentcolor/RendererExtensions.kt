@@ -20,6 +20,11 @@ private object SurfaceBridge {
     external fun release_native_window(window: Long)
 }
 
+/** Set how much FragmentColor logs, for the whole process. */
+fun Renderer.Companion.setLogLevel(level: LogLevel) {
+    useLogLevel(level).destroy()
+}
+
 /**
  * Build a [WindowTarget] from an [android.view.Surface] on this renderer.
  *

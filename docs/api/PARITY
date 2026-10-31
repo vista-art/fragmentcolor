@@ -43,6 +43,9 @@ docs/api/scene/scene/hidden/load_bytes_mobile.md=>docs/api/scene/scene/load.md: 
 # Swift/Kotlin extensions spell it Shader.setRegistry(baseUrl).
 docs/api/core/shader/hidden/use_registry_mobile.md=>docs/api/core/shader/set_registry.md: Mobile sets the registry through a useRegistry constructor; Swift/Kotlin extensions expose Shader.setRegistry with no return value.
 
+# Renderer::set_log_level is a static method returning nothing, set the same way.
+docs/api/core/renderer/hidden/use_log_level_mobile.md=>docs/api/core/renderer/set_log_level.md: Mobile sets the log level through a useLogLevel constructor; Swift/Kotlin extensions expose Renderer.setLogLevel with no return value.
+
 # Shader::fetch is async, and uniffi 0.32 can't make a primary constructor async,
 # so both the single-part (fetch_mobile) and multi-part (fetch_compose_mobile)
 # bindings are async instance methods. The Swift and Kotlin extensions spell

@@ -22,6 +22,7 @@ pub fn fragmentcolor(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Shader>()?;
     m.add_class::<Pass>()?;
     m.add_class::<crate::renderer::ErrorKind>()?;
+    m.add_class::<crate::renderer::LogLevel>()?;
 
     // Helpers
     m.add_class::<Size>()?;

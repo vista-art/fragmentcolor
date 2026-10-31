@@ -14,25 +14,6 @@ pub fn wasm_start() {
     drop(prealloc);
 }
 
-/// Allow raising/lowering log level at runtime from JS (e.g., for verbose healthchecks)
-#[wasm_bindgen::prelude::wasm_bindgen]
-pub fn set_log_level(
-    #[wasm_bindgen(unchecked_param_type = "string")] level: &wasm_bindgen::JsValue,
-) -> Result<(), WebError> {
-    use log::LevelFilter;
-    let level = read_text(level, "set_log_level: level")?;
-    let lvl = match level.to_ascii_lowercase().as_str() {
-        "trace" => LevelFilter::Trace,
-        "debug" => LevelFilter::Debug,
-        "info" => LevelFilter::Info,
-        "warn" | "warning" => LevelFilter::Warn,
-        "error" => LevelFilter::Error,
-        _ => LevelFilter::Info,
-    };
-    log::set_max_level(lvl);
-    Ok(())
-}
-
 /// Resolves after one turn of the browser event loop (a zero-delay timer).
 /// Lets GPU fences advance between device polls, which the WebGL2 backend
 /// needs before a buffer map callback can fire.

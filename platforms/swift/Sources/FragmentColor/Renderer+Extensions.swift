@@ -10,6 +10,14 @@ import Foundation
 import QuartzCore
 
 extension Renderer {
+    // MARK: - setLogLevel
+
+    /// Set how much FragmentColor logs, for the whole process.
+    /// Matches the JS / Python static-method spelling.
+    public static func setLogLevel(_ level: LogLevel) {
+        _ = Renderer.useLogLevel(level: level)
+    }
+
     // MARK: - createTarget
 
     /// Build a `WindowTarget` from a `CAMetalLayer`. The uniffi-generated

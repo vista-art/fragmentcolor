@@ -182,7 +182,7 @@ Core holds `Renderer`, the targets, `Shader` with `Pipeline`, `Pass`, `Mesh`, `T
   - Plain numbers: `TextureId`, whose class reads its `u64` as a `BigInt` today, and `TextureUsage`, whose flags are already numbers on its class
   - `TextureRegion` stays an array or a plain object in JavaScript and Python, never a class. Swift and Kotlin keep its `from(...).withStride(...)` builder
   - Classes, because they are handles or carry methods: `Camera` and `Light` (`look_at`, `pack`, `sort`), `SceneNode`, `Vertex`, whose chained `set` fills a map the object hides, and the index view that `mesh.instance(7)` returns
-- [ ] Object methods replace JavaScript's `set_log_level` and Python's `rendercanvas_context_hook`. Kotlin's top-level `ShaderFetch` goes with the other deprecated forms under Names
+- [ ] An object method replaces Python's `rendercanvas_context_hook`, as `Renderer.setLogLevel` replaced JavaScript's `set_log_level` in 0.12.7. Kotlin's top-level `ShaderFetch` goes with the other deprecated forms under Names
 - [ ] Python releases the GIL in every blocking call. Today nothing calls `py.detach`
 - [ ] Parse errors carry the line, column and input as fields in every binding
 - [ ] HDR and wide-gamut surface output from `v0.13.0-dev`: a `ColorSpace` enum plus `color_spaces()`, `set_color_space()` and `hdr_info()` on window targets, with `Auto` as the default

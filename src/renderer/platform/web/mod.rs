@@ -1,10 +1,9 @@
-use crate::error::WebError;
-use crate::error::defer;
-use crate::platforms::web::read_text;
+use crate::error::{ErrorClass, WebError, defer};
+use crate::platforms::web::{describe, read_text, read_unsigned};
 use crate::texture::{js_to_texture_bytes, read_format, read_texture_input, read_usage};
 use crate::{
-    Mesh, Pass, PassObject, Renderable, Renderer, Scene, Shader, Size, Texture, TextureData,
-    TextureTarget, target::CanvasTarget,
+    LogLevel, Mesh, Pass, PassObject, Renderable, Renderer, Scene, Shader, Size, Texture,
+    TextureData, TextureTarget, target::CanvasTarget,
 };
 use js_sys::Array;
 use lsp_doc::lsp_doc;
@@ -60,6 +59,15 @@ impl Renderer {
     #[lsp_doc("docs/api/core/renderer/new.md")]
     pub fn new_js() -> Self {
         Self::new()
+    }
+
+    #[wasm_bindgen(js_name = "setLogLevel")]
+    #[lsp_doc("docs/api/core/renderer/set_log_level.md")]
+    pub fn set_log_level_js(
+        #[wasm_bindgen(unchecked_param_type = "LogLevel")] level: &JsValue,
+    ) -> Result<(), WebError> {
+        Renderer::set_log_level(read_log_level(level)?);
+        Ok(())
     }
 
     #[wasm_bindgen(js_name = "createTarget")]
@@ -237,6 +245,28 @@ impl Renderer {
         Err(WebError::type_error(
             "Renderer.render: expected a WindowTarget or a TextureTarget",
         ))
+    }
+}
+
+/// A `LogLevel` from JS, a number in variant order, or the error that names the value.
+fn read_log_level(value: &JsValue) -> Result<LogLevel, WebError> {
+    let code = value.as_f64().ok_or_else(|| {
+        WebError::type_error(&format!(
+            "Renderer.setLogLevel: level must be a LogLevel, got {}",
+            describe(value)
+        ))
+    })?;
+    match read_unsigned(code, "Renderer.setLogLevel: level")? {
+        0 => Ok(LogLevel::Off),
+        1 => Ok(LogLevel::Error),
+        2 => Ok(LogLevel::Warn),
+        3 => Ok(LogLevel::Info),
+        4 => Ok(LogLevel::Debug),
+        5 => Ok(LogLevel::Trace),
+        _ => Err(WebError::new(
+            ErrorClass::InvalidInput,
+            &format!("Renderer.setLogLevel: {code} is not a LogLevel"),
+        )),
     }
 }
 

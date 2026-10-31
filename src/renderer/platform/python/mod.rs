@@ -101,6 +101,13 @@ impl Renderer {
         Self::new()
     }
 
+    #[staticmethod]
+    #[pyo3(name = "set_log_level")]
+    #[lsp_doc("docs/api/core/renderer/set_log_level.md")]
+    pub fn set_log_level_py(level: crate::LogLevel) {
+        Self::set_log_level(level);
+    }
+
     #[lsp_doc("docs/api/core/renderer/create_target.md")]
     #[pyo3(name = "create_target")]
     pub fn create_target_py(

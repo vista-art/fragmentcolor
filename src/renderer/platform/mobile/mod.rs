@@ -190,6 +190,16 @@ impl Renderer {
         Arc::new(Self::new())
     }
 
+    /// Set the process log level. uniffi has no static methods, so this constructor
+    /// sets it and returns a new `Renderer`, and the Swift and Kotlin extensions
+    /// spell it `Renderer.setLogLevel(level)` with no return value.
+    #[uniffi::constructor(name = "useLogLevel")]
+    #[lsp_doc("docs/api/core/renderer/hidden/use_log_level_mobile.md")]
+    pub fn use_log_level_mobile(level: crate::LogLevel) -> Arc<Self> {
+        Self::set_log_level(level);
+        Arc::new(Self::new())
+    }
+
     /// Create a headless `TextureTarget` of `size`. Uniffi can't marshal
     /// `impl Into<Size>`, so the mobile entry point takes the `Size` record,
     /// layers included, and checks it the way every binding does.
