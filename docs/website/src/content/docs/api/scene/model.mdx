@@ -74,7 +74,6 @@ or `Material::custom()` rather than cloning.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Material, Mesh, Model, Vertex};
 
 let mesh = Mesh::new();
@@ -86,10 +85,8 @@ mesh.add_vertices([
 
 let model = Model::new(mesh, Material::pbr());
 model.material().shader().set("camera.position", [0.0, 0.0, 5.0])?;
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 13-14}"
+lang="rust"
 />
 
 </TabItem>
@@ -136,7 +133,7 @@ code={`
 import FragmentColor
 
 let mesh = Mesh()
-try mesh.addVertices([
+mesh.addVertices([
     try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
     try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
     try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
@@ -184,7 +181,6 @@ handle.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Material, Mesh, Model, Vertex};
 
 let mesh = Mesh::new();
@@ -201,10 +197,8 @@ model.mesh().add_vertices([
     Vertex::pbr([0.5, 0.5, 0.0]).set(Vertex::UV0, [1.0, 1.0]),
     Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]),
 ]);
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 18-19}"
+lang="rust"
 />
 
 </TabItem>
@@ -257,7 +251,7 @@ code={`
 import FragmentColor
 
 let mesh = Mesh()
-try mesh.addVertices([
+mesh.addVertices([
     try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
     try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
     try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
@@ -265,7 +259,7 @@ try mesh.addVertices([
 
 let model = Model(mesh, Material.pbr())
 // A second triangle joins the first through the Model.
-try model.mesh().addVertices([
+model.mesh().addVertices([
     try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
     try Vertex.pbr([0.5, 0.5, 0.0]).set(Vertex.UV0, [1.0, 1.0]),
     try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
@@ -335,7 +329,6 @@ columns come from the Model, not the mesh. Custom shaders via
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Material, Mesh, Model, Vertex};
 
 let mesh = Mesh::new();
@@ -346,12 +339,8 @@ mesh.add_vertices([
 ]);
 
 let model = Model::new(mesh, Material::pbr());
-
-let _model = model;
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 13-15}"
+lang="rust"
 />
 
 </TabItem>
@@ -398,7 +387,7 @@ code={`
 import FragmentColor
 
 let mesh = Mesh()
-try mesh.addVertices([
+mesh.addVertices([
     try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
     try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
     try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
@@ -449,7 +438,6 @@ the matrix yourself and call [set_transform](/api/scene/model#set_transform).
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Material, Mesh, Model, Renderer, Vertex};
 
 let renderer = Renderer::new();
@@ -462,11 +450,8 @@ mesh.add_vertices([
 
 let model = Model::new(mesh, Material::pbr());
 model.rotate([0.0, 1.0, 0.0], 1.571); // 90° around Y
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 14-16}"
+lang="rust"
 />
 
 </TabItem>
@@ -516,7 +501,7 @@ import FragmentColor
 
 let renderer = Renderer()
 let mesh = Mesh()
-try mesh.addVertices([
+mesh.addVertices([
     try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
     try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
     try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
@@ -570,7 +555,6 @@ Model will shade slightly off. For a correct non-uniform-scale normal, use
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Material, Mesh, Model, Renderer, Vertex};
 
 let renderer = Renderer::new();
@@ -583,11 +567,8 @@ mesh.add_vertices([
 
 let model = Model::new(mesh, Material::pbr());
 model.scale([2.0, 2.0, 2.0]);
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 14-16}"
+lang="rust"
 />
 
 </TabItem>
@@ -637,7 +618,7 @@ import FragmentColor
 
 let renderer = Renderer()
 let mesh = Mesh()
-try mesh.addVertices([
+mesh.addVertices([
     try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
     try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
     try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
@@ -692,7 +673,6 @@ current transform, see
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Material, Mesh, Model, Renderer, Vertex};
 
 let renderer = Renderer::new();
@@ -710,11 +690,8 @@ model.set_transform([
     [0.0, 0.0, 2.0, 0.0],
     [3.0, 0.0, 0.0, 1.0],
 ]);
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 19-21}"
+lang="rust"
 />
 
 </TabItem>
@@ -769,7 +746,7 @@ import FragmentColor
 
 let renderer = Renderer()
 let mesh = Mesh()
-try mesh.addVertices([
+mesh.addVertices([
     try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
     try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
     try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
@@ -843,7 +820,6 @@ Typical uses:
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Material, Mesh, Model, Vertex};
 
 let mesh = Mesh::new();
@@ -858,10 +834,8 @@ let detail = Model::new(mesh, Material::pbr());
 detail.set_visible(false);
 // Closer again, show it.
 detail.set_visible(true);
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 16-17}"
+lang="rust"
 />
 
 </TabItem>
@@ -914,7 +888,7 @@ code={`
 import FragmentColor
 
 let mesh = Mesh()
-try mesh.addVertices([
+mesh.addVertices([
     try Vertex.pbr([0.0, 0.5, 0.0]),
     try Vertex.pbr([-0.5, -0.5, 0.0]),
     try Vertex.pbr([0.5, -0.5, 0.0]),
@@ -973,7 +947,6 @@ side is `transform` and the write side is `set_transform`.
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Material, Mesh, Model, Renderer, Vertex};
 
 let renderer = Renderer::new();
@@ -986,14 +959,8 @@ mesh.add_vertices([
 
 let model = Model::new(mesh, Material::pbr());
 let identity = model.transform();
-assert_eq!(identity[0], [1.0, 0.0, 0.0, 0.0]);
-assert_eq!(identity[3], [0.0, 0.0, 0.0, 1.0]);
-let _ = identity;
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 14-19}"
+lang="rust"
 />
 
 </TabItem>
@@ -1043,7 +1010,7 @@ import FragmentColor
 
 let renderer = Renderer()
 let mesh = Mesh()
-try mesh.addVertices([
+mesh.addVertices([
     try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
     try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
     try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
@@ -1093,7 +1060,6 @@ along the world X axis.
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Material, Mesh, Model, Renderer, Vertex};
 
 let renderer = Renderer::new();
@@ -1106,15 +1072,8 @@ mesh.add_vertices([
 
 let model = Model::new(mesh, Material::pbr());
 model.translate([5.0, 0.0, -2.0]);
-
-let m = model.transform();
-// The translation lives in the fourth column when column-major.
-assert_eq!(m[3], [5.0, 0.0, -2.0, 1.0]);
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 15-20}"
+lang="rust"
 />
 
 </TabItem>
@@ -1166,7 +1125,7 @@ import FragmentColor
 
 let renderer = Renderer()
 let mesh = Mesh()
-try mesh.addVertices([
+mesh.addVertices([
     try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
     try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
     try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
@@ -1218,7 +1177,6 @@ rebuild.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Material, Mesh, Model, Vertex};
 
 let mesh = Mesh::new();
@@ -1231,11 +1189,8 @@ let model = Model::new(mesh, Material::pbr());
 
 // Models start visible; toggle with \`set_visible\`.
 let visible_now = model.visible();
-assert!(visible_now);
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 14-16}"
+lang="rust"
 />
 
 </TabItem>
@@ -1284,7 +1239,7 @@ code={`
 import FragmentColor
 
 let mesh = Mesh()
-try mesh.addVertices([
+mesh.addVertices([
     try Vertex.pbr([0.0, 0.5, 0.0]),
     try Vertex.pbr([-0.5, -0.5, 0.0]),
     try Vertex.pbr([0.5, -0.5, 0.0]),

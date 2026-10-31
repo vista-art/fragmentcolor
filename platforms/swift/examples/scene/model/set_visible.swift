@@ -1,7 +1,7 @@
 import FragmentColor
 
 let mesh = Mesh()
-try mesh.addVertices([
+mesh.addVertices([
     try Vertex.pbr([0.0, 0.5, 0.0]),
     try Vertex.pbr([-0.5, -0.5, 0.0]),
     try Vertex.pbr([0.5, -0.5, 0.0]),

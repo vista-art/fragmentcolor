@@ -37,4 +37,8 @@ val main = """
 
 """
 
-val shader2 = Shader(listOf("sdf2d/circle", "noise/simplex2", main,))
+val shader2 = Shader(listOf(
+    "sdf2d/circle",      // pure function: fn circle(p: vec2<f32>, r: f32) -> f32
+    "noise/simplex2",    // pure function: fn simplex2(v: vec2<f32>) -> f32
+    main,
+))

@@ -1,7 +1,7 @@
 import FragmentColor
 
 let mesh = Mesh()
-try mesh.addVertices([
+mesh.addVertices([
     try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
     try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
     try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
@@ -9,7 +9,7 @@ try mesh.addVertices([
 
 let model = Model(mesh, Material.pbr())
 // A second triangle joins the first through the Model.
-try model.mesh().addVertices([
+model.mesh().addVertices([
     try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
     try Vertex.pbr([0.5, 0.5, 0.0]).set(Vertex.UV0, [1.0, 1.0]),
     try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),

@@ -32,7 +32,7 @@ final class GeneratedExamples: ExampleCase {
             let canvas = CAMetalLayer()
 
             let renderer = Renderer()
-            let target = try await renderer.createTarget(canvas)
+            let target = try renderer.createTarget(canvas)
             let shader = Shader.default()
 
             let pass = Pass("First Pass")
@@ -54,7 +54,7 @@ final class GeneratedExamples: ExampleCase {
             let renderer = Renderer()
 
             let mesh = Mesh()
-            try mesh.addVertices([
+            mesh.addVertices([
                 try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
                 try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
                 try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
@@ -261,7 +261,7 @@ final class GeneratedExamples: ExampleCase {
             let renderer = Renderer()
 
             // The canvas comes from your platform's windowing system
-            let target = try await renderer.createTarget(canvas)
+            let target = try renderer.createTarget(canvas)
             let texture_target = try await renderer.createTextureTarget([16, 16])
 
             // RENDERING
@@ -308,7 +308,7 @@ final class GeneratedExamples: ExampleCase {
             let renderer = Renderer()
 
             // The canvas comes from your platform's windowing system.
-            let target = try await renderer.createTarget(canvas)
+            let target = try renderer.createTarget(canvas)
         }
     }
 
@@ -342,14 +342,14 @@ final class GeneratedExamples: ExampleCase {
             let target = try await renderer.createTextureTarget([64, 64])
 
             let mesh = Mesh()
-            try mesh.addVertices([
+            mesh.addVertices([
                 try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
                 try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
                 try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
             ])
 
             // The material keeps the encoded image as a map.
-            let material = try Material.pbr().baseColorTexture(image)
+            let material = Material.pbr().baseColorTexture(image)
             let model = Model(mesh, material)
             let scene = Scene()
             try scene.add(model)
@@ -767,7 +767,7 @@ final class GeneratedExamples: ExampleCase {
             ])
 
             let instance = try Instance().set("offset", [0.5, 0.0])
-            try mesh.addInstance(instance)
+            mesh.addInstance(instance)
         }
     }
 
@@ -796,7 +796,7 @@ final class GeneratedExamples: ExampleCase {
             ])
 
             let instance = try Instance().set("offset", [0.5, 0.0]).set("layer", 2)
-            try mesh.addInstance(instance)
+            mesh.addInstance(instance)
 
             // offset uploads as a vec2<f32> and layer as the u32 2.
             try shader.addMesh(mesh)
@@ -853,7 +853,7 @@ final class GeneratedExamples: ExampleCase {
     func test_geometry_mesh_clear_indices() async {
         await example("docs/api/geometry/mesh/clear_indices.md") {
             let mesh = Mesh()
-            try mesh.addVertices([
+            mesh.addVertices([
                 try Vertex([-0.5, -0.5]),
                 try Vertex([ 0.5, -0.5]),
                 try Vertex([ 0.0,  0.5]),
@@ -893,7 +893,7 @@ final class GeneratedExamples: ExampleCase {
             // happen to carry distinct UVs (only positions repeat), so we keep them
             // all and reference each by index.
             let mesh = Mesh()
-            try mesh.addVertices([
+            mesh.addVertices([
                 try Vertex([-0.5, -0.5]).set("uv", [0.0, 0.0]),
                 try Vertex([ 0.5, -0.5]).set("uv", [1.0, 0.0]),
                 try Vertex([ 0.5,  0.5]).set("uv", [1.0, 1.0]),
@@ -979,7 +979,7 @@ final class GeneratedExamples: ExampleCase {
             let vertex = try Vertex([0.0, 0.5]).set("id", 7).set("weight", 0.5)
 
             let mesh = Mesh()
-            try mesh.addVertices([
+            mesh.addVertices([
                 vertex,
                 try Vertex([-0.5, -0.5]).set("id", 8).set("weight", 1.0),
                 try Vertex([0.5, -0.5]).set("id", 9).set("weight", 1.0),
@@ -1087,7 +1087,7 @@ final class GeneratedExamples: ExampleCase {
             let target = try await renderer.createTextureTarget([64, 64])
 
             let wall = Mesh()
-            try wall.addVertices([
+            wall.addVertices([
                 try Vertex.pbr([-2.0, -2.0, 0.0]),
                 try Vertex.pbr([2.0, -2.0, 0.0]),
                 try Vertex.pbr([2.0, 2.0, 0.0]),
@@ -1176,7 +1176,7 @@ final class GeneratedExamples: ExampleCase {
     func test_scene_material_Material() async {
         await example("docs/api/scene/material/material.md") {
             let mesh = Mesh()
-            try mesh.addVertices([
+            mesh.addVertices([
                 try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
                 try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
                 try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
@@ -1225,7 +1225,7 @@ final class GeneratedExamples: ExampleCase {
             // Every Material that points at `albedo` reuses the same uploaded GPU
             // texture; passing the same handle into N Material instances costs one
             // upload and N shader-uniform references.
-            let material = try Material.pbr().baseColorTexture(albedo)
+            let material = Material.pbr().baseColorTexture(albedo)
 
             // Raw pixels with their size upload when the scene loads.
             let tint = [255, 128, 0, 255]
@@ -1391,7 +1391,7 @@ final class GeneratedExamples: ExampleCase {
     func test_scene_material_texture_uv() async {
         await example("docs/api/scene/material/texture_uv.md") {
             let mesh = Mesh()
-            try mesh.addVertices([
+            mesh.addVertices([
                 try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]).set(Vertex.UV1, [0.25, 0.75]),
                 try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]).set(Vertex.UV1, [0.0, 0.5]),
                 try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]).set(Vertex.UV1, [0.5, 0.5]),
@@ -1412,7 +1412,7 @@ final class GeneratedExamples: ExampleCase {
     func test_scene_model_material() async {
         await example("docs/api/scene/model/material.md") {
             let mesh = Mesh()
-            try mesh.addVertices([
+            mesh.addVertices([
                 try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
                 try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
                 try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
@@ -1426,7 +1426,7 @@ final class GeneratedExamples: ExampleCase {
     func test_scene_model_mesh() async {
         await example("docs/api/scene/model/mesh.md") {
             let mesh = Mesh()
-            try mesh.addVertices([
+            mesh.addVertices([
                 try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
                 try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
                 try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
@@ -1434,7 +1434,7 @@ final class GeneratedExamples: ExampleCase {
 
             let model = Model(mesh, Material.pbr())
             // A second triangle joins the first through the Model.
-            try model.mesh().addVertices([
+            model.mesh().addVertices([
                 try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
                 try Vertex.pbr([0.5, 0.5, 0.0]).set(Vertex.UV0, [1.0, 1.0]),
                 try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
@@ -1445,7 +1445,7 @@ final class GeneratedExamples: ExampleCase {
     func test_scene_model_new() async {
         await example("docs/api/scene/model/new.md") {
             let mesh = Mesh()
-            try mesh.addVertices([
+            mesh.addVertices([
                 try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
                 try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
                 try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
@@ -1459,7 +1459,7 @@ final class GeneratedExamples: ExampleCase {
         await example("docs/api/scene/model/rotate.md") {
             let renderer = Renderer()
             let mesh = Mesh()
-            try mesh.addVertices([
+            mesh.addVertices([
                 try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
                 try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
                 try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
@@ -1474,7 +1474,7 @@ final class GeneratedExamples: ExampleCase {
         await example("docs/api/scene/model/scale.md") {
             let renderer = Renderer()
             let mesh = Mesh()
-            try mesh.addVertices([
+            mesh.addVertices([
                 try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
                 try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
                 try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
@@ -1489,7 +1489,7 @@ final class GeneratedExamples: ExampleCase {
         await example("docs/api/scene/model/set_transform.md") {
             let renderer = Renderer()
             let mesh = Mesh()
-            try mesh.addVertices([
+            mesh.addVertices([
                 try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
                 try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
                 try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
@@ -1508,7 +1508,7 @@ final class GeneratedExamples: ExampleCase {
     func test_scene_model_set_visible() async {
         await example("docs/api/scene/model/set_visible.md") {
             let mesh = Mesh()
-            try mesh.addVertices([
+            mesh.addVertices([
                 try Vertex.pbr([0.0, 0.5, 0.0]),
                 try Vertex.pbr([-0.5, -0.5, 0.0]),
                 try Vertex.pbr([0.5, -0.5, 0.0]),
@@ -1526,7 +1526,7 @@ final class GeneratedExamples: ExampleCase {
         await example("docs/api/scene/model/transform.md") {
             let renderer = Renderer()
             let mesh = Mesh()
-            try mesh.addVertices([
+            mesh.addVertices([
                 try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
                 try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
                 try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
@@ -1541,7 +1541,7 @@ final class GeneratedExamples: ExampleCase {
         await example("docs/api/scene/model/translate.md") {
             let renderer = Renderer()
             let mesh = Mesh()
-            try mesh.addVertices([
+            mesh.addVertices([
                 try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
                 try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
                 try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
@@ -1555,7 +1555,7 @@ final class GeneratedExamples: ExampleCase {
     func test_scene_model_visible() async {
         await example("docs/api/scene/model/visible.md") {
             let mesh = Mesh()
-            try mesh.addVertices([
+            mesh.addVertices([
                 try Vertex.pbr([0.0, 0.5, 0.0]),
                 try Vertex.pbr([-0.5, -0.5, 0.0]),
                 try Vertex.pbr([0.5, -0.5, 0.0]),
@@ -1572,7 +1572,7 @@ final class GeneratedExamples: ExampleCase {
             let renderer = Renderer()
 
             let mesh = Mesh()
-            try mesh.addVertices([
+            mesh.addVertices([
                 try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
                 try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
                 try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
@@ -1598,7 +1598,7 @@ final class GeneratedExamples: ExampleCase {
             let renderer = Renderer()
 
             let mesh = Mesh()
-            try mesh.addVertices([
+            mesh.addVertices([
                 try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
                 try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
                 try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
@@ -1618,7 +1618,7 @@ final class GeneratedExamples: ExampleCase {
     func test_scene_scene_add_to() async {
         await example("docs/api/scene/scene/add_to.md") {
             let mesh = Mesh()
-            try mesh.addVertices([
+            mesh.addVertices([
                 try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
                 try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
                 try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
@@ -1639,7 +1639,7 @@ final class GeneratedExamples: ExampleCase {
             let target = try await renderer.createTextureTarget([64, 64])
 
             let mesh = Mesh()
-            try mesh.addVertices([
+            mesh.addVertices([
                 try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
                 try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
                 try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
@@ -1708,7 +1708,7 @@ final class GeneratedExamples: ExampleCase {
     func test_scene_scene_list_passes() async {
         await example("docs/api/scene/scene/list_passes.md") {
             let mesh = Mesh()
-            try mesh.addVertices([
+            mesh.addVertices([
                 try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
                 try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
                 try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
@@ -1738,7 +1738,7 @@ final class GeneratedExamples: ExampleCase {
     func test_scene_scene_models() async {
         await example("docs/api/scene/scene/models.md") {
             let mesh = Mesh()
-            try mesh.addVertices([
+            mesh.addVertices([
                 try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
                 try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
                 try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
@@ -1766,7 +1766,7 @@ final class GeneratedExamples: ExampleCase {
     func test_scene_scene_no_default_camera() async {
         await example("docs/api/scene/scene/no_default_camera.md") {
             let mesh = Mesh()
-            try mesh.addVertices([
+            mesh.addVertices([
                 try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
                 try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
                 try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
@@ -1781,7 +1781,7 @@ final class GeneratedExamples: ExampleCase {
     func test_scene_scene_no_default_light() async {
         await example("docs/api/scene/scene/no_default_light.md") {
             let mesh = Mesh()
-            try mesh.addVertices([
+            mesh.addVertices([
                 try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
                 try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
                 try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
@@ -1796,7 +1796,7 @@ final class GeneratedExamples: ExampleCase {
     func test_scene_scene_no_defaults() async {
         await example("docs/api/scene/scene/no_defaults.md") {
             let mesh = Mesh()
-            try mesh.addVertices([
+            mesh.addVertices([
                 try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
                 try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
                 try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
@@ -1828,7 +1828,7 @@ final class GeneratedExamples: ExampleCase {
     func test_scene_scene_set_default_camera() async {
         await example("docs/api/scene/scene/set_default_camera.md") {
             let mesh = Mesh()
-            try mesh.addVertices([
+            mesh.addVertices([
                 try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
                 try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
                 try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
@@ -1844,7 +1844,7 @@ final class GeneratedExamples: ExampleCase {
     func test_scene_scene_set_default_light() async {
         await example("docs/api/scene/scene/set_default_light.md") {
             let mesh = Mesh()
-            try mesh.addVertices([
+            mesh.addVertices([
                 try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
                 try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
                 try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
@@ -1884,7 +1884,7 @@ final class GeneratedExamples: ExampleCase {
             let renderer = Renderer()
 
             // The canvas comes from your platform's windowing system.
-            let target = try await renderer.createTarget(canvas)
+            let target = try renderer.createTarget(canvas)
 
             // To animate, render again in your event loop...
             try renderer.render(Shader.default(), target)
@@ -1995,7 +1995,7 @@ final class GeneratedExamples: ExampleCase {
             let renderer = Renderer()
 
             // The canvas comes from your platform's windowing system.
-            let target = try await renderer.createTarget(canvas)
+            let target = try renderer.createTarget(canvas)
 
             try renderer.render(Shader.default(), target)
         }
@@ -2006,7 +2006,7 @@ final class GeneratedExamples: ExampleCase {
             let canvas = CAMetalLayer()
 
             let renderer = Renderer()
-            let target = try await renderer.createTarget(canvas)
+            let target = try renderer.createTarget(canvas)
             let shader = Shader.default()
             try renderer.render(shader, target)
 
@@ -2022,7 +2022,7 @@ final class GeneratedExamples: ExampleCase {
             let canvas = CAMetalLayer()
 
             let renderer = Renderer()
-            let target = try await renderer.createTarget(canvas)
+            let target = try renderer.createTarget(canvas)
 
             try target.resize([1024, 768])
         }
@@ -2033,7 +2033,7 @@ final class GeneratedExamples: ExampleCase {
             let canvas = CAMetalLayer()
 
             let renderer = Renderer()
-            let target = try await renderer.createTarget(canvas)
+            let target = try renderer.createTarget(canvas)
             let size = target.size()
         }
     }

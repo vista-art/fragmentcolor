@@ -209,7 +209,6 @@ Defaults:
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Mesh, Vertex};
 
 // Build a triangle and set only what the mesh carries. NORMAL, COLOR0,
@@ -218,10 +217,8 @@ let mesh = Mesh::new();
 mesh.add_vertex(Vertex::pbr([ 0.0,  0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]));
 mesh.add_vertex(Vertex::pbr([-0.5, -0.5, 0.0]).set(Vertex::UV0, [0.0, 0.0]));
 mesh.add_vertex(Vertex::pbr([ 0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]));
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 10-11}"
+lang="rust"
 />
 
 </TabItem>
@@ -338,7 +335,6 @@ Locations and mapping:
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Mesh, Shader, Vertex};
 
 let shader = Shader::new(r#"
@@ -362,10 +358,8 @@ mesh.add_vertices([
 
 // The first id uploads as the u32 7 and its weight as the f32 0.5.
 shader.add_mesh(&mesh)?;
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 25-26}"
+lang="rust"
 />
 
 </TabItem>
@@ -446,7 +440,7 @@ let shader = try Shader("""
 let vertex = try Vertex([0.0, 0.5]).set("id", 7).set("weight", 0.5)
 
 let mesh = Mesh()
-try mesh.addVertices([
+mesh.addVertices([
     vertex,
     try Vertex([-0.5, -0.5]).set("id", 8).set("weight", 1.0),
     try Vertex([0.5, -0.5]).set("id", 9).set("weight", 1.0),
@@ -509,9 +503,8 @@ code={`
 use fragmentcolor::mesh::Vertex;
 let v = Vertex::new([0.0, 0.0]);
 let inst = v.create_instance();
-_ = inst;
 `}
-lang="rust" meta="collapse={4-4}"
+lang="rust"
 />
 
 </TabItem>

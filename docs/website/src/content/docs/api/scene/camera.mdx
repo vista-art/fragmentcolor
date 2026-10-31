@@ -77,19 +77,11 @@ depth range.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Camera;
 
 let camera = Camera::perspective(1.047, 16.0 / 9.0, 0.1, 100.0)?;
-
-// Perspective collapses the depth axis into a non-trivial matrix; the
-// [2][3] term encodes the -1 wgpu uses for the homogeneous w divide.
-let m = camera.view_proj();
-assert!((m[2][3] + 1.0).abs() < 1.0e-5);
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 6-11}"
+lang="rust"
 />
 
 </TabItem>
@@ -176,20 +168,12 @@ return `Err(CameraError::Orthographic)`.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Camera;
 
 // A 16:9 viewport, 10 world units tall, depth range 0.1..100.
 let camera = Camera::orthographic(-8.0, 8.0, -4.5, 4.5, 0.1, 100.0)?;
-
-let m = camera.view_proj();
-// Orthographic preserves parallel lines: the bottom-right corner is the
-// projection-only [3][3] term, which is 1.0 (unlike perspective's 0).
-assert!((m[3][3] - 1.0).abs() < 1.0e-5);
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 7-12}"
+lang="rust"
 />
 
 </TabItem>
@@ -287,17 +271,14 @@ Behavior by projection kind:
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Camera;
 
 let camera = Camera::perspective(1.047, 1.0, 0.1, 100.0)?;
 
 // Window resize: 1920×1080 → wide-screen aspect.
 camera.set_aspect(1920.0 / 1080.0)?;
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 8-9}"
+lang="rust"
 />
 
 </TabItem>
@@ -407,17 +388,12 @@ the view matrix on every frame.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Camera;
 
 let camera = Camera::perspective(1.047, 16.0 / 9.0, 0.1, 100.0)?
     .look_at([0.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])?;
-
-assert_eq!(camera.position(), [0.0, 1.0, 5.0]);
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 7-9}"
+lang="rust"
 />
 
 </TabItem>
@@ -495,20 +471,14 @@ and keeps them in sync with later updates.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Camera;
 
 let camera = Camera::perspective(1.047, 16.0 / 9.0, 0.1, 100.0)?
     .look_at([0.0, 0.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])?;
 
 let view_proj = camera.view_proj();
-// Column 3 (translation) reflects the eye offset baked into the view matrix.
-assert!(view_proj[3][2] != 0.0);
-let _view_proj = view_proj;
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 8-12}"
+lang="rust"
 />
 
 </TabItem>
@@ -594,18 +564,14 @@ inversion on the GPU side).
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Camera;
 
 let camera = Camera::perspective(1.047, 16.0 / 9.0, 0.1, 100.0)?
     .look_at([3.0, 2.0, 8.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])?;
 
 let eye = camera.position();
-assert_eq!(eye, [3.0, 2.0, 8.0]);
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 8-10}"
+lang="rust"
 />
 
 </TabItem>

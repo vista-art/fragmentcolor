@@ -150,17 +150,11 @@ on a directional light returns `LightError::FieldNotApplicable`.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Light;
 
 let sun = Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]);
-assert_eq!(sun.direction(), Some([0.3, -1.0, -0.4]));
-assert_eq!(sun.color(), [1.0, 0.95, 0.9]);
-assert!(sun.position().is_none());
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 5-9}"
+lang="rust"
 />
 
 </TabItem>
@@ -249,7 +243,6 @@ renderer skip it everywhere else. Without one, every fragment pays for it.
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Camera, Light, Material, Mesh, Model, Pass, Renderer, Vertex};
 
 let renderer = Renderer::new();
@@ -274,15 +267,8 @@ pass.add(&Model::new(wall, Material::pbr()))?;
 pass.add(&camera)?;
 pass.add(&bulb)?;
 renderer.render(&pass, &target)?;
-
-assert_eq!(bulb.position(), Some([0.0, 0.5, 1.0]));
-assert_eq!(bulb.color(), [1.0, 0.95, 0.8]);
-assert!((bulb.intensity() - 15.0).abs() < 1.0e-6);
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 27-32}"
+lang="rust"
 />
 
 </TabItem>
@@ -357,7 +343,7 @@ let renderer = Renderer()
 let target = try await renderer.createTextureTarget([64, 64])
 
 let wall = Mesh()
-try wall.addVertices([
+wall.addVertices([
     try Vertex.pbr([-2.0, -2.0, 0.0]),
     try Vertex.pbr([2.0, -2.0, 0.0]),
     try Vertex.pbr([2.0, 2.0, 0.0]),
@@ -444,20 +430,13 @@ succeeds with `Ok(self)`.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Light;
 
 let torch = Light::spot([0.0, 1.8, 1.0], [0.0, -0.3, -1.0], [1.0, 0.9, 0.7])
     .set_intensity(5.0)
     .set_cone_angles(0.15, 0.4)?;
-
-assert_eq!(torch.position(), Some([0.0, 1.8, 1.0]));
-assert_eq!(torch.direction(), Some([0.0, -0.3, -1.0]));
-assert!((torch.outer_cone_angle().unwrap() - 0.4).abs() < 1.0e-6);
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 8-12}"
+lang="rust"
 />
 
 </TabItem>
@@ -534,19 +513,13 @@ glTF scene) to decide which kind-specific setters or getters to call.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Light, LightKind};
 
 let sun = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
 let bulb = Light::point([0.0, 2.5, 0.0], [1.0, 1.0, 1.0]);
 let torch = Light::spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
-assert_eq!(sun.kind(), LightKind::Directional);
-assert_eq!(bulb.kind(), LightKind::Point);
-assert_eq!(torch.kind(), LightKind::Spot);
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 7-11}"
+lang="rust"
 />
 
 </TabItem>
@@ -628,15 +601,11 @@ multiplier is separate and multiplies the color uniformly in the shader.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Light;
 
 let warm_lamp = Light::point([0.0, 2.0, 0.0], [1.0, 0.7, 0.4]);
-assert_eq!(warm_lamp.color(), [1.0, 0.7, 0.4]);
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 5-7}"
+lang="rust"
 />
 
 </TabItem>
@@ -710,15 +679,11 @@ to update it.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Light;
 
 let bright = Light::point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0]).set_intensity(5.0);
-assert!((bright.intensity() - 5.0).abs() < 1.0e-6);
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 5-7}"
+lang="rust"
 />
 
 </TabItem>
@@ -789,7 +754,6 @@ shader the Light has already been wired into; no re-attach needed.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Light;
 
 let lamp = Light::point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0]);
@@ -797,11 +761,8 @@ let lamp = Light::point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0]);
 // Warm-tint the lamp later. Every Pass that absorbed \`lamp\` sees the
 // new color on the next render.
 lamp.set_color([1.0, 0.7, 0.4]);
-assert_eq!(lamp.color(), [1.0, 0.7, 0.4]);
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 9-11}"
+lang="rust"
 />
 
 </TabItem>
@@ -891,17 +852,13 @@ wired into.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Light;
 
 let torch = Light::spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
 
 torch.set_intensity(8.0);
-assert!((torch.intensity() - 8.0).abs() < 1.0e-6);
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 7-9}"
+lang="rust"
 />
 
 </TabItem>
@@ -983,17 +940,12 @@ to update it.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Light;
 
 let lamp = Light::point([0.0, 2.5, 0.0], [1.0, 1.0, 1.0]);
 let sun = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
-assert_eq!(lamp.position(), Some([0.0, 2.5, 0.0]));
-assert!(sun.position().is_none());
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 6-9}"
+lang="rust"
 />
 
 </TabItem>
@@ -1071,17 +1023,12 @@ to update it.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Light;
 
 let sun = Light::directional([0.3, -1.0, -0.4], [1.0, 1.0, 1.0]);
 let lamp = Light::point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0]);
-assert_eq!(sun.direction(), Some([0.3, -1.0, -0.4]));
-assert!(lamp.direction().is_none());
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 6-9}"
+lang="rust"
 />
 
 </TabItem>
@@ -1160,17 +1107,12 @@ update it.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Light;
 
 let lamp = Light::point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0]);
 let sun = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
-assert_eq!(lamp.range(), Some(0.0));
-assert!(sun.range().is_none());
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 6-9}"
+lang="rust"
 />
 
 </TabItem>
@@ -1250,18 +1192,13 @@ to update both at once.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Light;
 
 let torch = Light::spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
     .set_cone_angles(0.15, 0.4)?;
 let lamp = Light::point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
-assert!((torch.inner_cone_angle().unwrap() - 0.15).abs() < 1.0e-6);
-assert!(lamp.inner_cone_angle().is_none());
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 7-10}"
+lang="rust"
 />
 
 </TabItem>
@@ -1342,18 +1279,13 @@ to update both at once.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Light;
 
 let torch = Light::spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
     .set_cone_angles(0.15, 0.4)?;
 let sun = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
-assert!((torch.outer_cone_angle().unwrap() - 0.4).abs() < 1.0e-6);
-assert!(sun.outer_cone_angle().is_none());
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 7-10}"
+lang="rust"
 />
 
 </TabItem>
@@ -1431,21 +1363,12 @@ into; no re-attach needed.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Light;
 
 let lamp = Light::point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
 lamp.set_position([3.0, 1.5, -2.0])?;
-assert_eq!(lamp.position(), Some([3.0, 1.5, -2.0]));
-
-// Directional lights have no position; the call errors.
-let sun = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
-let result = sun.set_position([0.0, 0.0, 0.0]);
-assert!(result.is_err());
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 6-13}"
+lang="rust"
 />
 
 </TabItem>
@@ -1523,21 +1446,12 @@ wired into; no re-attach needed.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Light;
 
 let sun = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
 sun.set_direction([0.3, -0.8, -0.5])?;
-assert_eq!(sun.direction(), Some([0.3, -0.8, -0.5]));
-
-// Point lights have no direction; the call errors.
-let lamp = Light::point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0]);
-let result = lamp.set_direction([0.0, -1.0, 0.0]);
-assert!(result.is_err());
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 6-13}"
+lang="rust"
 />
 
 </TabItem>
@@ -1620,25 +1534,12 @@ already been wired into.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Light;
 
 let lamp = Light::point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0]);
 lamp.set_range(8.0)?;
-assert_eq!(lamp.range(), Some(8.0));
-
-// Negative values error regardless of kind.
-let negative = lamp.set_range(-1.0);
-assert!(negative.is_err());
-
-// Directional lights have no range; the call errors.
-let sun = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
-let unsupported = sun.set_range(5.0);
-assert!(unsupported.is_err());
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 6-17}"
+lang="rust"
 />
 
 </TabItem>
@@ -1723,22 +1624,12 @@ been wired into; no re-attach needed.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Light;
 
 let torch = Light::spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
 torch.set_cone_angles(0.15, 0.4)?;
-assert!((torch.inner_cone_angle().unwrap() - 0.15).abs() < 1.0e-6);
-assert!((torch.outer_cone_angle().unwrap() - 0.4).abs() < 1.0e-6);
-
-// Non-spot lights error.
-let lamp = Light::point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
-let unsupported = lamp.set_cone_angles(0.15, 0.4);
-assert!(unsupported.is_err());
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 6-14}"
+lang="rust"
 />
 
 </TabItem>

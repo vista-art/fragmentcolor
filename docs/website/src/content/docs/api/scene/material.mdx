@@ -102,7 +102,6 @@ bundled implementation, use `Material::custom`.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Material, Mesh, Model, Vertex};
 
 let mesh = Mesh::new();
@@ -119,11 +118,8 @@ let material = Material::pbr()
     .emissive([0.0, 0.0, 0.05]);
 
 let model = Model::new(mesh, material);
-let _model = model;
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 18-20}"
+lang="rust"
 />
 
 </TabItem>
@@ -172,7 +168,7 @@ code={`
 import FragmentColor
 
 let mesh = Mesh()
-try mesh.addVertices([
+mesh.addVertices([
     try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
     try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
     try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
@@ -229,15 +225,11 @@ when you want hard-edged cut-out transparency (foliage, chain-link, decals).
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Material;
 
 let foliage = Material::pbr().alpha_cutoff(0.3);
-let _foliage = foliage;
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 5-7}"
+lang="rust"
 />
 
 </TabItem>
@@ -339,7 +331,6 @@ draw call inside a frame.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{AlphaMode, Material};
 
 let foliage = Material::pbr()
@@ -351,11 +342,8 @@ let glass = Material::pbr()
     .alpha_mode(AlphaMode::Blend);
 
 let solid = Material::pbr().alpha_mode(AlphaMode::Opaque);
-let _ = (foliage, glass, solid);
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 13-15}"
+lang="rust"
 />
 
 </TabItem>
@@ -449,17 +437,12 @@ for what that means for mutation visibility.
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Material, Renderer};
 
 let renderer = Renderer::new();
 let red = Material::pbr().base_color([1.0, 0.2, 0.2, 1.0]);
-let _ = red;
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 6-9}"
+lang="rust"
 />
 
 </TabItem>
@@ -597,7 +580,6 @@ path resolves at render time but the caller doesn't want to await yet.
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Material, Renderer};
 
 let renderer = Renderer::new();
@@ -617,12 +599,8 @@ let material = Material::pbr().base_color_texture(&albedo);
 // Raw pixels with their size upload when the scene loads.
 let tint: Vec<u8> = vec![255, 128, 0, 255];
 let tinted = Material::pbr().base_color_texture((tint, [1, 1]));
-let _ = (material, tinted);
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 21-24}"
+lang="rust"
 />
 
 </TabItem>
@@ -695,7 +673,7 @@ let albedo = try await renderer.createTexture(albedo_bytes, [2, 2])
 // Every Material that points at \`albedo\` reuses the same uploaded GPU
 // texture; passing the same handle into N Material instances costs one
 // upload and N shader-uniform references.
-let material = try Material.pbr().baseColorTexture(albedo)
+let material = Material.pbr().baseColorTexture(albedo)
 
 // Raw pixels with their size upload when the scene loads.
 let tint = [255, 128, 0, 255]
@@ -945,7 +923,6 @@ logs a warning.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Material, Shader};
 
 let flat = Shader::new(r#"
@@ -980,12 +957,8 @@ let flat = Shader::new(r#"
 "#)?;
 
 let flat_mat = Material::custom(flat);
-assert!(flat_mat.shader().list_uniforms().contains(&"camera".to_string()));
-assert!(!flat_mat.shader().list_uniforms().contains(&"lights".to_string()));
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 36-39}"
+lang="rust"
 />
 
 </TabItem>
@@ -1196,7 +1169,6 @@ values.
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{AlphaMode, Material, Renderer};
 
 let renderer = Renderer::new();
@@ -1208,12 +1180,8 @@ let leaf = Material::pbr()
 
 // The default is single-sided, with back-face culling on.
 let solid_mesh = Material::pbr().double_sided(false);
-let _ = (leaf, solid_mesh);
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 13-16}"
+lang="rust"
 />
 
 </TabItem>
@@ -1307,19 +1275,14 @@ Maps to the `material.emissive` uniform. Default is `[0, 0, 0]`.
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Material, Renderer};
 
 let renderer = Renderer::new();
 let lava = Material::pbr()
     .base_color([0.1, 0.05, 0.0, 1.0])
     .emissive([1.5, 0.4, 0.1]);
-let _ = lava;
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 8-11}"
+lang="rust"
 />
 
 </TabItem>
@@ -1413,9 +1376,8 @@ let glow_bytes: Vec<u8> = vec![
 let mat = Material::pbr()
     .emissive([0.8, 0.0, 0.0])
     .emissive_texture((glow_bytes, [2, 2]));
-let _ = mat;
 `}
-lang="rust" meta="collapse={13-13}"
+lang="rust"
 />
 
 </TabItem>
@@ -1509,15 +1471,11 @@ under the factor-driven defaults.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Material;
 
 let chrome = Material::pbr().metallic(1.0).roughness(0.05);
-let _chrome = chrome;
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 5-7}"
+lang="rust"
 />
 
 </TabItem>
@@ -1605,9 +1563,8 @@ let mr_map_bytes: Vec<u8> = vec![
     0, 220, 60, 255,
 ];
 let mat = Material::pbr().metallic_roughness_texture((mr_map_bytes, [2, 2]));
-let _ = mat;
 `}
-lang="rust" meta="collapse={11-11}"
+lang="rust"
 />
 
 </TabItem>
@@ -1700,15 +1657,11 @@ perturbation by this value before combining with the world-space normal.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Material;
 
 let detailed = Material::pbr().normal_scale(1.5);
-let _detailed = detailed;
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 5-7}"
+lang="rust"
 />
 
 </TabItem>
@@ -1800,9 +1753,8 @@ let normal_map_bytes: Vec<u8> = vec![
 let mat = Material::pbr()
     .normal_texture((normal_map_bytes, [2, 2]))
     .normal_scale(1.2);
-let _ = mat;
 `}
-lang="rust" meta="collapse={13-13}"
+lang="rust"
 />
 
 </TabItem>
@@ -1895,15 +1847,11 @@ the result into the diffuse term.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Material;
 
 let crevices = Material::pbr().occlusion_strength(0.8);
-let _crevices = crevices;
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 5-7}"
+lang="rust"
 />
 
 </TabItem>
@@ -1990,9 +1938,8 @@ let ao_bytes: Vec<u8> = vec![
     160, 0, 0, 255,
 ];
 let mat = Material::pbr().occlusion_texture((ao_bytes, [2, 2]));
-let _ = mat;
 `}
-lang="rust" meta="collapse={11-11}"
+lang="rust"
 />
 
 </TabItem>
@@ -2170,19 +2117,14 @@ directly. The lights themselves have no keys: `set` and `get` on
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Material;
 
 let bronze = Material::pbr()
     .base_color([0.8, 0.5, 0.2, 1.0])
     .metallic(1.0)
     .roughness(0.3);
-
-let _bronze = bronze;
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 9-11}"
+lang="rust"
 />
 
 </TabItem>
@@ -2258,17 +2200,12 @@ Maps to the `material.roughness` uniform. Default is `1.0`.
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Material, Renderer};
 
 let renderer = Renderer::new();
 let satin = Material::pbr().roughness(0.35);
-let _ = satin;
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 6-9}"
+lang="rust"
 />
 
 </TabItem>
@@ -2359,17 +2296,14 @@ handles propagate updates live across every absorbed shader.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Material;
 
 // Direct uniform access for a custom field that isn't covered by the
 // Material setters or by Camera / Light.
 let material = Material::pbr();
 material.shader().set("material.alpha_cutoff", 0.25)?;
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 8-9}"
+lang="rust"
 />
 
 </TabItem>
@@ -2474,18 +2408,14 @@ a clamped base color texture clamps a tiled normal map too.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Material, TextureSlot};
 
 // Every map spans the surface twice, and the normal map eight times.
 let tiles = Material::pbr()
     .uv_transform([0.0, 0.0], [2.0, 2.0], 0.0)
     .texture_transform(TextureSlot::Normal, [0.0, 0.0], [8.0, 8.0], 0.0);
-let _ = tiles;
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 8-10}"
+lang="rust"
 />
 
 </TabItem>
@@ -2580,7 +2510,6 @@ applies to whichever set it reads.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Material, Mesh, TextureSlot, Vertex};
 
 let mesh = Mesh::new();
@@ -2598,11 +2527,8 @@ mesh.add_vertices([
 
 // The occlusion map follows the second UV layout.
 let material = Material::pbr().texture_uv(TextureSlot::Occlusion, 1)?;
-let _ = (mesh, material);
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 19-21}"
+lang="rust"
 />
 
 </TabItem>
@@ -2649,7 +2575,7 @@ code={`
 import FragmentColor
 
 let mesh = Mesh()
-try mesh.addVertices([
+mesh.addVertices([
     try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]).set(Vertex.UV1, [0.25, 0.75]),
     try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]).set(Vertex.UV1, [0.0, 0.5]),
     try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]).set(Vertex.UV1, [0.5, 0.5]),
@@ -2712,17 +2638,13 @@ picks for it.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Material;
 
 // Tile the texture 4× in both directions, rotate 45°, shift by half a tile.
 let brick = Material::pbr()
     .uv_transform([0.5, 0.0], [4.0, 4.0], 0.785); // 45° in radians
-let _ = brick;
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 7-9}"
+lang="rust"
 />
 
 </TabItem>
