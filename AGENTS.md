@@ -139,7 +139,7 @@ The API must look the same in Rust, JavaScript, Python, Swift, and Kotlin in eve
 - **Shapes match the Rust method.** `scripts/parity.rs` fingerprints each credited binding (arity, parameter classes, `Result`, `async`, return class) against the Rust method its doc page documents. A difference missing from `docs/api/PARITY_SHAPES` prints a cargo warning; the check isn't strict yet. `FC_PARITY_REWRITE_BASELINE=1 cargo build --lib` rewrites the file together with `PARITY_BASELINE`.
 - **`#[doc(hidden)]` is matched exactly.** An `lsp_doc` page under `hidden/` doesn't hide a type. Mark a binding wrapper struct, such as `PyTextureTarget`, with `#[doc(hidden)]`.
 - **Kotlin has no `Int` overload for an unsigned parameter.** `scripts/kotlin.rs` fails the build when a Kotlin extension takes an `Int` where the uniffi method of the same name and arity takes an unsigned integer. Delete the extension, since the generated method already takes the `UInt`.
-- **The web healthcheck fails on any `console.error`.**
+- **The web healthcheck fails on any `console.error`.** Its `late_errors` module raises GPU errors on purpose, collects the `Device error` logs it expects, and passes every other `console.error` through.
 - **The iOS, Android, and Python healthchecks fail on any uncaptured GPU error.** wgpu's error handler appends each one to the file that `FC_GPU_ERROR_LOG` names. `ExampleCase` on iOS and Android and the generated `platforms/python/examples/main.py` read that file after every test, and a failing example names its `docs/api` page.
 - **CI lints the whole workspace** with `cargo clippy --workspace`, so every `fce` example has to build.
 

@@ -3,15 +3,15 @@
 // Composes the `mesh/transform`, `material/pbr` and `color/linear_to_srgb`
 // registry snippets, then `light.wgsl` and `pbr_lights.wgsl`, with this main
 // body. Bindings (overridable via shader.set):
-//   group 0 binding 0 — camera   (view_proj, position)
-//   group 0 binding 1 — lights   (filled by the renderer, see pbr_lights.wgsl)
-//   group 0 binding 2 — light_grid (filled by the renderer)
-//   group 1 binding 0 — material (PBR factors, alpha_mode flag, and the UV
-//                                 set and transform of each texture slot)
-//   group 2 bindings 0..5 — five glTF PBR-MR maps + shared sampler
+//   group 0 binding 0: camera   (view_proj, position)
+//   group 0 binding 1: lights   (filled by the renderer, see pbr_lights.wgsl)
+//   group 0 binding 2: light_grid (filled by the renderer)
+//   group 1 binding 0: material (PBR factors, alpha_mode flag, and the UV
+//                                set and transform of each texture slot)
+//   group 2 bindings 0..5: five glTF PBR-MR maps and a shared sampler
 //
 // Per-Model transform comes through the **per-instance** vertex attribute
-// stream — locations 3..6 carry the four columns of `mat4x4<f32>`, populated
+// stream: locations 3..6 carry the four columns of `mat4x4<f32>`, populated
 // from the Models `Pass::add` queued into a Pass-owned instance buffer. Sharing a Shader
 // across many Models is therefore free (1 pipeline + 1 bind-group set);
 // each Model contributes its own row to the instance buffer.
@@ -20,13 +20,13 @@
 //   @location(0) position : vec3<f32>
 //   @location(1) normal   : vec3<f32>
 //   @location(2) uv0      : vec2<f32>
-//   @location(7) color0   : vec4<f32>  — glTF COLOR_0 vertex tint (white default)
-//   @location(8) uv1      : vec2<f32>  — glTF TEXCOORD_1, sampled by the
-//                                        texture slots set to UV set 1
-//   @location(9) tangent  : vec4<f32>  — glTF TANGENT; `xyz` is the tangent
-//                                        direction in object space, `w` is
-//                                        the bitangent sign (±1) for the
-//                                        TBN handedness
+//   @location(7) color0   : vec4<f32>, glTF COLOR_0 vertex tint (white default)
+//   @location(8) uv1      : vec2<f32>, glTF TEXCOORD_1, sampled by the
+//                                       texture slots set to UV set 1
+//   @location(9) tangent  : vec4<f32>, glTF TANGENT. `xyz` is the tangent
+//                                       direction in object space, and `w`
+//                                       is the bitangent sign (±1) for the
+//                                       TBN handedness
 
 struct Camera {
   view_proj: mat4x4<f32>,
@@ -43,8 +43,8 @@ struct PbrMaterial {
   alpha_cutoff: f32,
   // glTF 2.0 `alphaMode` projected to a numeric flag: 0=Opaque, 1=Mask,
   // 2=Blend. Only `Mask` gates a `discard` in fs_main; `Opaque` and
-  // `Blend` ignore the flag — their behavior is pipeline-state
-  // (depth-write, blend equation) rather than fragment-shader logic.
+  // `Blend` ignore the flag, since pipeline state (depth write, blend
+  // equation) sets their behavior rather than fragment-shader logic.
   alpha_mode_flag: u32,
   // Move `uv` to offset 64, since an array in a uniform starts on 16 bytes.
   // The padding is spelled out because the GL backends, WebGL2 among them,
@@ -106,8 +106,8 @@ struct VsOut {
   @location(2) uv0: vec2<f32>,
   @location(3) vertex_color: vec4<f32>,
   @location(4) uv1: vec2<f32>,
-  // World-space tangent in .xyz; bitangent sign in .w (the spec's
-  // handedness flag — `B = cross(N, T) * tangent.w`).
+  // World-space tangent in .xyz, and the bitangent sign in .w, the spec's
+  // handedness flag: `B = cross(N, T) * tangent.w`.
   @location(5) world_tangent: vec4<f32>,
 }
 
@@ -134,8 +134,8 @@ fn vs_main(
   out.vertex_color = color0;
   out.uv1 = uv1;
   // Tangents are direction vectors, transformed by the model matrix's
-  // upper-3×3 (no inverse-transpose) — the bitangent sign in .w stays
-  // untouched.
+  // upper 3×3 with no inverse transpose, and the bitangent sign in .w
+  // stays untouched.
   let t_world = (model * vec4<f32>(tangent.xyz, 0.0)).xyz;
   out.world_tangent = vec4<f32>(t_world, tangent.w);
   return out;
@@ -160,8 +160,8 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
 
   // Mask alpha mode: discard fragments below the cut-off before doing any
   // lighting work. Cheap; runs before the BRDF. Opaque and Blend ignore
-  // this branch — their semantics live in pipeline state (depth-write +
-  // blend equation), not fragment-shader logic. glTF 2.0 compares the
+  // this branch, since pipeline state (depth write and blend equation)
+  // sets their behavior, not fragment-shader logic. glTF 2.0 compares the
   // factor × sampled alpha against `material.alpha_cutoff`.
   if (material.alpha_mode_flag == 1u && alpha < material.alpha_cutoff) {
     discard;
@@ -170,7 +170,7 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
   // glTF spec: B encodes metallic, G encodes roughness. The `.bgr` swizzle
   // puts metallic in .r and roughness in .g of the local vector. R is unused
   // by the spec; some authoring tools stash ambient occlusion in it (the
-  // "ORM" texture packing convention) — we read it from `occlusion_map`
+  // "ORM" texture packing convention). Occlusion reads `occlusion_map`
   // instead, so the unused channel here is harmless.
   let mr = textureSample(metallic_roughness_map, pbr_sampler, metallic_roughness_uv).bgr;
   let metallic = material.metallic * mr.r;
@@ -204,9 +204,8 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
 
   // Direct light from every light that reaches the fragment, see pbr_lights.wgsl.
   let lit_total = accumulate_lights(in.world, world_normal, v, albedo, metallic, roughness);
-  // Scene-wide ambient — keeps unlit faces from reading pitch-black.
-  // Drives an albedo-tinted constant; future image-based lighting will
-  // replace this branch.
+  // The scene's ambient light, tinted by the albedo,
+  // keeps unlit faces from reading pitch-black.
   let ambient = albedo * lights.ambient;
   let color = (lit_total + ambient) * ao + emissive_color;
   return vec4<f32>(select(color, linear_to_srgb(color), ENCODE_SRGB), alpha);

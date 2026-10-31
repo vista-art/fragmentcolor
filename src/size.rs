@@ -496,7 +496,7 @@ mod tests {
     }
 
     // Story: a JavaScript size, region or count takes a whole number from 0
-    // up, and a fraction fails where 0.12.6 rounded it down.
+    // up, and a fraction fails.
     #[test]
     fn refuses_fractions() {
         assert_eq!(read_dimension(4.0), Some(4));
