@@ -459,9 +459,8 @@ def check_value_types():
     assert chain.levels()[0] == chain.level(0)
     assert Size(4, 2) == Size(4, 2) and Size(4, 2) != Size(2, 4)
     region = ScreenRegion((1, 2), (32, 16))
-    assert region == ScreenRegion.from_region(1, 2, 32, 16)
+    assert region == ScreenRegion([1, 2], [32, 16]) and region != ScreenRegion((1, 2), (16, 32))
     assert (region.min_x, region.max_y, region.width(), region.height()) == (1, 18, 32, 16)
-    assert ScreenRegion.from_tuple((64, 32)).width() == 64
     assert SamplerOptions(smooth=False) == SamplerOptions(smooth=False)
     assert RenderCanvasTarget is WindowTarget
     print("Value types compare by value")
@@ -499,8 +498,7 @@ def check_number_errors(renderer):
         "TextureTarget.resize": lambda n: target.resize([n, 4]),
         "create_texture_target": lambda n: renderer.create_texture_target({"width": n, "height": 4}),
         "ScreenRegion": lambda n: ScreenRegion((0, 0), (n, 4)),
-        "ScreenRegion.from_region": lambda n: ScreenRegion.from_region(0, 0, n, 4),
-        "ScreenRegion.from_tuple": lambda n: ScreenRegion.from_tuple((n, 4)),
+        "ScreenRegion origin": lambda n: ScreenRegion((n, 0), (4, 4)),
         "Material.texture_uv": lambda n: material.texture_uv(TextureSlot.Occlusion, n),
     }
     # An int of any size outside 0 to 2**32 - 1 is a value error, never OverflowError.
@@ -584,12 +582,12 @@ def check_empty_regions():
     rpass = Pass("empty")
     for label, call in (
         ("ScreenRegion((0, 0), (0, 4))", lambda: ScreenRegion((0, 0), (0, 4))),
-        ("ScreenRegion.from_region(1, 1, 4, 0)", lambda: ScreenRegion.from_region(1, 1, 4, 0)),
-        ("ScreenRegion.from_tuple((0, 0))", lambda: ScreenRegion.from_tuple((0, 0))),
+        ("ScreenRegion((1, 1), (4, 0))", lambda: ScreenRegion((1, 1), (4, 0))),
+        ("ScreenRegion((0, 0), (0, 0))", lambda: ScreenRegion((0, 0), (0, 0))),
         ("Pass.set_viewport([0, 0, 0, 4])", lambda: rpass.set_viewport([0, 0, 0, 4])),
         ("Pass.set_viewport([4, 0])", lambda: rpass.set_viewport([4, 0])),
         ("ScreenRegion((2**32 - 1, 0), (5, 5))", lambda: ScreenRegion((2**32 - 1, 0), (5, 5))),
-        ("ScreenRegion.from_region(0, 2**32 - 3, 4, 4)", lambda: ScreenRegion.from_region(0, 2**32 - 3, 4, 4)),
+        ("ScreenRegion((0, 2**32 - 3), (4, 4))", lambda: ScreenRegion((0, 2**32 - 3), (4, 4))),
         ("Pass.set_viewport([2**32 - 1, 0, 2, 2])", lambda: rpass.set_viewport([2**32 - 1, 0, 2, 2])),
     ):
         try:
@@ -642,13 +640,12 @@ def check_scalars_and_pairs():
     except TypeError as e:
         assert str(e) == "Material.metallic: value must be a number, got bool", e
 
-    assert ScreenRegion([1, 2], [32, 16]) == ScreenRegion.from_region(1, 2, 32, 16)
-    assert ScreenRegion(np.array([1, 2]), (32, 16)) == ScreenRegion.from_region(1, 2, 32, 16)
-    assert ScreenRegion.from_tuple([64, 32]).width() == 64
+    assert ScreenRegion([1, 2], [32, 16]) == ScreenRegion((1, 2), (32, 16))
+    assert ScreenRegion(np.array([1, 2]), (32, 16)) == ScreenRegion((1, 2), (32, 16))
     for label, call in (
         ("ScreenRegion((0, 0, 0), (4, 4))", lambda: ScreenRegion((0, 0, 0), (4, 4))),
         ("ScreenRegion((0, 0), [4])", lambda: ScreenRegion((0, 0), [4])),
-        ("ScreenRegion.from_tuple((1, 2, 3))", lambda: ScreenRegion.from_tuple((1, 2, 3))),
+        ("ScreenRegion((0, 0), (1, 2, 3))", lambda: ScreenRegion((0, 0), (1, 2, 3))),
         ("Pass.set_viewport(((0, 0, 0), (4, 4)))", lambda: Pass("p").set_viewport(((0, 0, 0), (4, 4)))),
     ):
         raises_invalid(label, call)
