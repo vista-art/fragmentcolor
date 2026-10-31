@@ -70,11 +70,11 @@ impl MobileWindowTarget {
     #[uniffi::method(name = "getImage")]
     #[lsp_doc("docs/api/targets/window_target/get_image.md")]
     pub async fn get_image_mobile(&self) -> Result<Vec<u8>, FragmentColorError> {
-        Err(crate::target::window::unreadable().into())
+        Err(crate::targets::window_target::unreadable().into())
     }
 }
 
-impl crate::target::FrameSource for MobileWindowTarget {
+impl crate::targets::FrameSource for MobileWindowTarget {
     fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, SurfaceError> {
         self.inner.lock().get_current_frame()
     }
@@ -95,7 +95,7 @@ impl Target for MobileWindowTarget {
     }
 
     async fn get_image(&self) -> Result<Vec<u8>, TextureError> {
-        Err(crate::target::window::unreadable())
+        Err(crate::targets::window_target::unreadable())
     }
 }
 
@@ -174,7 +174,7 @@ impl MobileTextureTarget {
     }
 }
 
-impl crate::target::FrameSource for MobileTextureTarget {
+impl crate::targets::FrameSource for MobileTextureTarget {
     fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, SurfaceError> {
         self.inner.read().get_current_frame()
     }

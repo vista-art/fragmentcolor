@@ -6,7 +6,7 @@ use crate::core::renderer::*;
 use std::thread;
 use std::time::Duration;
 
-use crate::target::TargetFrame;
+use crate::targets::TargetFrame;
 use crate::{Pass, Shader};
 
 // Story: Creating a texture from RGBA8 raw bytes with explicit size succeeds and yields expected size.
@@ -174,7 +174,7 @@ impl TargetFrame for TestFrame {
 /// A target that never has a frame, like a minimized window.
 struct FramelessTarget;
 
-impl crate::target::FrameSource for FramelessTarget {
+impl crate::targets::FrameSource for FramelessTarget {
     fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, crate::SurfaceError> {
         Err(crate::SurfaceError::Occluded)
     }
@@ -2092,7 +2092,7 @@ fn acquire_frame_exercises_paths() {
         }
     }
 
-    impl crate::target::FrameSource for DummyTarget {
+    impl crate::targets::FrameSource for DummyTarget {
         fn get_current_frame(&self) -> Result<Box<dyn crate::TargetFrame>, crate::SurfaceError> {
             self.seq
                 .write()

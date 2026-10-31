@@ -56,7 +56,7 @@ pub enum PassError {
     #[error("Dependency introduces a cycle via: {via}")]
     DependencyCycle { via: String },
     #[error("Surface error: {0}")]
-    SurfaceError(#[from] crate::target::SurfaceError),
+    SurfaceError(#[from] crate::SurfaceError),
     #[error("Shader error: {0}")]
     ShaderError(#[from] crate::ShaderError),
     #[error("Python Pass Error: {0}")]
@@ -148,7 +148,7 @@ mod tests {
         let e = PassError::SelfDependency;
         let f = PassError::DuplicateDependency("p".into());
         let g = PassError::DependencyCycle { via: "x".into() };
-        let h = PassError::SurfaceError(crate::target::SurfaceError::Lost);
+        let h = PassError::SurfaceError(crate::SurfaceError::Lost);
         let i = PassError::ShaderError(crate::ShaderError::ParseError("p".into()));
         #[cfg(any(python, wasm))]
         let j = PassError::Error("x".into());

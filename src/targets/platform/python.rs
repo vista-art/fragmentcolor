@@ -1,6 +1,6 @@
 #![cfg(python)]
 
-use crate::target::FrameSource;
+use crate::targets::FrameSource;
 use crate::texture::TextureError;
 use crate::{RenderContext, Size, Target, TargetFrame, WindowTarget};
 use lsp_doc::lsp_doc;
@@ -80,7 +80,7 @@ impl RenderCanvasTarget {
 
     #[lsp_doc("docs/api/targets/window_target/get_image.md")]
     pub fn get_image(&self) -> Result<Py<numpy::PyArray3<u8>>, PyErr> {
-        Err(crate::target::window::unreadable().into())
+        Err(crate::targets::window_target::unreadable().into())
     }
 
     // The canvas this target draws on. Not a public documented method.
@@ -98,7 +98,7 @@ pub struct RenderCanvasFrame {
     view: wgpu::TextureView,
 }
 
-impl crate::target::FrameSource for RenderCanvasTarget {
+impl crate::targets::FrameSource for RenderCanvasTarget {
     fn get_current_frame(&self) -> Result<Box<dyn crate::TargetFrame>, crate::SurfaceError> {
         let target = if let Some(target) = &self.target {
             target
@@ -107,7 +107,7 @@ impl crate::target::FrameSource for RenderCanvasTarget {
         };
 
         let surface_texture =
-            crate::target::surface_texture_from(target.surface.get_current_texture())?;
+            crate::targets::surface_texture_from(target.surface.get_current_texture())?;
         let view = surface_texture
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
@@ -142,7 +142,7 @@ impl Target for RenderCanvasTarget {
     }
 
     async fn get_image(&self) -> Result<Vec<u8>, TextureError> {
-        Err(crate::target::window::unreadable())
+        Err(crate::targets::window_target::unreadable())
     }
 }
 
@@ -259,7 +259,7 @@ impl PyTargetFrame {
     }
 }
 
-impl crate::target::FrameSource for PyTextureTarget {
+impl crate::targets::FrameSource for PyTextureTarget {
     fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, crate::SurfaceError> {
         self.inner.get_current_frame()
     }

@@ -1,4 +1,7 @@
-use crate::target::FrameSource;
+//! `RenderTarget`: what `Renderer::create_target`
+//! returns in Rust, a window target or the texture target it falls back to.
+
+use crate::targets::FrameSource;
 use crate::texture::TextureError;
 use crate::{RenderContext, Size, SurfaceError, Target, TargetFrame, TextureTarget, WindowTarget};
 use std::sync::Arc;

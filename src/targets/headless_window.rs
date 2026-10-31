@@ -1,3 +1,6 @@
+//! `HeadlessWindow`: a window with no surface,
+//! which `create_target` draws into an offscreen texture.
+
 use crate::{HasDisplaySize, Size};
 use wgpu::rwh::{DisplayHandle, HandleError, HasDisplayHandle, HasWindowHandle, WindowHandle};
 

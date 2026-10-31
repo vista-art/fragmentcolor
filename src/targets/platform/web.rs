@@ -67,7 +67,7 @@ impl CanvasTarget {
     }
 }
 
-impl crate::target::FrameSource for CanvasTarget {
+impl crate::targets::FrameSource for CanvasTarget {
     fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, crate::SurfaceError> {
         self.inner.lock().get_current_frame()
     }
@@ -87,7 +87,7 @@ impl Target for CanvasTarget {
     }
 
     async fn get_image(&self) -> Result<Vec<u8>, TextureError> {
-        Err(crate::target::window::unreadable())
+        Err(crate::targets::window_target::unreadable())
     }
 }
 

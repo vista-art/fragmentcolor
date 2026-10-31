@@ -766,7 +766,7 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
     /// A target with no owner yet, like Python's WindowTarget before it has a surface.
     struct Ownerless;
 
-    impl crate::target::FrameSource for Ownerless {
+    impl crate::targets::FrameSource for Ownerless {
         fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, SurfaceError> {
             Err(SurfaceError::Lost)
         }

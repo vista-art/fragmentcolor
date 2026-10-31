@@ -5,7 +5,7 @@ use crate::error::{ErrorClass, WebError, defer};
 use crate::texture::{js_to_texture_bytes, read_format, read_texture_input, read_usage};
 use crate::{
     LogLevel, Mesh, Pass, PassObject, Renderable, Renderer, Scene, Shader, Size, Texture,
-    TextureData, TextureTarget, target::CanvasTarget,
+    TextureData, TextureTarget, targets::CanvasTarget,
 };
 use js_sys::Array;
 use lsp_doc::lsp_doc;

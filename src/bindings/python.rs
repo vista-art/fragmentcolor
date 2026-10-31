@@ -13,7 +13,7 @@ use crate::error::{InvalidInputError, PythonError};
 
 use crate::{
     Color, Pass, Renderer, ScreenRegion, Shader, Size,
-    target::{PyTextureTarget, RenderCanvasFrame, RenderCanvasTarget, rendercanvas_context_hook},
+    targets::{PyTextureTarget, RenderCanvasFrame, RenderCanvasTarget, rendercanvas_context_hook},
 };
 
 /// Python module initializer for fragmentcolor

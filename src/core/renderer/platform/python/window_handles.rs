@@ -1,6 +1,6 @@
 //! The raw window and display handles read from a Python window object.
 
-use crate::target::error::DisplayError;
+use crate::DisplayError;
 use wgpu::rwh::{DisplayHandle, HandleError, HasDisplayHandle, HasWindowHandle, WindowHandle};
 
 #[derive(Clone, Copy)]

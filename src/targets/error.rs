@@ -1,3 +1,5 @@
+//! `DisplayError`: a window or display handle a target can't get, or a platform it doesn't run on.
+
 use thiserror::Error;
 
 #[derive(Error, Debug)]

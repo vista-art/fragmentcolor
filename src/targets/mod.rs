@@ -1,14 +1,16 @@
-mod texture;
-pub use texture::*;
+//! What a render draws into, and the `Target` traits each destination implements.
 
-mod window;
-pub use window::*;
+mod texture_target;
+pub use texture_target::*;
 
-mod headless;
-pub use headless::*;
+mod window_target;
+pub use window_target::*;
 
-mod all;
-pub use all::*;
+mod headless_window;
+pub use headless_window::*;
+
+mod render_target;
+pub use render_target::*;
 
 mod platform;
 #[cfg(any(python, wasm, mobile))]
@@ -20,7 +22,8 @@ use crate::texture::TextureError;
 use lsp_doc::lsp_doc;
 use std::sync::Arc;
 
-pub mod error;
+mod error;
+pub use error::*;
 
 /// Mirrors the variants of the old `wgpu::SurfaceError` (removed in wgpu 29, which folded
 /// failure states into the `CurrentSurfaceTexture` enum). Kept as a crate-local error type so

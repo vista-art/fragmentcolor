@@ -125,7 +125,7 @@ impl Pass {
     pub fn set_target_py(&self, target: Py<PyAny>) -> Result<(), PyErr> {
         Python::attach(|py| -> Result<(), PyErr> {
             // Try TextureTarget wrapper first
-            if let Ok(bound) = target.bind(py).cast::<crate::target::PyTextureTarget>() {
+            if let Ok(bound) = target.bind(py).cast::<crate::targets::PyTextureTarget>() {
                 let tt = bound.borrow();
                 return Ok(self.set_target(&tt.inner)?);
             }
@@ -150,7 +150,7 @@ impl Pass {
                 return Ok(self.set_depth_target(&*t)?);
             }
             // Or a TextureTarget (if provided)
-            if let Ok(bound) = target.bind(py).cast::<crate::target::PyTextureTarget>() {
+            if let Ok(bound) = target.bind(py).cast::<crate::targets::PyTextureTarget>() {
                 let tt = bound.borrow();
                 return Ok(self.set_depth_target(&tt.inner)?);
             }

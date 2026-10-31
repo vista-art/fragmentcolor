@@ -1,3 +1,5 @@
+//! `WindowTarget`: a window's surface, and the frame it hands out.
+
 use crate::texture::TextureError;
 use crate::{RenderContext, Size, SurfaceError, Target, TargetFrame};
 use lsp_doc::lsp_doc;
@@ -25,7 +27,7 @@ impl WindowTarget {
     }
 }
 
-impl crate::target::FrameSource for WindowTarget {
+impl crate::targets::FrameSource for WindowTarget {
     fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, SurfaceError> {
         let frame = self.acquire_frame()?;
         Ok(Box::new(frame))
@@ -74,7 +76,7 @@ pub(crate) fn unreadable() -> TextureError {
 impl WindowTarget {
     /// Try to acquire a frame; on Lost/Outdated, reconfigure and retry once.
     fn acquire_frame(&self) -> Result<WindowFrame, SurfaceError> {
-        match crate::target::surface_texture_from(self.surface.get_current_texture()) {
+        match crate::targets::surface_texture_from(self.surface.get_current_texture()) {
             Ok(surface_texture) => {
                 let view = surface_texture
                     .texture
@@ -90,7 +92,7 @@ impl WindowTarget {
                     SurfaceError::Lost | SurfaceError::Outdated => {
                         // Reconfigure with the last known good config and retry once.
                         self.surface.configure(&self.context.device, &self.config);
-                        let surface_texture = crate::target::surface_texture_from(
+                        let surface_texture = crate::targets::surface_texture_from(
                             self.surface.get_current_texture(),
                         )?;
                         let view = surface_texture

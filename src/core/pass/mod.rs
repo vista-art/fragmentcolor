@@ -284,21 +284,21 @@ impl TryFrom<&crate::texture::Texture> for ColorTarget {
     }
 }
 
-impl TryFrom<&crate::target::TextureTarget> for ColorTarget {
+impl TryFrom<&crate::TextureTarget> for ColorTarget {
     type Error = PassError;
 
     // Convert to a Texture handle and reuse validation
-    fn try_from(target: &crate::target::TextureTarget) -> Result<Self, Self::Error> {
+    fn try_from(target: &crate::TextureTarget) -> Result<Self, Self::Error> {
         let texture = target.texture();
         ColorTarget::try_from(&texture)
     }
 }
 
-impl TryFrom<&crate::target::TextureTarget> for DepthTarget {
+impl TryFrom<&crate::TextureTarget> for DepthTarget {
     type Error = PassError;
 
     // Convert to a Texture handle and reuse validation for depth targets
-    fn try_from(target: &crate::target::TextureTarget) -> Result<Self, Self::Error> {
+    fn try_from(target: &crate::TextureTarget) -> Result<Self, Self::Error> {
         let texture = target.texture();
         DepthTarget::try_from(&texture)
     }

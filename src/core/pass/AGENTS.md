@@ -29,5 +29,5 @@ Mesh handling
 
 Host objects
 - FragmentColor holds no host object, such as a Python object or a JS value, and `render` never calls into host code.
-- The one exception is a Python `RenderCanvasTarget` (src/target/platform/python.rs). It keeps the canvas, which the RenderCanvas context protocol reads back, and the present methods it was given.
+- The one exception is a Python `RenderCanvasTarget` (src/targets/platform/python.rs). It keeps the canvas, which the RenderCanvas context protocol reads back, and the present methods it was given.
 - Don't add another. A host object held in Rust forms a cycle the host's garbage collector can't see, so it never frees either side.

@@ -9,11 +9,6 @@
 #[cfg(not(wasm))]
 uniffi::setup_scaffolding!();
 
-/// # Target module
-///
-/// Target represents a rendering destination, such as a window or an offscreen texture.
-pub mod target;
-
 /// # Texture module
 ///
 /// Texture represents an image stored on the GPU that can be sampled in shaders.
@@ -43,6 +38,7 @@ mod conversion_macros;
 mod core;
 mod geometry;
 mod network;
+mod targets;
 mod values;
 
 #[cfg(test)]
@@ -58,7 +54,7 @@ pub use error::*;
 pub use geometry::*;
 pub use network::NetworkError;
 pub use scene::*;
-pub use target::*;
+pub use targets::*;
 pub use texture::*;
 pub use values::*;
 

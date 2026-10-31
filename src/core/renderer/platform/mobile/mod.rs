@@ -66,7 +66,7 @@ pub enum FragmentColorError {
     Entry { stage: String },
     #[error(
         "{}",
-        crate::RendererError::SurfaceError(crate::target::SurfaceError::Occluded)
+        crate::RendererError::SurfaceError(crate::SurfaceError::Occluded)
     )]
     Occluded,
 }

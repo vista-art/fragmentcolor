@@ -155,7 +155,7 @@ impl SpyTarget {
     }
 }
 
-impl crate::target::FrameSource for SpyTarget {
+impl crate::targets::FrameSource for SpyTarget {
     fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, crate::SurfaceError> {
         self.counts.acquired.fetch_add(1, Ordering::SeqCst);
         Ok(Box::new(SpyFrame {
@@ -508,7 +508,7 @@ struct InvalidSurface {
     context: Arc<RenderContext>,
 }
 
-impl crate::target::FrameSource for InvalidSurface {
+impl crate::targets::FrameSource for InvalidSurface {
     fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, crate::SurfaceError> {
         raise_named(&self.context, "the surface detail");
         Err(crate::SurfaceError::Validation)

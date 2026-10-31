@@ -1,3 +1,5 @@
+//! `TextureTarget`: an offscreen texture a render draws into.
+
 use crate::core::Start;
 use crate::texture::{Registration, TextureError};
 use crate::{RenderContext, Size, Target, TargetFrame, TextureObject};
@@ -36,7 +38,7 @@ impl TextureTarget {
     }
 }
 
-impl crate::target::FrameSource for TextureTarget {
+impl crate::targets::FrameSource for TextureTarget {
     fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, crate::SurfaceError> {
         let texture = self.registration.object();
         let view = texture.create_view();

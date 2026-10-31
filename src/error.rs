@@ -17,7 +17,7 @@ pub enum FragmentColorError {
     #[error(transparent)]
     Init(#[from] crate::InitializationError),
     #[error(transparent)]
-    Display(#[from] crate::target::error::DisplayError),
+    Display(#[from] crate::DisplayError),
     #[cfg(not(wasm))]
     #[error("Network Request Error: {0}")]
     NetworkRequest(#[from] crate::NetworkError),
@@ -178,7 +178,7 @@ throw_by_class!(
     crate::SizeError,
     crate::PassError,
     crate::InitializationError,
-    crate::target::error::DisplayError,
+    crate::DisplayError,
     crate::MeshError,
     crate::ScreenRegionError,
     crate::bindings::numbers::VectorError,
@@ -415,15 +415,15 @@ impl PythonError {
 }
 
 #[cfg(python)]
-impl From<PyErr> for crate::target::error::DisplayError {
+impl From<PyErr> for crate::DisplayError {
     fn from(e: PyErr) -> Self {
-        crate::target::error::DisplayError::Error(e.to_string())
+        crate::DisplayError::Error(e.to_string())
     }
 }
 
 #[cfg(python)]
-impl From<crate::target::error::DisplayError> for PyErr {
-    fn from(e: crate::target::error::DisplayError) -> Self {
+impl From<crate::DisplayError> for PyErr {
+    fn from(e: crate::DisplayError) -> Self {
         raise_error(&e)
     }
 }
@@ -464,8 +464,7 @@ mod tests {
             crate::SizeError::Invalid("a size takes 2 or 3 numbers".into()).into();
         let e6: FragmentColorError = crate::RendererError::NoContext.into();
         let e7: FragmentColorError = crate::InitializationError::Error("init".into()).into();
-        let e8: FragmentColorError =
-            crate::target::error::DisplayError::Error("disp".into()).into();
+        let e8: FragmentColorError = crate::DisplayError::Error("disp".into()).into();
 
         #[cfg(not(wasm))]
         let e9: FragmentColorError = {
@@ -492,8 +491,8 @@ mod tests {
         use crate::PassError;
         use crate::ScreenRegionError;
         use crate::ShaderError;
+        use crate::SurfaceError;
         use crate::scene::{LightError, SceneLoadError};
-        use crate::target::SurfaceError;
         use crate::texture::TextureError;
         use crate::{InitializationError, RendererError};
         let text = |value: &str| value.to_string();

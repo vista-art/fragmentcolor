@@ -3,7 +3,7 @@
 use crate::bindings::python::PyUnsigned;
 use crate::{
     PySize, Renderer, Size,
-    target::{PyTextureTarget, RenderCanvasTarget},
+    targets::{PyTextureTarget, RenderCanvasTarget},
     texture::{PyTextureId, PyTextureSource},
 };
 use lsp_doc::lsp_doc;

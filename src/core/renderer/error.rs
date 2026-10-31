@@ -44,7 +44,7 @@ pub enum RendererError {
     #[error("Context not initialized")]
     NoContext,
     #[error("Surface error: failed to acquire frame: {0}")]
-    SurfaceError(#[from] crate::target::SurfaceError),
+    SurfaceError(#[from] crate::SurfaceError),
     #[error("Failed to create texture: {0}")]
     CreateTextureError(String),
     #[error("Shader error: {0}")]
@@ -121,7 +121,7 @@ impl RendererError {
     pub(crate) fn is_occluded(&self) -> bool {
         matches!(
             self,
-            RendererError::SurfaceError(crate::target::SurfaceError::Occluded)
+            RendererError::SurfaceError(crate::SurfaceError::Occluded)
         )
     }
 }
@@ -461,7 +461,7 @@ mod tests {
     // Story: SurfaceError variants are wrapped with a helpful message in Display.
     #[test]
     fn surface_error_display_includes_inner() {
-        let e = RendererError::SurfaceError(crate::target::SurfaceError::OutOfMemory);
+        let e = RendererError::SurfaceError(crate::SurfaceError::OutOfMemory);
         let s = e.to_string();
         assert!(s.contains("Surface error"));
         assert!(s.contains("failed to acquire frame"));
@@ -471,7 +471,7 @@ mod tests {
     // JavaScript, Swift and Kotlin read to raise their occluded class or case.
     #[test]
     fn only_a_hidden_window_is_occluded() {
-        use crate::target::SurfaceError;
+        use crate::SurfaceError;
         let hidden = RendererError::SurfaceError(SurfaceError::Occluded);
         assert!(hidden.is_occluded());
         assert_eq!(
