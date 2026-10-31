@@ -563,7 +563,7 @@ final class Healthcheck: ExampleCase {
         try assertEqual(Light.directional([0, -1, 0], [1, 1, 1]).kind(), .directional, "directional kind")
         try assertEqual(Light.point([0, 1, 0], [1, 1, 1]).kind(), .point, "point kind")
         try assertEqual(Light.spot([0, 1, 0], [0, -1, 0], [1, 1, 1]).kind(), .spot, "spot kind")
-        let chain = try Mipmap.build(Data(repeating: 0, count: 4 * 4 * 4), .rgba8Unorm, [4, 2])
+        let chain = try Mipmap.build(Data(repeating: 0, count: 4 * 2 * 4), .rgba8Unorm, [4, 2])
         try assertEqual(chain.size(), Size(width: 4, height: 2, depth: nil), "Mipmap.size")
     }
 
