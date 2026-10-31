@@ -758,8 +758,9 @@ mod kotlin {
     pub fn finalize(ir: &str) -> String {
         let js = crate::swift::swap_backticks_for_triple_quotes(ir);
         // Join multi-line expressions (open-paren continuation) into single lines
-        // so that per-line rewrites can see the full call.
-        let js = join_continuation_lines(&js);
+        // so that per-line rewrites can see the full call. A list written one item
+        // per line goes back to that layout once its line is rewritten.
+        let (js, layouts) = join_continuation_lines(&js);
 
         let mut out: Vec<String> = Vec::with_capacity(js.lines().count());
         let mut has_fragmentcolor_import = false;
@@ -794,6 +795,10 @@ mod kotlin {
             let rewritten = rewrite_line(&line);
             // Rename duplicate `val <name>` declarations to avoid conflicting declarations.
             let rewritten = rename_duplicate_val(&rewritten, &mut declared_vals);
+            let rewritten = match layouts.get(raw) {
+                Some(layout) => split_list(&rewritten, layout).unwrap_or(rewritten),
+                None => rewritten,
+            };
             out.push(rewritten);
         }
 
@@ -1744,8 +1749,11 @@ mod kotlin {
     /// per-line rewrites can see the complete expression.
     ///
     /// We skip joining inside triple-quoted strings (WGSL shader code etc.).
-    fn join_continuation_lines(src: &str) -> String {
+    /// A joined list that held one item per line maps to its [`ListLayout`].
+    fn join_continuation_lines(src: &str) -> (String, BTreeMap<String, ListLayout>) {
         let mut result_lines: Vec<String> = Vec::new();
+        let mut layouts = BTreeMap::new();
+        let mut group: Vec<&str> = Vec::new();
         let mut pending: Option<String> = None;
         let mut in_tq = false; // inside triple-quoted string
 
@@ -1785,15 +1793,21 @@ mod kotlin {
                 let trimmed_continuation = strip_line_comment(raw.trim());
                 p.push(' ');
                 p.push_str(trimmed_continuation.trim_end());
+                group.push(raw);
                 // Recalculate depth of the accumulated line
                 let acc_depth = paren_depth_of_line(p);
                 if acc_depth <= 0 {
-                    result_lines.push(pending.take().unwrap());
+                    let joined = pending.take().unwrap();
+                    if let Some(layout) = list_layout(&group) {
+                        layouts.insert(joined.clone(), layout);
+                    }
+                    result_lines.push(joined);
                 }
             } else if depth > 0 {
                 // Start of a multi-line expression; strip trailing comment
                 let line_no_comment = strip_line_comment(raw).to_string();
                 pending = Some(line_no_comment);
+                group = vec![raw];
             } else {
                 result_lines.push(raw.to_string());
             }
@@ -1801,7 +1815,68 @@ mod kotlin {
         if let Some(p) = pending {
             result_lines.push(p);
         }
-        result_lines.join("\n")
+        (result_lines.join("\n"), layouts)
+    }
+
+    /// How a list written one item per line was laid out: each item's indent
+    /// and the comment after it, and the indent of the line that closes the list.
+    struct ListLayout {
+        items: Vec<(String, String)>,
+        close: String,
+    }
+
+    /// The layout of `lines` when they open a list with `[`, hold one item per line,
+    /// and close it on a line of their own, as in a multi-line `Shader::new([...])`.
+    fn list_layout(lines: &[&str]) -> Option<ListLayout> {
+        let [first, items @ .., last] = lines else {
+            return None;
+        };
+        let code = |line: &str| strip_line_comment(line).trim().to_string();
+        let one_per_line = !items.is_empty() && items.iter().all(|item| code(item).ends_with(','));
+        if !code(first).ends_with('[') || !last.trim_start().starts_with(']') || !one_per_line {
+            return None;
+        }
+        let indent = |line: &str| line[..line.len() - line.trim_start().len()].to_string();
+        let items = items
+            .iter()
+            .map(|item| (indent(item), item[strip_line_comment(item).trim_end().len()..].to_string()))
+            .collect();
+        Some(ListLayout { items, close: indent(last) })
+    }
+
+    /// `line` with the list that ends in a trailing comma split one item per line,
+    /// as `layout` had it, or `None` when its items don't match the layout.
+    fn split_list(line: &str, layout: &ListLayout) -> Option<String> {
+        let code = code_only(line);
+        let close = code.rmatch_indices(')').map(|(at, _)| at).find(|at| code[..*at].trim_end().ends_with(','))?;
+        let open = opening(&code, close)?;
+        let inner = &line[open + 1..close];
+        let spans = arg_spans(inner, Nesting::Call);
+        if spans.len() != layout.items.len() {
+            return None;
+        }
+        let mut out = line[..=open].to_string();
+        for (span, (indent, comment)) in spans.into_iter().zip(&layout.items) {
+            out.push_str(&format!("\n{indent}{},{comment}", inner[span].trim()));
+        }
+        out.push_str(&format!("\n{}{}", layout.close, &line[close..]));
+        Some(out)
+    }
+
+    /// Byte offset of the `(` that the `)` at `close` closes. `code` has its strings blanked out.
+    fn opening(code: &str, close: usize) -> Option<usize> {
+        let mut depth = 0i32;
+        for (at, c) in code[..=close].char_indices().rev() {
+            match c {
+                ')' | ']' => depth += 1,
+                '(' | '[' => depth -= 1,
+                _ => {}
+            }
+            if depth == 0 {
+                return Some(at);
+            }
+        }
+        None
     }
 
     /// Strip a trailing `//` line comment from a Kotlin/JS line (outside strings).
