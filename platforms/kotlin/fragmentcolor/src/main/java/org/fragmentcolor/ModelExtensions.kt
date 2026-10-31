@@ -19,15 +19,32 @@ fun Model.setTransform(matrix: DoubleArray) {
     setTransform(matrix.map { it.toFloat() })
 }
 
-/** Replace the model's transform with a 4x4 matrix given as its four columns, as Rust's `[[f32; 4]; 4]` holds it. */
+/**
+ * Replace the model's transform with a 4x4 matrix given as its four columns, as Rust's `[[f32; 4]; 4]` holds it.
+ * Throws [FragmentColorException] unless it holds 4 columns of 4 numbers, naming the column that doesn't.
+ */
 @JvmName("setTransformColumns")
 fun Model.setTransform(columns: List<List<Float>>) {
-    setTransform(columns.flatten())
+    setTransform(flattenColumns(columns, "Model.setTransform"))
 }
 
 @JvmName("setTransformDoubleColumns")
 fun Model.setTransform(columns: List<List<Double>>) {
-    setTransform(columns.flatten())
+    val floats = columns.mapIndexed { index, column -> readFloats(column, "Model.setTransform: column $index") }
+    setTransform(flattenColumns(floats, "Model.setTransform"))
+}
+
+/** A 4x4 matrix from its four columns, flat, column after column, or the error that names the column. */
+private fun flattenColumns(columns: List<List<Float>>, label: String): List<Float> {
+    if (columns.size != 4) {
+        throw FragmentColorException.Render("$label takes 4 columns of 4 numbers, got ${columns.size} columns")
+    }
+    columns.forEachIndexed { index, column ->
+        if (column.size != 4) {
+            throw FragmentColorException.Render("$label: column $index takes 4 numbers, got ${column.size}")
+        }
+    }
+    return columns.flatten()
 }
 
 fun Model.translate(offset: FloatArray) {

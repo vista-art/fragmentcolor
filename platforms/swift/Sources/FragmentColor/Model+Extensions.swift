@@ -9,6 +9,18 @@
 
 import Foundation
 
+/// A 4×4 matrix from its four columns, flat, column after column.
+/// Throws unless it holds 4 columns of 4 numbers, naming the column that doesn't.
+private func flattenColumns(_ columns: [[Float]], _ label: String) throws -> [Float] {
+    guard columns.count == 4 else {
+        throw FragmentColorError.Render("\(label) takes 4 columns of 4 numbers, got \(columns.count) columns")
+    }
+    for (index, column) in columns.enumerated() where column.count != 4 {
+        throw FragmentColorError.Render("\(label): column \(index) takes 4 numbers, got \(column.count)")
+    }
+    return columns.flatMap { $0 }
+}
+
 extension Model {
     // MARK: - Constructors
 
@@ -27,13 +39,16 @@ extension Model {
     }
 
     /// A 4×4 matrix as its four columns, as Rust's `[[f32; 4]; 4]` holds it.
-    /// The binding takes the same matrix flat, column after column.
+    /// Throws unless it holds 4 columns of 4 numbers, naming the column that doesn't.
     public func setTransform(_ columns: [[Float]]) throws {
-        try setTransform(matrix: columns.flatMap { $0 })
+        try setTransform(matrix: flattenColumns(columns, "Model.setTransform"))
     }
     @_disfavoredOverload
     public func setTransform(_ columns: [[Double]]) throws {
-        try setTransform(matrix: columns.flatMap { $0 }.map { Float($0) })
+        let floats = try columns.enumerated().map { index, column in
+            try readFloats(column, "Model.setTransform: column \(index)")
+        }
+        try setTransform(matrix: flattenColumns(floats, "Model.setTransform"))
     }
 
     public func translate(_ offset: [Float]) throws {
