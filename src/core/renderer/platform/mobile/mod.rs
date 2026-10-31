@@ -198,8 +198,11 @@ impl Renderer {
     }
 }
 
+mod handles;
+pub use handles::*;
+
 #[cfg(ios)]
-pub mod ios;
+mod ios;
 
 #[cfg(android)]
-pub mod android;
+mod android;

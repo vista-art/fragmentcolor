@@ -10,6 +10,8 @@ pub use python::*;
 
 #[cfg(mobile)]
 mod mobile;
+#[cfg(mobile)]
+pub use mobile::{RenderableHandle, SceneObjectHandle, TargetHandle};
 
 #[cfg(any(android, test))]
 pub(crate) mod android_window;

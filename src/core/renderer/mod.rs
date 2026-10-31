@@ -27,7 +27,7 @@ use wasm_bindgen::prelude::*;
 use pyo3::prelude::*;
 
 pub(crate) mod platform;
-#[cfg(python)]
+#[cfg(any(python, mobile))]
 pub use platform::*;
 
 mod error;
