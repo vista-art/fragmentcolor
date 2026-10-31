@@ -104,12 +104,6 @@ fn cap_limits(adapter: &wgpu::Adapter) -> wgpu::Limits {
     limits
 }
 
-// The previous `features()` and `format_features()` helpers folded into
-// the inline `candidates` mask in `request_device` above. Limits selection
-// (also there) takes `adapter.limits()` directly — no more
-// `Limits::default().using_resolution(...)`, which exceeded what
-// downlevel emulators could provide.
-
 fn memory_hints() -> wgpu::MemoryHints {
     wgpu::MemoryHints::Performance
 }

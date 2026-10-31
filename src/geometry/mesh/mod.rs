@@ -296,8 +296,8 @@ impl MeshObject {
 
     /// Local-space AABB of every Vertex added so far. Returns the sentinel
     /// pair (`+inf`, `-inf`) for an empty mesh; callers detect this and
-    /// fall back to a centroid of zero. Internal-only — glam types stay
-    /// inside the crate per the no-glam-on-public-API rule.
+    /// fall back to a centroid of zero. It stays crate-private,
+    /// since no glam type appears in the public API.
     pub(crate) fn aabb_local(&self) -> (glam::Vec3, glam::Vec3) {
         (*self.aabb_min.read(), *self.aabb_max.read())
     }

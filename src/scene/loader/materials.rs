@@ -6,11 +6,10 @@ use crate::Material;
 use crate::scene::{TextureSlot, UvSet, UvTransform};
 use crate::texture::TextureSource;
 
-/// Translate a glTF texture's sampler into FragmentColor's
-/// [`SamplerOptions`]. glTF's `MIRRORED_REPEAT` collapses to `REPEAT`
-/// (FragmentColor's sampler doesn't expose mirror today); mipmap-filter
-/// variants of `min_filter` collapse to their base filter — the upload
-/// path runs its own mipmap chain decision based on `options.mipmaps`.
+/// Translates a glTF texture's sampler into [`SamplerOptions`].
+/// `MIRRORED_REPEAT` becomes `REPEAT`, since the sampler has no mirror mode.
+/// A `min_filter` with a mipmap filter becomes its base filter, because the
+/// upload decides on its own mip chain from `options.mipmaps`.
 pub(super) fn map_sampler_options(sampler: &gltf::texture::Sampler<'_>) -> crate::SamplerOptions {
     use gltf::texture::{MagFilter, MinFilter, WrappingMode};
     let smooth = match (sampler.mag_filter(), sampler.min_filter()) {

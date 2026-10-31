@@ -321,10 +321,9 @@ pub(super) fn build_mesh(
     let fallback_uv = [0.0_f32, 0.0];
     let fallback_color = [1.0_f32, 1.0, 1.0, 1.0];
     // glTF spec: tangent.xyz is unit-length, .w is ±1 (bitangent sign).
-    // The default `[1, 0, 0, 1]` gives a sensible T = +X / B = +Y / N = +Z
-    // basis for assets that don't ship tangents; normal-map sampling on
-    // surfaces that face +Z stays correct, while non-Z surfaces will look
-    // wrong until the loader computes MikkTSpace tangents (follow-up).
+    // For an asset without tangents, `[1, 0, 0, 1]` gives the basis
+    // T = +X, B = +Y, N = +Z. A normal map reads right on a surface facing +Z
+    // and wrong on others, since the loader doesn't compute MikkTSpace tangents.
     let fallback_tangent = [1.0_f32, 0.0, 0.0, 1.0];
     for (i, pos) in positions.iter().enumerate() {
         let n = normals
@@ -471,8 +470,8 @@ fn check_indices(
 /// vertex slots it touches (area-weighted contribution by construction);
 /// the final normalize step turns the accumulated direction into a unit
 /// vector. Degenerate vertices (zero accumulated direction, or untouched
-/// by any triangle) fall back to a forward-Z normal so the BRDF stays
-/// finite — matches the glTF 2.0 default for POSITION-only meshes.
+/// by any triangle) fall back to a forward-Z normal, so the BRDF stays
+/// finite, as glTF 2.0 does for a mesh with only POSITION.
 pub(super) fn compute_vertex_normals(
     label: &str,
     positions: &[[f32; 3]],

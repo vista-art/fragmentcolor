@@ -46,8 +46,8 @@ pub enum SceneSource {
 /// per-load filter options that decide which glTF node kinds the loader
 /// instantiates as FragmentColor objects.
 ///
-/// Built via the `From` impls below — `&str` / `String` / `&Path` / `PathBuf`
-/// for file inputs, `Vec<u8>` / `&[u8]` for in-memory `.glb` bytes. Filter
+/// Built through the `From` impls below: `&str`, `String`, `&Path` or `PathBuf`
+/// for a file, and `Vec<u8>` or `&[u8]` for `.glb` bytes in memory. Filter
 /// methods chain after the conversion: `GltfSource::from("model.glb")
 /// .cameras(false).lights(false)` skips embedded camera + light nodes
 /// during the walk, leaving the user free to attach their own.
@@ -60,17 +60,15 @@ pub struct GltfSource {
 #[derive(Debug, Clone)]
 pub(crate) enum GltfPayload {
     Path(PathBuf),
-    /// In-memory bytes of a `.glb` binary container. JSON `.gltf` payloads
-    /// with external buffer/image URIs cannot be parsed from raw bytes
-    /// alone — load them via a `Path` so the loader can resolve relative
-    /// references next to the file.
+    /// The bytes of a `.glb` binary container. A JSON `.gltf` file
+    /// with external buffer or image URIs can't load from bytes alone.
+    /// Load it from a `Path`, so the loader finds the files next to it.
     Bytes(Vec<u8>),
 }
 
-/// Per-load loader filters. Adding a new filter means one extra `bool` here
-/// plus one extra check in `visit_node`. Stay additive — every filter has
-/// `true` as the inclusive default so the no-arg path keeps loading
-/// everything the loader is capable of.
+/// The node kinds one load keeps. Each filter is a `bool` here and
+/// a check in `visit_node`, and defaults to `true`, so a plain load
+/// keeps every node the loader can read.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct GltfOptions {
     pub(crate) cameras: bool,
@@ -153,10 +151,8 @@ impl From<GltfSource> for SceneSource {
     }
 }
 
-// Direct conversions so `Scene::load(path)` / `Scene::load(bytes)` work
-// without the caller naming a format. Every raw input is glTF today; when a
-// second format arrives, branch here on the file extension (path inputs) or
-// a magic-byte sniff (byte inputs) to pick the variant.
+// Direct conversions, so `Scene::load(path)` and `Scene::load(bytes)`
+// work without the caller naming a format. Every raw input reads as glTF.
 impl From<&str> for SceneSource {
     fn from(s: &str) -> Self {
         SceneSource::Gltf(GltfSource::from(s))
@@ -475,9 +471,9 @@ fn build_camera(gltf_camera: &gltf::Camera<'_>, world: Mat4) -> Result<Camera, S
 /// Lift a `KHR_lights_punctual` node into the unified [`Light`] type and
 /// attach it to the Scene. The world matrix gives the position
 /// (point/spot) and the rotated `-Z` direction (directional/spot). The
-/// kind-specific setters (`set_range`, `set_cone_angles`) are called only
-/// on the kinds that accept them — directional gets the universal
-/// `set_intensity` only.
+/// kind-specific setters (`set_range`, `set_cone_angles`) run only
+/// on the kinds that accept them, so a directional light gets only
+/// `set_intensity`.
 fn add_light(
     gltf_light: &gltf::khr_lights_punctual::Light<'_>,
     world: Mat4,
