@@ -172,7 +172,6 @@ fn read_item<T: Unsigned>(item: &Bound<'_, PyAny>, label: &str, index: usize) ->
 pub(crate) trait Unsigned:
     for<'a, 'py> FromPyObject<'a, 'py, Error = PyErr> + Display
 {
-    /// The largest value, which the range error names.
     const MAX: Self;
 }
 
@@ -261,7 +260,7 @@ pub(crate) fn read_numbers(value: &Bound<'_, PyAny>, label: &str) -> PyResult<Ve
 
 /// The bytes of a `bytes`, `bytearray` or `memoryview`, or of a sequence of ints, each read by
 /// [`read_unsigned`] as a byte and named `{label}: item {index}`. A float or a `bool` raises
-/// `TypeError`, and an int outside 0 to 255 raises `InvalidInputError`, as rule 8 says.
+/// `TypeError`, and an int outside 0 to 255 raises `InvalidInputError`.
 pub(crate) fn read_bytes(value: &Bound<'_, PyAny>, label: &str) -> PyResult<Vec<u8>> {
     if let Ok(bytes) = value.cast::<PyBytes>() {
         return Ok(bytes.as_bytes().to_vec());

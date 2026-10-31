@@ -349,8 +349,7 @@ fn storage_formats_the_device_lacks_fail() {
     );
 }
 
-// Story: a storage texture binds in the format the shader declares,
-// including the formats outside the old table, such as r32float.
+// Story: a storage texture binds in the format the shader declares, such as r32float.
 #[test]
 fn storage_textures_bind_their_declared_format() {
     pollster::block_on(async move {
@@ -888,9 +887,8 @@ fn lowered_immediates_fill_sixteen_bytes() {
     });
 }
 
-// Story: more workgroup memory than the device holds fails before any GPU work,
-// where the browser refused the pipeline after render returned. An array that an
-// override sizes counts at the override's default, also one computed from another.
+// Story: more workgroup memory than the device holds fails before any GPU work.
+// An array that an override sizes counts at the override's default, also one computed from another.
 #[test]
 fn workgroup_memory_past_the_device_fails() {
     let max = pollster::block_on(async {

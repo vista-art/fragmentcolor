@@ -1546,7 +1546,7 @@ fn a_plain_shader_draws_a_model_mesh() {
 }
 
 // Story: a Material's shader rendered without its Models reads Model columns
-// that nothing fills, and render names the columns where it drew nothing.
+// that nothing fills, and render fails with an error that names them.
 #[test]
 fn model_columns_without_a_model_error() {
     pollster::block_on(async move {
@@ -1902,7 +1902,7 @@ fn wide_strip(material: &crate::Material, left: f32, right: f32) -> crate::Model
 }
 
 // Story: two Models that share a material draw, opaque or blended, though
-// their meshes lay out vertices differently, where the second one read the first one's layout.
+// their meshes lay out vertices differently.
 #[test]
 fn models_with_other_layouts_share_a_material() {
     pollster::block_on(async move {

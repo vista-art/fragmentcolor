@@ -83,7 +83,7 @@ impl RenderCanvasTarget {
         Err(crate::targets::window_target::unreadable().into())
     }
 
-    // The canvas this target draws on. Not a public documented method.
+    // The canvas this target draws on.
     #[doc(hidden)]
     #[getter]
     pub fn canvas(&self) -> Py<PyAny> {

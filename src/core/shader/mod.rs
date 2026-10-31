@@ -1191,7 +1191,6 @@ impl Renderable for Shader {
     }
 }
 
-#[cfg(wasm)]
 crate::impl_js_bridge!(Shader, ShaderError);
 
 impl TryFrom<&str> for Shader {

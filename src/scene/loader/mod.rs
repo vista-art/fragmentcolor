@@ -198,7 +198,6 @@ impl From<&[u8]> for SceneSource {
 /// Errors from `Scene::load`.
 #[derive(Debug, thiserror::Error)]
 pub enum SceneLoadError {
-    /// A file the glTF parser refuses, with its reason.
     #[error("glTF parse error: {0}")]
     Gltf(String),
     #[error("PBR material construction failed: {0}")]
@@ -1803,8 +1802,8 @@ mod tests {
 
     #[test]
     fn load_refuses_a_sparse_accessor_too_large_to_read() {
-        // Without a view, nothing in the file bounds the count, and
-        // collecting 2^62 positions overflowed the allocation.
+        // Without a view, nothing in the file bounds the count,
+        // and 2^62 positions would overflow the allocation.
         assert_invalid(
             sparse_positions("4611686018427387904"),
             "(POSITION) holds 4611686018427387904 elements",

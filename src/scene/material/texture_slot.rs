@@ -40,7 +40,7 @@ impl TextureSlot {
         Self::Emissive,
     ];
 
-    /// The Material setter that fills this slot, as an error names it.
+    /// The Material setter that fills this slot.
     pub(crate) fn name_setter(self) -> &'static str {
         match self {
             Self::BaseColor => "Material::base_color_texture",

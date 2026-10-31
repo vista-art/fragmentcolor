@@ -914,7 +914,6 @@ pub(crate) struct RenderContext {
 
     // Persistent storage buffer registry: root name -> (buffer, span)
     storage_registry: DashMap<String, (wgpu::Buffer, u64)>,
-    /// The shader sources that passed `check_shader` on this device.
     /// What `check_shader` decided for each shader source on this device,
     /// so a source is checked once, whether it passed or not.
     checked: DashMap<ShaderHash, checks::shader::Verdict>,
@@ -953,8 +952,8 @@ pub(crate) struct RenderContext {
     #[cfg(test)]
     light_probe: lights::LightProbe,
 
-    // The first GPU error a wasm error scope caught after its call returned.
-    // The next render, load or readback returns it.
+    /// The first GPU error a wasm error scope caught after its call returned.
+    /// The next render, load or readback returns it.
     #[cfg(wasm)]
     pub(crate) late: Arc<device_errors::late::ErrorSlot>,
 }

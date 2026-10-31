@@ -31,6 +31,8 @@ use wasm_bindgen::prelude::*;
 #[cfg_attr(mobile, derive(uniffi::Record))]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct TextureUsage {
+    // Read-only in JavaScript, as Python's frozen class is.
+    // A uniffi Record is a copy, so Swift and Kotlin never change the original.
     #[cfg_attr(wasm, wasm_bindgen(readonly))]
     pub bits: u32,
 }

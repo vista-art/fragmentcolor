@@ -1153,8 +1153,7 @@ fn fs_main() -> @location(0) vec4<f32> {
         });
     }
 
-    // Story: a map slot unset with id 0 frees the map's copy and draws its PBR default,
-    // where it named the freed copy and returned TextureNotFoundError.
+    // Story: a map slot unset with id 0 frees the map's copy and draws its PBR default.
     #[test]
     fn an_unset_map_draws_the_default() {
         pollster::block_on(async move {

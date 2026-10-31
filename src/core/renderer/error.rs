@@ -41,18 +41,25 @@ impl std::fmt::Display for ErrorKind {
 
 #[derive(Error, Debug)]
 pub enum RendererError {
+    /// A call on a Renderer that hasn't opened its GPU device yet.
     #[error("Context not initialized")]
     NoContext,
+    /// A window target that couldn't give out its next frame.
     #[error("Surface error: failed to acquire frame: {0}")]
     SurfaceError(#[from] crate::SurfaceError),
+    /// A texture input that `create_texture` or `create_storage_texture` can't build.
     #[error("Failed to create texture: {0}")]
     CreateTextureError(String),
+    /// A `ShaderError` from a shader the call uses.
     #[error("Shader error: {0}")]
     ShaderError(#[from] crate::ShaderError),
+    /// A `MeshError` from a mesh the frame draws.
     #[error("Mesh error: {0}")]
     MeshError(#[from] crate::MeshError),
+    /// A `PassError` from a pass the frame runs.
     #[error("Pass error: {0}")]
     PassError(#[from] crate::PassError),
+    /// A bind group with no layout in its pipeline.
     #[error("Bind Group Layout error: {0}")]
     BindGroupLayoutError(String),
     /// A GPU error an error scope caught, labeled with the step that raised it.
@@ -62,14 +69,18 @@ pub enum RendererError {
         label: String,
         detail: String,
     },
+    /// A `TextureError` from a texture the call creates, reads or writes.
     #[error("Texture error: {0}")]
     TextureError(#[from] crate::texture::TextureError),
+    /// A texture id this Renderer holds no texture for.
     #[error("Texture {0} not found")]
     TextureNotFoundError(crate::texture::TextureId),
+    /// A storage binding `read_storage` finds no buffer for.
     #[error(
         "Storage binding '{0}' not found — either the shader doesn't declare it or no render pass has uploaded it yet"
     )]
     StorageBindingNotFound(String),
+    /// A depth target whose sample count differs from the color attachment's.
     #[error("Depth sample_count mismatch: depth={depth} pass={pass}")]
     DepthSampleCountMismatch { depth: u32, pass: u32 },
     /// A depth target whose width and height differ from the color attachment's.
@@ -103,13 +114,17 @@ pub enum RendererError {
     /// A target that another Renderer created, whose frames work on another device.
     #[error("The target belongs to another Renderer; render it with the Renderer that created it")]
     ForeignTarget,
+    /// An `InitializationError` from opening the GPU or a target.
     #[error("initialization error: {0}")]
     InitializationError(#[from] InitializationError),
+    /// A failed request for a URL.
     #[cfg(not(wasm))]
     #[error("Network request error: {0}")]
     NetworkRequestError(#[from] crate::NetworkError),
+    /// A failed read of a file or stream.
     #[error("Malformed input error: {0}")]
     IoError(#[from] std::io::Error),
+    /// Any other renderer failure.
     #[error("Renderer error: {0}")]
     Error(String),
 }
@@ -193,20 +208,22 @@ impl Classify for RendererError {
 
 #[derive(Error, Debug)]
 pub enum InitializationError {
-    /// No GPU adapter fits, with wgpu's reason.
+    /// No GPU adapter fits.
     #[error("Failed to find a compatible GPU adapter: {0}")]
     AdapterError(String),
+    /// A surface to configure while the Renderer holds no adapter.
     #[error("Adapter not set after context()")]
     AdapterNotSet,
-    /// The adapter refused to open a device, with wgpu's reason.
+    /// The adapter refused to open a device.
     #[error("Failed to create device: {0}")]
     DeviceError(String),
-    /// The window or canvas gave no surface, with wgpu's reason.
+    /// The window or canvas gave no surface.
     #[error("Failed to create surface: {0}")]
     SurfaceError(String),
     /// The target's size doesn't fit the device, the error `resize` returns too.
     #[error(transparent)]
     TextureError(#[from] crate::texture::TextureError),
+    /// Any other failure while a Renderer opens the GPU or a target.
     #[error("Initialization error: {0}")]
     Error(String),
 }

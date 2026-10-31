@@ -43,7 +43,7 @@ pub(super) struct UsageScope<'pass> {
 }
 
 impl<'pass> UsageScope<'pass> {
-    /// An empty scope of the pass named `pass`, which its errors name.
+    /// An empty scope of the pass named `pass`.
     pub(super) fn new(pass: &'pass str) -> Self {
         Self {
             pass,

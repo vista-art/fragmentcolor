@@ -55,6 +55,8 @@ impl Caught {
 /// A nested scope's catch and a surface that failed validation are `Gpu`: the GPU
 /// raised each one, and an outer scope may hold the error that caused it. Anything else,
 /// such as a check of the input, is `Cpu`. wgpu keeps error scopes per thread, and so does this.
+///
+/// Wasm records no origin, since its scopes resolve after the call returns, in `late::ErrorSlot`.
 #[cfg(not(wasm))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::core::renderer) enum Origin {

@@ -3,8 +3,8 @@
 //! A shader names them `lights` and, optionally, `light_grid`, at any group
 //! and binding. The renderer fills them, so they stay out of the uniform
 //! storage, `list_uniforms` and `list_keys`. Two shapes of `lights` exist:
-//! the read-only storage `Lights` with a runtime array, and the older
-//! uniform `LightArray` with a fixed array of `N` lights.
+//! the read-only storage `Lights` with a runtime array, and the fixed-size
+//! uniform `LightArray`, which holds an array of `N` lights.
 
 use naga::{
     AddressSpace, ArraySize, Expression, GlobalVariable, Handle, Module, ScalarKind, ShaderStage,
@@ -37,7 +37,7 @@ const GRID_LAYOUT: &str =
 pub(crate) enum LightShape {
     /// `var<storage, read> lights: Lights`, which holds any number of lights.
     Storage,
-    /// The older `var<uniform> lights: LightArray`, which holds `count` lights.
+    /// The fixed-size `var<uniform> lights: LightArray`, which holds `count` lights.
     Array { count: u32 },
 }
 
@@ -73,7 +73,7 @@ impl LightRoots {
         self.measured
     }
 
-    /// The most lights the root holds on its own, which only the older shape limits.
+    /// The most lights the root holds on its own, which only the fixed-size shape limits.
     pub(crate) fn capacity(&self) -> u32 {
         match self.shape {
             LightShape::Storage => u32::MAX,
@@ -363,7 +363,7 @@ fn matches_lights(module: &Module, ty: Handle<Type>) -> bool {
     span == LIGHTS_HEADER + LIGHT_SIZE && matches_fields(module, ty, &LIGHTS_FIELDS)
 }
 
-/// The light count of the older `LightArray` shape, or `None` for any other type,
+/// The light count of the fixed-size `LightArray` shape, or `None` for any other type,
 /// one whose `@align` raises its size past the bytes the renderer binds included.
 fn array_count(module: &Module, ty: Handle<Type>) -> Option<u32> {
     let TypeInner::Struct { members, span } = &module.types[ty].inner else {

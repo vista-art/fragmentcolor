@@ -4,16 +4,22 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum ShaderError {
+    /// A shader that can't be read, such as one whose vertex inputs share a name.
     #[error("Failed to parse shader: {0}")]
     ParseError(String),
+    /// A feature that isn't built yet.
     #[error("Planned feature not yet implemented: {0}")]
     PlannedFeature(String),
+    /// A uniform name the shader doesn't declare.
     #[error("Uniform not found: {0}")]
     UniformNotFound(String),
+    /// A value whose type doesn't fit the uniform it's set on.
     #[error("Type mismatch for uniform {0}")]
     TypeMismatch(String),
+    /// A uniform key, or a mesh, that doesn't fit what the shader declares.
     #[error("Invalid key: {0}")]
     InvalidKey(String),
+    /// A struct field a uniform key names, which the struct lacks.
     #[error("Field not found in struct: {0}")]
     FieldNotFound(String),
     /// A module naga's writer can't write as WGSL.
@@ -32,17 +38,21 @@ pub enum ShaderError {
     /// A GLSL source naga's parser refuses.
     #[error("GLSL Parse errors: {0}")]
     GlslParseErrors(Diagnostic),
+    /// A shader URL whose request failed.
     #[cfg(not(wasm))]
     #[error("URL Request Error: {0}")]
     RequestError(#[from] crate::NetworkError),
+    /// A shader file that can't be read.
     #[error("File not found: {0}")]
     FileNotFound(#[from] std::io::Error),
+    /// An array index in a uniform key past the array's length.
     #[error("Index out of bounds for {key}: index {index} >= len {len}")]
     IndexOutOfBounds {
         key: String,
         index: usize,
         len: usize,
     },
+    /// A read of a shader whose storage another thread holds.
     #[error("Shader busy: {0}")]
     Busy(String),
     /// A mesh value that doesn't fit the type its attribute takes.
@@ -65,6 +75,7 @@ pub enum ShaderError {
         "Texture id {id} is a Material map of another slot, so '{key}' can't bind it. Set the map's source or a Texture on '{key}' instead"
     )]
     ForeignMap { key: String, id: u64 },
+    /// A failure on the web, such as a path or URL the constructor can't read there.
     #[cfg(wasm)]
     #[error("WASM Shader Error: {0}")]
     Error(String),

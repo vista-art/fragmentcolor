@@ -355,7 +355,6 @@ fn check_plane(object: &crate::TextureObject, role: &str) -> Result<(), PassErro
     Ok(())
 }
 
-#[cfg(wasm)]
 crate::impl_js_bridge!(Pass, PassError);
 
 static GRAPH_VERSION: AtomicU64 = AtomicU64::new(1);

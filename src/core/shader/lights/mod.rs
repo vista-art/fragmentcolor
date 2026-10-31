@@ -67,7 +67,7 @@ pub(crate) struct ShaderLights {
 pub(crate) struct LightSummary {
     /// A hash of the live light ids in order, the ambient term and the placeholder flag.
     pub(crate) hash: u64,
-    /// The live lights.
+    /// The number of live lights.
     pub(crate) count: u64,
 }
 

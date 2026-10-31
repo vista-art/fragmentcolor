@@ -6,6 +6,7 @@ use crate::ScreenRegionError;
 
 #[derive(Error, Debug)]
 pub enum TextureError {
+    /// A call that needs a GPU context, such as a resize of a target with no surface yet.
     #[error("Context not initialized")]
     NoContext,
     /// The input bytes could not be decoded as an image. Distinct from
@@ -37,22 +38,15 @@ pub enum TextureError {
     /// A `ScreenRegion` given as a write region whose bounds don't make a region.
     #[error(transparent)]
     Region(#[from] ScreenRegionError),
+    /// A texture whose pixels can't be read back, such as a window target's.
     #[error("Texture readback failed: {0}")]
     Readback(String),
     /// Only a texture with `RENDER_ATTACHMENT` usage, one a pass can draw into, resizes.
     #[error("Only a texture a pass can draw into resizes. Create it with RENDER_ATTACHMENT usage.")]
     FixedSize,
-    /// The active device doesn't have the wgpu feature required to use the
-    /// requested format. Common case: `R16Unorm` (and its Rg/Rgba/Snorm
-    /// cousins) need `TEXTURE_FORMAT_16BIT_NORM`.
-    /// FragmentColor requests a fixed set of features at device creation,
-    /// each one the adapter advertises (see `request_device` in
-    /// `core/renderer/device.rs`). The texture format features in that set,
-    /// such as `TEXTURE_FORMAT_16BIT_NORM` and the compressed formats, reach
-    /// this error only on a device that doesn't advertise them. Surfaces capability constraints at the API boundary
-    /// instead of letting them detonate as runtime validation cascades on
-    /// first use. `format` names the format, such as `R16Snorm`, which has no
-    /// `TextureFormat`, and `missing_feature` names the features it needs.
+    /// A format the device can't use without a wgpu feature it lacks, such as
+    /// `R16Unorm` without `TEXTURE_FORMAT_16BIT_NORM`. `format` names the format,
+    /// which may have no `TextureFormat`, and `missing_feature` names the features it lacks.
     #[error(
         "Texture format {format} is not supported by the active device for the requested usage (missing wgpu feature {missing_feature}). The adapter does not advertise this feature; pick a different format or run on a device that supports it."
     )]
@@ -60,10 +54,13 @@ pub enum TextureError {
         format: String,
         missing_feature: String,
     },
+    /// A source that can't build a texture, such as an empty Mipmap or an unreadable KTX2 file.
     #[error("Failed to create texture: {0}")]
     CreateTextureError(String),
+    /// A `ShaderError` a texture call passes on.
     #[error("Shader error: {0}")]
     ShaderError(#[from] crate::ShaderError),
+    /// A bind group layout that can't be built.
     #[error("Bind Group Layout error: {0}")]
     BindGroupLayoutError(String),
     /// A GPU error an earlier frame left, which a readback reports before it reads.
@@ -73,6 +70,7 @@ pub enum TextureError {
         label: String,
         detail: String,
     },
+    /// Any other texture failure.
     #[error("Renderer error: {0}")]
     Error(String),
 }

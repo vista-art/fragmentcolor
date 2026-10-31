@@ -184,7 +184,7 @@ mod tests {
     use super::*;
 
     // Story: data without a stride is the region's size in tight or padded rows,
-    // and any other length is refused, where it cropped or read past the region.
+    // and any other length is refused.
     #[test]
     fn default_stride_takes_tight_or_padded_rows() {
         let size = [32, 32, 1];

@@ -52,8 +52,7 @@ mod tests {
         unsafe { msg_send![class, new] }
     }
 
-    // Story: createTarget takes a CAMetalLayer and refuses any other object
-    // with an error, where a plain CALayer aborted the app.
+    // Story: createTarget takes a CAMetalLayer and refuses any other object with an error.
     #[test]
     fn accepts_only_a_metal_layer() {
         assert!(check_layer(&create(c"CAMetalLayer")).is_ok());

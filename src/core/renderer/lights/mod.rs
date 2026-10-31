@@ -175,7 +175,7 @@ enum SetShape {
     Clustered { grid: bool },
     /// A storage root lowered to a uniform block of `count` lights.
     Uniform { count: u32 },
-    /// The older uniform `LightArray` of `count` lights.
+    /// The fixed-size uniform `LightArray` of `count` lights.
     Array { count: u32 },
 }
 
@@ -203,7 +203,7 @@ struct Packed {
 
 impl Packed {
     /// Packs the lights of a set with `shape`. A storage root reads the lights
-    /// without a range first, and the older `LightArray` reads them in attach order.
+    /// without a range first, and the fixed-size `LightArray` reads them in attach order.
     fn for_shape(lights: &[GpuLight], shape: SetShape) -> Self {
         match shape {
             SetShape::Array { .. } => Packed::in_order(lights),
@@ -448,7 +448,7 @@ impl LightSet {
     }
 
     /// The bytes of a set without a grid: the uniform block a storage root
-    /// lowers to, or the older `LightArray`.
+    /// lowers to, or the fixed-size `LightArray`.
     fn fixed_bytes(&self) -> Vec<u8> {
         let packed = &self.packed;
         let mut bytes = match self.shape {

@@ -6,6 +6,8 @@ use wasm_bindgen::prelude::*;
 #[cfg_attr(mobile, derive(uniffi::Record))]
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct SamplerOptions {
+    // wasm-bindgen gives each pub field an unchecked setter.
+    // JavaScript uses the checked `repeat_x`, `repeat_y`, `smooth` and `compare` accessors instead.
     #[cfg_attr(wasm, wasm_bindgen(skip))]
     #[cfg_attr(mobile, uniffi(default = false))]
     pub repeat_x: bool,

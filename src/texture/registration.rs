@@ -24,6 +24,8 @@ type Index = BTreeMap<u64, Weak<Registration>>;
 #[cfg(not(wasm))]
 static LIVE: parking_lot::Mutex<Index> = parking_lot::const_mutex(BTreeMap::new());
 
+// A static can't hold a Registration on wasm, where wgpu objects aren't Send.
+// The page runs on one thread, and a thread-local holds the same index there.
 #[cfg(wasm)]
 thread_local! {
     static LIVE: std::cell::RefCell<Index> = const { std::cell::RefCell::new(BTreeMap::new()) };

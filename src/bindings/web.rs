@@ -159,8 +159,8 @@ pub(crate) fn read_class(value: &wasm_bindgen::JsValue) -> Option<String> {
     )
 }
 
-/// The numbers of a float vector or matrix from JavaScript: an array or a `Float32Array`, as AGENTS.md
-/// rule 6 lists. Any other value, or an item that isn't a number, fails with an error that names `label`.
+/// The numbers of a float vector or matrix from JavaScript: an array or a `Float32Array`.
+/// Any other value, or an item that isn't a number, fails with an error that names `label`.
 pub(crate) fn read_vector_items(
     value: &wasm_bindgen::JsValue,
     label: &str,

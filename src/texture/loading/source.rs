@@ -21,9 +21,9 @@ pub(crate) struct TextureSource {
 }
 
 /// The forms a texture uploads from. Each one holds data.
+/// `Bytes` holds an encoded image, a KTX2 container by its magic, or raw pixels when `options.size` is set.
 #[derive(Debug)]
 pub(crate) enum SourceData {
-    /// An encoded image, a KTX2 container by its magic, or raw pixels when `options.size` is set.
     Bytes(Vec<u8>),
     Ktx2Bytes(Vec<u8>),
     Path(PathBuf),

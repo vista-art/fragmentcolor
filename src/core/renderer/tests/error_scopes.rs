@@ -403,7 +403,7 @@ impl Target for InvalidSurface {
 }
 
 // Story: a surface that fails validation reports the details the device caught,
-// under the frame's label, where render returned a bare surface error before.
+// under the frame's label.
 #[test]
 fn surface_validation_reports_the_device_error() {
     pollster::block_on(async move {

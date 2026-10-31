@@ -268,7 +268,7 @@ mod tests {
     }
 
     // Story: a readback's map lands though no other code polls the device,
-    // because the wait polls it itself. A wait that only awaited the callback never returned.
+    // because the wait polls it itself.
     #[test]
     fn map_wait_polls_the_device_itself() {
         // Arrange

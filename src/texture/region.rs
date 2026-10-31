@@ -339,8 +339,7 @@ mod tests {
     }
 
     // Story: reversed or empty bounds, a missing extent, misspelled keys, both
-    // forms at once and a z that overflows are refused, where they turned into a
-    // write of a different region or a panic.
+    // forms at once and a z that overflows are refused.
     #[test]
     fn read_region_refuses_what_it_cannot_read() {
         let cases: [&[(&str, u32)]; 7] = [

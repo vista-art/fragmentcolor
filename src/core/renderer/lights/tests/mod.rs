@@ -12,6 +12,7 @@ use std::sync::atomic::Ordering;
 /// How a test renderer hands lights to its shaders.
 #[derive(Debug, Clone, Copy)]
 enum Mode {
+    /// Clustered buffers with a grid, binned by the compute pass.
     Clustered,
     /// Clustered buffers with no grid, so every fragment loops over every light.
     Reference,
@@ -897,7 +898,7 @@ fn the_uniform_path_caps_lights_at_its_block() {
         assert!(three.object.shaders.read().is_empty());
         assert_eq!(material.shader().object.gpu_lights().len(), 2);
 
-        // The older `LightArray` shape caps at its own length.
+        // The fixed-size `LightArray` shape caps at its own length.
         let older = Material::custom(fullscreen(
             "struct LightArray { count: u32, ambient: vec3<f32>, lights: array<Light, 2> }
 @group(0) @binding(1) var<uniform> lights: LightArray;",
@@ -940,7 +941,7 @@ fn fullscreen(declarations: &str, color: &str) -> Shader {
 fn custom_shaders_read_both_root_shapes() {
     pollster::block_on(async {
         let declarations = [
-            // The older uniform `LightArray`.
+            // The fixed-size uniform `LightArray`.
             "struct LightArray { count: u32, ambient: vec3<f32>, lights: array<Light, 7> }
 @group(0) @binding(1) var<uniform> lights: LightArray;",
             // The storage shape, read without a grid.

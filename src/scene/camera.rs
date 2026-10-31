@@ -36,7 +36,6 @@ pub enum CameraError {
         near: f32,
         far: f32,
     },
-    /// A glTF perspective camera without `zfar`, which has no far plane.
     #[error(
         "a perspective camera with no zfar needs finite values with 0 < yfov < π, a nonzero aspect ratio and a positive znear, got yfov {fovy}, aspect ratio {aspect}, znear {near}"
     )]
@@ -89,6 +88,7 @@ pub(crate) struct CameraObject {
 /// `[[f32; 4]; 4]`.
 #[derive(Debug, Clone, Copy)]
 enum Projection {
+    /// A perspective with depth from 0 at `near` to 1 at `far`.
     Perspective {
         fovy_radians: f32,
         near: f32,
@@ -97,6 +97,7 @@ enum Projection {
     /// A perspective with no far plane: depth runs from 0 at `near` toward 1
     /// at infinity. It's the projection glTF asks for when a camera has no `zfar`.
     InfinitePerspective { fovy_radians: f32, near: f32 },
+    /// A box from `left` to `right`, `bottom` to `top` and `near` to `far`.
     Orthographic {
         left: f32,
         right: f32,

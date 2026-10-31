@@ -49,7 +49,7 @@ pub(crate) use impl_fc_kind;
 // One-liner for WASM: implement TryFrom<&JsValue> for a wasm_bindgen class through
 // wasm-bindgen's public `TryFromJsValue`. That trait takes the JS object it reads, so the
 // class hands out a fresh handle to a clone, `__fc_share`, and the bridge takes that one.
-// The caller's object stays usable, and no wasm-bindgen ABI detail is named here.
+// The caller's object stays usable.
 macro_rules! impl_tryfrom_js_ref_anchor {
     ($t:ty, $err:ty, $class:ident) => {
         #[cfg(wasm)]
@@ -70,8 +70,7 @@ macro_rules! impl_tryfrom_js_ref_anchor {
                 use wasm_bindgen::JsCast;
                 use wasm_bindgen::convert::TryFromJsValue;
 
-                // The brand survives minifiers, which rename classes. A check by
-                // constructor name passed in development builds and failed in production.
+                // The brand survives minifiers, which rename classes.
                 let brand = Reflect::get(value, &wasm_bindgen::JsValue::from_str("__fc_kind"))
                     .ok()
                     .and_then(|brand| brand.as_string());

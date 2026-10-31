@@ -173,7 +173,6 @@ pub(crate) fn from_ktx2_bytes(
     // A format picked for the container reads its bytes only as their sRGB twin.
     let wgpu_format = pick.apply(wgpu_format, "a KTX2 container")?;
 
-    // The device may lack the compression feature the format needs.
     crate::texture::check_feature(context.device.features(), wgpu_format)?;
 
     let width = header.pixel_width;
@@ -437,8 +436,7 @@ mod tests {
         });
     }
 
-    // Story: a KTX2 file that lists more mip levels than its size has is refused,
-    // where the extra levels were dropped without a word.
+    // Story: a KTX2 file that lists more mip levels than its size has is refused.
     #[test]
     fn refuses_more_levels_than_the_size_has() {
         pollster::block_on(async move {
@@ -571,7 +569,7 @@ mod tests {
 ";
 
     // Story: a KTX2 file in Rgba16Float with a baked mip chain takes a whole
-    // write, which rebuilds the chain, where it was refused as a partial write.
+    // write, which rebuilds the chain.
     #[test]
     fn half_float_chains_take_whole_writes() {
         pollster::block_on(async move {

@@ -581,6 +581,8 @@ fn js_to_byte(
 pub struct TextureId {
     /// Names a texture while it stays registered, in the `Renderer` that made it.
     /// A Material map's id names the copy in each `Renderer` that loaded that map.
+    // Read-only in JavaScript, as Python's frozen class is.
+    // A uniffi Record is a copy, so Swift and Kotlin never change the original.
     #[cfg_attr(wasm, wasm_bindgen(readonly))]
     pub id: u64,
 }
@@ -2201,7 +2203,6 @@ pub(crate) fn texel_size(format: wgpu::TextureFormat) -> Result<u32, TextureErro
     }
 }
 
-#[cfg(wasm)]
 crate::impl_js_bridge!(Texture, TextureError);
 
 #[cfg(test)]
@@ -2328,7 +2329,7 @@ mod tests {
     }
 
     // Story: options for a source with its own RGBA8 pixels keep its size and an
-    // 8-bit RGBA or BGRA format, and anything else is refused, where it misread them.
+    // 8-bit RGBA or BGRA format, and anything else is refused.
     #[test]
     fn check_pixels_keeps_the_source_layout() {
         let own = Size::new(2, 1, None);
@@ -2545,8 +2546,7 @@ mod tests {
     }
 
     // Story: a float mip level keeps values past 0 to 1, from raw bytes, a whole
-    // write, Mipmap::build and an HDR decode, where the image crate's resize
-    // clamped every level below the first to that range.
+    // write, Mipmap::build and an HDR decode.
     #[test]
     fn float_levels_keep_their_range() {
         pollster::block_on(async move {
@@ -3003,7 +3003,7 @@ mod tests {
     }
 
     // Story: a Mipmap uploads in the format it was built in, or in that format's sRGB form,
-    // which reads the same bytes. Any other format given with it is refused, where it was dropped.
+    // which reads the same bytes. Any other format given with it is refused.
     #[test]
     fn a_mipmap_takes_only_a_format_its_bytes_read_as() {
         pollster::block_on(async move {
