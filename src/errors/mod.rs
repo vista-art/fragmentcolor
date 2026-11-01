@@ -1,7 +1,10 @@
-//! `FragmentColorError`, and `ErrorClass` and
-//! `Classify`: the class each binding raises an error as.
+//! The crate's errors: `FragmentColorError`, `ErrorKind`,
+//! and `ErrorClass` and `Classify`, the class each binding raises an error as.
 
 use thiserror::Error;
+
+mod error_kind;
+pub use error_kind::*;
 
 pub(crate) mod platform;
 #[cfg(any(python, wasm))]

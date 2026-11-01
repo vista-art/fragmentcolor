@@ -5,7 +5,7 @@ use pyo3::prelude::*;
 use pyo3::types::PyString;
 
 use crate::bindings::python::{PyChannels, PyFloat, PyUnsigned, read_numbers, read_unsigned};
-use crate::error::InvalidInputError;
+use crate::errors::InvalidInputError;
 use crate::scene::{
     Camera, CameraError, Light, LightError, LightKind, Model, PassRef, Scene, SceneLoadError,
 };
@@ -244,7 +244,7 @@ fn read_flat(value: &Bound<'_, PyAny>, label: &str) -> PyResult<[[f32; 4]; 4]> {
 /// a `FragmentColorError` that is also a `ValueError`.
 impl From<LightError> for PyErr {
     fn from(error: LightError) -> Self {
-        crate::error::raise_error(&error)
+        crate::errors::raise_error(&error)
     }
 }
 
@@ -252,7 +252,7 @@ impl From<LightError> for PyErr {
 /// a `FragmentColorError` that is also a `ValueError`.
 impl From<CameraError> for PyErr {
     fn from(error: CameraError) -> Self {
-        crate::error::raise_error(&error)
+        crate::errors::raise_error(&error)
     }
 }
 
@@ -260,7 +260,7 @@ impl From<CameraError> for PyErr {
 /// a `FragmentColorError` that is also a `RuntimeError`.
 impl From<SceneLoadError> for PyErr {
     fn from(error: SceneLoadError) -> Self {
-        crate::error::raise_error(&error)
+        crate::errors::raise_error(&error)
     }
 }
 

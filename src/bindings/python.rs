@@ -9,7 +9,7 @@ use pyo3::types::{PyBool, PyByteArray, PyBytes, PyMemoryView, PySequence, PyStri
 use pyo3::wrap_pyfunction;
 
 use crate::bindings::numbers;
-use crate::error::{InvalidInputError, PythonError};
+use crate::errors::{InvalidInputError, PythonError};
 
 use crate::{
     Color, Pass, Renderer, ScreenRegion, Shader, Size,
@@ -73,29 +73,29 @@ pub fn fragmentcolor(m: &Bound<'_, PyModule>) -> PyResult<()> {
     let py = m.py();
     m.add(
         "FragmentColorError",
-        py.get_type::<crate::error::PyFragmentColorError>(),
+        py.get_type::<crate::errors::PyFragmentColorError>(),
     )?;
     m.add(
         "InvalidInputError",
-        py.get_type::<crate::error::InvalidInputError>(),
+        py.get_type::<crate::errors::InvalidInputError>(),
     )?;
     m.add(
         "UnsupportedMipmapFormatError",
-        py.get_type::<crate::error::UnsupportedMipmapFormatError>(),
+        py.get_type::<crate::errors::UnsupportedMipmapFormatError>(),
     )?;
     m.add(
         "MalformedImageError",
-        py.get_type::<crate::error::MalformedImageError>(),
+        py.get_type::<crate::errors::MalformedImageError>(),
     )?;
     m.add(
         "OccludedSurfaceError",
-        py.get_type::<crate::error::OccludedSurfaceError>(),
+        py.get_type::<crate::errors::OccludedSurfaceError>(),
     )?;
-    m.add("DeviceError", py.get_type::<crate::error::DeviceError>())?;
-    m.add("LimitError", py.get_type::<crate::error::LimitError>())?;
-    m.add("FeatureError", py.get_type::<crate::error::FeatureError>())?;
-    m.add("BindingError", py.get_type::<crate::error::BindingError>())?;
-    m.add("EntryError", py.get_type::<crate::error::EntryError>())?;
+    m.add("DeviceError", py.get_type::<crate::errors::DeviceError>())?;
+    m.add("LimitError", py.get_type::<crate::errors::LimitError>())?;
+    m.add("FeatureError", py.get_type::<crate::errors::FeatureError>())?;
+    m.add("BindingError", py.get_type::<crate::errors::BindingError>())?;
+    m.add("EntryError", py.get_type::<crate::errors::EntryError>())?;
     m.add("SceneLoadError", PythonError::SceneLoad.class(py)?)?;
     m.add("LightError", PythonError::Light.class(py)?)?;
     m.add("CameraError", PythonError::Camera.class(py)?)?;

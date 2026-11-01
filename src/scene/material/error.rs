@@ -8,8 +8,8 @@ pub enum MaterialError {
 }
 
 #[cfg(any(python, wasm, test))]
-impl crate::error::Classify for MaterialError {
-    fn classify(&self) -> crate::error::ErrorClass {
-        crate::error::ErrorClass::Material
+impl crate::errors::Classify for MaterialError {
+    fn classify(&self) -> crate::errors::ErrorClass {
+        crate::errors::ErrorClass::Material
     }
 }

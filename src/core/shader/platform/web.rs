@@ -1,6 +1,6 @@
 #![cfg(wasm)]
 
-use crate::error::WebError;
+use crate::errors::WebError;
 use js_sys::{
     Array, ArrayBuffer, DataView, Float32Array, Int32Array, Object, Reflect, Uint8Array,
     Uint32Array,

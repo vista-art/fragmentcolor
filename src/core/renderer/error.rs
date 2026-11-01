@@ -1,45 +1,16 @@
-//! `RendererError`, `ErrorKind` and `InitializationError`.
+//! `RendererError` and `InitializationError`.
 
-use lsp_doc::lsp_doc;
 use thiserror::Error;
 
+use crate::ErrorKind;
 #[cfg(not(wasm))]
 use crate::core::renderer::MapError;
 use crate::core::shader::error::describe;
 
 #[cfg(any(python, wasm, test))]
-use crate::error::{Classify, ErrorClass};
+use crate::errors::{Classify, ErrorClass};
 #[cfg(python)]
-use crate::error::{raise_class, raise_fields};
-#[cfg(python)]
-use pyo3::prelude::*;
-#[cfg(wasm)]
-use wasm_bindgen::prelude::*;
-
-#[cfg_attr(wasm, wasm_bindgen)]
-#[cfg_attr(python, pyclass(eq, eq_int, from_py_object))]
-#[cfg_attr(mobile, derive(uniffi::Enum))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[lsp_doc("docs/api/core/error_kind/error_kind.md")]
-pub enum ErrorKind {
-    /// The GPU refused a call that breaks a rule of the API.
-    Validation,
-    /// The GPU failed for a reason of its own, such as a driver bug.
-    Internal,
-    /// The device ran out of memory.
-    Memory,
-}
-
-impl std::fmt::Display for ErrorKind {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let name = match self {
-            ErrorKind::Validation => "validation",
-            ErrorKind::Internal => "internal",
-            ErrorKind::Memory => "memory",
-        };
-        formatter.write_str(name)
-    }
-}
+use crate::errors::{raise_class, raise_fields};
 
 #[derive(Error, Debug)]
 pub enum RendererError {
@@ -289,7 +260,7 @@ impl From<RendererError> for pyo3::PyErr {
                 kind,
                 label,
                 detail,
-            } => crate::error::DeviceError::raise(kind, label, detail, message),
+            } => crate::errors::DeviceError::raise(kind, label, detail, message),
             other => raise_fields(other.classify(), message, other.list_fields()),
         }
     }
@@ -329,7 +300,7 @@ impl From<wasm_bindgen::JsValue> for RendererError {
 /// The JS `Error` a renderer error throws, named after its class, with the fields of a
 /// typed refusal, or the `kind`, `label` and `detail` of a device error.
 #[cfg(wasm)]
-impl From<RendererError> for crate::error::WebError {
+impl From<RendererError> for crate::errors::WebError {
     fn from(error: RendererError) -> Self {
         let message = error.to_string();
         match error {
@@ -346,7 +317,7 @@ impl From<RendererError> for crate::error::WebError {
 #[cfg(wasm)]
 impl From<RendererError> for wasm_bindgen::JsValue {
     fn from(error: RendererError) -> Self {
-        crate::error::WebError::from(error).into()
+        crate::errors::WebError::from(error).into()
     }
 }
 
@@ -358,13 +329,13 @@ pub(crate) fn throw_device(
     label: &str,
     detail: &str,
     message: &str,
-) -> crate::error::WebError {
+) -> crate::errors::WebError {
     let fields = [
         ("kind", Field::Number(kind as u64)),
         ("label", Field::Text(label.into())),
         ("detail", Field::Text(detail.into())),
     ];
-    crate::error::WebError::with_fields(ErrorClass::Device, message, &fields)
+    crate::errors::WebError::with_fields(ErrorClass::Device, message, &fields)
 }
 
 #[cfg(wasm)]
@@ -382,7 +353,7 @@ impl From<wasm_bindgen::JsValue> for InitializationError {
 #[cfg(wasm)]
 impl From<InitializationError> for wasm_bindgen::JsValue {
     fn from(error: InitializationError) -> Self {
-        crate::error::WebError::from(error).into()
+        crate::errors::WebError::from(error).into()
     }
 }
 

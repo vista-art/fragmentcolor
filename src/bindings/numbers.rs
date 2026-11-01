@@ -21,16 +21,16 @@ pub(crate) struct NumberError {
 }
 
 #[cfg(any(wasm, test))]
-impl crate::error::Classify for NumberError {
-    fn classify(&self) -> crate::error::ErrorClass {
-        crate::error::ErrorClass::InvalidInput
+impl crate::errors::Classify for NumberError {
+    fn classify(&self) -> crate::errors::ErrorClass {
+        crate::errors::ErrorClass::InvalidInput
     }
 }
 
 #[cfg(wasm)]
-impl From<NumberError> for crate::error::WebError {
+impl From<NumberError> for crate::errors::WebError {
     fn from(error: NumberError) -> Self {
-        crate::error::WebError::from_error(&error)
+        crate::errors::WebError::from_error(&error)
     }
 }
 
@@ -152,20 +152,20 @@ pub(crate) fn read_position(
 #[cfg(python)]
 impl From<VectorError> for pyo3::PyErr {
     fn from(error: VectorError) -> Self {
-        crate::error::raise_error(&error)
+        crate::errors::raise_error(&error)
     }
 }
 
 #[cfg(any(python, wasm, test))]
-impl crate::error::Classify for VectorError {
-    fn classify(&self) -> crate::error::ErrorClass {
-        crate::error::ErrorClass::InvalidInput
+impl crate::errors::Classify for VectorError {
+    fn classify(&self) -> crate::errors::ErrorClass {
+        crate::errors::ErrorClass::InvalidInput
     }
 }
 
 /// A float vector Swift and Kotlin can't use throws a render error, as a bad region does.
 #[cfg(mobile)]
-impl From<VectorError> for crate::error::platform::mobile::FragmentColorError {
+impl From<VectorError> for crate::errors::platform::mobile::FragmentColorError {
     fn from(error: VectorError) -> Self {
         Self::Render(error.to_string())
     }

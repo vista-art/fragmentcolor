@@ -12,7 +12,7 @@
 use lsp_doc::lsp_doc;
 use std::sync::Arc;
 
-use crate::error::platform::mobile::FragmentColorError;
+use crate::errors::platform::mobile::FragmentColorError;
 use crate::{
     Mipmap, SamplerOptions, Size, Texture, TextureData, TextureFormat, TextureId, TextureRegion,
 };

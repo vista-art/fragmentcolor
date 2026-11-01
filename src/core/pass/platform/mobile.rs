@@ -18,7 +18,7 @@ use lsp_doc::lsp_doc;
 use crate::Pass;
 use crate::PassError;
 use crate::bindings::numbers::read_color;
-use crate::error::platform::mobile::FragmentColorError;
+use crate::errors::platform::mobile::FragmentColorError;
 use crate::{Mesh, ScreenRegion, Shader, Texture};
 use crate::{RenderableHandle, SceneObjectHandle, TargetHandle};
 

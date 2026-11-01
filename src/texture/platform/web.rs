@@ -1,6 +1,6 @@
 #![cfg(wasm)]
 
-use crate::error::{ErrorClass, WebError};
+use crate::errors::{ErrorClass, WebError};
 use js_sys::{Array, ArrayBuffer, Reflect, Uint8Array, Uint8ClampedArray};
 use lsp_doc::lsp_doc;
 use wasm_bindgen::JsCast;
@@ -154,7 +154,7 @@ impl Texture {
     pub fn get_image_js(&self) -> js_sys::Promise {
         let start = crate::core::Start::now(Some(&self.context));
         let texture = self.clone();
-        crate::error::defer(async move {
+        crate::errors::defer(async move {
             let object = texture.object();
             let bytes = crate::texture::read_pixels_from(&texture.context, &object, start).await?;
             Ok(js_sys::Uint8Array::from(bytes.as_slice()).into())

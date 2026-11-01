@@ -2,7 +2,7 @@
 
 #![cfg(wasm)]
 
-use crate::error::WebError;
+use crate::errors::WebError;
 
 /// Install a panic hook and console logger when running in WASM so browser console shows
 /// readable errors instead of a generic "unreachable" trap.

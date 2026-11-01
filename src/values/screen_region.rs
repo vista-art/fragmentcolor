@@ -6,7 +6,7 @@ use crate::FcKind;
 #[cfg(wasm)]
 use crate::bindings::web::{describe, read_class, read_list, read_number};
 #[cfg(wasm)]
-use crate::error::WebError;
+use crate::errors::WebError;
 #[cfg(wasm)]
 use wasm_bindgen::JsCast;
 #[cfg(wasm)]

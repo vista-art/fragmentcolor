@@ -115,9 +115,9 @@ impl From<pyo3::PyErr> for TextureError {
 
 /// Four texture errors take their own class of `FragmentColorError`, so a caller can tell them apart.
 #[cfg(any(python, wasm, test))]
-impl crate::error::Classify for TextureError {
-    fn classify(&self) -> crate::error::ErrorClass {
-        use crate::error::ErrorClass;
+impl crate::errors::Classify for TextureError {
+    fn classify(&self) -> crate::errors::ErrorClass {
+        use crate::errors::ErrorClass;
         match self {
             TextureError::InvalidInput(_) | TextureError::Region(_) => ErrorClass::InvalidInput,
             TextureError::UnsupportedMipmapFormat { .. } => ErrorClass::UnsupportedMipmapFormat,
@@ -137,8 +137,8 @@ impl From<TextureError> for pyo3::PyErr {
                 kind,
                 label,
                 detail,
-            } => crate::error::DeviceError::raise(kind, label, detail, message),
-            other => crate::error::raise_error(&other),
+            } => crate::errors::DeviceError::raise(kind, label, detail, message),
+            other => crate::errors::raise_error(&other),
         }
     }
 }
@@ -160,7 +160,7 @@ impl From<wasm_bindgen::JsValue> for TextureError {
 /// The JS `Error` a texture error throws, named after its class.
 /// A device error also carries its `kind`, `label` and `detail`.
 #[cfg(wasm)]
-impl From<TextureError> for crate::error::WebError {
+impl From<TextureError> for crate::errors::WebError {
     fn from(error: TextureError) -> Self {
         let message = error.to_string();
         match error {
@@ -169,7 +169,7 @@ impl From<TextureError> for crate::error::WebError {
                 label,
                 detail,
             } => crate::core::throw_device(kind, &label, &detail, &message),
-            other => crate::error::WebError::from_error(&other),
+            other => crate::errors::WebError::from_error(&other),
         }
     }
 }
@@ -177,7 +177,7 @@ impl From<TextureError> for crate::error::WebError {
 #[cfg(wasm)]
 impl From<TextureError> for wasm_bindgen::JsValue {
     fn from(error: TextureError) -> Self {
-        crate::error::WebError::from(error).into()
+        crate::errors::WebError::from(error).into()
     }
 }
 

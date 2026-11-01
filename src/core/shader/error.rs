@@ -247,16 +247,16 @@ impl From<pyo3::PyErr> for ShaderError {
 }
 
 #[cfg(any(python, wasm, test))]
-impl crate::error::Classify for ShaderError {
-    fn classify(&self) -> crate::error::ErrorClass {
-        crate::error::ErrorClass::Base
+impl crate::errors::Classify for ShaderError {
+    fn classify(&self) -> crate::errors::ErrorClass {
+        crate::errors::ErrorClass::Base
     }
 }
 
 #[cfg(python)]
 impl From<ShaderError> for pyo3::PyErr {
     fn from(e: ShaderError) -> Self {
-        crate::error::raise_error(&e)
+        crate::errors::raise_error(&e)
     }
 }
 
@@ -277,7 +277,7 @@ impl From<wasm_bindgen::JsValue> for ShaderError {
 #[cfg(wasm)]
 impl From<ShaderError> for wasm_bindgen::JsValue {
     fn from(error: ShaderError) -> Self {
-        crate::error::WebError::from(error).into()
+        crate::errors::WebError::from(error).into()
     }
 }
 

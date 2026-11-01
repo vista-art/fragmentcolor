@@ -212,12 +212,12 @@ fn from_box(origin: [u32; 3], extent: [Option<u32>; 3]) -> Result<TextureRegion,
 /// `InvalidInputError`.
 #[cfg(wasm)]
 impl TryFrom<&wasm_bindgen::JsValue> for TextureRegion {
-    type Error = crate::error::WebError;
+    type Error = crate::errors::WebError;
 
     fn try_from(value: &wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
         use crate::bindings::numbers::read_dimension;
         use crate::bindings::web::{describe, read_class, read_list, read_number};
-        use crate::error::WebError;
+        use crate::errors::WebError;
         use js_sys::Reflect;
 
         let dimension = |number: f64| {

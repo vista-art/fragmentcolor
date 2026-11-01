@@ -23,7 +23,7 @@ use std::sync::Arc;
 use lsp_doc::lsp_doc;
 
 use crate::MobileTextureTarget;
-use crate::error::platform::mobile::FragmentColorError;
+use crate::errors::platform::mobile::FragmentColorError;
 use crate::texture::TextureInputMobile;
 use crate::{LogLevel, Renderer, Shader, Size};
 use crate::{Texture, TextureData, TextureFormat, TextureId, TextureInput, TextureOptions};

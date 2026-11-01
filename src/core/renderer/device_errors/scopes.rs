@@ -1,6 +1,6 @@
 //! The error scopes GPU work runs in, and which of their errors a call reports.
 
-use crate::core::renderer::ErrorKind;
+use crate::ErrorKind;
 #[cfg(not(wasm))]
 use crate::core::renderer::RendererError;
 #[cfg(not(wasm))]
