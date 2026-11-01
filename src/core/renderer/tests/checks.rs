@@ -3,6 +3,7 @@
 use super::{SpyTarget, Uncaptured, setup};
 use crate::core::LayoutLoss;
 use crate::core::renderer::checks::shader::{TextureFacts, Verdict, check_texture, refuse_layout};
+use crate::core::renderer::device::CANDIDATES;
 use crate::core::renderer::lights::LightPath;
 use crate::core::renderer::pipelines::layout::build_module;
 use crate::core::renderer::pipelines::layout::{
@@ -10,7 +11,7 @@ use crate::core::renderer::pipelines::layout::{
 };
 use crate::core::renderer::*;
 use crate::texture::{Registration, Texture, TextureObject};
-use crate::{Material, Shader, ShaderError};
+use crate::{Material, Mesh, Shader, ShaderError, Vertex};
 use std::sync::atomic::Ordering;
 
 const VERTEX: &str = r#"
@@ -1011,4 +1012,251 @@ fn cube_slots_take_no_texture_yet() {
             "'sky' takes a Cube view, which no FragmentColor texture makes yet"
         );
     });
+}
+
+/// A compute shader that adds 1 across each subgroup of a 64-invocation workgroup,
+/// and keeps the subgroup size each invocation sees.
+const SUBGROUP_SUMS: &str = r#"
+@group(0) @binding(0) var<storage, read_write> sums: array<u32, 64>;
+@group(0) @binding(1) var<storage, read_write> sizes: array<u32, 64>;
+@compute @workgroup_size(64)
+fn cs_main(@builtin(local_invocation_index) index: u32, @builtin(subgroup_size) size: u32) {
+  sums[index] = subgroupAdd(1u);
+  sizes[index] = size;
+}
+"#;
+
+/// The `u32` words of `bytes`, little endian.
+fn read_words(bytes: &[u8]) -> Vec<u32> {
+    let (words, _) = bytes.as_chunks::<4>();
+    words.iter().map(|word| u32::from_le_bytes(*word)).collect()
+}
+
+/// Renders `shader` on a renderer whose device lacks `missing`, and returns the error,
+/// as `refuse` checks it. Render refuses before any GPU work, so the device can't tell.
+fn refuse_without(
+    context: &RenderContext,
+    missing: wgpu::Features,
+    shader: &Shader,
+) -> Option<RendererError> {
+    let mut device = copy_context(context);
+    device.features = context.features - missing;
+    let (renderer, device) = adopt(device);
+    let uncaptured = super::record_uncaptured(&device);
+    refuse(&renderer, &device, &uncaptured, shader)
+}
+
+// Story: a compute shader sums across its subgroups where the device has SUBGROUP,
+// and render refuses it before any GPU work where the device lacks it, naming the flag.
+#[test]
+fn subgroups_run_where_the_device_has_them() {
+    pollster::block_on(async move {
+        let (renderer, context, uncaptured) = setup().await.expect("render context");
+        let shader = Shader::new(SUBGROUP_SUMS).expect("shader");
+        if context.features.contains(wgpu::Features::SUBGROUP) {
+            eprintln!("the device has SUBGROUP, so the sums were checked");
+            let target = renderer
+                .create_texture_target([4, 4])
+                .await
+                .expect("texture target");
+
+            renderer.render(&shader, &target).expect("render");
+            let sums = renderer.read_storage(&shader, "sums").await.expect("sums");
+            let sizes = renderer
+                .read_storage(&shader, "sizes")
+                .await
+                .expect("sizes");
+
+            let info = context.adapter.as_ref().expect("an adapter").get_info();
+            let range = info.subgroup_min_size..=info.subgroup_max_size;
+            for (sum, size) in read_words(&sums).into_iter().zip(read_words(&sizes)) {
+                assert!(range.contains(&size), "size {size} outside {range:?}");
+                assert_eq!(sum, size.min(64), "size {size}");
+            }
+            assert!(uncaptured.lock().is_empty(), "got {:?}", uncaptured.lock());
+        } else {
+            eprintln!("the device lacks SUBGROUP, so only the refusal was checked");
+        }
+        let subgroups = wgpu::Features::SUBGROUP
+            | wgpu::Features::SUBGROUP_VERTEX
+            | wgpu::Features::SUBGROUP_BARRIER;
+        assert_refused!(
+            refuse_without(&context, subgroups, &shader).expect("refused"),
+            RendererError::FeatureError { .. },
+            "the shader needs SUBGROUP, which the device lacks"
+        );
+    });
+}
+
+// Story: a fragment shader reads `@builtin(primitive_index)` where the device has
+// PRIMITIVE_INDEX, so each of two triangles shades its own half of the target,
+// and render refuses it before any GPU work where the device lacks it.
+#[test]
+fn primitive_index_draws_where_the_device_has_it() {
+    pollster::block_on(async move {
+        let (renderer, context, uncaptured) = setup().await.expect("render context");
+        let shader = Shader::new(
+            r#"
+enable primitive_index;
+@vertex fn vs_main(@location(0) position: vec2<f32>) -> @builtin(position) vec4<f32> {
+  return vec4<f32>(position, 0.0, 1.0);
+}
+@fragment fn fs_main(@builtin(primitive_index) index: u32) -> @location(0) vec4<f32> {
+  return vec4<f32>(f32(index), 1.0 - f32(index), 0.0, 1.0);
+}
+"#,
+        )
+        .expect("shader");
+        // Two triangles, each covering one half of the target.
+        let mesh = Mesh::new();
+        mesh.add_vertices([
+            Vertex::new([0.0, -3.0]),
+            Vertex::new([0.0, 3.0]),
+            Vertex::new([-3.0, 0.0]),
+            Vertex::new([0.0, -3.0]),
+            Vertex::new([3.0, 0.0]),
+            Vertex::new([0.0, 3.0]),
+        ]);
+        shader.add_mesh(&mesh).expect("mesh");
+        if context.features.contains(wgpu::Features::PRIMITIVE_INDEX) {
+            eprintln!("the device has PRIMITIVE_INDEX, so the draw was checked");
+            let target = renderer
+                .create_texture_target([8, 8])
+                .await
+                .expect("texture target");
+
+            renderer.render(&shader, &target).expect("render");
+            let image = target.get_image().await.expect("read back");
+
+            let pixel = |x: usize, y: usize| image[(y * 8 + x) * 4..][..4].to_vec();
+            assert_eq!(pixel(1, 4), [0, 255, 0, 255]);
+            assert_eq!(pixel(6, 4), [255, 0, 0, 255]);
+            assert!(uncaptured.lock().is_empty(), "got {:?}", uncaptured.lock());
+        } else {
+            eprintln!("the device lacks PRIMITIVE_INDEX, so only the refusal was checked");
+        }
+        assert_refused!(
+            refuse_without(&context, wgpu::Features::PRIMITIVE_INDEX, &shader).expect("refused"),
+            RendererError::FeatureError { .. },
+            "the shader needs PRIMITIVE_INDEX, which the device lacks"
+        );
+    });
+}
+
+// Story: a shader that uses a feature the device lacks is refused with the wgpu flags
+// it needs, the fewest that let the device's validator take it, on every device alike.
+// A vertex stage needs SUBGROUP_VERTEX, which no Metal device offers, and a subgroup
+// barrier needs SUBGROUP_BARRIER, which no DX12 device offers.
+#[test]
+fn missing_features_name_their_flags() {
+    pollster::block_on(async move {
+        let (_renderer, context, _) = setup().await.expect("render context");
+        let no_vertex = CANDIDATES - wgpu::Features::SUBGROUP_VERTEX;
+        let profiles = [
+            wgpu::Features::empty(),
+            no_vertex,
+            no_vertex - wgpu::Features::SUBGROUP_BARRIER,
+            CANDIDATES,
+        ];
+        let compute_add = Shader::new(
+            "@group(0) @binding(0) var<storage, read_write> sums: array<u32, 64>;
+@compute @workgroup_size(64)
+fn cs_main(@builtin(local_invocation_index) index: u32) { sums[index] = subgroupAdd(1u); }",
+        )
+        .expect("shader");
+        let barrier =
+            Shader::new("@compute @workgroup_size(64) fn cs_main() { subgroupBarrier(); }")
+                .expect("shader");
+        let vertex_add = Shader::new(
+            "@vertex fn vs_main() -> @builtin(position) vec4<f32> { return vec4<f32>(subgroupAdd(0.0)); }
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }",
+        )
+        .expect("shader");
+        let fragment_add = fullscreen(
+            "@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(subgroupAdd(1.0)); }",
+        )
+        .expect("shader");
+        let primitive = Shader::new(
+            format!(
+                "enable primitive_index;\n{VERTEX}\n@fragment fn fs_main(@builtin(primitive_index) index: u32) -> @location(0) vec4<f32> {{ return vec4<f32>(f32(index)); }}"
+            )
+            .as_str(),
+        )
+        .expect("shader");
+        let barrier_flags = [
+            Some("SUBGROUP | SUBGROUP_BARRIER"),
+            None,
+            Some("SUBGROUP_BARRIER"),
+            None,
+        ];
+        let vertex = Some("SUBGROUP_VERTEX");
+        let cases = [
+            (&compute_add, [Some("SUBGROUP"), None, None, None]),
+            (&barrier, barrier_flags),
+            (&vertex_add, [vertex, vertex, vertex, None]),
+            (&fragment_add, [Some("SUBGROUP"), None, None, None]),
+            (&primitive, [Some("PRIMITIVE_INDEX"), None, None, None]),
+        ];
+
+        for (shader, expected) in cases {
+            for (features, flags) in profiles.into_iter().zip(expected) {
+                let mut device = copy_context(&context);
+                device.features = features;
+
+                let checked = device.check_shader(&shader.object);
+
+                match flags {
+                    None => assert!(checked.is_ok(), "{features}: {checked:?}"),
+                    Some(flags) => assert_refused!(
+                        checked.unwrap_err(),
+                        RendererError::FeatureError { .. },
+                        &format!("the shader needs {flags}, which the device lacks")
+                    ),
+                }
+            }
+        }
+    });
+}
+
+// Story: a module the device's validator refuses for what no candidate feature gives
+// keeps naga's report, as a device without multisampled shading refuses `sample_index`.
+#[test]
+fn refusals_no_feature_fixes_keep_naga_report() {
+    pollster::block_on(async move {
+        let (_renderer, context, _) = setup().await.expect("render context");
+        let shader = fullscreen(
+            "@fragment fn fs_main(@builtin(sample_index) sample: u32) -> @location(0) vec4<f32> { return vec4<f32>(f32(sample)); }",
+        )
+        .expect("shader");
+        let mut device = copy_context(&context);
+        device.downlevel = wgpu::DownlevelFlags::all() - wgpu::DownlevelFlags::MULTISAMPLED_SHADING;
+
+        let error = device.check_shader(&shader.object).unwrap_err();
+
+        assert_refused!(
+            error,
+            RendererError::FeatureError { .. },
+            "the shader needs what the device's shader validator refuses: "
+        );
+    });
+}
+
+// Story: the device opens with each candidate feature the adapter offers.
+#[test]
+fn the_device_takes_every_candidate_offered() {
+    pollster::block_on(async move {
+        let (_renderer, context, _) = setup().await.expect("render context");
+        let adapter = context.adapter.as_ref().expect("an adapter");
+
+        assert_eq!(context.features, adapter.features() & CANDIDATES);
+    });
+}
+
+// Story: no candidate is experimental, since wgpu refuses an experimental
+// feature in `required_features`.
+#[test]
+fn candidates_hold_no_experimental_feature() {
+    let experimental = CANDIDATES & wgpu::Features::all_experimental_mask();
+
+    assert!(experimental.is_empty(), "{experimental}");
 }

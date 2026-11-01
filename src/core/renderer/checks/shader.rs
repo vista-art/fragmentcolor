@@ -1,6 +1,7 @@
 //! Checks a shader against the device before any wgpu call:
 //! limits, features, entry points and the textures its slots take.
 
+use crate::core::renderer::device::CANDIDATES;
 use crate::core::renderer::frame::bind_groups::{PbrDefaults, report_missing};
 use crate::core::renderer::lights::LightPath;
 use crate::core::renderer::pipelines::PushMode;
@@ -13,9 +14,10 @@ use crate::core::{LayoutLoss, list_explicit, write_layouts};
 use crate::texture::format_features;
 use crate::{ShaderObject, TextureObject, UniformData};
 use naga::ShaderStage;
-use naga::valid::ModuleInfo;
+use naga::valid::{ModuleInfo, ValidationFlags};
 use std::sync::atomic::Ordering;
 use wgpu::{BindingType, BufferBindingType, DownlevelFlags, ShaderStages, StorageTextureAccess};
+use wgpu_naga_bridge::features_to_naga_capabilities;
 
 /// What `check_shader` decided for a shader source on one device.
 #[derive(Debug, Clone)]
@@ -110,8 +112,9 @@ impl RenderContext {
     /// their size limits, storage the device can't bind, missing entry points, a compute shader
     /// on a device without compute, a workgroup past its size, invocation or memory limits,
     /// explicit layouts the backend can't keep, light roots measured with `arrayLength` where
-    /// lights come through a uniform block, and anything else the device's shader validator
-    /// refuses. The verdict is kept by source hash, so each source is checked once per context,
+    /// lights come through a uniform block, a feature the shader uses that the device lacks,
+    /// named by its wgpu flag, and anything else the device's shader validator refuses.
+    /// The verdict is kept by source hash, so each source is checked once per context,
     /// whether it passes or not.
     pub(in crate::core::renderer) fn check_shader(
         &self,
@@ -318,11 +321,11 @@ impl RenderContext {
         let mut validator = wgpu_naga_bridge::create_validator(
             self.features,
             self.downlevel,
-            naga::valid::ValidationFlags::all(),
+            ValidationFlags::all(),
         );
         let info = match validator.validate(&module) {
             Ok(info) => info,
-            Err(error) => return Ok(Err(refuse_module(&error))),
+            Err(error) => return Ok(Err(self.refuse_invalid(&module, &error))),
         };
         if self.writes_wgsl.load(Ordering::Relaxed)
             && let Err(loss) = write_layouts(&module, &info)
@@ -333,6 +336,20 @@ impl RenderContext {
         match naga::back::pipeline_constants::process_overrides(&module, &info, None, &constants) {
             Ok((resolved, info)) => Ok(Ok((resolved.into_owned(), info.into_owned()))),
             Err(error) => Ok(Err(refuse_module(&error))),
+        }
+    }
+
+    /// The refusal of `module`, which the device's validator refused with `error`:
+    /// the candidate features the device lacks that let it pass, named as wgpu flags,
+    /// or naga's report when no candidate the device lacks would make the module pass.
+    fn refuse_invalid(&self, module: &naga::Module, error: &dyn std::error::Error) -> Refusal {
+        let missing = find_missing(module, self.features, self.downlevel);
+        if missing.is_empty() {
+            return refuse_module(error);
+        }
+        Refusal::Feature {
+            item: "the shader".into(),
+            feature: missing.to_string(),
         }
     }
 
@@ -472,6 +489,35 @@ fn refuse_module(error: &dyn std::error::Error) -> Refusal {
             describe(error)
         ),
     }
+}
+
+/// The fewest candidate features missing from `features` that let `module` pass,
+/// or none when even all of them fall short. The walk tries the last declared flag first,
+/// so `SUBGROUP_VERTEX`, whose naga capability holds `SUBGROUP`'s, stays only for a vertex stage.
+fn find_missing(
+    module: &naga::Module,
+    features: wgpu::Features,
+    downlevel: DownlevelFlags,
+) -> wgpu::Features {
+    let passes = |extra: wgpu::Features| {
+        wgpu_naga_bridge::create_validator(features | extra, downlevel, ValidationFlags::all())
+            .validate(module)
+            .is_ok()
+    };
+    let mut missing = (CANDIDATES - features)
+        .iter()
+        .filter(|flag| !features_to_naga_capabilities(*flag, DownlevelFlags::empty()).is_empty())
+        .fold(wgpu::Features::empty(), |set, flag| set | flag);
+    if missing.is_empty() || !passes(missing) {
+        return wgpu::Features::empty();
+    }
+    let flags: Vec<wgpu::Features> = missing.iter().collect();
+    for flag in flags.into_iter().rev() {
+        if passes(missing - flag) {
+            missing.remove(flag);
+        }
+    }
+    missing
 }
 
 /// The refusal for a module whose explicit layouts the WGSL the browser's WebGPU gets can't keep.

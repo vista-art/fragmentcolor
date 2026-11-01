@@ -1243,28 +1243,106 @@ struct U { items: array<Item, 4096> };
     );
 }
 
-// Story: a shader that needs a feature no device opens with fails at Shader::new.
+/// A render shader: a vertex stage that returns the origin, then `rest`.
+fn after_vertex(rest: &str) -> String {
+    format!(
+        "@vertex fn vs_main() -> @builtin(position) vec4<f32> {{ return vec4<f32>(0.0); }}\n{rest}"
+    )
+}
+
+// Story: a shader that needs a feature a device may open with passes Shader::new on
+// every device, and the renderer checks it against its own device: subgroups in each
+// stage, `primitive_index` and immediate data.
 #[test]
-fn features_no_device_opens_fail_at_new() {
-    let frag = |body: &str| {
-        format!(
-            "@vertex fn vs_main() -> @builtin(position) vec4<f32> {{ return vec4<f32>(0.0); }}\n{body}"
-        )
-    };
+fn device_features_pass_at_new() {
     let sources = [
-        frag("enable f16;\n@fragment fn fs_main() -> @location(0) vec4<f32> { let h: f16 = 1.0h; return vec4<f32>(f32(h)); }"),
-        frag("@fragment fn fs_main(@builtin(primitive_index) index: u32) -> @location(0) vec4<f32> { return vec4<f32>(f32(index)); }"),
-        frag("@group(0) @binding(0) var video: texture_external;\n@fragment fn fs_main() -> @location(0) vec4<f32> { return textureLoad(video, vec2<u32>(0u)); }"),
-        "enable subgroups;\n@compute @workgroup_size(64) fn cs_main(@builtin(subgroup_size) size: u32) { }".to_string(),
+        "@group(0) @binding(0) var<storage, read_write> sums: array<u32, 64>;
+@compute @workgroup_size(64)
+fn cs_main(@builtin(local_invocation_index) index: u32, @builtin(subgroup_size) size: u32) {
+  sums[index] = subgroupAdd(1u) + size;
+}"
+        .to_string(),
+        "@compute @workgroup_size(64) fn cs_main() { subgroupBarrier(); }".to_string(),
+        "@vertex fn vs_main() -> @builtin(position) vec4<f32> { return vec4<f32>(subgroupAdd(0.0)); }
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }"
+            .to_string(),
+        after_vertex(
+            "@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(subgroupAdd(1.0)); }",
+        ),
+        format!(
+            "enable primitive_index;\n{}",
+            after_vertex(
+                "@fragment fn fs_main(@builtin(primitive_index) index: u32) -> @location(0) vec4<f32> { return vec4<f32>(f32(index)); }",
+            )
+        ),
+        after_vertex(
+            "var<immediate> pc: vec4<f32>;\n@fragment fn fs_main() -> @location(0) vec4<f32> { return pc; }",
+        ),
     ];
     for source in sources {
+        let result = Shader::new(source.as_str());
+        assert!(result.is_ok(), "{source}\n{:?}", result.err());
+    }
+}
+
+// Story: a shader that needs a feature no device FragmentColor opens with fails at
+// Shader::new, never at render: `f16`, `texture_external`, texture atomics, ray queries
+// and `f64`.
+#[test]
+fn features_no_device_opens_fail_at_new() {
+    let sources = [
+        format!(
+            "enable f16;\n{}",
+            after_vertex(
+                "@fragment fn fs_main() -> @location(0) vec4<f32> { let h: f16 = 1.0h; return vec4<f32>(f32(h)); }",
+            )
+        ),
+        after_vertex(
+            "@group(0) @binding(0) var video: texture_external;\n@fragment fn fs_main() -> @location(0) vec4<f32> { return textureLoad(video, vec2<u32>(0u)); }",
+        ),
+        "@group(0) @binding(0) var counts: texture_storage_2d<r32uint, atomic>;
+@compute @workgroup_size(1) fn cs_main() { textureAtomicAdd(counts, vec2<i32>(0), 1u); }"
+            .to_string(),
+        "enable wgpu_ray_query;\n@compute @workgroup_size(1) fn cs_main() {}".to_string(),
+        "@compute @workgroup_size(1) fn cs_main() { let x: f64 = 1.0lf; }".to_string(),
+    ];
+    for source in sources {
+        assert!(is_valid_anywhere(&source), "{source}");
         assert!(Shader::new(source.as_str()).is_err(), "{source}");
     }
-    // Immediate data is one of the features a device may open with.
-    let immediate = frag(
-        "var<immediate> pc: vec4<f32>;\n@fragment fn fs_main() -> @location(0) vec4<f32> { return pc; }",
+}
+
+/// Whether naga takes `source` with every capability it knows,
+/// so a refusal under fewer capabilities comes from a missing one.
+fn is_valid_anywhere(source: &str) -> bool {
+    use naga::front::wgsl::{Frontend, Options};
+    use naga::valid::{Capabilities, ValidationFlags, Validator};
+    let mut options = Options::new();
+    options.capabilities = Capabilities::all();
+    let Ok(module) = Frontend::new_with_options(options).parse(source) else {
+        return false;
+    };
+    Validator::new(ValidationFlags::all(), Capabilities::all())
+        .validate(&module)
+        .is_ok()
+}
+
+// Story: naga 30 refuses `enable subgroups;` as an extension it doesn't implement yet,
+// so subgroup code leaves it out. A naga that takes it fails here, and the docs that
+// say to leave it out change with it.
+#[test]
+fn naga_refuses_the_subgroups_directive() {
+    let source = "enable subgroups;
+@compute @workgroup_size(64) fn cs_main(@builtin(subgroup_size) size: u32) {}";
+
+    let error = Shader::new(source).expect_err("naga refuses the directive");
+
+    let text = error.to_string();
+    assert!(matches!(error, ShaderError::WgslParseError(_)), "{text}");
+    assert!(
+        text.contains("the `subgroups` enable-extension is not yet supported"),
+        "{text}"
     );
-    assert!(Shader::new(immediate.as_str()).is_ok());
 }
 
 // Story: an immediate root a uniform can't hold fails at Shader::new on every device,

@@ -27,8 +27,8 @@ fn create_parser() -> Frontend {
     Frontend::new_with_options(options)
 }
 
-/// A validator that refuses what no device FragmentColor opens can run,
-/// such as `f16`, subgroups, `texture_external` or texture atomics.
+/// A validator that refuses what no device FragmentColor opens can run:
+/// ray queries, mesh shaders, `f64` and any other feature outside `CANDIDATES`.
 pub(crate) fn create_validator() -> Validator {
     Validator::new(ValidationFlags::all(), read_capabilities())
 }
