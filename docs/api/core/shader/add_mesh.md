@@ -9,7 +9,7 @@ Attach a Mesh to this Shader. The Renderer draws every mesh attached to it, one 
 - On a missing attribute or a value that doesn't fit, the error names the attribute, the declared type and the value, or the vertex or instance that lacks it. The mesh isn't attached and records no type.
 - A shader that declares another type for an attribute an earlier shader already typed on this mesh fails to attach.
 - A vertex that sets a property named `position` fails with `ShaderError::InvalidKey`, since its position comes from `Vertex::new`.
-- A vertex or instance added after the attach must hold every attribute the shader reads. `Renderer.render` returns `MeshError::InvalidVertex` or `MeshError::InvalidInstance` naming the attribute otherwise.
+- A vertex or instance added after the attach must hold every attribute the shader reads, each value in the range of the type the shader declares, `f16` included. `Renderer.render` returns `MeshError::InvalidVertex` or `MeshError::InvalidInstance` naming the attribute and that type otherwise.
 - The `@location` members of a struct argument are inputs too, each read from the attribute of its own name, so `struct VIn { @location(1) color: vec4<f32> }` reads `color`. Built-in members such as `@builtin(vertex_index)` read nothing from the mesh.
 - A shader with no `@location` inputs, in its arguments or their members, draws fullscreen and rejects every mesh with `ShaderError::InvalidKey`.
 
