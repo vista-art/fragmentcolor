@@ -4,7 +4,7 @@ The [Shader](https://fragmentcolor.org/api/core/shader) object is the main build
 
 It takes a WGSL or GLSL shader source as input, parses it, validates it, and exposes the uniforms as keys.
 
-`Shader::new` refuses a source that no device FragmentColor opens can run, with a `ShaderError` that names the problem: a feature outside the set FragmentColor requests (`f16`, `primitive_index`, subgroups, `texture_external`, texture atomics), two globals on one `@group` and `@binding` (a `lights` root included), writable storage in a `@vertex` entry point, an immediate root that breaks the uniform layout rules, a filtering `sampler` that samples a depth texture, and two vertex inputs with one name, which would read one mesh attribute. A shader that passes can still be one a given device can't run, which `Renderer::render` refuses, as [Device limits](https://fragmentcolor.org/api/core/shader#device-limits) describes.
+`Shader::new` refuses a source that no device FragmentColor opens can run, with a `ShaderError` that names the problem: a feature outside the set FragmentColor requests (such as `f16`, `texture_external`, texture atomics or `f64`), two globals on one `@group` and `@binding` (a `lights` root included), writable storage in a `@vertex` entry point, an immediate root that breaks the uniform layout rules, a filtering `sampler` that samples a depth texture, and two vertex inputs with one name, which would read one mesh attribute. A shader that passes can still be one a given device can't run, which `Renderer::render` refuses, as [Device limits](https://fragmentcolor.org/api/core/shader#device-limits) describes.
 
 `Shader::new` accepts a source string, a registry slug like `"sdf2d/circle"`, an `https://` URL, a local file path, or an array mixing any of those. Array parts are deduplicated by hash and concatenated in order, so you can pull pure helper functions from the public registry at `https://fragmentcolor.org/shaders/` into your own shader without copy-pasting. Override the registry base with [Shader::set_registry](https://fragmentcolor.org/api/core/shader#set_registry).
 
@@ -137,12 +137,30 @@ Immediate data, declared with `var<immediate>`, works on every platform, in rend
 
 A root that isn't a struct takes its bytes whole through `set`, as a storage root does. A struct root also takes each field by name, as in `pc.color`.
 
+## Subgroups and primitive index
+
+`Shader::new` takes subgroup built-ins and functions, such as `@builtin(subgroup_size)` and `subgroupAdd`, and `@builtin(primitive_index)` after `enable primitive_index;`, on every platform. Each runs where the device has its wgpu feature. Elsewhere `Renderer::render` refuses the shader with `RendererError::FeatureError`, whose `feature` names the flag the device lacks.
+
+- Subgroup operations need `SUBGROUP` in compute and fragment shaders and `SUBGROUP_VERTEX` in vertex shaders, and `subgroupBarrier` also needs `SUBGROUP_BARRIER`. Vulkan devices with the full set of subgroup operations offer them, as do Metal GPUs of the Apple7, Mac2 and Metal 3 families and DX12 devices with Shader Model 6.0 wave operations. Only Vulkan offers `SUBGROUP_VERTEX`, and DX12 has no `SUBGROUP_BARRIER`.
+- `primitive_index` needs `PRIMITIVE_INDEX`, which DX12, Vulkan devices with geometry shaders, the same Metal GPU families, OpenGL 3.2 and OpenGL ES 3.2 offer.
+
+The browser's WebGPU and WebGL2 offer neither, and native GL offers no subgroups. Write subgroup code in WGSL and leave out `enable subgroups;`, which naga doesn't take yet:
+
+```wgsl
+@group(0) @binding(0) var<storage, read_write> sums: array<u32, 64>;
+
+@compute @workgroup_size(64)
+fn cs_main(@builtin(local_invocation_index) index: u32) {
+  sums[index] = subgroupAdd(1u);
+}
+```
+
 ## Device limits
 
 `Renderer::render` checks each shader against the device before it takes a frame, so every platform returns the same error from the call that caused it, the web included. Each refusal has a typed error with fields:
 
 - `RendererError::LimitError { item, limit, value, max }` for a group past `max_bind_groups`, a binding past `max_bindings_per_bind_group`, more bindings of a kind in one stage than the device takes, a uniform or storage buffer past its binding size limit, a workgroup past the device's sizes, invocations or workgroup memory, and a vertex input at a location past `max_vertex_attributes`. A mesh whose stride or buffers pass the device's limits gets it too.
-- `RendererError::FeatureError { item, feature }` for a compute shader on a device without compute, storage a stage of the device can't bind, a storage format or access the device lacks, an explicit layout on a GL backend, a shader that measures its light roots with `arrayLength` on a device that takes lights through a uniform block, and anything else the device's shader validator refuses.
+- `RendererError::FeatureError { item, feature }` for a compute shader on a device without compute, storage a stage of the device can't bind, a storage format or access the device lacks, an explicit layout on a GL backend, a shader that measures its light roots with `arrayLength` on a device that takes lights through a uniform block, a shader feature the device lacks, such as subgroups, whose `feature` names the wgpu flag, and anything else the device's shader validator refuses.
 - `RendererError::BindingError { uniform, expected, found }` for a texture uniform that was never set, or whose texture its slot can't take by format, usage, dimension, sample count or mip levels.
 - `RendererError::EntryError { stage }` for a render shader without its `@vertex` or `@fragment` entry point.
 

@@ -10,12 +10,15 @@ is a single string, or an array of strings, of any of these shapes:
 
 When you pass an array, parts are deduplicated by source hash and concatenated
 in order before validation, so you can compose pure helper functions from the
-registry with your own source.
+registry with your own source. The `enable`, `requires` and `diagnostic`
+directives a later part opens with move to the top, the only place WGSL takes
+them, so a helper can carry the `enable` it needs.
 
-If validation fails, the error message points at the line in the resulting
-WGSL. A shader that passes is one some device can run: `Renderer::render`
-still checks it against its own device, and refuses one past that device's
-limits or features with a typed error. All uniforms are initialized to zero.
+If validation fails, the error message points at the line and column in the
+parts as written, joined in order by two line breaks. A shader that passes is
+one some device can run: `Renderer::render` still checks it against its own
+device, and refuses one past that device's limits or features with a typed
+error. All uniforms are initialized to zero.
 
 GLSL is supported only as a single part (a `.vert`, `.frag`, or `.glsl`
 file). Mixing GLSL with other parts is rejected.
