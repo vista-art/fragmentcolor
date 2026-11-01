@@ -24,6 +24,9 @@ pub enum TextureFormat {
     Rgba32Float,
     Rgba32Uint,
     Rgba32Sint,
+    R32Uint,
+    R32Sint,
+    R32Float,
     Depth32Float,
     #[default]
     Rgba,
@@ -31,6 +34,32 @@ pub enum TextureFormat {
     Lab,
     L8,
 }
+
+/// Every format in the order `TextureFormat` declares it,
+/// so the index of a format is the number JavaScript holds for it.
+#[cfg(any(wasm, test))]
+pub(crate) const FORMATS: [TextureFormat; 20] = [
+    TextureFormat::R8Unorm,
+    TextureFormat::Rg8Unorm,
+    TextureFormat::R16Unorm,
+    TextureFormat::Rg16Unorm,
+    TextureFormat::Rgba8Unorm,
+    TextureFormat::Rgba8UnormSrgb,
+    TextureFormat::Bgra8Unorm,
+    TextureFormat::Rgba16Unorm,
+    TextureFormat::Rgba16Float,
+    TextureFormat::Rgba32Float,
+    TextureFormat::Rgba32Uint,
+    TextureFormat::Rgba32Sint,
+    TextureFormat::R32Uint,
+    TextureFormat::R32Sint,
+    TextureFormat::R32Float,
+    TextureFormat::Depth32Float,
+    TextureFormat::Rgba,
+    TextureFormat::Bgra,
+    TextureFormat::Lab,
+    TextureFormat::L8,
+];
 
 impl TextureFormat {
     /// The wgpu format this format stands for. The logical names map to a concrete format.
@@ -48,6 +77,9 @@ impl TextureFormat {
             TextureFormat::Rgba32Float => wgpu::TextureFormat::Rgba32Float,
             TextureFormat::Rgba32Uint => wgpu::TextureFormat::Rgba32Uint,
             TextureFormat::Rgba32Sint => wgpu::TextureFormat::Rgba32Sint,
+            TextureFormat::R32Uint => wgpu::TextureFormat::R32Uint,
+            TextureFormat::R32Sint => wgpu::TextureFormat::R32Sint,
+            TextureFormat::R32Float => wgpu::TextureFormat::R32Float,
             TextureFormat::Depth32Float => wgpu::TextureFormat::Depth32Float,
             TextureFormat::Rgba => wgpu::TextureFormat::Rgba8Unorm,
             TextureFormat::Bgra => wgpu::TextureFormat::Bgra8Unorm,
@@ -71,6 +103,9 @@ impl TextureFormat {
             wgpu::TextureFormat::Rgba32Float => TextureFormat::Rgba32Float,
             wgpu::TextureFormat::Rgba32Uint => TextureFormat::Rgba32Uint,
             wgpu::TextureFormat::Rgba32Sint => TextureFormat::Rgba32Sint,
+            wgpu::TextureFormat::R32Uint => TextureFormat::R32Uint,
+            wgpu::TextureFormat::R32Sint => TextureFormat::R32Sint,
+            wgpu::TextureFormat::R32Float => TextureFormat::R32Float,
             wgpu::TextureFormat::Depth32Float => TextureFormat::Depth32Float,
             _ => TextureFormat::Rgba8Unorm,
         }
@@ -187,33 +222,60 @@ pub(crate) fn measure_texel(format: wgpu::TextureFormat) -> Result<u32, TextureE
 mod tests {
     use super::*;
 
-    // Story: Conversions between public TextureFormat and wgpu::TextureFormat round-trip for common cases.
+    // Story: every concrete format comes back from its wgpu format as itself,
+    // and each logical name comes back as the concrete format it stands for.
     #[test]
     fn converts_between_public_and_wgpu_formats() {
-        // Arrange
-        let cases = [
-            TextureFormat::R8Unorm,
-            TextureFormat::Rg8Unorm,
-            TextureFormat::Rgba8Unorm,
-            TextureFormat::Rgba8UnormSrgb,
-            TextureFormat::Bgra8Unorm,
-            TextureFormat::Depth32Float,
+        let aliases = [
+            (TextureFormat::Rgba, TextureFormat::Rgba8Unorm),
+            (TextureFormat::Bgra, TextureFormat::Bgra8Unorm),
+            (TextureFormat::Lab, TextureFormat::Rg8Unorm),
+            (TextureFormat::L8, TextureFormat::R8Unorm),
         ];
 
-        // Act / Assert: round-trip
-        for f in cases.iter().copied() {
-            let wf: wgpu::TextureFormat = f.to_wgpu();
-            let back: TextureFormat = TextureFormat::from_wgpu(wf);
-            // Note: sRGB/linear distinction preserved where possible
-            match (f, back) {
-                (TextureFormat::Rgba8Unorm, TextureFormat::Rgba8Unorm)
-                | (TextureFormat::Rgba8UnormSrgb, TextureFormat::Rgba8UnormSrgb)
-                | (TextureFormat::Bgra8Unorm, TextureFormat::Bgra8Unorm)
-                | (TextureFormat::Depth32Float, TextureFormat::Depth32Float)
-                | (TextureFormat::R8Unorm, TextureFormat::R8Unorm)
-                | (TextureFormat::Rg8Unorm, TextureFormat::Rg8Unorm) => {}
-                _ => {}
+        for format in FORMATS {
+            let back = TextureFormat::from_wgpu(format.to_wgpu());
+
+            let alias = aliases.iter().find(|(alias, _)| *alias == format);
+            match alias {
+                Some((_, concrete)) => assert_eq!(back, *concrete, "{format:?}"),
+                None => assert_eq!(back, format),
             }
+        }
+    }
+
+    // Story: JavaScript holds each format as a number, its place in the enum,
+    // and `read_format` reads it back through `FORMATS`. The table pins each number,
+    // so a variant moved or left out of the list fails here.
+    #[test]
+    fn formats_keep_their_codes() {
+        let pins = [
+            (0, TextureFormat::R8Unorm),
+            (1, TextureFormat::Rg8Unorm),
+            (2, TextureFormat::R16Unorm),
+            (3, TextureFormat::Rg16Unorm),
+            (4, TextureFormat::Rgba8Unorm),
+            (5, TextureFormat::Rgba8UnormSrgb),
+            (6, TextureFormat::Bgra8Unorm),
+            (7, TextureFormat::Rgba16Unorm),
+            (8, TextureFormat::Rgba16Float),
+            (9, TextureFormat::Rgba32Float),
+            (10, TextureFormat::Rgba32Uint),
+            (11, TextureFormat::Rgba32Sint),
+            (12, TextureFormat::R32Uint),
+            (13, TextureFormat::R32Sint),
+            (14, TextureFormat::R32Float),
+            (15, TextureFormat::Depth32Float),
+            (16, TextureFormat::Rgba),
+            (17, TextureFormat::Bgra),
+            (18, TextureFormat::Lab),
+            (19, TextureFormat::L8),
+        ];
+
+        assert_eq!(FORMATS.len(), pins.len());
+        for (code, format) in pins {
+            assert_eq!(format as usize, code, "{format:?}");
+            assert_eq!(FORMATS[code], format);
         }
     }
 

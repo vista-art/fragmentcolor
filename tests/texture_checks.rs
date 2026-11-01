@@ -175,10 +175,58 @@ fn decoded_images_fill_float_formats() {
             halves(&image)
         );
 
-        for format in [TextureFormat::Rgba32Uint, TextureFormat::Rgba32Sint] {
+        let integers = [
+            TextureFormat::Rgba32Uint,
+            TextureFormat::Rgba32Sint,
+            TextureFormat::R32Uint,
+            TextureFormat::R32Sint,
+            TextureFormat::R32Float,
+        ];
+        for format in integers {
             let result = renderer.create_texture((png.clone(), format)).await;
             assert!(refused(&result), "a decoded image into {format:?}");
         }
+    });
+}
+
+// Story: R32Uint, R32Sint and R32Float hold one 32-bit value per texel. Raw bytes seed
+// a storage texture of each and read back as given, and raw R32Float bytes upload one
+// level, which the CPU mip chain leaves out, so a partial write takes the texture.
+#[test]
+fn r32_formats_take_raw_bytes() {
+    pollster::block_on(async move {
+        let renderer = Renderer::new();
+        let words = (0..16).map(|word: u32| word * 1000 + 7);
+        let bytes: Vec<u8> = words.flat_map(u32::to_le_bytes).collect();
+        let formats = [
+            TextureFormat::R32Uint,
+            TextureFormat::R32Sint,
+            TextureFormat::R32Float,
+        ];
+        for format in formats {
+            let texture = renderer
+                .create_storage_texture(([4, 4], format, bytes.clone()))
+                .await
+                .expect("a seeded storage texture");
+
+            let image = texture.get_image().await.expect("read back");
+
+            assert_eq!(image, bytes, "{format:?}");
+        }
+
+        let options = TextureOptions {
+            size: Some([4, 4].into()),
+            format: TextureFormat::R32Float,
+            ..Default::default()
+        };
+        let input = TextureInput {
+            data: bytes.clone().into(),
+            options,
+        };
+        let texture = renderer.create_texture(input).await.expect("raw R32Float");
+        texture
+            .write_region(&[0; 16], [0, 0, 2, 2])
+            .expect("one level takes a partial write");
     });
 }
 
