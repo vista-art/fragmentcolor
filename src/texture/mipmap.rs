@@ -44,20 +44,20 @@ crate::impl_js_bridge!(Mipmap, crate::texture::TextureError);
 const ANY_SIDE: u32 = u32::MAX;
 
 impl Mipmap {
-    /// Build a mip chain from a [`TextureInput`]. Pure CPU work — call from
+    /// Build a mip chain from a [`TextureInput`]. Pure CPU work. Call it from
     /// any thread (worker, thread pool, async task), then hand the chain to
     /// [`crate::Renderer::create_texture`] on the renderer thread for a
     /// GPU-only upload.
     ///
     /// Same `TextureInput` transport as `Renderer::create_texture` and
-    /// `Renderer::create_storage_texture` — one vocabulary across the API.
+    /// `Renderer::create_storage_texture`, one vocabulary across the API.
     /// The `From<T>` impls cover the common call shapes:
     ///
     /// ```ignore
-    /// // Encoded image bytes (PNG / JPEG / etc.) — size inferred from the image.
+    /// // Encoded image bytes (PNG / JPEG / etc.): size inferred from the image.
     /// Mipmap::build((png_bytes, TextureFormat::Rgba8UnormSrgb))?;
     ///
-    /// // Raw pixel bytes — caller declares the dimensions.
+    /// // Raw pixel bytes: the caller declares the dimensions.
     /// Mipmap::build((rgba_bytes, TextureFormat::Rgba8UnormSrgb, [w, h]))?;
     /// ```
     ///
@@ -134,17 +134,17 @@ impl Mipmap {
             }
             TextureData::Url(_) => {
                 return Err(TextureError::InvalidInput(
-                    "build: TextureData::Url requires async fetch — fetch bytes first, then call build with the bytes".into(),
+                    "build: TextureData::Url requires async fetch. Fetch bytes first, then call build with the bytes".into(),
                 ));
             }
             TextureData::Ktx2Bytes(_) | TextureData::Ktx2Path(_) | TextureData::Ktx2Url(_) => {
                 return Err(TextureError::InvalidInput(
-                    "build: KTX2 inputs already carry a pre-baked mip chain — pass them directly to Renderer::create_texture".into(),
+                    "build: KTX2 inputs already carry a pre-baked mip chain. Pass them directly to Renderer::create_texture".into(),
                 ));
             }
             TextureData::Prepared(_) => {
                 return Err(TextureError::InvalidInput(
-                    "build: TextureData::Prepared is already a Mipmap — pass it directly to Renderer::create_texture".into(),
+                    "build: TextureData::Prepared is already a Mipmap. Pass it directly to Renderer::create_texture".into(),
                 ));
             }
             TextureData::CloneOf(_) => {
@@ -365,9 +365,9 @@ pub(crate) fn build_mip_chain(
 
 /// Generic level-buffering: starting from `base`, push the bytes of each level
 /// into a fresh `Vec<u8>`, then resample to half size with the Triangle filter.
-/// Identical resampling to [`write_pixel_levels`] — same Triangle filter, same
-/// floor-to-1 dimension shrink — so chains built here render identically to
-/// the inline path.
+/// Resamples like [`write_pixel_levels`], with the same Triangle filter and
+/// the same floor-to-1 dimension shrink, so chains built here render
+/// identically to the inline path.
 fn downsample_levels_to_bytes<P>(
     base: image::ImageBuffer<P, Vec<P::Subpixel>>,
     level_count: usize,

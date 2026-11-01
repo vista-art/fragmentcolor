@@ -2053,7 +2053,7 @@ open class Mipmap: MipmapProtocol, @unchecked Sendable {
      * Build a chain from raw bytes + format (+ optional size). If
      * `size` is `None`, `bytes` is decoded as an image (PNG / JPEG / etc.);
      * if `Some(size)`, `bytes` is treated as raw pixel data already laid
-     * out for `format` at `size`. Pure CPU work — call from a Swift `Task`
+     * out for `format` at `size`. Pure CPU work. Call it from a Swift `Task`
      * or Kotlin coroutine on a background dispatcher, then hand the chain
      * to `renderer.createTexture(chain:)` for the GPU upload.
      *
@@ -4143,7 +4143,7 @@ public protocol TextureProtocol: AnyObject, Sendable {
     
     /**
      * Return the texture size (w × h[× d]). Mirrors the canonical
-     * `Texture::size()` — see [`crate::Size`].
+     * `Texture::size()`. See [`crate::Size`].
      */
     func size()  -> Size
     
@@ -4290,7 +4290,7 @@ open func setSamplerOptions(opts: SamplerOptions)  {try! rustCall() {
     
     /**
      * Return the texture size (w × h[× d]). Mirrors the canonical
-     * `Texture::size()` — see [`crate::Size`].
+     * `Texture::size()`. See [`crate::Size`].
      */
 open func size() -> Size  {
     return try!  FfiConverterTypeSize_lift(try! rustCall() {
@@ -9729,7 +9729,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_texture_setsampleroptions() != 5358) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_texture_size() != 9241) {
+    if (uniffi_fragmentcolor_checksum_method_texture_size() != 33001) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_texture_write() != 36263) {
@@ -9837,7 +9837,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_constructor_scene_new() != 58352) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_constructor_mipmap_build() != 33453) {
+    if (uniffi_fragmentcolor_checksum_constructor_mipmap_build() != 45460) {
         return InitializationResult.apiChecksumMismatch
     }
 

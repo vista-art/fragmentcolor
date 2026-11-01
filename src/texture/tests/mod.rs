@@ -201,7 +201,7 @@ fn mip_level_count_for_known_dims() {
 #[test]
 fn encoded_image_creates_mipmap_chain_by_default() {
     pollster::block_on(async move {
-        // 8x8 solid color image — generates 4 mip levels (8, 4, 2, 1).
+        // 8x8 solid color image, which gets 4 mip levels (8, 4, 2, 1).
         let pixels = vec![200u8; 8 * 8 * 4];
         let img =
             image::DynamicImage::ImageRgba8(image::RgbaImage::from_vec(8, 8, pixels).unwrap());
@@ -226,7 +226,7 @@ fn encoded_image_creates_mipmap_chain_by_default() {
     });
 }
 
-// Story: Format override is honored on the encoded image arm — same RGBA bytes,
+// Story: Format override is honored on the encoded image arm: same RGBA bytes,
 // reinterpreted as linear instead of sRGB. Mipmap chain is still generated.
 #[test]
 fn format_override_honored_for_image_input() {
@@ -250,7 +250,7 @@ fn format_override_honored_for_image_input() {
 }
 
 // Story: 16-bit grayscale source (e.g. height-map PNG) is decoded with
-// to_luma16 — preserving precision — and uploaded as R16Unorm with mips.
+// to_luma16, which keeps its precision, and uploaded as R16Unorm with mips.
 #[test]
 fn luma16_image_uploads_as_r16unorm_with_mipmaps() {
     pollster::block_on(async move {
@@ -521,7 +521,7 @@ fn prepare_builds_mipmap_chain_matching_inline_path() {
     let mut buf = Vec::new();
     img.write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png)
         .unwrap();
-    // From<(&[u8], TextureFormat)> — encoded image path.
+    // From<(&[u8], TextureFormat)>: encoded image path.
     let chain =
         Mipmap::build((buf.as_slice(), crate::TextureFormat::Rgba8UnormSrgb)).expect("prepare ok");
     assert_eq!(chain.count(), 4);
@@ -533,9 +533,9 @@ fn prepare_builds_mipmap_chain_matching_inline_path() {
     }
 }
 
-// Story: the raw-pixel path is selected by providing a `size` — same
-// single `prepare` entry, the From<(bytes, format, size)> impl carries
-// it. Exercises tuple, array, and Size as the size argument.
+// Story: the raw-pixel path is selected by providing a `size`. It is the
+// same single `prepare` entry, and the From<(bytes, format, size)> impl
+// carries it. Exercises tuple, array, and Size as the size argument.
 #[test]
 fn prepare_raw_builds_chain_from_raw_pixels() {
     let pixels = vec![200u8; 8 * 8 * 4];
@@ -558,7 +558,7 @@ fn prepare_raw_builds_chain_from_raw_pixels() {
     .expect("prepare with array size");
     assert_eq!(chain2.size(), Size::from([8, 8]));
 
-    // Explicit `TextureInput` struct literal — same transport as
+    // Explicit `TextureInput` struct literal, the same transport as
     // `Renderer::create_texture` and `create_storage_texture`.
     let chain3 = Mipmap::build(crate::TextureInput {
         data: crate::TextureData::Bytes(pixels.clone()),
@@ -627,7 +627,7 @@ fn prepare_error_variants_are_distinct() {
 }
 
 // Story: A prepared chain feeds back into create_texture and produces a
-// texture with the expected format + mip chain — the round-trip consumers
+// texture with the expected format + mip chain, the round trip consumers
 // use for off-main-thread mip generation. Exercises both the
 // TextureInput::Prepared variant (Rust ergonomics) and the dedicated
 // create_texture_prepared cross-language entry point.
@@ -682,7 +682,7 @@ fn prepared_input_round_trips_through_create_texture() {
     });
 }
 
-// Story: Raw bytes with R16Unorm format — caller hands us packed little-endian
+// Story: Raw bytes with R16Unorm format. The caller hands us packed little-endian
 // u16s, we wrap them as a Luma16 buffer and resample for each mip level.
 #[test]
 fn raw_bytes_r16unorm_generates_mipmap_chain() {

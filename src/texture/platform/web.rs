@@ -19,12 +19,12 @@ impl Mipmap {
     /// Build a chain from `bytes` for `format`. If `size` is undefined / null,
     /// `bytes` is decoded as an image (PNG / JPEG / etc.); if `size` is
     /// provided, `bytes` is treated as raw pixel data already laid out for
-    /// `format` at `size`. Pure CPU work — call from a Web Worker (or the
+    /// `format` at `size`. Pure CPU work. Call it from a Web Worker (or the
     /// main thread) and pass the result to `renderer.createTexture(chain)`
     /// for the GPU upload.
     ///
     /// `size` accepts the same shapes the rest of the JS API does:
-    /// `[w, h]`, `[w, h, d]`, a typed array, or a `Size` object — see
+    /// `[w, h]`, `[w, h, d]`, a typed array, or a `Size` object. See
     /// `Size::try_from(&JsValue)` for the full list. Forcing callers to
     /// construct a wasm-bindgen `Size` instance (which has no JS-side
     /// constructor anyway) would break parity with `createStorageTexture`,
