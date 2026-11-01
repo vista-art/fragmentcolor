@@ -15,8 +15,8 @@ impl Shader {
 
     /// Async-shaped constructor: fetches each part of `input` from the network
     /// (URL or slug) or reads file paths, then compiles the merged source.
-    /// Blocks the Python thread synchronously via `pollster::block_on` —
-    /// call from a thread-pool worker if you want non-blocking behavior.
+    /// Blocks the Python thread synchronously via `pollster::block_on`.
+    /// Call it from a thread-pool worker for non-blocking behavior.
     #[staticmethod]
     #[pyo3(name = "fetch")]
     #[lsp_doc("docs/api/core/shader/fetch.md")]
@@ -93,13 +93,13 @@ impl Shader {
         self.is_compute()
     }
 
-    // Internal duck-typed interface used by PyRenderable dispatch — not part of public docs.
+    // Internal duck-typed interface used by PyRenderable dispatch, not part of public docs.
     #[doc(hidden)]
     pub fn renderable_type(&self) -> &'static str {
         "Shader"
     }
 
-    // Internal duck-typed interface used by PyRenderable dispatch — not part of public docs.
+    // Internal duck-typed interface used by PyRenderable dispatch, not part of public docs.
     #[doc(hidden)]
     #[pyo3(name = "passes")]
     pub fn passes_py(&self) -> crate::PyPassIterator {

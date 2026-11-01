@@ -73,8 +73,8 @@ pub(super) fn hash(source: &str) -> ShaderHash {
 ///
 /// If any `ImageSample` argument cannot be resolved to a direct global (e.g. it
 /// comes from a function parameter), every image global is conservatively
-/// reported as sampled — filterable=true is always a safe layout, filterable=false
-/// is not.
+/// reported as sampled, since filterable=true is always a safe layout and
+/// filterable=false is not.
 fn sampled_image_globals(module: &Module) -> HashSet<naga::Handle<naga::GlobalVariable>> {
     use naga::Expression;
 

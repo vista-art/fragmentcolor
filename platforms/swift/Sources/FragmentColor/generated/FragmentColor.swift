@@ -3760,7 +3760,7 @@ public protocol ShaderProtocol: AnyObject, Sendable {
     
     /**
      * Check whether a `Mesh`'s vertex/instance layout is compatible with
-     * this shader's `@location` inputs — without attaching it.
+     * this shader's `@location` inputs, without attaching it.
      */
     func validateMesh(mesh: Mesh) throws 
     
@@ -3857,7 +3857,7 @@ public static func `default`() -> Shader  {
      * Build a basic WGSL shader from the first vertex in a `Mesh`.
      * Automatically attaches the mesh so callers don't need a separate
      * `addMesh` call. Mobile shim because uniffi cannot marshal `&Mesh`
-     * (shared reference) across the FFI boundary — it requires `Arc<T>`.
+     * (shared reference) across the FFI boundary. It requires `Arc<T>`.
      */
 public static func fromMesh(mesh: Mesh)throws  -> Shader  {
     return try  FfiConverterTypeShader_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
@@ -3871,7 +3871,7 @@ public static func fromMesh(mesh: Mesh)throws  -> Shader  {
     /**
      * Build a basic WGSL shader from a single `Vertex` layout.
      * Mobile shim because uniffi cannot marshal `&Vertex` across the FFI
-     * boundary — it requires `Arc<T>`.
+     * boundary. It requires `Arc<T>`.
      */
 public static func fromVertex(vertex: Vertex)throws  -> Shader  {
     return try  FfiConverterTypeShader_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
@@ -4046,7 +4046,7 @@ open func set(key: String, value: UniformValue)throws   {try rustCallWithError(F
     
     /**
      * Check whether a `Mesh`'s vertex/instance layout is compatible with
-     * this shader's `@location` inputs — without attaching it.
+     * this shader's `@location` inputs, without attaching it.
      */
 open func validateMesh(mesh: Mesh)throws   {try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
         uniffiCallStatus in
@@ -9453,7 +9453,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_shader_set() != 32852) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_shader_validatemesh() != 39812) {
+    if (uniffi_fragmentcolor_checksum_method_shader_validatemesh() != 6431) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_instance_set() != 44981) {
@@ -9774,10 +9774,10 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_constructor_shader_default() != 62478) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_constructor_shader_frommesh() != 31450) {
+    if (uniffi_fragmentcolor_checksum_constructor_shader_frommesh() != 38933) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_constructor_shader_fromvertex() != 7997) {
+    if (uniffi_fragmentcolor_checksum_constructor_shader_fromvertex() != 64157) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_constructor_shader_new() != 63383) {
