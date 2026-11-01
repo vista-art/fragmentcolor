@@ -10,23 +10,6 @@ import FragmentColor
 import QuartzCore
 
 final class GeneratedExamples: ExampleCase {
-    func test_core_device_error_DeviceError() async {
-        await example("docs/api/core/device_error/device_error.md") {
-            let renderer = Renderer()
-            let target = try await renderer.createTextureTarget([16, 16])
-            let shader = Shader.default()
-
-            // A GPU error in this frame returns as a DeviceError.
-            try renderer.render(shader, target)
-        }
-    }
-
-    func test_core_error_kind_ErrorKind() async {
-        await example("docs/api/core/error_kind/error_kind.md") {
-            let kind = ErrorKind.memory
-        }
-    }
-
     func test_core_pass_Pass() async {
         await example("docs/api/core/pass/pass.md") {
             let canvas = CAMetalLayer()
@@ -753,6 +736,23 @@ final class GeneratedExamples: ExampleCase {
 
             try shader.validateMesh(mesh) // Ok
             try pass.addMesh(mesh)
+        }
+    }
+
+    func test_errors_device_error_DeviceError() async {
+        await example("docs/api/errors/device_error/device_error.md") {
+            let renderer = Renderer()
+            let target = try await renderer.createTextureTarget([16, 16])
+            let shader = Shader.default()
+
+            // A GPU error in this frame returns as a DeviceError.
+            try renderer.render(shader, target)
+        }
+    }
+
+    func test_errors_error_kind_ErrorKind() async {
+        await example("docs/api/errors/error_kind/error_kind.md") {
+            let kind = ErrorKind.memory
         }
     }
 
