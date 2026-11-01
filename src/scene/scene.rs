@@ -38,7 +38,7 @@ use pyo3::prelude::*;
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
-use crate::scene::{Camera, Light, SceneObject};
+use crate::scene::{Camera, Light, SceneObject, push_uniform};
 use crate::{Pass, PassError, PassObject, Renderable};
 
 #[cfg_attr(wasm, wasm_bindgen)]
@@ -324,7 +324,7 @@ impl Scene {
         // will pick it up.
         if let Some(amb) = *self.inner.ambient.read() {
             for shader in pass.object.shaders.read().iter() {
-                let _ = shader.set("lights.ambient", amb);
+                push_uniform(shader, "lights.ambient", amb);
             }
         }
         Ok(())
@@ -384,7 +384,7 @@ impl Scene {
         // added via `Scene::add` pick the value up from the stash.
         for pass in self.inner.passes.read().iter() {
             for shader in pass.object.shaders.read().iter() {
-                let _ = shader.set("lights.ambient", color);
+                push_uniform(shader, "lights.ambient", color);
             }
         }
         self

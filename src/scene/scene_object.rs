@@ -7,7 +7,8 @@
 //! Camera and Light use this hook for live propagation; Model doesn't
 //! need it (its work is fully done at attach time).
 
-use crate::Shader;
+use crate::core::ShaderObject;
+use crate::{Shader, ShaderError, UniformData};
 
 /// A node that can be attached to a [`Pass`](crate::Pass). Implementations
 /// drive their own state changes on the pass through
@@ -49,5 +50,15 @@ pub trait SceneObject: std::fmt::Debug + 'static {
     /// See the non-wasm definition for the contract.
     fn apply_to_shader(&self, shader: &Shader) {
         let _ = shader;
+    }
+}
+
+/// Writes `value` under `key` in `shader`, as a scene object does for each shader it reaches.
+/// A shader that doesn't declare the key is skipped. One whose slot can't hold the value,
+/// such as an `f16` matrix entry past ±65504, keeps its old value and logs a warning.
+pub(crate) fn push_uniform(shader: &ShaderObject, key: &str, value: impl Into<UniformData>) {
+    match shader.set(key, value) {
+        Ok(()) | Err(ShaderError::UniformNotFound(_) | ShaderError::FieldNotFound(_)) => {}
+        Err(error) => log::warn!("'{key}' did not reach a shader: {error}"),
     }
 }

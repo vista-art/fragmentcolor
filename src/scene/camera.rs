@@ -22,7 +22,7 @@ use wasm_bindgen::prelude::*;
 use crate::Shader;
 use crate::core::ShaderObject;
 use crate::core::{CameraSnapshot, PassObject};
-use crate::scene::SceneObject;
+use crate::scene::{SceneObject, push_uniform};
 
 /// Errors from camera parameters that leave no usable view.
 #[derive(Debug, thiserror::Error)]
@@ -499,8 +499,8 @@ impl Camera {
         let mut attached = self.object.attached.write();
         attached.retain(|weak| {
             if let Some(shader) = weak.upgrade() {
-                let _ = shader.set("camera.view_proj", view_proj);
-                let _ = shader.set("camera.position", position);
+                push_uniform(&shader, "camera.view_proj", view_proj);
+                push_uniform(&shader, "camera.position", position);
                 true
             } else {
                 false
@@ -536,8 +536,8 @@ impl SceneObject for Camera {
         {
             let mut attached = self.object.attached.write();
             for s in shaders {
-                let _ = s.set("camera.view_proj", view_proj);
-                let _ = s.set("camera.position", position);
+                push_uniform(&s, "camera.view_proj", view_proj);
+                push_uniform(&s, "camera.position", position);
                 attached.push(Arc::downgrade(&s));
             }
         }
@@ -561,8 +561,8 @@ impl SceneObject for Camera {
     }
 
     fn apply_to_shader(&self, shader: &Shader) {
-        let _ = shader.set("camera.view_proj", self.view_proj());
-        let _ = shader.set("camera.position", self.position());
+        push_uniform(&shader.object, "camera.view_proj", self.view_proj());
+        push_uniform(&shader.object, "camera.position", self.position());
         self.object
             .attached
             .write()
@@ -841,6 +841,43 @@ mod tests {
             .expect("camera");
         let p: [f32; 3] = material.shader().get("camera.position").unwrap();
         assert_eq!(p, [5.0, 0.0, 0.0]);
+    }
+
+    // Story: a shader whose camera struct holds f16 follows the camera, each value rounded
+    // to the nearest f16, when the camera attaches and when it moves, as an f32 one does.
+    #[test]
+    fn f16_camera_follows_look_at() {
+        let source = "enable f16;
+struct Camera { view_proj: mat4x4<f16>, position: vec3<f16> };
+@group(0) @binding(0) var<uniform> camera: Camera;
+@vertex fn vs_main() -> @builtin(position) vec4<f32> {
+  return vec4<f32>(camera.view_proj * vec4<f16>(camera.position, 1.0h));
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }";
+        let round = |values: &[f32]| -> Vec<f32> {
+            let halves = values.iter().map(|value| half::f16::from_f32(*value));
+            halves.map(half::f16::to_f32).collect()
+        };
+        let camera = Camera::perspective(1.047, 1.0, 0.1, 100.0)
+            .expect("camera")
+            .look_at([0.0, 0.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+            .expect("camera");
+        let shader = Shader::new(source).expect("shader");
+        let pass = crate::Pass::new("scene");
+        pass.add_shader(&shader).expect("shader");
+        pass.add(&camera).expect("camera");
+        let attached: Vec<f32> = shader.get("camera.view_proj").expect("view_proj");
+        assert_eq!(attached, round(&camera.view_proj().concat()));
+
+        camera
+            .look_at([3.1, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+            .expect("camera");
+
+        let position: [f32; 3] = shader.get("camera.position").expect("position");
+        assert_eq!(position.to_vec(), round(&[3.1, 0.0, 0.0]));
+        let moved: Vec<f32> = shader.get("camera.view_proj").expect("view_proj");
+        assert_eq!(moved, round(&camera.view_proj().concat()));
+        assert_ne!(moved, attached);
     }
 
     #[test]
