@@ -105,6 +105,12 @@ These landed in 0.12.6. JavaScript errors and the JavaScript `Shader` constructo
 - [ ] Reflect vertex inputs declared through a struct. `VertexInput.docs` in 0.13.0 needs them, since naga keeps no doc comments on function arguments
 - [ ] 16-bit integer shaders (`i16`, `u16` behind `enable wgpu_int16;`) where the adapter supports them, cherry-picked from `v0.13.0-dev` since it adds no call
 - [x] A shader naga refuses reports naga's message with the source lines it points at, and the Rust `ShaderError` carries each place as a `SourceLocation` with a line, a column and a length (0.12.7)
+- [x] `f16`, subgroups, texture atomics on `r32uint` and `r32sint`, `texture_external` and `primitive_index` work in every language. A device opens with each one its adapter offers, and `Renderer::render` refuses a shader that needs one the device lacks with a `FeatureError` that names it (0.12.7)
+- [ ] The naga capabilities that need no new call join the features a device opens with, each with a test: `clip_distances`, early depth tests, barycentrics, per-vertex inputs and the `coherent` and `volatile` memory decorations (0.12.8)
+- [ ] 64-bit values: `f64`, `i64` and `u64` with their atomics, and 64-bit texture atomics on `r64uint`, once `UniformData` reflects 64-bit scalars and `TextureFormat` takes `R64Uint`
+- [ ] `atomic<f32>` in storage buffers, once reflection takes atomic floats
+- [ ] Dual-source blending, with a blend state on `Pass` or `Pipeline`
+- [ ] Multiview and binding arrays, with a view mask on the pass and a list of textures or buffers in `Shader::set`
 
 ### Internal names
 
@@ -723,7 +729,7 @@ External textures (video), audio-reactive textures, a Shadertoy bridge, and live
 
 #### External textures (video)
 
-`Renderer::create_external_texture` went in 0.12.7. It existed on the web, iOS and Android, and each one returned an error that said external texture import was not implemented yet. A new call returns once wgpu's `ExternalTexture` reaches every backend FC ships on (Later), so video frames sample without a copy in WGSL through `texture_external` and `textureSampleBaseClampToEdge`. It adds a call, so it lands as a patch.
+`Renderer::create_external_texture` went in 0.12.7. It existed on the web, iOS and Android, and each one returned an error that said external texture import was not implemented yet. Since 0.12.7 a `texture_external` slot reads an ordinary `Texture` on Metal and DX12. A new call for video frames returns once wgpu's `ExternalTexture` reaches every backend FC ships on (Later), so a frame samples without a copy through the same slot. It adds a call, so it lands as a patch.
 
 - [ ] Web: map `HTMLVideoElement` to `wgpu::ExternalTexture`
 - [ ] iOS: `CVPixelBuffer` to `wgpu::ExternalTexture` through `CVMetalTextureCacheCreateTextureFromImage`, with a Swift extension that takes a real `CVPixelBuffer`
