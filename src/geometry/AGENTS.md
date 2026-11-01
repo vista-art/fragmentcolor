@@ -1,4 +1,4 @@
-# AGENTS.md — Mesh rules (short)
+# AGENTS.md: Mesh rules (short)
 
 Schema & packing
 - Derive the vertex / instance field list from the first vertex / instance added. Field names, order and sizes stay stable for the mesh lifetime, except that `clear_instances` drops an instance layout built from instances (a `Model`'s declared columns stay) and the next instance sets it again.

@@ -31,7 +31,7 @@ impl Vertex {
     /// names without bikeshedding.
     ///
     /// Use the numbered forms (`UV0`, `UV1`, `COLOR0`, `COLOR1`) when a mesh
-    /// carries multiple sets — typical for glTF imports with secondary UV
+    /// carries multiple sets, which is typical for glTF imports with secondary UV
     /// layers or vertex color palettes. For meshes with a single texcoord
     /// and a single color, plain string `"uv"` / `"color"` literals remain
     /// valid (FC matches by string).
@@ -217,7 +217,7 @@ mod tests {
         assert!(v.properties.contains_key("color0"));
         assert!(v.properties.contains_key("normal"));
         // Constants are plain `&'static str`, so they're directly comparable
-        // to literal strings — no PartialEq impl required.
+        // to literal strings with no PartialEq impl.
         assert_eq!(Vertex::TANGENT, "tangent");
         assert_eq!(Vertex::UV1, "uv1");
         assert_eq!(Vertex::COLOR1, "color1");

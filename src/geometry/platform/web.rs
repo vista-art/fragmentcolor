@@ -157,7 +157,7 @@ impl Vertex {
     }
 
     // Support Rust-style Vertex::new([...]) in JS as Vertex.new([...])
-    // JS compat shim — same entry point as the constructor; not separately documented.
+    // JS compat shim, the same entry point as the constructor; not separately documented.
     #[doc(hidden)]
     #[wasm_bindgen(js_name = "new")]
     pub fn new_static(position: &JsValue) -> Result<Vertex, WebError> {
