@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use super::MeshObject;
 use super::packing::{Repacked, Schemas, count};
-use super::schema::AttributeTypes;
+use super::schema::Reads;
 use crate::RendererError;
 use crate::core::{RenderContext, VertexLayouts, check_limit};
 use crate::geometry::MeshError;
@@ -15,7 +15,7 @@ use crate::geometry::MeshError;
 /// vertex layouts it read, with the schemas of the pack they came from.
 #[derive(Debug, Default)]
 pub(super) struct Attached {
-    pub(super) reads: AttributeTypes,
+    pub(super) reads: Reads,
     pub(super) layouts: Option<(Arc<Schemas>, VertexLayouts)>,
 }
 

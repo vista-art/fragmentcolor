@@ -4,7 +4,7 @@
 use super::vertex_inputs::VertexInputDesc;
 use super::{ShaderError, ShaderObject};
 use crate::errors::show_number;
-use crate::geometry::{AttributeTypes, Binding, MeshObject, Shape, VertexSchema};
+use crate::geometry::{AttributeTypes, Binding, MeshObject, Read, Reads, Shape, VertexSchema};
 use crate::geometry::{POSITION, build_columns, check_halves, describe, explain_position};
 use crate::{Instance, Vertex, VertexData};
 use std::collections::HashMap;
@@ -292,17 +292,31 @@ impl ShaderObject {
 
         check_vertices(&verts, &known, &added, &read, reads_position)?;
         check_instances(&insts, &known, &added, &read)?;
-        let mut names = AttributeTypes::default();
+        let mut reads = Reads {
+            position: reads_position.map(describe_read),
+            ..Reads::default()
+        };
         for ((stream, name), input) in read {
-            stream
-                .select_mut(&mut names)
-                .insert(name.to_string(), input.format);
+            let names = match stream {
+                Stream::Vertex => &mut reads.vertex,
+                Stream::Instance => &mut reads.instance,
+            };
+            names.insert(name.to_string(), describe_read(input));
         }
         Ok(Binding {
             types: added,
-            read: names,
+            read: reads,
             columns,
         })
+    }
+}
+
+/// How `input` reads its attribute, as the mesh keeps it to check values added later.
+fn describe_read(input: &VertexInputDesc) -> Read {
+    Read {
+        format: input.format,
+        declared: input.declared,
+        half: input.half,
     }
 }
 

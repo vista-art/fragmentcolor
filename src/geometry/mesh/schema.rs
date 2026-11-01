@@ -59,13 +59,59 @@ impl AttributeTypes {
     }
 }
 
+/// How a shader reads one attribute: the format the mesh packs it in,
+/// the WGSL type the shader declares, such as `vec2<f16>`, and whether it is `f16`,
+/// whose range every value of the attribute must stay in after rounding, later ones too.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Read {
+    pub(crate) format: wgpu::VertexFormat,
+    pub(crate) declared: &'static str,
+    pub(crate) half: bool,
+}
+
+/// What a shader reads from a mesh: each attribute by stream and name, and the position.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct Reads {
+    pub(crate) vertex: HashMap<String, Read>,
+    pub(crate) instance: HashMap<String, Read>,
+    pub(crate) position: Option<Read>,
+}
+
+impl Reads {
+    /// Adds `other`'s reads. Where both read one attribute, an `f16` read wins,
+    /// so the `f16` rule holds while any shader that reads it as `f16` holds the mesh.
+    pub(super) fn merge(&mut self, other: &Reads) {
+        merge_reads(&mut self.vertex, &other.vertex);
+        merge_reads(&mut self.instance, &other.instance);
+        if let Some(read) = other.position {
+            self.position = Some(pick_stricter(self.position, read));
+        }
+    }
+}
+
+/// Adds each of `other`'s reads to `reads`, keeping the stricter of two reads of one name.
+fn merge_reads(reads: &mut HashMap<String, Read>, other: &HashMap<String, Read>) {
+    for (name, read) in other {
+        let kept = reads.get(name).copied();
+        reads.insert(name.clone(), pick_stricter(kept, *read));
+    }
+}
+
+/// `read`, unless `kept` reads the attribute as `f16` and `read` doesn't.
+fn pick_stricter(kept: Option<Read>, read: Read) -> Read {
+    match kept {
+        Some(kept) if kept.half && !read.half => kept,
+        _ => read,
+    }
+}
+
 /// What a shader's attach records on a mesh: the types it gives
-/// untyped attributes, and the attributes it reads, in the format it reads each.
+/// untyped attributes, and the format and type it reads each attribute in.
 /// `columns` is set when the check assumed the Model columns as the instance layout.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct Binding {
     pub(crate) types: AttributeTypes,
-    pub(crate) read: AttributeTypes,
+    pub(crate) read: Reads,
     pub(crate) columns: bool,
 }
 
@@ -73,7 +119,7 @@ impl Binding {
     /// The same binding with no reads, for a shader that checks the mesh itself before it draws.
     pub(crate) fn without_reads(self) -> Self {
         Self {
-            read: AttributeTypes::default(),
+            read: Reads::default(),
             ..self
         }
     }
