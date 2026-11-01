@@ -552,7 +552,7 @@ class Shader:
 
     It takes a WGSL or GLSL shader source as input, parses it, validates it, and exposes the uniforms as keys.
 
-    `Shader::new` refuses a source that no device FragmentColor opens can run, with a `ShaderError` that names the problem: a feature outside the set FragmentColor requests (`f16`, `primitive_index`, subgroups, `texture_external`, texture atomics), two globals on one `@group` and `@binding` (a `lights` root included), writable storage in a `@vertex` entry point, an immediate root that breaks the uniform layout rules, a filtering `sampler` that samples a depth texture, and two vertex inputs with one name, which would read one mesh attribute. A shader that passes can still be one a given device can't run, which `Renderer::render` refuses, as [Device limits](https://fragmentcolor.org/api/core/shader#device-limits) describes.
+    `Shader::new` refuses a source that no device FragmentColor opens can run, with a `ShaderError` that names the problem: a feature outside the set FragmentColor requests (such as `f16`, `texture_external`, texture atomics or `f64`), two globals on one `@group` and `@binding` (a `lights` root included), writable storage in a `@vertex` entry point, an immediate root that breaks the uniform layout rules, a filtering `sampler` that samples a depth texture, and two vertex inputs with one name, which would read one mesh attribute. A shader that passes can still be one a given device can't run, which `Renderer::render` refuses, as [Device limits](https://fragmentcolor.org/api/core/shader#device-limits) describes.
 
     `Shader::new` accepts a source string, a registry slug like `"sdf2d/circle"`, an `https://` URL, a local file path, or an array mixing any of those. Array parts are deduplicated by hash and concatenated in order, so you can pull pure helper functions from the public registry at `https://fragmentcolor.org/shaders/` into your own shader without copy-pasting. Override the registry base with [Shader::set_registry](https://fragmentcolor.org/api/core/shader#set_registry).
 
@@ -609,12 +609,15 @@ class Shader:
 
         When you pass an array, parts are deduplicated by source hash and concatenated
         in order before validation, so you can compose pure helper functions from the
-        registry with your own source.
+        registry with your own source. The `enable`, `requires` and `diagnostic`
+        directives a later part opens with move to the top, the only place WGSL takes
+        them, so a helper can carry the `enable` it needs.
 
-        If validation fails, the error message points at the line in the resulting
-        WGSL. A shader that passes is one some device can run: `Renderer::render`
-        still checks it against its own device, and refuses one past that device's
-        limits or features with a typed error. All uniforms are initialized to zero.
+        If validation fails, the error message points at the line and column in the
+        parts as written, joined in order by two line breaks. A shader that passes is
+        one some device can run: `Renderer::render` still checks it against its own
+        device, and refuses one past that device's limits or features with a typed
+        error. All uniforms are initialized to zero.
 
         GLSL is supported only as a single part (a `.vert`, `.frag`, or `.glsl`
         file). Mixing GLSL with other parts is rejected.
