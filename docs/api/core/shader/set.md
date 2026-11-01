@@ -10,7 +10,7 @@ The uniform's declared WGSL type decides how the value is read, so a call behave
 
 - A number fits an `f32`, `i32`, or `u32` uniform. Integer uniforms take whole numbers in range.
 - A vector takes exactly as many numbers as it has components. A `mat2x2`, `mat3x3`, or `mat4x4` takes 4, 9, or 16.
-- A `Texture` created by a `Renderer` binds to a texture uniform.
+- A `Texture` created by a `Renderer` binds to a texture uniform, a `texture_external` one included.
 - Raw bytes replace a whole storage-buffer or push-constant root: a byte slice in Rust, a `Uint8Array` in JavaScript, `bytes` (or a `bytearray` or `memoryview`) in Python, `Data` in Swift, or a `ByteArray` in Kotlin. The byte count must equal the root's size, and any other length throws.
 
 ## Example

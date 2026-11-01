@@ -4,7 +4,7 @@ The [Shader](https://fragmentcolor.org/api/core/shader) object is the main build
 
 It takes a WGSL or GLSL shader source as input, parses it, validates it, and exposes the uniforms as keys.
 
-`Shader::new` refuses a source that no device FragmentColor opens can run, with a `ShaderError` that names the problem: a feature outside the set FragmentColor requests (such as `f16`, `texture_external` or `f64`), two globals on one `@group` and `@binding` (a `lights` root included), writable storage in a `@vertex` entry point, an immediate root that breaks the uniform layout rules, a filtering `sampler` that samples a depth texture, and two vertex inputs with one name, which would read one mesh attribute. A shader that passes can still be one a given device can't run, which `Renderer::render` refuses, as [Device limits](https://fragmentcolor.org/api/core/shader#device-limits) describes.
+`Shader::new` refuses a source that no device FragmentColor opens can run, with a `ShaderError` that names the problem: a feature outside the set FragmentColor requests (such as `f16` or `f64`), two globals on one `@group` and `@binding` (a `lights` root included), writable storage in a `@vertex` entry point, an immediate root that breaks the uniform layout rules, a filtering `sampler` that samples a depth texture, and two vertex inputs with one name, which would read one mesh attribute. A shader that passes can still be one a given device can't run, which `Renderer::render` refuses, as [Device limits](https://fragmentcolor.org/api/core/shader#device-limits) describes.
 
 `Shader::new` accepts a source string, a registry slug like `"sdf2d/circle"`, an `https://` URL, a local file path, or an array mixing any of those. Array parts are deduplicated by hash and concatenated in order, so you can pull pure helper functions from the public registry at `https://fragmentcolor.org/shaders/` into your own shader without copy-pasting. Override the registry base with [Shader::set_registry](https://fragmentcolor.org/api/core/shader#set_registry).
 
@@ -128,6 +128,29 @@ fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
 
 `Shader::new` takes such a shader on every platform, and it runs where the device has `TEXTURE_ATOMIC`: Vulkan, DX12, and Metal from macOS 14 and iOS 17. The browser's WebGPU, WebGL2 and native GL have no texture atomics, so `Renderer::render` refuses the shader there with `RendererError::FeatureError`, whose `feature` names `TEXTURE_ATOMIC`. Bind an `R32Uint` or `R32Sint` texture from [`Renderer::create_storage_texture`](https://fragmentcolor.org/api/core/renderer#create_storage_texture), which takes no extra usage flag for atomics. An `r64uint` storage texture needs `TEXTURE_INT64_ATOMIC`, a feature FragmentColor doesn't request, so `Shader::new` refuses it.
 
+## External textures
+
+WGSL reads video frames through `texture_external`, and FragmentColor fills that slot with an ordinary [Texture](https://fragmentcolor.org/api/texture/texture): `shader.set("video", &texture)`, as for any texture uniform. The shader reads it with `textureSampleBaseClampToEdge`, `textureLoad` and `textureDimensions`.
+
+```wgsl
+@group(0) @binding(0) var video: texture_external;
+@group(0) @binding(1) var soft: sampler;
+
+@fragment
+fn fs_main(@builtin(position) pixel: vec4<f32>) -> @location(0) vec4<f32> {
+  let size = vec2<f32>(textureDimensions(video));
+  let filtered = textureSampleBaseClampToEdge(video, soft, pixel.xy / size);
+  let exact = textureLoad(video, vec2<u32>(pixel.xy));
+  return mix(filtered, exact, 0.5);
+}
+```
+
+Every platform accepts such a shader at `Shader::new`. It draws on devices with `EXTERNAL_TEXTURE`, which wgpu offers on Metal and DX12. On Vulkan, OpenGL, WebGL2 and the browser's WebGPU, `Renderer::render` refuses the shader with `RendererError::FeatureError` before it takes a frame, and the error's `feature` names `EXTERNAL_TEXTURE`.
+
+The slot takes a single-sampled 2D texture in `Rgba8Unorm`, `Bgra8Unorm` or `Rgba16Float` and reads its base mip level, which lets a texture with a mip chain bind too. Raw bytes with a size upload as `Rgba8Unorm`. An 8-bit color image, such as a PNG or a JPEG, decodes into `Rgba8UnormSrgb`, which the slot refuses with `RendererError::BindingError`. Name the format when you create the texture from one: `renderer.create_texture((bytes, TextureFormat::Rgba8Unorm))`.
+
+wgpu counts one external slot as four sampled textures, a sampler and a uniform buffer in each stage that reads it, and `Renderer::render` counts it the same way against the device's limits. A stage that reads four external slots counts 16 sampled textures against `max_sampled_textures_per_shader_stage`.
+
 ## Storage Buffers
 
 Structured buffers are supported via `var<storage, read>` or `var<storage, read_write>`
@@ -176,7 +199,7 @@ fn cs_main(@builtin(local_invocation_index) index: u32) {
 `Renderer::render` checks each shader against the device before it takes a frame, so every platform returns the same error from the call that caused it, the web included. Each refusal has a typed error with fields:
 
 - `RendererError::LimitError { item, limit, value, max }` for a group past `max_bind_groups`, a binding past `max_bindings_per_bind_group`, more bindings of a kind in one stage than the device takes, a uniform or storage buffer past its binding size limit, a workgroup past the device's sizes, invocations or workgroup memory, and a vertex input at a location past `max_vertex_attributes`. A mesh whose stride or buffers pass the device's limits gets it too.
-- `RendererError::FeatureError { item, feature }` for a compute shader on a device without compute, storage a stage of the device can't bind, a storage format or access the device lacks, such as an atomic storage texture on a device without `TEXTURE_ATOMIC`, an explicit layout on a GL backend, a shader that measures its light roots with `arrayLength` on a device that takes lights through a uniform block, a shader feature the device lacks, such as subgroups, whose `feature` names the wgpu flag, and anything else the device's shader validator refuses.
+- `RendererError::FeatureError { item, feature }` for a compute shader on a device without compute, storage a stage of the device can't bind, a storage format or access the device lacks, such as an atomic storage texture on a device without `TEXTURE_ATOMIC`, an external texture on a device without `EXTERNAL_TEXTURE`, an explicit layout on a GL backend, a shader that measures its light roots with `arrayLength` on a device that takes lights through a uniform block, a shader feature the device lacks, such as subgroups, whose `feature` names the wgpu flag, and anything else the device's shader validator refuses.
 - `RendererError::BindingError { uniform, expected, found }` for a texture uniform that was never set, or whose texture its slot can't take by format, usage, dimension, sample count or mip levels.
 - `RendererError::EntryError { stage }` for a render shader without its `@vertex` or `@fragment` entry point.
 
