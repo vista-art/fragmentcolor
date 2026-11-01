@@ -32,6 +32,7 @@ pub(crate) struct Uniform {
 /// A uniform value, as `Shader::get` reads it back.
 /// A helper names it to forward one value to `Shader::set` on several shaders.
 /// It is the plumbing behind `impl Into<UniformData>`, like `ShaderInput`, with no page of its own.
+/// The `Half` variants are the shapes of `f16` slots, which `get` reads back as the `f32` variant.
 pub enum UniformData {
     Bool(bool),
     UInt(u32),
@@ -61,6 +62,20 @@ pub enum UniformData {
     Mat3(Vec<f32>),
     /// Mat4: 16 elements (flattened 4x4, column-major)
     Mat4(Vec<f32>),
+    /// Half: an `f16`, held as the `f32` it rounds to
+    Half(f32),
+    /// HalfVec2: exactly 2 elements of a `vec2<f16>`
+    HalfVec2(Vec<f32>),
+    /// HalfVec3: exactly 3 elements of a `vec3<f16>`
+    HalfVec3(Vec<f32>),
+    /// HalfVec4: exactly 4 elements of a `vec4<f16>`
+    HalfVec4(Vec<f32>),
+    /// HalfMat2: 4 elements of a `mat2x2<f16>`, column-major
+    HalfMat2(Vec<f32>),
+    /// HalfMat3: 9 elements of a `mat3x3<f16>`, column-major
+    HalfMat3(Vec<f32>),
+    /// HalfMat4: 16 elements of a `mat4x4<f16>`, column-major
+    HalfMat4(Vec<f32>),
     Texture(crate::texture::TextureMeta),
     Sampler(crate::texture::SamplerInfo),
     /// Array shape: element type, count, and stride.
@@ -185,8 +200,12 @@ impl UniformData {
             Self::UVec3(v) => bytemuck::cast_slice(v.as_slice()).to_vec(),
             Self::UVec4(v) => bytemuck::cast_slice(v.as_slice()).to_vec(),
             Self::Mat2(v) => bytemuck::cast_slice(v.as_slice()).to_vec(),
-            Self::Mat3(v) => mat3_bytes(v),
+            Self::Mat3(v) => pack_columns(v, MAT3_COLUMN_STRIDE, encode_floats),
             Self::Mat4(v) => bytemuck::cast_slice(v.as_slice()).to_vec(),
+            Self::Half(v) => encode_halves(&[*v]),
+            Self::HalfVec2(v) | Self::HalfVec3(v) | Self::HalfVec4(v) => encode_halves(v),
+            Self::HalfMat2(v) | Self::HalfMat4(v) => encode_halves(v),
+            Self::HalfMat3(v) => pack_columns(v, HALF_MAT3_COLUMN_STRIDE, encode_halves),
             Self::Texture(_m) => Vec::new(),
             Self::Sampler(_s) => Vec::new(),
             Self::Array(items) => {
@@ -262,8 +281,9 @@ impl UniformData {
     }
 
     /// Reads the value of a slot shaped like `self` out of its bytes.
-    /// Numbers decode into the same variant, and textures and samplers keep their binding.
-    /// Structs, arrays, and buffer roots read as raw bytes, since an array shape keeps one element.
+    /// Numbers decode into the same variant, `f16` ones into the `f32` variant of their shape,
+    /// and textures and samplers keep their binding. Structs, arrays, and buffer roots read
+    /// as raw bytes, since an array shape keeps one element.
     pub(crate) fn decode(&self, bytes: &[u8]) -> UniformData {
         fn words<T: bytemuck::Pod>(bytes: &[u8]) -> Vec<T> {
             let chunks = bytes.chunks_exact(std::mem::size_of::<T>());
@@ -288,13 +308,20 @@ impl UniformData {
             Self::UVec3(_) => Self::UVec3(words(bytes)),
             Self::UVec4(_) => Self::UVec4(words(bytes)),
             Self::Mat2(_) => Self::Mat2(words(bytes)),
-            Self::Mat3(_) => Self::Mat3(
-                bytes
-                    .chunks(MAT3_COLUMN_STRIDE)
-                    .flat_map(|column| words(column.get(..12).unwrap_or(column)))
-                    .collect(),
-            ),
+            Self::Mat3(_) => Self::Mat3(unpack_columns(bytes, MAT3_COLUMN_STRIDE, 12, words)),
             Self::Mat4(_) => Self::Mat4(words(bytes)),
+            Self::Half(_) => Self::Float(decode_halves(bytes).first().copied().unwrap_or_default()),
+            Self::HalfVec2(_) => Self::Vec2(decode_halves(bytes)),
+            Self::HalfVec3(_) => Self::Vec3(decode_halves(bytes)),
+            Self::HalfVec4(_) => Self::Vec4(decode_halves(bytes)),
+            Self::HalfMat2(_) => Self::Mat2(decode_halves(bytes)),
+            Self::HalfMat3(_) => Self::Mat3(unpack_columns(
+                bytes,
+                HALF_MAT3_COLUMN_STRIDE,
+                6,
+                decode_halves,
+            )),
+            Self::HalfMat4(_) => Self::Mat4(decode_halves(bytes)),
             Self::Texture(_) | Self::Sampler(_) => self.clone(),
             Self::Array(_)
             | Self::Struct(_)
@@ -322,6 +349,13 @@ impl UniformData {
             Self::Mat2(_) => 16,
             Self::Mat3(_) => 3 * MAT3_COLUMN_STRIDE as u32,
             Self::Mat4(_) => 64,
+            Self::Half(_) => 2,
+            Self::HalfVec2(_) => 4,
+            Self::HalfVec3(_) => 6,
+            Self::HalfVec4(_) => 8,
+            Self::HalfMat2(_) => 8,
+            Self::HalfMat3(_) => 3 * HALF_MAT3_COLUMN_STRIDE as u32,
+            Self::HalfMat4(_) => 32,
             Self::Texture(_) => 0,
             Self::Sampler(_) => 0,
             Self::Array(items) => {
@@ -341,27 +375,64 @@ impl UniformData {
     }
 }
 
-/// Bytes between the columns of a `mat3x3<f32>`, since WGSL aligns each `vec3` column to 16.
+/// Bytes between the columns of a `mat3x3<f32>`, since WGSL aligns each `vec3<f32>` column to 16.
 const MAT3_COLUMN_STRIDE: usize = 16;
 
-/// Lays out 9 floats as the three padded `vec3` columns of a `mat3x3<f32>`.
-fn mat3_bytes(values: &[f32]) -> Vec<u8> {
-    let mut bytes = Vec::with_capacity(3 * MAT3_COLUMN_STRIDE);
+/// Bytes between the columns of a `mat3x3<f16>`, since WGSL aligns each `vec3<f16>` column to 8.
+const HALF_MAT3_COLUMN_STRIDE: usize = 8;
+
+/// The bytes of `values` as 32-bit floats.
+fn encode_floats(values: &[f32]) -> Vec<u8> {
+    bytemuck::cast_slice(values).to_vec()
+}
+
+/// The bytes of `values` as 16-bit floats, each rounded to the nearest one.
+fn encode_halves(values: &[f32]) -> Vec<u8> {
+    let halves = values.iter().map(|value| half::f16::from_f32(*value));
+    halves.flat_map(half::f16::to_ne_bytes).collect()
+}
+
+/// The 16-bit floats in `bytes`, widened to 32 bits.
+fn decode_halves(bytes: &[u8]) -> Vec<f32> {
+    let (pairs, _) = bytes.as_chunks::<2>();
+    pairs
+        .iter()
+        .map(|pair| half::f16::from_ne_bytes(*pair).to_f32())
+        .collect()
+}
+
+/// Lays out 3-row matrix columns, each column `encode` writes padded to `stride` bytes.
+fn pack_columns(values: &[f32], stride: usize, encode: fn(&[f32]) -> Vec<u8>) -> Vec<u8> {
+    let mut bytes = Vec::with_capacity(values.len().div_ceil(3) * stride);
     for column in values.chunks(3) {
-        bytes.extend_from_slice(bytemuck::cast_slice(column));
-        bytes.resize(bytes.len().next_multiple_of(MAT3_COLUMN_STRIDE), 0);
+        bytes.extend(encode(column));
+        bytes.resize(bytes.len().next_multiple_of(stride), 0);
     }
     bytes
+}
+
+/// Reads the columns `pack_columns` lays out: the first `width` bytes of every `stride`.
+fn unpack_columns(
+    bytes: &[u8],
+    stride: usize,
+    width: usize,
+    decode: fn(&[u8]) -> Vec<f32>,
+) -> Vec<f32> {
+    let columns = bytes.chunks(stride);
+    columns
+        .flat_map(|column| decode(column.get(..width).unwrap_or(column)))
+        .collect()
 }
 
 /// Converts from a Naga type to our internal Uniform representation
 pub(crate) fn convert_type(module: &Module, ty: &Type) -> Result<UniformData, ShaderError> {
     match &ty.inner {
-        TypeInner::Scalar(scalar) => Ok(match scalar.kind {
-            ScalarKind::Bool => UniformData::Bool(false),
-            ScalarKind::Sint => UniformData::Int(0),
-            ScalarKind::Uint => UniformData::UInt(0),
-            ScalarKind::Float => UniformData::Float(0.0),
+        TypeInner::Scalar(scalar) => Ok(match (scalar.kind, scalar.width) {
+            (ScalarKind::Bool, _) => UniformData::Bool(false),
+            (ScalarKind::Sint, _) => UniformData::Int(0),
+            (ScalarKind::Uint, _) => UniformData::UInt(0),
+            (ScalarKind::Float, 4) => UniformData::Float(0.0),
+            (ScalarKind::Float, 2) => UniformData::Half(0.0),
             _ => return Err(ShaderError::TypeMismatch("Unsupported scalar type".into())),
         }),
         // An atomic has the same layout as its scalar, so it reflects as one.
@@ -370,18 +441,23 @@ pub(crate) fn convert_type(module: &Module, ty: &Type) -> Result<UniformData, Sh
             ScalarKind::Uint => UniformData::UInt(0),
             _ => return Err(ShaderError::TypeMismatch("Unsupported atomic type".into())),
         }),
-        TypeInner::Vector { size, scalar, .. } => match scalar.kind {
-            ScalarKind::Float => Ok(match size {
+        TypeInner::Vector { size, scalar, .. } => match (scalar.kind, scalar.width) {
+            (ScalarKind::Float, 4) => Ok(match size {
                 VectorSize::Bi => UniformData::Vec2(vec![0.0; 2]),
                 VectorSize::Tri => UniformData::Vec3(vec![0.0; 3]),
                 VectorSize::Quad => UniformData::Vec4(vec![0.0; 4]),
             }),
-            ScalarKind::Uint => Ok(match size {
+            (ScalarKind::Float, 2) => Ok(match size {
+                VectorSize::Bi => UniformData::HalfVec2(vec![0.0; 2]),
+                VectorSize::Tri => UniformData::HalfVec3(vec![0.0; 3]),
+                VectorSize::Quad => UniformData::HalfVec4(vec![0.0; 4]),
+            }),
+            (ScalarKind::Uint, _) => Ok(match size {
                 VectorSize::Bi => UniformData::UVec2(vec![0; 2]),
                 VectorSize::Tri => UniformData::UVec3(vec![0; 3]),
                 VectorSize::Quad => UniformData::UVec4(vec![0; 4]),
             }),
-            ScalarKind::Sint => Ok(match size {
+            (ScalarKind::Sint, _) => Ok(match size {
                 VectorSize::Bi => UniformData::IVec2(vec![0; 2]),
                 VectorSize::Tri => UniformData::IVec3(vec![0; 3]),
                 VectorSize::Quad => UniformData::IVec4(vec![0; 4]),
@@ -390,10 +466,17 @@ pub(crate) fn convert_type(module: &Module, ty: &Type) -> Result<UniformData, Sh
                 "Unsupported vector scalar type".into(),
             )),
         },
-        TypeInner::Matrix { columns, rows, .. } => Ok(match (columns, rows) {
-            (VectorSize::Bi, VectorSize::Bi) => UniformData::Mat2(vec![0.0; 4]),
-            (VectorSize::Tri, VectorSize::Tri) => UniformData::Mat3(vec![0.0; 9]),
-            (VectorSize::Quad, VectorSize::Quad) => UniformData::Mat4(vec![0.0; 16]),
+        TypeInner::Matrix {
+            columns,
+            rows,
+            scalar,
+        } => Ok(match (columns, rows, scalar.width) {
+            (VectorSize::Bi, VectorSize::Bi, 4) => UniformData::Mat2(vec![0.0; 4]),
+            (VectorSize::Tri, VectorSize::Tri, 4) => UniformData::Mat3(vec![0.0; 9]),
+            (VectorSize::Quad, VectorSize::Quad, 4) => UniformData::Mat4(vec![0.0; 16]),
+            (VectorSize::Bi, VectorSize::Bi, 2) => UniformData::HalfMat2(vec![0.0; 4]),
+            (VectorSize::Tri, VectorSize::Tri, 2) => UniformData::HalfMat3(vec![0.0; 9]),
+            (VectorSize::Quad, VectorSize::Quad, 2) => UniformData::HalfMat4(vec![0.0; 16]),
             _ => {
                 return Err(ShaderError::TypeMismatch(
                     "Unsupported matrix dimensions".into(),
@@ -757,6 +840,9 @@ impl From<UniformData> for Vec<f32> {
         match data {
             U::Float(value) => vec![value],
             U::Vec2(v) | U::Vec3(v) | U::Vec4(v) | U::Mat2(v) | U::Mat3(v) | U::Mat4(v) => v,
+            U::Half(value) => vec![value],
+            U::HalfVec2(v) | U::HalfVec3(v) | U::HalfVec4(v) => v,
+            U::HalfMat2(v) | U::HalfMat3(v) | U::HalfMat4(v) => v,
             _ => Vec::new(),
         }
     }
@@ -1013,6 +1099,175 @@ mod tests {
         let first_two: [f32; 2] = bytemuck::cast_slice(&bytes).try_into().unwrap();
         assert_eq!(first_two, [10.0, 20.0]);
         assert_eq!(u.size(), 0);
+    }
+
+    /// The `count` f16 values at `offset` in `bytes`, widened to f32.
+    fn read_halves(bytes: &[u8], offset: usize, count: usize) -> Vec<f32> {
+        decode_halves(&bytes[offset..offset + 2 * count])
+    }
+
+    /// The reflected shape of every global in `source`, with naga's size of its type.
+    fn reflect_globals(source: &str) -> Vec<(String, UniformData, u32)> {
+        let module = naga::front::wgsl::parse_str(source).expect("module");
+        let ctx = module.to_ctx();
+        let globals = module.global_variables.iter().map(|(_, global)| {
+            let ty = &module.types[global.ty];
+            let shape = convert_type(&module, ty).expect("shape");
+            let name = global.name.clone().unwrap_or_default();
+            (name, shape, ty.inner.size(ctx))
+        });
+        globals.collect()
+    }
+
+    const HALF_GLOBALS: &str = "enable f16;
+struct Mixed { a: f16, b: vec3<f16>, m: mat3x3<f16>, c: vec4<f16> };
+@group(0) @binding(0) var<uniform> h: f16;
+@group(0) @binding(1) var<uniform> h2: vec2<f16>;
+@group(0) @binding(2) var<uniform> h3: vec3<f16>;
+@group(0) @binding(3) var<uniform> h4: vec4<f16>;
+@group(0) @binding(4) var<uniform> m2: mat2x2<f16>;
+@group(0) @binding(5) var<uniform> m3: mat3x3<f16>;
+@group(0) @binding(6) var<uniform> m4: mat4x4<f16>;
+@group(0) @binding(7) var<uniform> mixed: Mixed;
+@group(0) @binding(8) var<storage, read> list: array<vec3<f16>, 3>;
+@compute @workgroup_size(1) fn cs_main() {}";
+
+    // Story: each f16 shape reflects as its Half variant and takes as many bytes as naga
+    // gives its type, alone, as a struct member and as an array element.
+    #[test]
+    fn half_shapes_match_naga_layouts() {
+        let globals = reflect_globals(HALF_GLOBALS);
+        assert_eq!(globals.len(), 9);
+        for (name, shape, size) in &globals {
+            assert_eq!(shape.size(), *size, "{name}: {shape:?}");
+            assert_eq!(shape.to_bytes().len(), *size as usize, "{name}");
+        }
+        let shapes: Vec<&UniformData> = globals.iter().map(|(_, shape, _)| shape).collect();
+        assert!(matches!(shapes[0], UniformData::Half(_)));
+        assert!(matches!(shapes[1], UniformData::HalfVec2(_)));
+        assert!(matches!(shapes[2], UniformData::HalfVec3(_)));
+        assert!(matches!(shapes[3], UniformData::HalfVec4(_)));
+        assert!(matches!(shapes[4], UniformData::HalfMat2(_)));
+        assert!(matches!(shapes[5], UniformData::HalfMat3(_)));
+        assert!(matches!(shapes[6], UniformData::HalfMat4(_)));
+
+        let UniformData::Struct(StructShape { fields, size }) = shapes[7] else {
+            panic!("mixed is a struct: {:?}", shapes[7]);
+        };
+        let offsets: Vec<u32> = fields.iter().map(|field| field.offset).collect();
+        assert_eq!((offsets, *size), (vec![0, 8, 16, 40], 48));
+        let UniformData::Array(items) = shapes[8] else {
+            panic!("list is an array: {:?}", shapes[8]);
+        };
+        assert_eq!((items[0].count, items[0].stride), (3, 8));
+    }
+
+    // Story: f16 members pack at naga's offsets inside a struct, a storage root, an immediate
+    // root and an array, each value rounded to the nearest f16, and the padding stays zero.
+    #[test]
+    fn half_members_pack_at_naga_offsets() {
+        let globals = reflect_globals(HALF_GLOBALS);
+        let UniformData::Struct(mut mixed) = globals[7].1.clone() else {
+            panic!("mixed is a struct");
+        };
+        let nine: Vec<f32> = (1..=9).map(|value| value as f32).collect();
+        let values = [
+            UniformData::Half(0.5),
+            UniformData::HalfVec3(vec![1.0, 2.0, 3.0]),
+            UniformData::HalfMat3(nine.clone()),
+            UniformData::HalfVec4(vec![-1.0, 0.25, 2048.0, 65504.0]),
+        ];
+        for (field, value) in mixed.fields.iter_mut().zip(values) {
+            field.ty = vec![value];
+        }
+        let span = mixed.size;
+        let roots = [
+            UniformData::Struct(mixed.clone()),
+            UniformData::Storage(vec![StorageEntry {
+                inner: vec![UniformData::Struct(mixed.clone())],
+                span,
+                access: StorageAccess::Read,
+            }]),
+            UniformData::PushConstant(vec![PushEntry {
+                inner: vec![UniformData::Struct(mixed)],
+                span,
+            }]),
+        ];
+        for root in roots {
+            let bytes = root.to_bytes();
+            assert_eq!(bytes.len(), 48, "{root:?}");
+            assert_eq!(read_halves(&bytes, 0, 1), [0.5]);
+            assert!(bytes[2..8].iter().all(|&byte| byte == 0));
+            assert_eq!(read_halves(&bytes, 8, 3), [1.0, 2.0, 3.0]);
+            for column in 0..3 {
+                let at = 16 + 8 * column;
+                assert_eq!(read_halves(&bytes, at, 3), nine[3 * column..3 * column + 3]);
+                assert_eq!(bytes[at + 6..at + 8], [0, 0], "column {column} padding");
+            }
+            assert_eq!(read_halves(&bytes, 40, 4), [-1.0, 0.25, 2048.0, 65504.0]);
+        }
+
+        let UniformData::Array(mut items) = globals[8].1.clone() else {
+            panic!("list is an array");
+        };
+        items[0].ty = vec![UniformData::HalfVec3(vec![0.1, 0.2, 0.3])];
+        let bytes = UniformData::Array(items).to_bytes();
+        assert_eq!(bytes.len(), 24);
+        let rounded = [0.1f32, 0.2, 0.3].map(|value| half::f16::from_f32(value).to_f32());
+        for element in 0..3 {
+            assert_eq!(read_halves(&bytes, 8 * element, 3), rounded);
+            assert_eq!(bytes[8 * element + 6..8 * element + 8], [0, 0]);
+        }
+    }
+
+    // Story: f16 scalars, vectors and matrices encode as 2-byte halves, a mat3x3 with
+    // columns 8 bytes apart, and each decodes into the f32 variant of its shape.
+    #[test]
+    fn half_values_encode_and_decode() {
+        let bits = |value: f32| half::f16::from_f32(value).to_ne_bytes().to_vec();
+        assert_eq!(UniformData::Half(0.5).to_bytes(), bits(0.5));
+        assert_eq!(UniformData::HalfVec2(vec![1.0; 2]).to_bytes().len(), 4);
+        assert_eq!(UniformData::HalfVec3(vec![1.0; 3]).to_bytes().len(), 6);
+        assert_eq!(UniformData::HalfVec4(vec![1.0; 4]).to_bytes().len(), 8);
+        assert_eq!(UniformData::HalfMat2(vec![1.0; 4]).to_bytes().len(), 8);
+        assert_eq!(UniformData::HalfMat4(vec![1.0; 16]).to_bytes().len(), 32);
+        let nine: Vec<f32> = (1..=9).map(|value| value as f32).collect();
+        let mat3 = UniformData::HalfMat3(nine.clone()).to_bytes();
+        assert_eq!(mat3.len(), 24);
+        for padding in [6..8, 14..16, 22..24] {
+            assert_eq!(mat3[padding.clone()], [0, 0], "{padding:?}");
+        }
+        assert_eq!(mat3[8..10], bits(4.0));
+
+        let four = vec![0.5, -1.5, 3.0, 1024.0];
+        let sixteen: Vec<f32> = (0..16).map(|value| value as f32 / 4.0).collect();
+        let cases = [
+            (UniformData::Half(0.5), UniformData::Float(0.5)),
+            (
+                UniformData::HalfVec2(vec![0.5, -1.5]),
+                UniformData::Vec2(vec![0.5, -1.5]),
+            ),
+            (
+                UniformData::HalfVec3(vec![0.5, -1.5, 3.0]),
+                UniformData::Vec3(vec![0.5, -1.5, 3.0]),
+            ),
+            (
+                UniformData::HalfVec4(four.clone()),
+                UniformData::Vec4(four.clone()),
+            ),
+            (UniformData::HalfMat2(four.clone()), UniformData::Mat2(four)),
+            (UniformData::HalfMat3(nine.clone()), UniformData::Mat3(nine)),
+            (
+                UniformData::HalfMat4(sixteen.clone()),
+                UniformData::Mat4(sixteen),
+            ),
+        ];
+        for (value, expected) in cases {
+            let bytes = value.to_bytes();
+            assert_eq!(bytes.len(), value.size() as usize, "{value:?}");
+            assert_eq!(value.decode(&bytes), expected, "{value:?}");
+            assert_eq!(Vec::<f32>::from(value), Vec::<f32>::from(expected));
+        }
     }
 
     // Story: Sampler to_bytes is empty and size is zero.

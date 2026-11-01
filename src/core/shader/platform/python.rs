@@ -212,10 +212,12 @@ impl From<UniformData> for PyUniformData {
             U::Bool(value) => Self::Bool(value),
             U::UInt(value) => Self::UInt(value),
             U::Int(value) => Self::Int(value),
-            U::Float(value) => Self::Float(value),
+            U::Float(value) | U::Half(value) => Self::Float(value),
             U::Vec2(v) | U::Vec3(v) | U::Vec4(v) | U::Mat2(v) | U::Mat3(v) | U::Mat4(v) => {
                 Self::Floats(v)
             }
+            U::HalfVec2(v) | U::HalfVec3(v) | U::HalfVec4(v) => Self::Floats(v),
+            U::HalfMat2(v) | U::HalfMat3(v) | U::HalfMat4(v) => Self::Floats(v),
             U::UVec2(v) | U::UVec3(v) | U::UVec4(v) => Self::UInts(v),
             U::IVec2(v) | U::IVec3(v) | U::IVec4(v) => Self::Ints(v),
             U::Texture(meta) => Self::Texture(meta),

@@ -36,6 +36,15 @@ pub enum FragmentColorError {
     Error(String),
 }
 
+/// A number as an error prints it: a large one in exponent form, such as `1e39`.
+pub(crate) fn show_number(value: f64) -> String {
+    if value.is_finite() && value.abs() >= 1e16 {
+        format!("{value:e}")
+    } else {
+        value.to_string()
+    }
+}
+
 /// The class of error each binding raises, named after the Python exception class.
 /// Python raises that class, and JavaScript throws an `Error` with that `name`.
 #[cfg(any(python, wasm, test))]

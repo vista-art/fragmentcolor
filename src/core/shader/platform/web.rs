@@ -197,12 +197,14 @@ fn uniform_value(data: UniformData) -> JsValue {
     use UniformData as U;
     match data {
         U::Bool(flag) => JsValue::from_bool(flag),
-        U::Float(v) => JsValue::from_f64(v.into()),
+        U::Float(v) | U::Half(v) => JsValue::from_f64(v.into()),
         U::Int(v) => JsValue::from_f64(v.into()),
         U::UInt(v) => JsValue::from_f64(v.into()),
         U::Vec2(v) | U::Vec3(v) | U::Vec4(v) | U::Mat2(v) | U::Mat3(v) | U::Mat4(v) => {
             Float32Array::from(&v[..]).into()
         }
+        U::HalfVec2(v) | U::HalfVec3(v) | U::HalfVec4(v) => Float32Array::from(&v[..]).into(),
+        U::HalfMat2(v) | U::HalfMat3(v) | U::HalfMat4(v) => Float32Array::from(&v[..]).into(),
         U::IVec2(v) | U::IVec3(v) | U::IVec4(v) => Int32Array::from(&v[..]).into(),
         U::UVec2(v) | U::UVec3(v) | U::UVec4(v) => Uint32Array::from(&v[..]).into(),
         U::Texture(meta) => JsValue::from_f64(meta.id.id as f64),

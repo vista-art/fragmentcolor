@@ -3,6 +3,7 @@
 
 use super::UniformData;
 use crate::ShaderError;
+use crate::errors::show_number;
 use crate::texture::{TextureId, TextureMeta};
 
 /// A uniform value as a host language hands it over, before it has a WGSL type.
@@ -53,6 +54,13 @@ impl UniformInput {
             U::Mat2(_) => floats(key, slot, &numbers, 4).map(U::Mat2),
             U::Mat3(_) => floats(key, slot, &numbers, 9).map(U::Mat3),
             U::Mat4(_) => floats(key, slot, &numbers, 16).map(U::Mat4),
+            U::Half(_) => round_halves(key, slot, &numbers, 1).map(|v| U::Half(v[0])),
+            U::HalfVec2(_) => round_halves(key, slot, &numbers, 2).map(U::HalfVec2),
+            U::HalfVec3(_) => round_halves(key, slot, &numbers, 3).map(U::HalfVec3),
+            U::HalfVec4(_) => round_halves(key, slot, &numbers, 4).map(U::HalfVec4),
+            U::HalfMat2(_) => round_halves(key, slot, &numbers, 4).map(U::HalfMat2),
+            U::HalfMat3(_) => round_halves(key, slot, &numbers, 9).map(U::HalfMat3),
+            U::HalfMat4(_) => round_halves(key, slot, &numbers, 16).map(U::HalfMat4),
             _ => Err(count_mismatch(key, slot, &numbers)),
         }
     }
@@ -74,6 +82,9 @@ impl TryFrom<UniformData> for UniformInput {
             U::Int(value) => Self::Number(value.into()),
             U::UInt(value) => Self::Number(value.into()),
             U::Vec2(v) | U::Vec3(v) | U::Vec4(v) | U::Mat2(v) | U::Mat3(v) | U::Mat4(v) => widen(v),
+            U::Half(value) => Self::Number(value.into()),
+            U::HalfVec2(v) | U::HalfVec3(v) | U::HalfVec4(v) => widen(v),
+            U::HalfMat2(v) | U::HalfMat3(v) | U::HalfMat4(v) => widen(v),
             U::IVec2(v) | U::IVec3(v) | U::IVec4(v) => widen(v),
             U::UVec2(v) | U::UVec3(v) | U::UVec4(v) => widen(v),
             U::Texture(meta) => Self::Texture(meta.id),
@@ -112,6 +123,28 @@ fn floats(
         return Err(count_mismatch(key, slot, numbers));
     }
     Ok(numbers.iter().map(|&v| v as f32).collect())
+}
+
+/// Rounds `n` numbers to the nearest `f16`, refusing one that isn't finite after rounding:
+/// NaN, an infinity, or a number past ±65504 that doesn't round back to it. Nothing is clamped.
+fn round_halves(
+    key: &str,
+    slot: &UniformData,
+    numbers: &[f64],
+    n: usize,
+) -> Result<Vec<f32>, ShaderError> {
+    if numbers.len() != n {
+        return Err(count_mismatch(key, slot, numbers));
+    }
+    let rounded = numbers
+        .iter()
+        .map(|&value| (value, half::f16::from_f64(value)));
+    rounded
+        .map(|(value, half)| match half.is_finite() {
+            true => Ok(half.to_f32()),
+            false => Err(mismatch(key, slot, &show_number(value))),
+        })
+        .collect()
 }
 
 fn ints(key: &str, slot: &UniformData, numbers: &[f64], n: usize) -> Result<Vec<i32>, ShaderError> {
@@ -175,6 +208,13 @@ fn mismatch(key: &str, slot: &UniformData, found: &str) -> ShaderError {
         U::Mat2(_) => "mat2x2<f32>",
         U::Mat3(_) => "mat3x3<f32>",
         U::Mat4(_) => "mat4x4<f32>",
+        U::Half(_) => "f16",
+        U::HalfVec2(_) => "vec2<f16>",
+        U::HalfVec3(_) => "vec3<f16>",
+        U::HalfVec4(_) => "vec4<f16>",
+        U::HalfMat2(_) => "mat2x2<f16>",
+        U::HalfMat3(_) => "mat3x3<f16>",
+        U::HalfMat4(_) => "mat4x4<f16>",
         U::Texture(_) => "a texture",
         U::Sampler(_) => "a sampler, which binds automatically",
         U::Array(_) => "an array (set one element with key[i])",
@@ -368,6 +408,70 @@ mod tests {
         let err = resolve(short, push.clone()).unwrap_err();
         assert!(err.ends_with("key: expected 8 bytes, got 3"), "{err}");
         assert!(resolve(long, push).is_err());
+    }
+
+    // Story: an f16 slot rounds each number to the nearest f16 and refuses one that isn't
+    // finite after rounding, naming the key, the type and the value. Nothing is clamped.
+    #[test]
+    fn half_slots_round_and_refuse_values_past_f16() {
+        let half = UniformData::Half(0.0);
+        let take = |value: f64| resolve(UniformInput::Number(value), half.clone());
+        assert_eq!(take(0.1), Ok(UniformData::Half(0.099_975_586)));
+        assert_eq!(take(65504.0), Ok(UniformData::Half(65504.0)));
+        assert_eq!(take(65519.0), Ok(UniformData::Half(65504.0)));
+        assert_eq!(take(-65519.0), Ok(UniformData::Half(-65504.0)));
+        assert_eq!(take(1e-9), Ok(UniformData::Half(0.0)));
+        for (value, shown) in [
+            (65520.0, "65520"),
+            (70000.0, "70000"),
+            (f64::NAN, "NaN"),
+            (f64::INFINITY, "inf"),
+            (f64::NEG_INFINITY, "-inf"),
+            (1e39, "1e39"),
+        ] {
+            let err = take(value).unwrap_err();
+            assert!(
+                err.ends_with(&format!("key: expected f16, got {shown}")),
+                "{err}"
+            );
+        }
+
+        let three = UniformInput::Numbers(vec![1.0, 2.0, 70000.0]);
+        let err = resolve(three, UniformData::HalfVec3(vec![0.0; 3])).unwrap_err();
+        assert!(err.ends_with("key: expected vec3<f16>, got 70000"), "{err}");
+        let two = UniformInput::Numbers(vec![1.0, 2.0]);
+        let err = resolve(two, UniformData::HalfVec3(vec![0.0; 3])).unwrap_err();
+        assert!(
+            err.ends_with("key: expected vec3<f16>, got 2 number(s)"),
+            "{err}"
+        );
+        let numbers = |n: usize| UniformInput::Numbers((0..n).map(|v| v as f64).collect());
+        let shapes = [
+            (UniformData::HalfVec2(vec![0.0; 2]), 2),
+            (UniformData::HalfVec4(vec![0.0; 4]), 4),
+            (UniformData::HalfMat2(vec![0.0; 4]), 4),
+            (UniformData::HalfMat3(vec![0.0; 9]), 9),
+            (UniformData::HalfMat4(vec![0.0; 16]), 16),
+        ];
+        for (slot, n) in shapes {
+            let resolved = resolve(numbers(n), slot.clone()).expect("numbers");
+            assert_eq!(
+                std::mem::discriminant(&resolved),
+                std::mem::discriminant(&slot)
+            );
+            assert!(resolve(numbers(n + 1), slot).is_err());
+        }
+        assert_eq!(
+            resolve(UniformInput::Bool(true), half.clone()),
+            Ok(UniformData::Half(1.0))
+        );
+
+        // A Half value built in Rust takes the same path, so it is checked too.
+        let input = UniformInput::try_from(UniformData::Half(70000.0)).expect("number");
+        assert_eq!(input, UniformInput::Number(70000.0));
+        assert!(resolve(input, half).is_err());
+        let input = UniformInput::try_from(UniformData::HalfMat2(vec![1.0; 4]));
+        assert_eq!(input, Ok(UniformInput::Numbers(vec![1.0; 4])));
     }
 
     // Story: typed Rust values flatten into the same loose input the bindings send.

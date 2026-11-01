@@ -1,6 +1,7 @@
 //! How every binding reads numbers: whole numbers for counts and sizes,
 //! and finite 32-bit floats for colors, positions, directions, axes and UV transforms.
 
+use crate::errors::show_number;
 use crate::{Color, Vertex};
 
 /// One size, region or count number from JavaScript: a whole number from 0 to `u32::MAX`.
@@ -49,7 +50,7 @@ pub(crate) fn read_unsigned(value: f64, what: &str) -> Result<u32, NumberError> 
 pub(crate) enum VectorError {
     #[error(
         "{label}: item {index} must be a finite number that fits a 32-bit float, got {}",
-        show(*value)
+        show_number(*value)
     )]
     Item {
         label: String,
@@ -62,15 +63,6 @@ pub(crate) enum VectorError {
         expected: String,
         count: usize,
     },
-}
-
-/// The number as an error prints it: a large one in exponent form, such as `1e39`.
-fn show(value: f64) -> String {
-    if value.is_finite() && value.abs() >= 1e16 {
-        format!("{value:e}")
-    } else {
-        value.to_string()
-    }
 }
 
 /// Reads each number of a float vector as an `f32`, the rule every binding shares.
