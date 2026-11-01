@@ -467,6 +467,54 @@ def check_external_textures(renderer):
     print("texture_external read each texel, and an sRGB texture raised BindingError")
 
 
+def check_half_values(renderer):
+    """f16 uniforms take plain numbers, NumPy halves included, round them to the nearest f16
+    and read back as floats, and NaN, infinities and numbers past f16 raise FragmentColorError.
+    render draws where the device has SHADER_F16 and raises FeatureError, naming it, where it doesn't."""
+    shader = Shader("""enable f16;
+struct Light { color: vec3<f16>, power: f16 };
+@group(0) @binding(0) var<uniform> gain: f16;
+@group(0) @binding(1) var<uniform> tint: vec4<f16>;
+@group(0) @binding(2) var<uniform> light: Light;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+  return vec4f(p[i], 0., 1.);
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> {
+  return vec4<f32>(tint * gain) + vec4<f32>(vec3<f32>(light.color) * f32(light.power), 0.0);
+}
+""")
+    shader.set("gain", 0.1)
+    assert shader.get("gain") == 0.0999755859375, f"gain read back {shader.get('gain')}"
+    shader.set("light.color", [1, 2, 3])
+    assert list(shader.get("light.color")) == [1.0, 2.0, 3.0]
+    shader.set("tint", np.array([0.25, 0.5, 0.75, 1.0], dtype=np.float16))
+    assert list(shader.get("tint")) == [0.25, 0.5, 0.75, 1.0]
+    for bad, shown in ((70000, "70000"), (float("nan"), "NaN"), (float("inf"), "inf")):
+        try:
+            shader.set("gain", bad)
+        except FragmentColorError as e:
+            assert str(e).endswith(f"gain: expected f16, got {shown}"), str(e)
+        else:
+            raise AssertionError(f"shader.set('gain', {bad}) should raise")
+    assert shader.get("gain") == 0.0999755859375
+
+    shader.set("gain", 1)
+    shader.set("light.power", 0)
+    target = renderer.create_texture_target([1, 1])
+    try:
+        renderer.render(shader, target)
+    except FeatureError as e:
+        assert e.item == "the shader", f"item {e.item}"
+        assert e.feature == "SHADER_F16", f"feature {e.feature}"
+        print(f"an f16 shader raised FeatureError: {e}")
+        return
+    pixel = target.get_image().ravel().tolist()
+    expected = [64, 128, 191, 255]
+    assert all(abs(got - want) <= 1 for got, want in zip(pixel, expected)), f"f16 drew {pixel}"
+    print("f16 uniforms rounded, refused NaN and 70000, and drew the tint")
+
+
 def check_pass_targets(renderer):
     """A target with a mip chain raises InvalidInputError, and render refuses a pass
     that samples its own target, or a target from another Renderer, before any GPU work."""
@@ -1567,6 +1615,7 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
     check_shader_refusals(renderer)
     check_texture_atomics(renderer)
     check_external_textures(renderer)
+    check_half_values(renderer)
     check_value_types()
     check_number_errors(renderer)
     check_empty_regions()

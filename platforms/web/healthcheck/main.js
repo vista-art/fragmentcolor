@@ -450,6 +450,55 @@ struct Particles { items: array<vec4<f32>, 2> };
     same("struct root reads current bytes", new Float32Array(light.buffer, 16, 1), [0.5]);
 });
 
+// f16 uniforms take plain numbers and typed arrays, round them to the nearest f16 and read
+// back as numbers and Float32Arrays. NaN, infinities and numbers past f16 throw. Nothing
+// here renders, so it runs on WebGL2 too.
+await withModule('platforms.web.healthcheck.shader.set.halves', async () => {
+    const shader = new Shader(`enable f16;
+struct Light { color: vec3<f16>, power: f16 };
+@group(0) @binding(0) var<uniform> gain: f16;
+@group(0) @binding(1) var<uniform> tint: vec4<f16>;
+@group(0) @binding(2) var<uniform> light: Light;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+  return vec4f(p[i], 0., 1.);
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> {
+  return vec4<f32>(tint * gain) + vec4<f32>(vec3<f32>(light.color) * f32(light.power), 0.0);
+}`);
+    const same = (label, got, want) => {
+      const a = Array.from(got), b = Array.from(want);
+      if (a.length !== b.length || a.some((v, i) => v !== b[i])) {
+        throw new Error(`${label}: got [${a}], want [${b}]`);
+      }
+    };
+
+    shader.set('gain', 0.1);
+    if (shader.get('gain') !== 0.0999755859375) throw new Error(`f16 from 0.1: got ${shader.get('gain')}`);
+    shader.set('light.color', [1, 2, 3]);
+    same('vec3<f16> struct field', shader.get('light.color'), [1, 2, 3]);
+    shader.set('tint', new Float32Array([0.25, 0.5, 0.75, 1]));
+    const tint = shader.get('tint');
+    if (!(tint instanceof Float32Array)) throw new Error(`vec4<f16> should read as a Float32Array, got ${tint}`);
+    same('vec4<f16> from a Float32Array', tint, [0.25, 0.5, 0.75, 1]);
+    if (typeof Float16Array !== 'undefined') {
+      shader.set('tint', new Float16Array([1, 0.5, 0.25, 0]));
+      same('vec4<f16> from a Float16Array', shader.get('tint'), [1, 0.5, 0.25, 0]);
+    }
+    for (const [value, shown] of [[70000, '70000'], [NaN, 'NaN'], [Infinity, 'inf']]) {
+      try {
+        shader.set('gain', value);
+      } catch (e) {
+        if (e.name !== 'FragmentColorError' || !e.message.endsWith(`gain: expected f16, got ${shown}`)) {
+          throw new Error(`shader.set('gain', ${value}) threw ${e.name}: ${e.message}`);
+        }
+        continue;
+      }
+      throw new Error(`shader.set('gain', ${value}) should throw`);
+    }
+    if (shader.get('gain') !== 0.0999755859375) throw new Error(`gain changed to ${shader.get('gain')}`);
+});
+
 // The JS shapes 0.12.6 brings in line with Rust, Python, Swift and Kotlin.
 await withModule('platforms.web.healthcheck.parity', async () => {
     const renderer = new Renderer();
@@ -1272,6 +1321,33 @@ await withModule('platforms.web.healthcheck.device_checks', async () => {
       () => renderer.render(external, target));
     if (video.name !== 'FeatureError' || video.item !== "'video' at @group(0) @binding(0)" || video.feature !== 'EXTERNAL_TEXTURE') {
       fail(`an external texture threw item ${video.item}, feature ${video.feature}, name ${video.name}`);
+    }
+    // f16 draws where the browser offers shader-f16 and WebGL2 never does. Either way the
+    // shader passes Shader.new, and render draws or refuses it before any GPU work. The
+    // second shader holds only an inferred f16 literal, whose WGSL must keep `enable f16;`.
+    const halves = [
+      new Shader(`enable f16;${vertex}
+@group(0) @binding(0) var<uniform> tint: vec4<f16>;
+@group(0) @binding(1) var<uniform> gain: f16;
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(tint * gain); }`),
+      new Shader(`enable f16;${vertex}
+@fragment fn fs_main() -> @location(0) vec4<f32> { let x = 0.25h; return vec4<f32>(f32(x), f32(x * 2.0h), 0.75, 1.0); }`),
+    ];
+    halves[0].set('tint', [0.25, 0.5, 0.75, 1]);
+    halves[0].set('gain', 1);
+    for (const half of halves) {
+      try {
+        renderer.render(half, target);
+      } catch (e) {
+        if (e.name !== 'FeatureError' || e.item !== 'the shader' || e.feature !== 'SHADER_F16') {
+          fail(`an f16 shader threw item ${e.item}, feature ${e.feature}, name ${e.name}: ${e.message}`);
+        }
+        console.log('render with f16 threw:', e.message);
+        continue;
+      }
+      const pixel = Array.from((await target.getImage()).slice(0, 4));
+      if (pixel.some((v, i) => Math.abs(v - [64, 128, 191, 255][i]) > 1)) fail(`f16 drew ${pixel}`);
+      console.log('render with f16 drew', pixel);
     }
     const wide = new Shader(`@compute @workgroup_size(4096) fn cs_main() {}`);
     refuses('dispatch of a workgroup past the device', /max_compute_workgroup_size_x|needs COMPUTE_SHADERS/,
