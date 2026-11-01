@@ -261,6 +261,8 @@ A depth of 1, or none, makes a 2D texture, and a larger depth makes a 3D texture
 
 `options.usage` overrides the default mask of `STORAGE_BINDING | TEXTURE_BINDING | COPY_SRC | COPY_DST`. Every binding has the same named `TextureUsage` flags, combined with `|` (`or` in Kotlin). The other bindings take the size, format, optional bytes and optional usage as separate arguments. An empty mask, or a bit outside the five `TextureUsage` flags, is the same `InvalidInput` error. So is a usage the format can't take on this device, such as `STORAGE_BINDING` on `Depth32Float` or `Rgba8UnormSrgb`, and a depth texture with a depth past 1.
 
+`R32Uint`, `R32Sint` and `R32Float` hold one 32-bit value per texel, which reads back as 4 little-endian bytes. A compute shader reads and writes them in place through a `read_write` storage slot, which WebGPU guarantees for these three formats, so it works in the browser too. An `R32Uint` or `R32Sint` texture also binds to an `atomic` slot, such as `texture_storage_2d<r32uint, atomic>`, where [texture atomics](/api/core/shader#texture-atomics) change a texel safely from many invocations at once. They need no usage flag of their own. Texture atomics run on Vulkan, DX12, and Metal from macOS 14 and iOS 17. The browser's WebGPU and GL have none, so there `Renderer::render` returns `RendererError::FeatureError` for such a shader before it takes a frame.
+
 #### Example
 
 <Tabs>
@@ -268,7 +270,7 @@ A depth of 1, or none, makes a 2D texture, and a larger depth makes a 3D texture
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::{Renderer, TextureFormat};
+use fragmentcolor::{Renderer, Shader, TextureFormat};
 
 let r = Renderer::new();
 
@@ -280,6 +282,18 @@ let pixels = vec![0; 64 * 64 * 4];
 let tex2 = r
     .create_storage_texture(([64, 64], TextureFormat::Rgba, pixels))
     .await?;
+
+// One 32-bit counter per texel, for texture atomics.
+let counts = r.create_storage_texture(([4, 4], TextureFormat::R32Uint)).await?;
+let shader = Shader::new(r#"
+@group(0) @binding(0) var counts: texture_storage_2d<r32uint, atomic>;
+
+@compute @workgroup_size(8, 8)
+fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
+  textureAtomicAdd(counts, id.xy / 16u, 1u);
+}
+"#)?;
+shader.set("counts", &counts)?;
 `}
 lang="rust"
 />
@@ -289,7 +303,7 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Renderer, TextureFormat } from "fragmentcolor";
+import { Renderer, Shader, TextureFormat } from "fragmentcolor";
 
 const r = new Renderer();
 
@@ -299,6 +313,20 @@ const tex = await r.createStorageTexture([64, 64], TextureFormat.Rgba);
 // Pre-seeded with bytes.
 const pixels = Array(64 * 64 * 4).fill(0);
 const tex2 = await r.createStorageTexture([64, 64], TextureFormat.Rgba, pixels);
+
+// One 32-bit counter per texel, for texture atomics.
+const counts = await r.createStorageTexture([4, 4], TextureFormat.R32Uint);
+const shader = new Shader(\`
+
+@group(0) @binding(0) var counts: texture_storage_2d<r32uint, atomic>;
+
+@compute @workgroup_size(8, 8)
+fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
+  textureAtomicAdd(counts, id.xy / 16u, 1u);
+}
+
+\`);
+shader.set("counts", counts);
 `}
 lang="js"
 />
@@ -308,7 +336,7 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Renderer, TextureFormat
+from fragmentcolor import Renderer, Shader, TextureFormat
 
 r = Renderer()
 # Empty storage texture -- positional args: (size, format).
@@ -317,6 +345,18 @@ tex = r.create_storage_texture([64, 64], TextureFormat.Rgba)
 # Pre-seeded with bytes -- same method, optional data kwarg.
 pixels = [0] * (64 * 64 * 4)
 tex2 = r.create_storage_texture([64, 64], TextureFormat.Rgba, data=pixels)
+
+# One 32-bit counter per texel, for texture atomics.
+counts = r.create_storage_texture([4, 4], TextureFormat.R32Uint)
+shader = Shader("""
+@group(0) @binding(0) var counts: texture_storage_2d<r32uint, atomic>;
+
+@compute @workgroup_size(8, 8)
+fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
+  textureAtomicAdd(counts, id.xy / 16u, 1u);
+}
+""")
+shader.set("counts", counts)
 `}
 lang="python"
 />
@@ -336,6 +376,19 @@ let tex = try await r.createStorageTexture([64, 64], TextureFormat.rgba)
 // Pre-seeded with bytes.
 let pixels = Array(repeating: 0, count: 64 * 64 * 4)
 let tex2 = try await r.createStorageTexture([64, 64], TextureFormat.rgba, pixels)
+
+// One 32-bit counter per texel, for texture atomics.
+let counts = try await r.createStorageTexture([4, 4], TextureFormat.r32Uint)
+let shader = try Shader("""
+@group(0) @binding(0) var counts: texture_storage_2d<r32uint, atomic>;
+
+@compute @workgroup_size(8, 8)
+fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
+  textureAtomicAdd(counts, id.xy / 16u, 1u);
+}
+
+""")
+try shader.set("counts", counts)
 `}
 lang="swift"
 />
@@ -355,6 +408,19 @@ val tex = r.createStorageTexture(listOf(64u, 64u), TextureFormat.RGBA)
 // Pre-seeded with bytes.
 val pixels = ByteArray(64 * 64 * 4)
 val tex2 = r.createStorageTexture(listOf(64u, 64u), TextureFormat.RGBA, pixels)
+
+// One 32-bit counter per texel, for texture atomics.
+val counts = r.createStorageTexture(listOf(4u, 4u), TextureFormat.R32_UINT)
+val shader = Shader("""
+@group(0) @binding(0) var counts: texture_storage_2d<r32uint, atomic>;
+
+@compute @workgroup_size(8, 8)
+fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
+  textureAtomicAdd(counts, id.xy / 16u, 1u);
+}
+
+""")
+shader.set("counts", counts)
 `}
 lang="kotlin"
 />
@@ -501,11 +567,11 @@ Decode and mipmap generation run on a background worker on native platforms. On 
 | `Texture` | Returned as it is. It keeps the options it was created with, so any option beside it is an `InvalidInput` error that names the call. |
 | `Ktx2Bytes` / `Ktx2Path` / `Ktx2Url` | KTX2 container (BC / ETC2 / ASTC / uncompressed), found by its identifier in plain bytes or a plain path too; the file's declared format and pre-baked mip chain win. A `format` option may pick that format's sRGB twin, which reads the same bytes, and any other format is an `InvalidInput` error that names `create_texture`. |
 
-A full mipmap chain is generated by default (`options.mipmaps = true`), for source images and for raw bytes in a color or float format, float data included. Set to `false` to skip the CPU work for textures that won't be sampled at distance, and for any texture you update in parts with `write_region`, which refuses a partial write into a chain. Raw bytes upload as given at level 0, and the levels below it are resampled from them.
+A full mipmap chain is generated by default (`options.mipmaps = true`), for source images and for raw bytes in a color format, `Rgba16Float` or `Rgba32Float`. Set to `false` to skip the CPU work for textures that won't be sampled at distance, and for any texture you update in parts with `write_region`, which refuses a partial write into a chain. Raw bytes upload as given at level 0, and the levels below it are resampled from them. An integer format or `R32Float` takes its raw bytes as one level, with no chain.
 
 An HDR image decodes into `Rgba16Float`. A value past the half float range saturates at 65504, or -65504, and never becomes infinity, the way Three.js converts it. An explicit `Rgba32Float` keeps the full range, and a linear sampler filters it where the device has `FLOAT32_FILTERABLE`. Every mip level of a float texture averages the f32 values of the level above it with a box filter, so values below 0 and above 1 keep their size at every level. For `Rgba16Float` those are the values before the level is stored as half floats, and only storing a level saturates it.
 
-A decoded image, an `ImageData` or a canvas holds RGBA by definition, so it uploads into `Bgra8Unorm` blue first and its colors sample right. Every path that takes an `ImageData` or a canvas does this: `createTexture`, the Material texture setters, `Texture.write` and `writeRegion`, `Mipmap.build` and the `createStorageTexture` seed. Raw bytes, a NumPy array among them, are texels in the named format and upload as given, never swapped. A decoded image fills the 8-bit and 16-bit color formats and `Rgba16Float` or `Rgba32Float`. An integer format such as `Rgba32Uint`, or `Depth32Float`, is an `InvalidInput` error: pass raw bytes with a size for an integer texture, and draw into a depth texture.
+A decoded image, an `ImageData` or a canvas holds RGBA by definition, so it uploads into `Bgra8Unorm` blue first and its colors sample right. Every path that takes an `ImageData` or a canvas does this: `createTexture`, the Material texture setters, `Texture.write` and `writeRegion`, `Mipmap.build` and the `createStorageTexture` seed. Raw bytes, a NumPy array among them, are texels in the named format and upload as given, never swapped. A decoded image fills the 8-bit and 16-bit color formats and `Rgba16Float` or `Rgba32Float`. Any other format, such as `Rgba32Uint`, `R32Uint`, `R32Float` or `Depth32Float`, is an `InvalidInput` error: pass raw bytes with a size for an integer or `R32Float` texture, and draw into a depth texture.
 
 `options.usage` adds `TextureUsage` flags to the `TEXTURE_BINDING | COPY_DST` every texture made from data has, such as `COPY_SRC` to read it back. A bit outside the five `TextureUsage` flags is an `InvalidInput` error.
 

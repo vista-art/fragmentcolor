@@ -7305,6 +7305,9 @@ public enum TextureFormat: Equatable, Hashable {
     case rgba32Float
     case rgba32Uint
     case rgba32Sint
+    case r32Uint
+    case r32Sint
+    case r32Float
     case depth32Float
     case rgba
     case bgra
@@ -7355,15 +7358,21 @@ public struct FfiConverterTypeTextureFormat: FfiConverterRustBuffer {
         
         case 12: return .rgba32Sint
         
-        case 13: return .depth32Float
+        case 13: return .r32Uint
         
-        case 14: return .rgba
+        case 14: return .r32Sint
         
-        case 15: return .bgra
+        case 15: return .r32Float
         
-        case 16: return .lab
+        case 16: return .depth32Float
         
-        case 17: return .l8
+        case 17: return .rgba
+        
+        case 18: return .bgra
+        
+        case 19: return .lab
+        
+        case 20: return .l8
         
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -7421,24 +7430,36 @@ public struct FfiConverterTypeTextureFormat: FfiConverterRustBuffer {
             writeInt(&buf, Int32(12))
         
         
-        case .depth32Float:
+        case .r32Uint:
             writeInt(&buf, Int32(13))
         
         
-        case .rgba:
+        case .r32Sint:
             writeInt(&buf, Int32(14))
         
         
-        case .bgra:
+        case .r32Float:
             writeInt(&buf, Int32(15))
         
         
-        case .lab:
+        case .depth32Float:
             writeInt(&buf, Int32(16))
         
         
-        case .l8:
+        case .rgba:
             writeInt(&buf, Int32(17))
+        
+        
+        case .bgra:
+            writeInt(&buf, Int32(18))
+        
+        
+        case .lab:
+            writeInt(&buf, Int32(19))
+        
+        
+        case .l8:
+            writeInt(&buf, Int32(20))
         
         }
     }

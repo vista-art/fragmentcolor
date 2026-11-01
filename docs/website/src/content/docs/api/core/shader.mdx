@@ -15,7 +15,7 @@ The [Shader](/api/core/shader) object is the main building block in [FragmentCol
 
 It takes a WGSL or GLSL shader source as input, parses it, validates it, and exposes the uniforms as keys.
 
-`Shader::new` refuses a source that no device FragmentColor opens can run, with a `ShaderError` that names the problem: a feature outside the set FragmentColor requests (such as `f16`, `texture_external`, texture atomics or `f64`), two globals on one `@group` and `@binding` (a `lights` root included), writable storage in a `@vertex` entry point, an immediate root that breaks the uniform layout rules, a filtering `sampler` that samples a depth texture, and two vertex inputs with one name, which would read one mesh attribute. A shader that passes can still be one a given device can't run, which `Renderer::render` refuses, as [Device limits](/api/core/shader#device-limits) describes.
+`Shader::new` refuses a source that no device FragmentColor opens can run, with a `ShaderError` that names the problem: a feature outside the set FragmentColor requests (such as `f16`, `texture_external` or `f64`), two globals on one `@group` and `@binding` (a `lights` root included), writable storage in a `@vertex` entry point, an immediate root that breaks the uniform layout rules, a filtering `sampler` that samples a depth texture, and two vertex inputs with one name, which would read one mesh attribute. A shader that passes can still be one a given device can't run, which `Renderer::render` refuses, as [Device limits](/api/core/shader#device-limits) describes.
 
 `Shader::new` accepts a source string, a registry slug like `"sdf2d/circle"`, an `https://` URL, a local file path, or an array mixing any of those. Array parts are deduplicated by hash and concatenated in order, so you can pull pure helper functions from the public registry at `https://fragmentcolor.org/shaders/` into your own shader without copy-pasting. Override the registry base with [Shader::set_registry](/api/core/shader#set_registry).
 
@@ -72,6 +72,7 @@ Access flags are preserved from WGSL and mapped to the device:
 - `read` -> read-only storage access
 - `write` -> write-only storage access
 - `read_write` -> read+write (when supported)
+- `atomic` -> read, write and the texture atomics below, on `r32uint` and `r32sint`
 
 ### WGSL example
 
@@ -80,6 +81,21 @@ Access flags are preserved from WGSL and mapped to the device:
 ```
 
 Every storage format binds as the format the shader declares. A format or access the device can't bind fails in `Renderer::render` before it takes a frame, and so does a bound texture of another format, one without `STORAGE_BINDING` usage, or one with more than one mip level.
+
+## Texture atomics
+
+An `r32uint` or `r32sint` storage texture with `atomic` access takes texture atomics: `textureAtomicAdd`, `textureAtomicMin`, `textureAtomicMax`, `textureAtomicAnd`, `textureAtomicOr` and `textureAtomicXor`. Each call changes one texel in a single step, however many invocations reach it at once, and returns no value. Exchange and compare-exchange on textures aren't in naga, and `textureLoad` and `textureStore` work on an atomic texture as on any other storage texture.
+
+```wgsl
+@group(0) @binding(0) var counts: texture_storage_2d<r32uint, atomic>;
+
+@compute @workgroup_size(8, 8)
+fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
+  textureAtomicAdd(counts, id.xy / 16u, 1u);
+}
+```
+
+`Shader::new` takes such a shader on every platform, and it runs where the device has `TEXTURE_ATOMIC`: Vulkan, DX12, and Metal from macOS 14 and iOS 17. The browser's WebGPU, WebGL2 and native GL have no texture atomics, so `Renderer::render` refuses the shader there with `RendererError::FeatureError`, whose `feature` names `TEXTURE_ATOMIC`. Bind an `R32Uint` or `R32Sint` texture from [`Renderer::create_storage_texture`](/api/core/renderer#create_storage_texture), which takes no extra usage flag for atomics. An `r64uint` storage texture needs `TEXTURE_INT64_ATOMIC`, a feature FragmentColor doesn't request, so `Shader::new` refuses it.
 
 ## Storage Buffers
 
@@ -129,7 +145,7 @@ fn cs_main(@builtin(local_invocation_index) index: u32) {
 `Renderer::render` checks each shader against the device before it takes a frame, so every platform returns the same error from the call that caused it, the web included. Each refusal has a typed error with fields:
 
 - `RendererError::LimitError { item, limit, value, max }` for a group past `max_bind_groups`, a binding past `max_bindings_per_bind_group`, more bindings of a kind in one stage than the device takes, a uniform or storage buffer past its binding size limit, a workgroup past the device's sizes, invocations or workgroup memory, and a vertex input at a location past `max_vertex_attributes`. A mesh whose stride or buffers pass the device's limits gets it too.
-- `RendererError::FeatureError { item, feature }` for a compute shader on a device without compute, storage a stage of the device can't bind, a storage format or access the device lacks, an explicit layout on a GL backend, a shader that measures its light roots with `arrayLength` on a device that takes lights through a uniform block, a shader feature the device lacks, such as subgroups, whose `feature` names the wgpu flag, and anything else the device's shader validator refuses.
+- `RendererError::FeatureError { item, feature }` for a compute shader on a device without compute, storage a stage of the device can't bind, a storage format or access the device lacks, such as an atomic storage texture on a device without `TEXTURE_ATOMIC`, an explicit layout on a GL backend, a shader that measures its light roots with `arrayLength` on a device that takes lights through a uniform block, a shader feature the device lacks, such as subgroups, whose `feature` names the wgpu flag, and anything else the device's shader validator refuses.
 - `RendererError::BindingError { uniform, expected, found }` for a texture uniform that was never set, or whose texture its slot can't take by format, usage, dimension, sample count or mip levels.
 - `RendererError::EntryError { stage }` for a render shader without its `@vertex` or `@fragment` entry point.
 
