@@ -1146,8 +1146,9 @@ enable primitive_index;
 // Story: a shader that uses a feature the device lacks is refused with the wgpu flags
 // it needs, the fewest that let the device's validator take it, on every device alike.
 // A vertex stage needs SUBGROUP_VERTEX, which no Metal device offers, a subgroup
-// barrier needs SUBGROUP_BARRIER, which no DX12 device offers, and an atomic storage
-// texture needs TEXTURE_ATOMIC, which neither the browser's WebGPU nor GL offers.
+// barrier needs SUBGROUP_BARRIER, which no DX12 device offers, an atomic storage
+// texture needs TEXTURE_ATOMIC, which neither the browser's WebGPU nor GL offers,
+// and an external texture needs EXTERNAL_TEXTURE, which only Metal and DX12 offer.
 #[test]
 fn missing_features_name_their_flags() {
     pollster::block_on(async move {
@@ -1196,6 +1197,9 @@ fn cs_main(@builtin(local_invocation_index) index: u32) { sums[index] = subgroup
         let shader = "the shader";
         let counts = "'counts' at @group(0) @binding(0)";
         let atomic_flags = Some("TEXTURE_ATOMIC for a R32Uint storage texture");
+        // So does the external texture check, which runs beside it.
+        let external = fullscreen(EXTERNAL_LOAD).expect("shader");
+        let video = "'video' at @group(0) @binding(0)";
         let cases = [
             (&compute_add, shader, [Some("SUBGROUP"), None, None, None]),
             (&barrier, shader, barrier_flags),
@@ -1207,6 +1211,11 @@ fn cs_main(@builtin(local_invocation_index) index: u32) { sums[index] = subgroup
                 [Some("PRIMITIVE_INDEX"), None, None, None],
             ),
             (&atomic, counts, [atomic_flags, None, None, None]),
+            (
+                &external,
+                video,
+                [Some("EXTERNAL_TEXTURE"), None, None, None],
+            ),
         ];
 
         for (shader, item, expected) in cases {
@@ -1347,6 +1356,294 @@ fn atomic_storage_needs_texture_atomics() {
             RendererError::FeatureError { .. },
             "'counts' at @group(0) @binding(0) needs TEXTURE_ATOMIC for a R32Uint storage texture, which the device lacks"
         );
+    });
+}
+
+/// A fullscreen shader that writes the texel of `video` under each pixel, from `textureLoad`.
+const EXTERNAL_LOAD: &str = "@group(0) @binding(0) var video: texture_external;
+@fragment fn fs_main(@builtin(position) at: vec4<f32>) -> @location(0) vec4<f32> {
+  return textureLoad(video, vec2<u32>(at.xy));
+}";
+
+/// A fullscreen shader that samples `video` at the texel center under each pixel,
+/// and writes the size `textureDimensions` gives as 10 * width + height in alpha.
+const EXTERNAL_SAMPLE: &str = "@group(0) @binding(0) var video: texture_external;
+@group(0) @binding(1) var soft: sampler;
+@fragment fn fs_main(@builtin(position) at: vec4<f32>) -> @location(0) vec4<f32> {
+  let size = textureDimensions(video);
+  let texel = textureSampleBaseClampToEdge(video, soft, at.xy / vec2<f32>(size));
+  return vec4<f32>(texel.rgb, f32(size.x * 10u + size.y) / 255.0);
+}";
+
+/// Four texels of a 2x2 texture, each channel its own value.
+const TEXELS: [u8; 16] = [
+    200, 10, 30, 255, 40, 220, 60, 255, 70, 80, 240, 255, 120, 130, 140, 255,
+];
+
+// Story: a shader reads an ordinary texture through `texture_external` where the device has
+// EXTERNAL_TEXTURE, as Metal does. `textureLoad`, `textureSampleBaseClampToEdge` and
+// `textureDimensions` see its base level, also for a texture with a mip chain, in Rgba8Unorm
+// and Bgra8Unorm. Where the device lacks the feature, render refuses the shader before any GPU work.
+#[test]
+fn external_textures_read_textures() {
+    pollster::block_on(async move {
+        let (renderer, context, uncaptured) = setup().await.expect("render context");
+        let load = fullscreen(EXTERNAL_LOAD).expect("shader");
+        let sample = fullscreen(EXTERNAL_SAMPLE).expect("shader");
+        let external = wgpu::Features::EXTERNAL_TEXTURE;
+        #[cfg(target_os = "macos")]
+        assert!(
+            context.features.contains(external),
+            "Metal offers EXTERNAL_TEXTURE"
+        );
+        if !context.features.contains(external) {
+            eprintln!("the device lacks EXTERNAL_TEXTURE, so only the refusal was checked");
+            assert_refused!(
+                refuse(&renderer, &context, &uncaptured, &load).expect("refused"),
+                RendererError::FeatureError { .. },
+                "'video' at @group(0) @binding(0) needs EXTERNAL_TEXTURE, which the device lacks"
+            );
+            return;
+        }
+        eprintln!("the device has EXTERNAL_TEXTURE, so the reads were checked");
+        let target = renderer
+            .create_texture_target([2, 2])
+            .await
+            .expect("texture target");
+        for format in [
+            crate::TextureFormat::Rgba8Unorm,
+            crate::TextureFormat::Bgra8Unorm,
+        ] {
+            let texture = renderer
+                .create_texture((TEXELS.to_vec(), format, [2u32, 2]))
+                .await
+                .expect("texture");
+            let levels = texture.object().inner.mip_level_count();
+            assert!(levels > 1, "{format:?} has {levels} level");
+            // BGRA bytes hold blue first, and the shader reads them as RGBA.
+            let texels = TEXELS.as_chunks::<4>().0.iter();
+            let expected: Vec<u8> = match format {
+                crate::TextureFormat::Bgra8Unorm => {
+                    texels.flat_map(|[b, g, r, a]| [*r, *g, *b, *a]).collect()
+                }
+                _ => texels.flatten().copied().collect(),
+            };
+            load.set("video", &texture).expect("video");
+            sample.set("video", &texture).expect("video");
+
+            renderer.render(&load, &target).expect("load");
+            let loaded = target.get_image().await.expect("read back");
+            renderer.render(&sample, &target).expect("sample");
+            let sampled = target.get_image().await.expect("read back");
+
+            assert_eq!(loaded, expected, "textureLoad of {format:?}");
+            let pixels = sampled.as_chunks::<4>().0.iter();
+            for (pixel, texel) in pixels.zip(expected.as_chunks::<4>().0) {
+                let close = (0..3).all(|channel| pixel[channel].abs_diff(texel[channel]) <= 1);
+                assert!(close, "{format:?} sampled {pixel:?} for {texel:?}");
+                assert_eq!(pixel[3], 22, "textureDimensions of {format:?}");
+            }
+        }
+        assert!(uncaptured.lock().is_empty(), "got {:?}", uncaptured.lock());
+    });
+}
+
+// Story: on a device without EXTERNAL_TEXTURE, as Vulkan, GL and the browser's WebGPU are,
+// render refuses an external texture slot with a FeatureError that names the slot and the
+// feature, before it builds any layout and before it looks for the slot's texture.
+// A copy of any device without the feature shows it, a GL one included.
+#[test]
+fn external_textures_need_the_feature() {
+    pollster::block_on(async move {
+        let (_renderer, context, _) = setup().await.expect("render context");
+        let shader = fullscreen(EXTERNAL_LOAD).expect("shader");
+        let external = wgpu::Features::EXTERNAL_TEXTURE;
+        let mut gl = copy_context(&context);
+        gl.features = context.features - external;
+        gl.backend = wgpu::Backend::Gl;
+
+        let error = refuse_without(&context, external, &shader).expect("refused");
+        let on_gl = gl.check_shader(&shader.object).unwrap_err();
+
+        let expected = vec![
+            (
+                "item",
+                Field::Text("'video' at @group(0) @binding(0)".into()),
+            ),
+            ("feature", Field::Text("EXTERNAL_TEXTURE".into())),
+        ];
+        assert_eq!(error.list_fields(), expected);
+        assert_eq!(on_gl.list_fields(), expected);
+        assert_refused!(
+            error,
+            RendererError::FeatureError { .. },
+            "'video' at @group(0) @binding(0) needs EXTERNAL_TEXTURE, which the device lacks"
+        );
+    });
+}
+
+// Story: an external texture slot takes a single-sampled 2D texture in Rgba8Unorm,
+// Bgra8Unorm or Rgba16Float with TEXTURE_BINDING usage, and any number of mip levels,
+// since it binds the base level. wgpu refuses every other texture there, sRGB included.
+#[test]
+fn external_slots_take_plain_2d_textures() {
+    use wgpu::TextureFormat as Format;
+    use wgpu::TextureViewDimension as View;
+    let slot = wgpu::BindingType::ExternalTexture;
+    let plain = TextureFacts {
+        format: Format::Rgba8Unorm,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING,
+        dimension: View::D2,
+        samples: 1,
+        levels: 1,
+    };
+    let fits = [
+        plain,
+        TextureFacts { levels: 5, ..plain },
+        TextureFacts {
+            format: Format::Bgra8Unorm,
+            ..plain
+        },
+        TextureFacts {
+            format: Format::Rgba16Float,
+            ..plain
+        },
+    ];
+    let refused = [
+        (
+            TextureFacts {
+                format: Format::Rgba8UnormSrgb,
+                ..plain
+            },
+            "'video' takes an Rgba8Unorm, Bgra8Unorm or Rgba16Float texture, not Rgba8UnormSrgb",
+        ),
+        (
+            TextureFacts {
+                dimension: View::D2Array,
+                ..plain
+            },
+            "'video' takes a D2 texture, not a D2Array texture",
+        ),
+        (
+            TextureFacts {
+                dimension: View::D3,
+                ..plain
+            },
+            "'video' takes a D2 texture, not a D3 texture",
+        ),
+        (
+            TextureFacts {
+                samples: 4,
+                ..plain
+            },
+            "'video' takes a single-sampled texture, not 4 samples",
+        ),
+        (
+            TextureFacts {
+                usage: wgpu::TextureUsages::COPY_DST,
+                ..plain
+            },
+            "'video' takes a texture with TEXTURE_BINDING usage, not usage",
+        ),
+    ];
+
+    for facts in fits {
+        let checked = check_texture("video", &slot, &facts, wgpu::Features::empty());
+        assert!(checked.is_ok(), "{facts:?}: {checked:?}");
+    }
+    for (facts, problem) in refused {
+        let checked = check_texture("video", &slot, &facts, wgpu::Features::empty());
+        assert_refused!(
+            checked.unwrap_err(),
+            RendererError::BindingError { .. },
+            problem
+        );
+    }
+}
+
+// Story: an external texture counts against the stage limits as wgpu counts it: four sampled
+// textures, a sampler and a uniform buffer. A shader past a limit that way fails before the
+// frame on a device that has the feature, which a copy of any device shows.
+#[test]
+fn external_textures_count_as_wgpu_counts() {
+    pollster::block_on(async move {
+        let (_renderer, context, _) = setup().await.expect("render context");
+        let two = fullscreen(
+            "@group(0) @binding(0) var front: texture_external;
+@group(0) @binding(1) var back: texture_external;
+@fragment fn fs_main() -> @location(0) vec4<f32> {
+  return textureLoad(front, vec2<u32>(0u)) + textureLoad(back, vec2<u32>(0u));
+}",
+        )
+        .expect("shader");
+        let sampled = fullscreen(EXTERNAL_SAMPLE).expect("shader");
+        let tinted = fullscreen(
+            "@group(0) @binding(0) var video: texture_external;
+@group(0) @binding(1) var<uniform> tint: vec4<f32>;
+@fragment fn fs_main() -> @location(0) vec4<f32> { return textureLoad(video, vec2<u32>(0u)) * tint; }",
+        )
+        .expect("shader");
+        let cases: [(&Shader, &str, u32); 3] = [
+            (&two, "max_sampled_textures_per_shader_stage", 8),
+            (&sampled, "max_samplers_per_shader_stage", 2),
+            (&tinted, "max_uniform_buffers_per_shader_stage", 2),
+        ];
+
+        for (shader, limit, value) in cases {
+            let mut device = copy_context(&context);
+            device.features |= wgpu::Features::EXTERNAL_TEXTURE;
+            let max = value - 1;
+            let limits = &mut device.limits;
+            match limit {
+                "max_sampled_textures_per_shader_stage" => {
+                    limits.max_sampled_textures_per_shader_stage = max
+                }
+                "max_samplers_per_shader_stage" => limits.max_samplers_per_shader_stage = max,
+                _ => limits.max_uniform_buffers_per_shader_stage = max,
+            }
+
+            let error = device.check_shader(&shader.object).unwrap_err();
+
+            assert_refused!(
+                error,
+                RendererError::LimitError { .. },
+                &format!(
+                    "the fragment stage needs {limit} of at least {value}, and the device has {max}"
+                )
+            );
+        }
+    });
+}
+
+// Story: an external texture slot reads its texture, so a pass that draws into the texture
+// its shader binds there conflicts before any GPU work, where the device has EXTERNAL_TEXTURE.
+// Where the device lacks it, the shader's refusal comes first.
+#[test]
+fn external_slots_conflict_with_their_target() {
+    pollster::block_on(async move {
+        let (renderer, context, uncaptured) = setup().await.expect("render context");
+        let shader = fullscreen(EXTERNAL_LOAD).expect("shader");
+        let target = renderer
+            .create_texture_target([4, 4])
+            .await
+            .expect("texture target");
+        shader.set("video", &target.texture()).expect("video");
+
+        let error = renderer.render(&shader, &target).expect_err("refused");
+
+        match context.features.contains(wgpu::Features::EXTERNAL_TEXTURE) {
+            true => assert_refused!(
+                error,
+                RendererError::PassError(crate::PassError::TextureConflict { .. }),
+                "'video' reads"
+            ),
+            false => assert_refused!(
+                error,
+                RendererError::FeatureError { .. },
+                "needs EXTERNAL_TEXTURE"
+            ),
+        }
+        assert!(uncaptured.lock().is_empty(), "got {:?}", uncaptured.lock());
     });
 }
 

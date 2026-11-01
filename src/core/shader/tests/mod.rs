@@ -1252,7 +1252,7 @@ fn after_vertex(rest: &str) -> String {
 
 // Story: a shader that needs a feature a device may open with passes Shader::new on
 // every device, and the renderer checks it against its own device: subgroups in each
-// stage, `primitive_index`, immediate data and texture atomics.
+// stage, `primitive_index`, immediate data, texture atomics and `texture_external`.
 #[test]
 fn device_features_pass_at_new() {
     let sources = [
@@ -1284,6 +1284,9 @@ fn cs_main(@builtin(local_invocation_index) index: u32, @builtin(subgroup_size) 
         "@group(0) @binding(0) var lows: texture_storage_2d<r32sint, atomic>;
 @compute @workgroup_size(1) fn cs_main() { textureAtomicMin(lows, vec2<u32>(0u), -1i); }"
             .to_string(),
+        after_vertex(
+            "@group(0) @binding(0) var video: texture_external;\n@fragment fn fs_main() -> @location(0) vec4<f32> { return textureLoad(video, vec2<u32>(0u)); }",
+        ),
     ];
     for source in sources {
         let result = Shader::new(source.as_str());
@@ -1291,9 +1294,38 @@ fn cs_main(@builtin(local_invocation_index) index: u32, @builtin(subgroup_size) 
     }
 }
 
+// Story: an external texture slot is a 2D texture key whose class is External,
+// and it counts as sampled when `textureSampleBaseClampToEdge` reads it.
+#[test]
+fn external_textures_reflect() {
+    let loaded = after_vertex(
+        "@group(0) @binding(0) var video: texture_external;
+@fragment fn fs_main() -> @location(0) vec4<f32> { return textureLoad(video, vec2<u32>(0u)); }",
+    );
+    let sampled = after_vertex(
+        "@group(0) @binding(0) var video: texture_external;
+@group(0) @binding(1) var soft: sampler;
+@fragment fn fs_main() -> @location(0) vec4<f32> { return textureSampleBaseClampToEdge(video, soft, vec2<f32>(0.5)); }",
+    );
+
+    for (source, reads_samples) in [(loaded, false), (sampled, true)] {
+        let shader = Shader::new(source.as_str()).expect("shader");
+
+        assert!(shader.list_keys().contains(&"video".to_string()));
+        let storage = shader.object.storage.read();
+        let (_, _, video) = storage.uniforms.get("video").expect("video uniform");
+        let UniformData::Texture(meta) = &video.data else {
+            panic!("video is not a texture uniform: {:?}", video.data);
+        };
+        assert_eq!(meta.class, crate::texture::TextureClass::External());
+        assert_eq!(meta.dim, crate::texture::TextureDim::D2);
+        assert!(!meta.arrayed);
+        assert_eq!(meta.sampled, reads_samples);
+    }
+}
+
 // Story: a shader that needs a feature no device FragmentColor opens with fails at
-// Shader::new, never at render: `f16`, `texture_external`, 64-bit texture atomics,
-// ray queries and `f64`.
+// Shader::new, never at render: `f16`, 64-bit texture atomics, ray queries and `f64`.
 #[test]
 fn features_no_device_opens_fail_at_new() {
     let sources = [
@@ -1302,9 +1334,6 @@ fn features_no_device_opens_fail_at_new() {
             after_vertex(
                 "@fragment fn fs_main() -> @location(0) vec4<f32> { let h: f16 = 1.0h; return vec4<f32>(f32(h)); }",
             )
-        ),
-        after_vertex(
-            "@group(0) @binding(0) var video: texture_external;\n@fragment fn fs_main() -> @location(0) vec4<f32> { return textureLoad(video, vec2<u32>(0u)); }",
         ),
         "@group(0) @binding(0) var counts: texture_storage_2d<r64uint, atomic>;
 @compute @workgroup_size(1) fn cs_main() { textureAtomicMax(counts, vec2<i32>(0), 1lu); }"

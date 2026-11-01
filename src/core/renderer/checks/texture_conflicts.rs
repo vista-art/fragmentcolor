@@ -23,15 +23,16 @@ pub(super) enum Writer {
 }
 
 impl TextureUse {
-    /// The use a texture binding of `class` makes, or `None` for an external texture.
-    pub(super) fn from_class(class: &TextureClass) -> Option<Self> {
+    /// The use a texture binding of `class` makes.
+    pub(super) fn from_class(class: &TextureClass) -> Self {
         match class {
-            TextureClass::Sampled { .. } | TextureClass::Depth { .. } => Some(Self::Read),
             TextureClass::Storage { access, .. } if access.store || access.atomic => {
-                Some(Self::Write(Writer::Storage(*access)))
+                Self::Write(Writer::Storage(*access))
             }
-            TextureClass::Storage { .. } => Some(Self::Read),
-            TextureClass::External() => None,
+            TextureClass::Sampled { .. }
+            | TextureClass::Depth { .. }
+            | TextureClass::Storage { .. }
+            | TextureClass::External() => Self::Read,
         }
     }
 }
@@ -96,5 +97,20 @@ impl<'pass> UsageScope<'pass> {
                 detail: format!("{user} a texture that {earlier}; use it in a later pass"),
             }),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TextureUse;
+    use crate::texture::TextureClass;
+
+    // Story: an external texture slot reads its texture, as wgpu records it,
+    // so a pass that also draws into that texture conflicts before any GPU work.
+    #[test]
+    fn external_slots_are_reads() {
+        let class = TextureClass::External();
+
+        assert_eq!(TextureUse::from_class(&class), TextureUse::Read);
     }
 }
