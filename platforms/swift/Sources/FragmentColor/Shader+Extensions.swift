@@ -206,10 +206,10 @@ extension Shader {
 
 extension UniformData {
     /// The number a scalar uniform holds, as a `Float`.
-    /// `nil` for anything but a bool, float, int or uint.
+    /// `nil` for anything but a bool, float, half, int or uint.
     public var float: Float? {
         switch self {
-        case let .float(value): return value
+        case let .float(value), let .half(value): return value
         case let .int(value): return Float(value)
         case let .uInt(value): return Float(value)
         case let .bool(flag): return flag ? 1 : 0
@@ -222,7 +222,9 @@ extension UniformData {
     public var floats: [Float]? {
         switch self {
         case let .vec2(values), let .vec3(values), let .vec4(values),
-             let .mat2(values), let .mat3(values), let .mat4(values):
+             let .mat2(values), let .mat3(values), let .mat4(values),
+             let .halfVec2(values), let .halfVec3(values), let .halfVec4(values),
+             let .halfMat2(values), let .halfMat3(values), let .halfMat4(values):
             return values
         case let .uVec2(values), let .uVec3(values), let .uVec4(values):
             return values.map { Float($0) }
