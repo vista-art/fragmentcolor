@@ -217,6 +217,30 @@ class Healthcheck : ExampleCase() {
         assertEquals("@vertex", entry.stage)
     }
 
+    // Android's Vulkan and GLES have no EXTERNAL_TEXTURE, so render refuses a texture_external
+    // slot before any GPU work, with a case that names the slot and the feature.
+    @Test
+    fun externalTexturesNeedTheFeature() = runBlocking {
+        val renderer = Renderer()
+        val target = renderer.createTextureTarget(listOf(2u, 2u))
+        val shader = Shader(
+            """
+            @group(0) @binding(0) var video: texture_external;
+            @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+              let p = array<vec2<f32>, 3>(vec2f(-1., -1.), vec2f(3., -1.), vec2f(-1., 3.));
+              return vec4f(p[i], 0., 1.);
+            }
+            @fragment fn fs_main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+              return textureLoad(video, vec2<u32>(pos.xy));
+            }
+            """.trimIndent()
+        )
+        shader.set("video", renderer.createTexture(ByteArray(2 * 2 * 4), listOf(2u, 2u)))
+        val feature = assertFailsWith<FragmentColorException.Feature> { renderer.render(shader, target) }
+        assertEquals("'video' at @group(0) @binding(0)", feature.item)
+        assertEquals("EXTERNAL_TEXTURE", feature.feature)
+    }
+
     // A region or viewport with a side of 0, or a far edge past UInt.MAX_VALUE,
     // throws instead of shrinking, and a clear color is a list of floats or doubles.
     @Test

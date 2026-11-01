@@ -180,6 +180,43 @@ final class Healthcheck: ExampleCase {
         }
     }
 
+    // Metal has EXTERNAL_TEXTURE, so a texture_external slot reads an ordinary texture,
+    // and refuses an sRGB one with a case that names the formats the slot takes.
+    func testExternalTexturesReadTextures() async throws {
+        let renderer = Renderer()
+        let target = try await renderer.createTextureTarget([2, 2])
+        let shader = try Shader(source: """
+            @group(0) @binding(0) var video: texture_external;
+            @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+              let p = array<vec2<f32>, 3>(vec2f(-1., -1.), vec2f(3., -1.), vec2f(-1., 3.));
+              return vec4f(p[i], 0., 1.);
+            }
+            @fragment fn fs_main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+              return textureLoad(video, vec2<u32>(pos.xy));
+            }
+        """)
+        let pixels: [UInt8] = [200, 10, 30, 255, 40, 220, 60, 255, 70, 80, 240, 255, 120, 130, 140, 255]
+        let size = Size(width: 2, height: 2, depth: nil)
+        let video = try await renderer.createTexture(pixels, TextureOptions(size: size, format: .rgba8Unorm))
+        try shader.set("video", video)
+        try renderer.render(shader, target)
+        try assertEqual(Array(try await target.getImage()), pixels, "textureLoad of an Rgba8Unorm texture")
+
+        let srgb = try await renderer.createTexture(pixels, TextureOptions(size: size, format: .rgba8UnormSrgb))
+        try shader.set("video", srgb)
+        do {
+            try renderer.render(shader, target)
+            throw HealthcheckError.assertion("an sRGB texture in an external slot should throw")
+        } catch let error as FragmentColorError {
+            guard case let .Binding(uniform, expected, found) = error else {
+                throw HealthcheckError.assertion("render threw \(error), not Binding")
+            }
+            try assertEqual(uniform, "video", "Binding uniform")
+            try assertEqual(expected, "an Rgba8Unorm, Bgra8Unorm or Rgba16Float texture", "Binding expected")
+            try assertEqual(found, "Rgba8UnormSrgb", "Binding found")
+        }
+    }
+
     // A size with layers reaches the check the other languages run: a texture
     // target has one layer, so a depth of 2 throws.
     func testTextureTargetRefusesLayers() async throws {

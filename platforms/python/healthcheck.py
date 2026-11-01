@@ -427,6 +427,46 @@ fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
     print("texture atomics counted 256 into each texel")
 
 
+def check_external_textures(renderer):
+    """A shader reads a Texture through texture_external where the device has EXTERNAL_TEXTURE,
+    as Metal does, and render raises FeatureError, naming it, where it doesn't, as on Vulkan.
+    The slot refuses an sRGB texture with BindingError, which names the formats it takes."""
+    pixels = bytes([200, 10, 30, 255, 40, 220, 60, 255, 70, 80, 240, 255, 120, 130, 140, 255])
+    shader = Shader("""
+@group(0) @binding(0) var video: texture_external;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+  return vec4f(p[i], 0., 1.);
+}
+@fragment fn fs_main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+  return textureLoad(video, vec2<u32>(pos.xy));
+}
+""")
+    shader.set("video", renderer.create_texture(pixels, size=[2, 2], format=TextureFormat.Rgba8Unorm))
+    target = renderer.create_texture_target([2, 2])
+    try:
+        renderer.render(shader, target)
+    except FeatureError as e:
+        assert e.item == "'video' at @group(0) @binding(0)", f"item {e.item}"
+        assert e.feature == "EXTERNAL_TEXTURE", f"feature {e.feature}"
+        print(f"an external texture raised FeatureError: {e}")
+        return
+    image = target.get_image()
+    assert image.tobytes() == pixels, f"textureLoad read {image.ravel().tolist()}"
+
+    srgb = renderer.create_texture(pixels, size=[2, 2], format=TextureFormat.Rgba8UnormSrgb)
+    shader.set("video", srgb)
+    try:
+        renderer.render(shader, target)
+    except BindingError as e:
+        assert e.uniform == "video", f"uniform {e.uniform}"
+        assert e.expected == "an Rgba8Unorm, Bgra8Unorm or Rgba16Float texture", f"expected {e.expected}"
+        assert e.found == "Rgba8UnormSrgb", f"found {e.found}"
+    else:
+        raise AssertionError("an sRGB texture in an external slot should raise BindingError")
+    print("texture_external read each texel, and an sRGB texture raised BindingError")
+
+
 def check_pass_targets(renderer):
     """A target with a mip chain raises InvalidInputError, and render refuses a pass
     that samples its own target, or a target from another Renderer, before any GPU work."""
@@ -1526,6 +1566,7 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
     check_pass_targets(renderer)
     check_shader_refusals(renderer)
     check_texture_atomics(renderer)
+    check_external_textures(renderer)
     check_value_types()
     check_number_errors(renderer)
     check_empty_regions()

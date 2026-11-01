@@ -1261,6 +1261,18 @@ await withModule('platforms.web.healthcheck.device_checks', async () => {
     if (atomics.name !== 'FeatureError' || atomics.feature !== 'TEXTURE_ATOMIC for a R32Uint storage texture') {
       fail(`texture atomics threw item ${atomics.item}, feature ${atomics.feature}, name ${atomics.name}`);
     }
+    // Neither has external textures either. The shader check refuses the slot before
+    // any bind group layout holds it, so the texture never reaches wgpu's browser backend.
+    const external = new Shader(`${vertex}
+@group(0) @binding(0) var video: texture_external;
+@fragment fn fs_main() -> @location(0) vec4<f32> { return textureLoad(video, vec2<u32>(0u)); }`);
+    external.set('video', await renderer.createTexture(new Uint8Array(2 * 2 * 4), { size: [2, 2] }));
+    const video = refuses('render with an external texture',
+      /'video' at @group\(0\) @binding\(0\) needs EXTERNAL_TEXTURE, which the device lacks/,
+      () => renderer.render(external, target));
+    if (video.name !== 'FeatureError' || video.item !== "'video' at @group(0) @binding(0)" || video.feature !== 'EXTERNAL_TEXTURE') {
+      fail(`an external texture threw item ${video.item}, feature ${video.feature}, name ${video.name}`);
+    }
     const wide = new Shader(`@compute @workgroup_size(4096) fn cs_main() {}`);
     refuses('dispatch of a workgroup past the device', /max_compute_workgroup_size_x|needs COMPUTE_SHADERS/,
       () => renderer.render(wide, target));
