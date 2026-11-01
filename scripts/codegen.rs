@@ -606,7 +606,7 @@ struct ObjectProperty {
         attrs.iter().any(|a| a.path().is_ident("lsp_doc"))
     }
 
-    /// Build the catalog from a fresh AST walk. Not cached — `syn::Attribute`
+    /// Build the catalog from a fresh AST walk. Not cached, since `syn::Attribute`
     /// is `!Sync` in build-script context (proc-macro2 fallback uses Rc), so
     /// it cannot live in a `static`. Callers re-walk on each call; cheap in
     /// practice. The walker itself is the single source of truth.
@@ -640,8 +640,8 @@ struct ObjectProperty {
     /// types declared as `pub struct Foo` inside `mod foo;` (private) and
     /// re-exported by a sibling `pub use foo::*` are part of the public API
     /// and must appear in the catalog. Without this, doc validation would
-    /// silently skip every type living in such a module — Camera, Light, and
-    /// Scene under `src/scene/` were exactly this case.
+    /// silently skip every type living in such a module, such as Camera,
+    /// Light, and Scene under `src/scene/`.
     ///
     /// `name_filter` controls which items count as publicly re-exported:
     /// `Global` accepts everything (the natural top-level / `pub use mod::*`

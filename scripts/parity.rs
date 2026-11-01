@@ -3,8 +3,8 @@ mod parity {
     //!
     //! Cross-references the canonical API surface (`docs/api/**/*.md`) against
     //! actual platform bindings discovered in `src/`. Every documented
-    //! method/object must be reachable from every supported platform — JS,
-    //! Python, Swift, Kotlin — unless explicitly waived in `docs/api/PARITY`.
+    //! method/object must be reachable from every supported platform (JS,
+    //! Python, Swift, Kotlin) unless explicitly waived in `docs/api/PARITY`.
     //!
     //! ## How a binding gets credited
     //!
@@ -42,9 +42,9 @@ mod parity {
     //! A second check catches the opposite blind spot: platform-bound `pub fn`
     //! items that exist but carry no `#[lsp_doc(...)]`. When a binding agent
     //! forgets to add `#[lsp_doc]`, the gap check silently considers the API
-    //! "missing" on that platform — the binding exists but is uncredited.
+    //! "missing" on that platform: the binding exists but is uncredited.
     //!
-    //! Scope: **platform-only** — only `pub fn` methods inside impl blocks
+    //! Scope: **platform-only**. Only `pub fn` methods inside impl blocks
     //! decorated with `#[wasm_bindgen]`, `#[pymethods]`, or `#[uniffi::export]`
     //! are checked. Free functions and non-platform impl blocks are out of scope.
     //!
@@ -137,7 +137,7 @@ mod parity {
         // Keyed by doc path relative to workspace (e.g. "docs/api/core/shader/fetch.md").
         entries: BTreeMap<DocPath, Waiver>,
         /// Hidden-override → canonical aliases. Used when the hidden filename
-        /// does not match the canonical via simple suffix-strip — e.g. uniffi
+        /// does not match the canonical via simple suffix-strip, e.g. uniffi
         /// splits `Renderer::render` into two concrete methods (`renderShader`
         /// and `renderShaderToTexture`) whose hidden docs are
         /// `render_shader_mobile.md` and `render_shader_texture_mobile.md`,
@@ -151,9 +151,9 @@ mod parity {
     /// the binding exists but is uncredited to the parity audit.
     ///
     /// Fields:
-    ///   - `file`        — workspace-relative path of the source file
-    ///   - `fn_name`     — the Rust function name (e.g. `texture_js`)
-    ///   - `platform`    — which binding context it was found in
+    ///   - `file`: workspace-relative path of the source file
+    ///   - `fn_name`: the Rust function name (e.g. `texture_js`)
+    ///   - `platform`: which binding context it was found in
     #[derive(Debug, Clone)]
     pub struct UnlabeledExport {
         pub file: String,
@@ -169,10 +169,10 @@ mod parity {
         /// Bindings whose `#[lsp_doc(...)]` path doesn't resolve to any
         /// canonical docs/api entry (after waiver/alias/suffix-strip
         /// resolution). Each is a real binding pointing at a dangling docs
-        /// link — surfaced as a warning so the offending file can be fixed.
+        /// link, surfaced as a warning so the offending file can be fixed.
         pub unresolved_bindings: Vec<(String, BTreeSet<Platform>)>,
         /// Platform-bound `pub fn` items that have neither `#[lsp_doc(...)]`
-        /// nor `#[doc(hidden)]`. These are "uncredited exports" — the binding
+        /// nor `#[doc(hidden)]`. These are "uncredited exports": the binding
         /// exists but the parity audit cannot credit it because the annotation
         /// is missing. Fix by adding `#[lsp_doc(...)]` or `#[doc(hidden)]`.
         pub unlabeled_exports: Vec<UnlabeledExport>,
@@ -314,7 +314,7 @@ mod parity {
 
     /// Print the report and (in Strict mode) panic if any drift is detected
     /// outside the acknowledged baseline. `baseline_path` points to
-    /// `docs/api/PARITY_BASELINE` — see `Baseline` for format.
+    /// `docs/api/PARITY_BASELINE`. See `Baseline` for format.
     pub fn print_report(report: &ParityReport, mode: Mode, baseline_path: &Path) {
         let total = report.doc_count;
         let bound = report.bound_doc_count;
@@ -459,7 +459,7 @@ mod parity {
             }
             if !new_unlabeled.is_empty() {
                 println!(
-                    "\n  ❌ NEW unlabeled platform exports ({} fn(s)) — add #[lsp_doc(...)] or #[doc(hidden)]:",
+                    "\n  ❌ NEW unlabeled platform exports ({} fn(s)). Add #[lsp_doc(...)] or #[doc(hidden)]:",
                     new_unlabeled.len()
                 );
                 for exp in &new_unlabeled {
@@ -502,7 +502,7 @@ mod parity {
         }
     }
 
-    /// Print the live gap grouping (regardless of mode) — easier to read
+    /// Print the live gap grouping (regardless of mode), easier to read
     /// than a flat list and stays useful for human consumption even when
     /// the audit doesn't fail.
     fn print_live_groups(
@@ -540,7 +540,7 @@ mod parity {
 
         if !unlabeled.is_empty() {
             println!(
-                "\n  Unlabeled platform exports ({} fn(s)) — missing #[lsp_doc] or #[doc(hidden)]:",
+                "\n  Unlabeled platform exports ({} fn(s)), missing #[lsp_doc] or #[doc(hidden)]:",
                 unlabeled.len()
             );
             let mut sorted = unlabeled.to_vec();
@@ -780,7 +780,7 @@ mod parity {
             if !stem.is_empty() && stem == parent_name {
                 continue;
             }
-            // Workspace-relative path with forward slashes — same shape as
+            // Workspace-relative path with forward slashes, the same shape as
             // the strings inside `#[lsp_doc(...)]`.
             let workspace = api_root
                 .parent() // docs/
@@ -855,7 +855,7 @@ mod parity {
         }
     }
 
-    /// Free functions (top-level `pub fn`) can carry a binding marker too —
+    /// Free functions (top-level `pub fn`) can carry a binding marker too:
     /// `#[uniffi::export]` for mobile (e.g. `set_shader_registry` in
     /// src/core/shader/platform/mobile.rs), `#[wasm_bindgen]` directly, or
     /// `#[pyfunction]` for Python. If the function carries an `#[lsp_doc(...)]`
@@ -1014,7 +1014,7 @@ mod parity {
     fn collect_unlabeled_impl(it: &ItemImpl, rel_path: &str, out: &mut Vec<UnlabeledExport>) {
         let platform = match impl_platform(it) {
             Some(p) => p,
-            None => return, // not a platform impl block — skip entirely
+            None => return, // not a platform impl block, skip entirely
         };
 
         for impl_item in &it.items {
@@ -1023,7 +1023,7 @@ mod parity {
                 _ => continue,
             };
 
-            // Only care about `pub fn` — private helpers are intentionally untracked.
+            // Only care about `pub fn`. Private helpers are intentionally untracked.
             if !matches!(method.vis, syn::Visibility::Public(_)) {
                 continue;
             }
@@ -1047,14 +1047,14 @@ mod parity {
             if !a.path().is_ident("doc") {
                 continue;
             }
-            // `#[doc(hidden)]` — Meta::List form with token `hidden`
+            // `#[doc(hidden)]`: Meta::List form with token `hidden`
             if let Meta::List(list) = &a.meta {
                 let toks = list.tokens.to_string();
                 if toks.trim() == "hidden" {
                     return true;
                 }
             }
-            // `#[doc = "hidden"]` — NameValue form (rare but valid)
+            // `#[doc = "hidden"]`: NameValue form (rare but valid)
             if let Meta::NameValue(nv) = &a.meta
                 && let syn::Expr::Lit(syn::ExprLit {
                     lit: syn::Lit::Str(s),
@@ -1072,7 +1072,7 @@ mod parity {
     /// happens later in `audit()` once we have the full docs catalog and
     /// PARITY map loaded. The platforms credited are the intersection of
     /// the binding's host context (the impl/file platform set) and any
-    /// platform suffix the lsp_doc carries — e.g. `_mobile` on a hidden
+    /// platform suffix the lsp_doc carries, e.g. `_mobile` on a hidden
     /// override caps the credit to Swift+Kotlin even if the impl block
     /// were wider.
     fn credit_binding(b: &mut Bindings, lsp_doc: &str, host_platforms: &[Platform]) {
@@ -1197,7 +1197,7 @@ mod parity {
     /// `<obj>/hidden/<method>_<platform>.md`, return the candidate
     /// canonical sibling `<obj>/<method>.md`. Returns `None` if the path
     /// does not match the hidden-override shape, or the suffix isn't one
-    /// of the recognized platform tokens. Pure string transform — no
+    /// of the recognized platform tokens. Pure string transform with no
     /// filesystem check; the caller (`resolve_canonical`) decides whether
     /// the candidate is real.
     fn canonicalize_via_strip(p: &str) -> Option<String> {
@@ -1218,7 +1218,7 @@ mod parity {
     /// `_ios` and `_macos` count for Swift only (those are the Apple
     /// targets the Swift binding ships against); `_android` counts for
     /// Kotlin only; `_mobile` covers both. Returns `None` for unrecognized
-    /// suffixes — those become unresolved bindings reported in the audit.
+    /// suffixes, which become unresolved bindings reported in the audit.
     fn platforms_for_suffix(suffix: &str) -> Option<Vec<Platform>> {
         match suffix {
             "js" => Some(vec![Platform::Web]),
@@ -1257,7 +1257,7 @@ mod parity {
 
     // -- waivers ---------------------------------------------------------
 
-    /// `docs/api/PARITY` — two entry types share the file:
+    /// `docs/api/PARITY`. Two entry types share the file:
     ///
     /// **Waiver** (parity intentionally restricted to a platform subset):
     ///
@@ -1267,7 +1267,7 @@ mod parity {
     ///
     /// **Alias** (hidden override credits a canonical doc; needed when the
     /// override's filename does not strip to the canonical via the `_<platform>`
-    /// suffix rule — e.g. uniffi splits `render` into `renderShader` and
+    /// suffix rule, e.g. uniffi splits `render` into `renderShader` and
     /// `renderShaderToTexture`):
     ///
     /// ```text

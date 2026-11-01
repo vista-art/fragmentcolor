@@ -155,8 +155,8 @@ fn generate_docs() {
     println!("cargo::rerun-if-changed=docs/api/PARITY_BASELINE");
     // Rerun the audit (and the rest of generate_docs) whenever src/ or
     // docs/api/ change. Without these directives cargo would only watch the
-    // explicit paths we declare elsewhere — meaning a new uniffi binding in
-    // src/ would not retrigger the audit, and drift would slip through until
+    // explicit paths declared elsewhere, so a new uniffi binding in src/
+    // would not retrigger the audit, and drift would slip through until
     // an unrelated file in the rerun list changed.
     println!("cargo::rerun-if-changed=src");
     println!("cargo::rerun-if-changed=docs/api");

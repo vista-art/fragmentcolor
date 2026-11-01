@@ -26,7 +26,7 @@ mod validation {
         // BLOCK build on legacy winit API usage in public examples
         if content.contains("WindowBuilder") || content.contains("EventLoop") {
             problems.push(format!(
-                "{}: legacy winit API (WindowBuilder/EventLoop) detected in docs — replace with RenderCanvas/HTMLCanvas",
+                "{}: legacy winit API (WindowBuilder/EventLoop) detected in docs. Replace with RenderCanvas/HTMLCanvas",
                 path.display()
             ));
         }
