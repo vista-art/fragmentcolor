@@ -872,7 +872,7 @@ class Shader:
 
         `add_mesh` checks every vertex and instance of the mesh against the shader's `@location` inputs and returns `Result<(), ShaderError>`.
 
-        - An attribute set from numbers takes the type the shader declares at its location: floats for `f32`, `f16` and their vectors, integers for `u32`, `i32` and their vectors when every value is whole and fits. The mesh holds 32-bit floats for an `f16` input, and the GPU converts them.
+        - An attribute set from numbers takes the type the shader declares at its location: floats for `f32`, `f16` and their vectors, integers for `u32`, `i32` and their vectors when every value is whole and fits. The mesh holds 32-bit floats for an `f16` input, and the GPU converts them. A float takes a number only when it stays finite after rounding to the declared type, so NaN, infinities, numbers past the `f32` range, and numbers past ±65504 for an `f16` input, its position included, fail.
         - On success, the mesh is attached, its attributes keep those types for as long as the mesh lives, and it is drawn when this shader renders.
         - On a missing attribute or a value that doesn't fit, the error names the attribute, the declared type and the value, or the vertex or instance that lacks it. The mesh isn't attached and records no type.
         - A shader that declares another type for an attribute an earlier shader already typed on this mesh fails to attach.
