@@ -66,7 +66,7 @@ impl Target for TextureTarget {
     }
 
     /// Read back the offscreen texture contents as packed RGBA8 bytes
-    /// (row-major, top-left origin). Mirrors `Texture::get_image()` — both
+    /// (row-major, top-left origin). Mirrors `Texture::get_image()`. Both
     /// are async-only so the readback path is identical on every backend
     /// (browser `fetch`/`mapAsync`, native `device.poll(Wait)`, etc.).
     #[lsp_doc("docs/api/targets/target/get_image.md")]

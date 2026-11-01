@@ -123,7 +123,7 @@ pub struct App {
     // Global registry of API objects by key (Shader, Pass, Vec<Pass>, ...)
     objects: RwLock<HashMap<String, Arc<dyn Any + Send + Sync>>>,
 
-    // Side-band registry for user state that isn't `Renderable` — camera
+    // Side-band registry for user state that isn't `Renderable`: camera
     // handles, GLB paths, animation clocks, anything the setup callback
     // wants to hand the draw callback. Parallel to `objects` so the
     // semantic separation ("things that get rendered" vs "things I just
@@ -134,14 +134,14 @@ pub struct App {
     // Blueprints to create at resume (if empty, create a single default window)
     blueprints: Vec<WindowAttributes>,
 
-    // Draw callbacks fire on `WindowEvent::RedrawRequested` — kept as a
+    // Draw callbacks fire on `WindowEvent::RedrawRequested`, kept as a
     // dedicated channel because animation/uniform-update flows are common
     // enough to warrant a one-call shortcut.
     on_draw: RwLock<Vec<WindowEventCallback>>,
 
     // Event-specific callback registries. All event handling routes through
     // `on_event(kind, f)` / `on_window_event(id, kind, f)`; there is no
-    // top-level catch-all (callers register per-kind handlers — same model
+    // top-level catch-all (callers register per-kind handlers, the same model
     // as `on_device_event(kind, f)`).
     primary_by_kind: RwLock<HashMap<EventKind, Vec<WindowEventCallback>>>,
     per_window_by_kind: RwLock<HashMap<WindowId, HashMap<EventKind, Vec<WindowEventCallback>>>>,
@@ -212,19 +212,19 @@ impl App {
 
     /// Stash arbitrary user state on the App's typed registry. Parallel
     /// to `add` (which requires `Renderable`); use this for camera
-    /// handles, animation clocks, asset paths, frame counters —
+    /// handles, animation clocks, asset paths, frame counters, or
     /// anything the `on_start` callback wants to hand the `on_draw`
     /// callback that doesn't itself participate in rendering.
     ///
     /// The store is `Arc<dyn Any + Send + Sync>` under the hood, same
     /// shape as the Renderable registry. For interior mutability, wrap
-    /// the value (`Arc<RwLock<T>>` / `Arc<Mutex<T>>`) before adding —
-    /// the registry doesn't lock for you because the right locking
+    /// the value (`Arc<RwLock<T>>` / `Arc<Mutex<T>>`) before adding.
+    /// The registry doesn't lock for you because the right locking
     /// granularity is caller-specific.
     ///
     /// Note: App is the Rust-side examples / demo wrapper. The state
     /// registry is a Rust convenience and is intentionally not
-    /// cross-platform — for Python / JS / Swift / Kotlin apps own the
+    /// cross-platform. Python / JS / Swift / Kotlin apps own the
     /// event loop and manage state in their host language.
     pub fn add_state<T>(&self, key: &str, value: T)
     where
@@ -233,7 +233,7 @@ impl App {
         let previous = self.state.write().insert(key.to_string(), Arc::new(value));
         if previous.is_some() {
             log::warn!(
-                "App::add_state replaced existing entry under key '{key}' — call sites should pick unique keys"
+                "App::add_state replaced existing entry under key '{key}'. Call sites should pick unique keys"
             );
         }
     }
@@ -241,7 +241,7 @@ impl App {
     /// Read a previously stashed state value by key. Returns `None` if
     /// the key was never set or the stored type doesn't match `T`. A type
     /// mismatch logs a warning because it almost always means the caller
-    /// is reaching for the wrong type — missing keys are routine and stay
+    /// is reaching for the wrong type. Missing keys are routine and stay
     /// silent.
     pub fn get_state<T>(&self, key: &str) -> Option<Arc<T>>
     where
@@ -252,7 +252,7 @@ impl App {
             Ok(typed) => Some(typed),
             Err(_) => {
                 log::warn!(
-                    "App::get_state<{}> for key '{key}' found an entry of a different type — returning None",
+                    "App::get_state<{}> for key '{key}' found an entry of a different type, returning None",
                     std::any::type_name::<T>()
                 );
                 None
@@ -790,7 +790,7 @@ mod tests {
         assert!(app.get_state::<u32>("nope").is_none());
     }
 
-    // Story: interior mutability works through Arc<RwLock<...>> — the
+    // Story: interior mutability works through Arc<RwLock<...>>, the
     // pattern users reach for when they need per-frame writes to stashed
     // state without an extra registry method.
     #[test]

@@ -49,7 +49,7 @@ impl RenderCanvasTarget {
 
 #[pymethods]
 impl RenderCanvasTarget {
-    // Constructor for the RenderCanvas protocol object — not user-facing API;
+    // Constructor for the RenderCanvas protocol object, not user-facing API;
     // instantiated internally by Renderer::create_target_py().
     #[doc(hidden)]
     #[new]
@@ -61,7 +61,7 @@ impl RenderCanvasTarget {
         }
     }
 
-    // Internal RenderCanvas protocol sentinel — not a public documented method.
+    // Internal RenderCanvas protocol sentinel, not a public documented method.
     #[doc(hidden)]
     pub fn is_ready(&self) -> bool {
         self.target.is_some()
@@ -185,7 +185,7 @@ impl PyTextureTarget {
         Ok(())
     }
 
-    /// Acquire a frame (Python-facing wrapper). Internal — callers use get_image().
+    /// Acquire a frame (Python-facing wrapper). Internal: callers use get_image().
     // PyTargetFrame is an internal plumbing type that exposes a minimal
     // RenderCanvas-compatible interface; it has no canonical API doc entry.
     #[doc(hidden)]
@@ -247,7 +247,7 @@ pub struct PyTargetFrame {
 
 #[pymethods]
 impl PyTargetFrame {
-    // PyTargetFrame is an internal RenderCanvas-protocol type — not part of public docs.
+    // PyTargetFrame is an internal RenderCanvas-protocol type, not part of public docs.
     #[doc(hidden)]
     pub fn format(&self) -> String {
         format!("{:?}", self.format)

@@ -65,8 +65,8 @@ pub(crate) fn surface_texture_from(
 
 /// Frame-acquisition entry point. Sealed (crate-private supertrait of
 /// [`Target`]) so external callers can't implement [`Target`] for their own
-/// types — every wgpu-touching method lives here. Custom adapters go
-/// through the existing [`crate::Renderer::create_target`] /
+/// types. Every wgpu-touching method lives here. Custom adapters go
+/// through the [`crate::Renderer::create_target`] /
 /// [`crate::Renderer::create_texture_target`] constructors, which produce
 /// the canonical impls.
 pub(crate) trait FrameSource {

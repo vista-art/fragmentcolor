@@ -1,7 +1,7 @@
 //! Mobile (Swift / Kotlin) uniffi bindings for `WindowTarget` and `TextureTarget`.
 //!
 //! Because uniffi `Object`s are always Arc-wrapped, methods cannot take
-//! `&mut self` directly — all mutation must go through interior mutability.
+//! `&mut self` directly, so all mutation goes through interior mutability.
 //! This module follows the web `CanvasTarget` pattern: each concrete target
 //! type is wrapped in a `parking_lot::Mutex` / `RwLock` so that Swift and
 //! Kotlin callers can safely invoke `size()`, `resize()`, and `get_image()`
