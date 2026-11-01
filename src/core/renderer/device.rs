@@ -59,18 +59,18 @@ pub(crate) async fn request_device(
     //   * `adapter.features()` includes wgpu-experimental features
     //     (`EXPERIMENTAL_RAY_QUERY`, `EXPERIMENTAL_MESH_SHADER`,
     //     `EXPERIMENTAL_COOPERATIVE_MATRIX`) that wgpu requires routed
-    //     through `experimental_features` — passing them via
+    //     through `experimental_features`. Passing them via
     //     `required_features` errors with `ExperimentalFeaturesNotEnabled`
-    //     on macOS Metal. We don't use any experimental features today.
+    //     on macOS Metal. FragmentColor uses no experimental features.
     //   * The Android emulator's SwiftShader Vulkan rejects `IMMEDIATES`
-    //     at device creation; the existing uniform-buffer fallback path
-    //     covers callers when the feature isn't available.
+    //     at device creation; the uniform-buffer fallback path covers
+    //     callers when the feature isn't available.
     // Limits: take the adapter's advertised limits directly. wgpu's
     // `Limits::default()` baseline exceeds what some emulators can
     // provide (`max_buffer_size`, `max_storage_buffer_binding_size`),
-    // and Vulkan reports those mismatches via the same
-    // `VK_ERROR_FEATURE_NOT_PRESENT` we hit before — but with an empty
-    // wgpu-hal "Missing features:" log line because the constraint is on
+    // and Vulkan reports those mismatches as
+    // `VK_ERROR_FEATURE_NOT_PRESENT`, with an empty wgpu-hal
+    // "Missing features:" log line because the constraint is on
     // limits, not features.
     let requested_features = adapter.features() & CANDIDATES;
     let requested_limits = cap_limits(adapter);

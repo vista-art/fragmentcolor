@@ -7,18 +7,18 @@ use std::sync::Arc;
 /// Mobile bindings carry a concrete enum because uniffi can't marshal
 /// `&impl Renderable`. The Rust core stays generic; this enum exists so
 /// Swift / Kotlin can call `renderer.render(shader, target)` (or `pass`,
-/// `mesh`, list-of-passes) through a single mobile `render` entry point —
-/// the Swift / Kotlin extension files supply natural overloads that wrap
+/// `mesh`, list-of-passes) through a single mobile `render` entry point.
+/// The Swift / Kotlin extension files supply natural overloads that wrap
 /// the concrete handle into the matching variant invisibly.
 #[derive(Debug, Clone, uniffi::Enum)]
 pub enum RenderableHandle {
     Shader(Arc<crate::Shader>),
     Pass(Arc<crate::Pass>),
     Mesh(Arc<crate::Mesh>),
-    /// Top-level [`Scene`](crate::Scene) — emits its ordered pass graph,
+    /// Top-level [`Scene`](crate::Scene). Emits its ordered pass graph,
     /// including the default Pass that holds the scene's `SceneObject`s.
     Scene(Arc<crate::Scene>),
-    /// Iterable of `Pass` instances — emits passes in order.
+    /// Iterable of `Pass` instances. Emits passes in order.
     Passes(Vec<Arc<crate::Pass>>),
 }
 
@@ -75,7 +75,7 @@ impl Renderable for RenderableHandle {
 }
 
 /// Uniffi-marshallable union of every type that implements [`crate::Target`].
-/// Same rationale as [`RenderableHandle`] — uniffi can't marshal
+/// Same rationale as [`RenderableHandle`]: uniffi can't marshal
 /// `&impl Target`, so the mobile `render` entry takes this enum and the
 /// implementation matches and dispatches to the typed `Renderer::render`
 /// underneath.
@@ -93,7 +93,7 @@ pub enum TargetHandle {
 /// [`crate::scene::SceneObject`]. Mobile bindings carry a concrete enum
 /// because uniffi can't marshal `&impl SceneObject`. The Rust core stays
 /// generic; this enum exists so Swift / Kotlin can call `scene.add(...)`
-/// or `pass.add(...)` through a single mobile entry point — the Swift /
+/// or `pass.add(...)` through a single mobile entry point. The Swift /
 /// Kotlin extension files supply natural overloads that wrap the
 /// concrete handle into the matching variant invisibly.
 #[derive(Debug, Clone, uniffi::Enum)]

@@ -2962,8 +2962,8 @@ public protocol RendererProtocol: AnyObject, Sendable {
     
     /**
      * Allocate a storage-class texture, optionally pre-seeded with `data`.
-     * Mirrors the canonical `Renderer::create_storage_texture(impl Into<TextureInput>)`
-     * — uniffi can't marshal `impl Into`, so the mobile shim takes the
+     * Mirrors the canonical `Renderer::create_storage_texture(impl Into<TextureInput>)`.
+     * Uniffi can't marshal `impl Into`, so the mobile shim takes the
      * fields directly and the body builds a `TextureInput` from them.
      * `usage_bits = None` defaults to STORAGE | TEXTURE | COPY_SRC | COPY_DST.
      * Both trailing arguments default to `None`, so Swift and Kotlin may leave them out.
@@ -2972,7 +2972,7 @@ public protocol RendererProtocol: AnyObject, Sendable {
     
     /**
      * Single mobile entry point for texture creation. Mirrors the canonical
-     * Rust `Renderer::create_texture(impl Into<TextureInput>)` — uniffi
+     * Rust `Renderer::create_texture(impl Into<TextureInput>)`. Uniffi
      * can't marshal `impl Into`, so the mobile shim takes the input as a
      * concrete enum + an optional `TextureOptions`. Swift / Kotlin
      * extension files supply the natural overloads (e.g. `renderer.createTexture(bytes)`,
@@ -2987,17 +2987,6 @@ public protocol RendererProtocol: AnyObject, Sendable {
      */
     func createTextureTarget(size: Size) async throws  -> TextureTarget
     
-    /**
-     * Single mobile `render` entry. Mirrors the canonical Rust
-     * `Renderer::render(&impl Renderable, &impl Target)` — uniffi can't
-     * marshal `&impl Trait`, so the mobile shim takes the concrete enums
-     * `RenderableHandle` (Shader / Pass / Mesh / Passes) and `TargetHandle`
-     * (Window / Texture). Swift and Kotlin extension files supply natural
-     * overloads (`renderer.render(shader, target)`,
-     * `renderer.render(pass, target)`, etc.) that wrap the concrete value
-     * into the matching enum variant invisibly, so callers never see the
-     * mobile-only mirror types.
-     */
     func load(renderable: RenderableHandle) async throws 
     
     func readStorage(shader: Shader, binding: String) async throws  -> Data
@@ -3011,6 +3000,17 @@ public protocol RendererProtocol: AnyObject, Sendable {
      */
     func readTexture(textureId: UInt64) async throws  -> Data
     
+    /**
+     * Single mobile `render` entry. Mirrors the canonical Rust
+     * `Renderer::render(&impl Renderable, &impl Target)`. Uniffi can't
+     * marshal `&impl Trait`, so the mobile shim takes the concrete enums
+     * `RenderableHandle` (Shader / Pass / Mesh / Passes) and `TargetHandle`
+     * (Window / Texture). Swift and Kotlin extension files supply natural
+     * overloads (`renderer.render(shader, target)`,
+     * `renderer.render(pass, target)`, etc.) that wrap the concrete value
+     * into the matching enum variant invisibly, so callers never see the
+     * mobile-only mirror types.
+     */
     func render(renderable: RenderableHandle, target: TargetHandle) throws 
     
     /**
@@ -3125,8 +3125,8 @@ open func createDepthTexture(size: Size)async throws  -> Texture  {
     
     /**
      * Allocate a storage-class texture, optionally pre-seeded with `data`.
-     * Mirrors the canonical `Renderer::create_storage_texture(impl Into<TextureInput>)`
-     * — uniffi can't marshal `impl Into`, so the mobile shim takes the
+     * Mirrors the canonical `Renderer::create_storage_texture(impl Into<TextureInput>)`.
+     * Uniffi can't marshal `impl Into`, so the mobile shim takes the
      * fields directly and the body builds a `TextureInput` from them.
      * `usage_bits = None` defaults to STORAGE | TEXTURE | COPY_SRC | COPY_DST.
      * Both trailing arguments default to `None`, so Swift and Kotlin may leave them out.
@@ -3149,7 +3149,7 @@ open func createStorageTexture(size: Size, format: TextureFormat, data: Data? = 
     
     /**
      * Single mobile entry point for texture creation. Mirrors the canonical
-     * Rust `Renderer::create_texture(impl Into<TextureInput>)` — uniffi
+     * Rust `Renderer::create_texture(impl Into<TextureInput>)`. Uniffi
      * can't marshal `impl Into`, so the mobile shim takes the input as a
      * concrete enum + an optional `TextureOptions`. Swift / Kotlin
      * extension files supply the natural overloads (e.g. `renderer.createTexture(bytes)`,
@@ -3192,17 +3192,6 @@ open func createTextureTarget(size: Size)async throws  -> TextureTarget  {
         )
 }
     
-    /**
-     * Single mobile `render` entry. Mirrors the canonical Rust
-     * `Renderer::render(&impl Renderable, &impl Target)` — uniffi can't
-     * marshal `&impl Trait`, so the mobile shim takes the concrete enums
-     * `RenderableHandle` (Shader / Pass / Mesh / Passes) and `TargetHandle`
-     * (Window / Texture). Swift and Kotlin extension files supply natural
-     * overloads (`renderer.render(shader, target)`,
-     * `renderer.render(pass, target)`, etc.) that wrap the concrete value
-     * into the matching enum variant invisibly, so callers never see the
-     * mobile-only mirror types.
-     */
 open func load(renderable: RenderableHandle)async throws   {
     return
         try  await uniffiRustCallAsync(
@@ -3258,6 +3247,17 @@ open func readTexture(textureId: UInt64)async throws  -> Data  {
         )
 }
     
+    /**
+     * Single mobile `render` entry. Mirrors the canonical Rust
+     * `Renderer::render(&impl Renderable, &impl Target)`. Uniffi can't
+     * marshal `&impl Trait`, so the mobile shim takes the concrete enums
+     * `RenderableHandle` (Shader / Pass / Mesh / Passes) and `TargetHandle`
+     * (Window / Texture). Swift and Kotlin extension files supply natural
+     * overloads (`renderer.render(shader, target)`,
+     * `renderer.render(pass, target)`, etc.) that wrap the concrete value
+     * into the matching enum variant invisibly, so callers never see the
+     * mobile-only mirror types.
+     */
 open func render(renderable: RenderableHandle, target: TargetHandle)throws   {try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
         uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_renderer_render(
@@ -6725,8 +6725,8 @@ public func FfiConverterTypePassTarget_lower(_ value: PassTarget) -> RustBuffer 
  * Mobile bindings carry a concrete enum because uniffi can't marshal
  * `&impl Renderable`. The Rust core stays generic; this enum exists so
  * Swift / Kotlin can call `renderer.render(shader, target)` (or `pass`,
- * `mesh`, list-of-passes) through a single mobile `render` entry point —
- * the Swift / Kotlin extension files supply natural overloads that wrap
+ * `mesh`, list-of-passes) through a single mobile `render` entry point.
+ * The Swift / Kotlin extension files supply natural overloads that wrap
  * the concrete handle into the matching variant invisibly.
  */
 
@@ -6739,13 +6739,13 @@ public enum RenderableHandle {
     case mesh(Mesh
     )
     /**
-     * Top-level [`Scene`](crate::Scene) — emits its ordered pass graph,
+     * Top-level [`Scene`](crate::Scene). Emits its ordered pass graph,
      * including the default Pass that holds the scene's `SceneObject`s.
      */
     case scene(Scene
     )
     /**
-     * Iterable of `Pass` instances — emits passes in order.
+     * Iterable of `Pass` instances. Emits passes in order.
      */
     case passes([Pass]
     )
@@ -6843,7 +6843,7 @@ public func FfiConverterTypeRenderableHandle_lower(_ value: RenderableHandle) ->
  * [`crate::scene::SceneObject`]. Mobile bindings carry a concrete enum
  * because uniffi can't marshal `&impl SceneObject`. The Rust core stays
  * generic; this enum exists so Swift / Kotlin can call `scene.add(...)`
- * or `pass.add(...)` through a single mobile entry point — the Swift /
+ * or `pass.add(...)` through a single mobile entry point. The Swift /
  * Kotlin extension files supply natural overloads that wrap the
  * concrete handle into the matching variant invisibly.
  */
@@ -7032,7 +7032,7 @@ public func FfiConverterTypeStorageAccess_lower(_ value: StorageAccess) -> RustB
 
 /**
  * Uniffi-marshallable union of every type that implements [`crate::Target`].
- * Same rationale as [`RenderableHandle`] — uniffi can't marshal
+ * Same rationale as [`RenderableHandle`]: uniffi can't marshal
  * `&impl Target`, so the mobile `render` entry takes this enum and the
  * implementation matches and dispatches to the typed `Renderer::render`
  * underneath.
@@ -9393,16 +9393,16 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_renderer_createdepthtexture() != 57765) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_renderer_createstoragetexture() != 24062) {
+    if (uniffi_fragmentcolor_checksum_method_renderer_createstoragetexture() != 16135) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_renderer_createtexture() != 45153) {
+    if (uniffi_fragmentcolor_checksum_method_renderer_createtexture() != 23129) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_renderer_createtexturetarget() != 63315) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_renderer_load() != 44570) {
+    if (uniffi_fragmentcolor_checksum_method_renderer_load() != 11361) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_renderer_readstorage() != 16997) {
@@ -9411,7 +9411,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_renderer_readtexture() != 32882) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_renderer_render() != 30226) {
+    if (uniffi_fragmentcolor_checksum_method_renderer_render() != 10705) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_renderer_unregistertexture() != 23131) {

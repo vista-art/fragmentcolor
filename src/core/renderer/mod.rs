@@ -118,7 +118,7 @@ impl Renderer {
     }
 
     /// Create a [Texture](crate::Texture) from a unified spec. The single
-    /// entry point for every shape — bare bytes / path / URL / file (encoded),
+    /// entry point for every shape: bare bytes / path / URL / file (encoded),
     /// `(input, [w, h])` or `(input, Size)` for raw pixel bytes,
     /// `(input, TextureFormat)` for an explicit format override,
     /// `(input, TextureOptions)` for full control, or a `Mipmap`
@@ -203,8 +203,8 @@ impl Renderer {
     /// GPU-side buffer (the registry is populated lazily on first bind).
     ///
     /// This is intentionally explicit and async because the underlying
-    /// `map_async` is async on every platform — keeping it visible at the
-    /// call site so callers don't accidentally pay a GPU sync per frame.
+    /// `map_async` is async on every platform. Keeping it visible at the
+    /// call site stops callers from paying a GPU sync per frame by accident.
     /// [`Shader::get`] stays the cheap read of what was last set on the CPU side.
     #[lsp_doc("docs/api/core/renderer/read_storage.md")]
     pub async fn read_storage(

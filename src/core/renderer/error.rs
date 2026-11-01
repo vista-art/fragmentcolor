@@ -79,7 +79,7 @@ pub enum RendererError {
     TextureNotFoundError(crate::texture::TextureId),
     /// A storage binding `read_storage` finds no buffer for.
     #[error(
-        "Storage binding '{0}' not found — either the shader doesn't declare it or no render pass has uploaded it yet"
+        "Storage binding '{0}' not found. The shader doesn't declare it, or no render pass has uploaded it yet"
     )]
     StorageBindingNotFound(String),
     /// A depth target whose sample count differs from the color attachment's.

@@ -237,7 +237,7 @@ impl Renderer {
         })
     }
 
-    // Storage texture — single entry, optional data + usage kwargs.
+    // Storage texture: single entry, optional data + usage kwargs.
     // `usage_bits` is the old name of `usage` and warns when used.
     #[pyo3(
         name = "create_storage_texture",
@@ -266,7 +266,7 @@ impl Renderer {
 
     /// Read back the mip-0 contents of a registered texture as tightly-packed
     /// bytes in the texture's native format. Blocks the Python thread
-    /// synchronously (via `pollster::block_on`) — the async readback is the
+    /// synchronously (via `pollster::block_on`). The async readback is the
     /// canonical implementation; the blocking wrapper exists because Python
     /// does not have a native async runtime that integrates with the GPU
     /// device loop.

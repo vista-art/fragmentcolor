@@ -1,4 +1,4 @@
-# AGENTS.md — Renderer rules (short)
+# AGENTS.md: Renderer rules (short)
 
 Core invariants
 - Draw the meshes attached to a Shader with one RenderPipeline per vertex layout. Meshes with equal layouts share a pipeline, and the draw loop and the blend phase switch pipelines when a mesh's layout differs from the one before. A shader's pipelines have the same bind group layouts, which wgpu dedupes, so one set of bind groups serves them all: `ShaderState::bind` sets them once for the shader, and `switch` sets only the pipeline and the native immediates, which a pipeline of another layout clears.

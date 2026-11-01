@@ -50,8 +50,8 @@ impl RenderContext {
     /// Borrow the lazy 1x1 PBR fallback textures, creating them on first use.
     /// Used to fill the default PBR shader's texture-map bindings when a
     /// `Material::pbr` doesn't supply its own texture for the slot. Pure
-    /// sync calls against the wgpu device — no FC texture registry, no
-    /// async hop.
+    /// sync calls against the wgpu device, with no FC texture registry
+    /// and no async hop.
     pub(super) fn pbr_defaults(&self) -> Arc<PbrDefaults> {
         if let Some(existing) = self.pbr_defaults.read().clone() {
             return existing;
