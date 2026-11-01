@@ -1318,6 +1318,24 @@ fn features_no_device_opens_fail_at_new() {
     }
 }
 
+// Story: a storage texture in a format that needs a feature FragmentColor doesn't request,
+// such as r64uint, fails at Shader::new and names the feature, even where the shader
+// only declares it, which naga takes with no capability.
+#[test]
+fn storage_formats_no_device_opens_fail_at_new() {
+    let source = "@group(0) @binding(0) var counts: texture_storage_2d<r64uint, atomic>;
+@compute @workgroup_size(1) fn cs_main() { _ = textureDimensions(counts); }";
+
+    let error = Shader::new(source).expect_err("r64uint needs TEXTURE_INT64_ATOMIC");
+
+    let text = error.to_string();
+    assert!(matches!(error, ShaderError::ParseError(_)), "{text}");
+    assert!(
+        text.contains("`counts` is a storage texture of R64Uint, which needs TEXTURE_INT64_ATOMIC"),
+        "{text}"
+    );
+}
+
 /// Whether naga takes `source` with every capability it knows,
 /// so a refusal under fewer capabilities comes from a missing one.
 fn is_valid_anywhere(source: &str) -> bool {

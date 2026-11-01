@@ -5,6 +5,7 @@ use super::error::Source;
 use super::{Diagnostic, PushEntry, ShaderError, ShaderHash, StorageEntry};
 use super::{Uniform, UniformData, convert_type};
 use crate::core::renderer::device::CANDIDATES;
+use crate::texture::TextureStorageFormat;
 use naga::front::wgsl::{Frontend, Options};
 use naga::{
     AddressSpace, Module,
@@ -195,6 +196,30 @@ fn writes_storage(module: &Module, variable: &naga::GlobalVariable) -> bool {
     }
 }
 
+/// Refuses a storage texture whose format needs a wgpu feature outside `CANDIDATES`,
+/// such as `r64uint`, which needs `TEXTURE_INT64_ATOMIC`, so no device FragmentColor opens binds it.
+fn check_storage(
+    module: &Module,
+    variable: &naga::GlobalVariable,
+    name: &str,
+) -> Result<(), ShaderError> {
+    let naga::TypeInner::Image {
+        class: naga::ImageClass::Storage { format, .. },
+        ..
+    } = module.types[variable.ty].inner
+    else {
+        return Ok(());
+    };
+    let format = TextureStorageFormat::from_naga(format).to_wgpu();
+    let missing = format.required_features() - CANDIDATES;
+    match missing.is_empty() {
+        true => Ok(()),
+        false => Err(ShaderError::ParseError(format!(
+            "`{name}` is a storage texture of {format:?}, which needs {missing}, a feature FragmentColor doesn't request"
+        ))),
+    }
+}
+
 /// Reflects the module's bindings, leaving out the `filled` globals, which the renderer fills.
 pub(super) fn parse_uniforms(
     module: &Module,
@@ -277,6 +302,7 @@ pub(super) fn parse_uniforms(
                 "`{uniform_name}` is writable storage, which a @vertex entry point can't use"
             )));
         }
+        check_storage(module, variable, &uniform_name)?;
 
         let ty = &module.types[variable.ty];
 
