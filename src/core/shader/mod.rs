@@ -5,7 +5,6 @@ use crate::geometry::MeshObject;
 use crate::texture::{Registration, TextureId};
 use crate::{AlphaMode, Mesh, PassObject, Renderable, Vertex};
 use dashmap::DashMap;
-use error::Source;
 pub use error::{Diagnostic, ShaderError, SourceLocation};
 use lsp_doc::lsp_doc;
 use naga::{
@@ -25,6 +24,7 @@ use wasm_bindgen::prelude::*;
 
 mod source;
 use source::defaults::*;
+use source::joined::Joined;
 pub(crate) mod uniforms;
 pub(crate) use uniforms::*;
 pub use uniforms::{
@@ -476,8 +476,19 @@ impl ShaderObject {
 
     /// Create a Shader object from a WGSL source.
     pub fn wgsl(source: &str) -> Result<Self, ShaderError> {
-        let module = parse_wgsl(source)?;
-        let info = validate_module(&module, Some(Source::wgsl(source)))?;
+        Self::compile(Joined::from(source))
+    }
+
+    /// Create a Shader object from WGSL `parts`, joined in order,
+    /// with the directives each later part opens with at the top.
+    pub(crate) fn join(parts: &[&str]) -> Result<Self, ShaderError> {
+        Self::compile(Joined::join(parts))
+    }
+
+    /// Create a Shader object from the joined WGSL `wgsl`.
+    fn compile(wgsl: Joined) -> Result<Self, ShaderError> {
+        let module = wgsl.parse()?;
+        let info = wgsl.validate(&module)?;
         rewrites::immediates::check_immediates(&module)?;
         check_samplers(&module, &info)?;
 
@@ -488,7 +499,7 @@ impl ShaderObject {
             .unwrap_or_default();
         let uniforms = parse_uniforms(&module, &info, &filled)?;
         let storage = RwLock::new(UniformStorage::new(&uniforms)?);
-        let hash = hash(source);
+        let hash = hash(&wgsl.text);
 
         let mut total_bytes = 0;
         for uniform in uniforms.values() {
@@ -502,7 +513,7 @@ impl ShaderObject {
             id: NEXT_ID.fetch_add(1, Ordering::Relaxed),
             hash,
             module,
-            source: source.to_string(),
+            source: wgsl.text,
             padded: OnceLock::new(),
             storage,
             total_bytes,

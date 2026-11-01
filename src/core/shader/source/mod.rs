@@ -20,6 +20,7 @@ pub(crate) mod embedded;
 
 pub(super) mod defaults;
 mod glsl;
+pub(super) mod joined;
 
 /// Async resolve: fetch URLs / slugs / read paths asynchronously, dedup by
 /// source hash, concat in order, then compile as WGSL (or GLSL for a single
@@ -236,8 +237,7 @@ fn finish_resolve(resolved: Vec<Resolved>) -> Result<Arc<ShaderObject>, ShaderEr
         }
     }
 
-    let merged = bodies.join("\n\n");
-    Ok(Arc::new(ShaderObject::wgsl(&merged)?))
+    Ok(Arc::new(ShaderObject::join(&bodies)?))
 }
 
 #[cfg(test)]

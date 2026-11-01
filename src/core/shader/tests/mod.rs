@@ -1345,6 +1345,104 @@ fn naga_refuses_the_subgroups_directive() {
     );
 }
 
+// Story: a part after the first may open with `enable`, `requires` and `diagnostic`
+// directives, which move to the top of the joined source, where WGSL takes them.
+#[test]
+fn later_parts_bring_their_directives() {
+    let helper = "enable primitive_index;
+diagnostic(off, derivative_uniformity);
+requires readonly_and_readwrite_storage_textures;
+fn shade(index: u32) -> vec4<f32> { return vec4<f32>(f32(index)); }";
+    let main = after_vertex(
+        "@fragment fn fs_main(@builtin(primitive_index) index: u32) -> @location(0) vec4<f32> { return shade(index); }",
+    );
+
+    let shader = Shader::new([main.as_str(), helper]);
+
+    assert!(shader.is_ok(), "{:?}", shader.err());
+    let alone = Shader::new(format!("{main}\n\n{helper}").as_str());
+    assert!(alone.is_err(), "one source keeps WGSL's directive order");
+}
+
+/// The line and column, counted from 1 in characters, where `needle` starts in `text`.
+fn find_place(text: &str, needle: &str) -> (u32, u32) {
+    let at = text.find(needle).expect("the needle");
+    let before = &text[..at];
+    let line = before.matches('\n').count() + 1;
+    let column = before.rsplit('\n').next().unwrap_or(before).chars().count() + 1;
+    (line as u32, column as u32)
+}
+
+/// The variant name and the diagnostic of a shader naga refuses.
+fn take_diagnostic(result: Result<Shader, ShaderError>) -> (&'static str, Diagnostic) {
+    match result {
+        Err(ShaderError::WgslParseError(diagnostic)) => ("parse", diagnostic),
+        Err(ShaderError::ValidationError(diagnostic)) => ("validation", diagnostic),
+        Err(other) => panic!("expected a naga report, got {other}"),
+        Ok(_) => panic!("expected a naga report"),
+    }
+}
+
+// Story: naga's reports on composed parts point at the line and column of the parts as
+// written, joined in order, whether the error sits in the code of a part whose
+// directives moved, or in a moved directive itself.
+#[test]
+fn reports_point_where_the_parts_wrote_them() {
+    let first = "\n// main\nfn main_color() -> vec4<f32> { return vec4<f32>(1.0); }\n";
+    let code = "\nenable primitive_index;\nfn broken() -> f32 {\n  return 1.0 +;\n}\n";
+    let directive = "\nenable primitive_index, subgroups;\nfn helper() {}\n";
+
+    for (part, needle) in [(code, ";\n}"), (directive, "subgroups;")] {
+        let written = format!("{first}\n\n{part}");
+        let (line, column) = find_place(&written, needle);
+
+        let (kind, diagnostic) = take_diagnostic(Shader::new([first, part]));
+
+        assert_eq!(kind, "parse", "{diagnostic}");
+        let place = diagnostic.locations.first().expect("a place");
+        assert_eq!((place.line, place.column), (line, column), "{diagnostic}");
+        assert!(
+            diagnostic
+                .message
+                .contains(&format!("wgsl:{line}:{column}")),
+            "{diagnostic}"
+        );
+    }
+}
+
+// Story: a report on composed parts reads exactly as naga's report on the parts joined
+// as written, when that text is one valid source too, as it is after a first part of
+// comments alone. That holds for parse errors, validation errors and moved directives.
+#[test]
+fn moved_reports_match_the_written_source() {
+    let first = "// Shared helpers\n// for the shaders below.";
+    let cases = [
+        (
+            "enable primitive_index;\nfn broken() -> f32 {\n  return 1.0 +;\n}",
+            "parse",
+        ),
+        (
+            "enable primitive_index;\n\n@group(0) @binding(0) var<uniform> flag: bool;",
+            "validation",
+        ),
+        (
+            "enable primitive_index, subgroups;\nfn helper() {}",
+            "parse",
+        ),
+    ];
+
+    for (part, kind) in cases {
+        let written = format!("{first}\n\n{part}");
+        let (written_kind, expected) = take_diagnostic(Shader::new(written.as_str()));
+
+        let (found_kind, found) = take_diagnostic(Shader::new([first, part]));
+
+        assert_eq!((written_kind, found_kind), (kind, kind), "{expected}");
+        assert!(!expected.locations.is_empty(), "{expected}");
+        assert_eq!(found, expected);
+    }
+}
+
 // Story: an immediate root a uniform can't hold fails at Shader::new on every device,
 // since a device without native immediates binds it as a uniform.
 #[test]

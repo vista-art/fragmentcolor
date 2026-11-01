@@ -156,10 +156,10 @@ impl Diagnostic {
         }
     }
 
-    /// naga's report on a module its validator refuses, with the places located
-    /// in `source` when the module came from it.
-    pub(crate) fn from_validation(
-        error: &naga::WithSpan<naga::valid::ValidationError>,
+    /// naga's report on an error that holds its places, such as a refused module,
+    /// with the places located in `source` when the error came from that source.
+    pub(crate) fn from_spans<E: std::error::Error>(
+        error: &naga::WithSpan<E>,
         source: Option<Source<'_>>,
     ) -> Self {
         match source {

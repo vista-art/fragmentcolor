@@ -21,7 +21,7 @@ fn read_capabilities() -> Capabilities {
 }
 
 /// A WGSL parser that takes only what a device may support.
-fn create_parser() -> Frontend {
+pub(super) fn create_parser() -> Frontend {
     let mut options = Options::new();
     options.capabilities = read_capabilities();
     Frontend::new_with_options(options)
@@ -51,7 +51,7 @@ pub(crate) fn validate_module(
 ) -> Result<ModuleInfo, ShaderError> {
     match create_validator().validate(module) {
         Ok(info) => Ok(info),
-        Err(error) => Err(ShaderError::ValidationError(Diagnostic::from_validation(
+        Err(error) => Err(ShaderError::ValidationError(Diagnostic::from_spans(
             &error, source,
         ))),
     }
