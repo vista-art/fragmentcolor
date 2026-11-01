@@ -1351,20 +1351,36 @@ fn features_no_device_opens_fail_at_new() {
 
 // Story: a storage texture in a format that needs a feature FragmentColor doesn't request,
 // such as r64uint, fails at Shader::new and names the feature, even where the shader
-// only declares it, which naga takes with no capability.
+// only declares it, which naga takes with no capability. It is a ValidationError that
+// points at the declaration, as naga's refusal of `textureAtomicMax` on it is, in a
+// single source and in a later part of a composed one, below a directive that moved.
 #[test]
 fn storage_formats_no_device_opens_fail_at_new() {
-    let source = "@group(0) @binding(0) var counts: texture_storage_2d<r64uint, atomic>;
+    let declared = "@group(0) @binding(0) var counts: texture_storage_2d<r64uint, atomic>;
 @compute @workgroup_size(1) fn cs_main() { _ = textureDimensions(counts); }";
+    let first = "// helpers\nfn helper() {}";
+    let part = format!("enable primitive_index;\n{declared}");
+    let written = format!("{first}\n\n{part}");
 
-    let error = Shader::new(source).expect_err("r64uint needs TEXTURE_INT64_ATOMIC");
+    let cases = [
+        (Shader::new(declared), declared.to_string()),
+        (Shader::new([first, part.as_str()]), written),
+    ];
+    for (result, text) in cases {
+        let (kind, diagnostic) = take_diagnostic(result);
 
-    let text = error.to_string();
-    assert!(matches!(error, ShaderError::ParseError(_)), "{text}");
-    assert!(
-        text.contains("`counts` is a storage texture of R64Uint, which needs TEXTURE_INT64_ATOMIC"),
-        "{text}"
-    );
+        assert_eq!(kind, "validation", "{diagnostic}");
+        assert!(
+            diagnostic.message.contains(
+                "`counts` is a storage texture of R64Uint, which needs TEXTURE_INT64_ATOMIC"
+            ),
+            "{diagnostic}"
+        );
+        let place = diagnostic.locations.first().expect("a place");
+        let (line, column) = find_place(&text, "var counts");
+        assert_eq!((place.line, place.column), (line, column), "{diagnostic}");
+        assert_eq!(place.label, "needs TEXTURE_INT64_ATOMIC");
+    }
 }
 
 /// Whether naga takes `source` with every capability it knows,

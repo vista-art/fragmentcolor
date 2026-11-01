@@ -7,7 +7,7 @@ use crate::core::shader::error::{Diagnostic, Source};
 use crate::core::shader::reflection::{create_parser, create_validator};
 use crate::core::shader::{parse_wgsl, validate_module};
 use naga::front::wgsl::ParseError;
-use naga::valid::{ModuleInfo, ValidationError};
+use naga::valid::ModuleInfo;
 use naga::{Module, Span, WithSpan};
 use std::error::Error;
 use std::fmt;
@@ -107,14 +107,21 @@ impl Joined {
     /// Validates `module`, parsed from the joined text,
     /// or returns naga's report, which points into the parts as written.
     pub(crate) fn validate(&self, module: &Module) -> Result<ModuleInfo, ShaderError> {
-        let Some(moves) = &self.moves else {
+        if self.moves.is_none() {
             return validate_module(module, Some(Source::wgsl(&self.text)));
-        };
+        }
         match create_validator().validate(module) {
             Ok(info) => Ok(info),
-            Err(error) => Err(ShaderError::ValidationError(
-                moves.report_validation(&error),
-            )),
+            Err(error) => Err(ShaderError::ValidationError(self.report(&error))),
+        }
+    }
+
+    /// The report on `error`, whose places are in the joined text,
+    /// with each place moved to where the parts as written hold it.
+    pub(crate) fn report<E: Error + Clone>(&self, error: &WithSpan<E>) -> Diagnostic {
+        match &self.moves {
+            Some(moves) => moves.report_validation(error),
+            None => Diagnostic::from_spans(error, Some(Source::wgsl(&self.text))),
         }
     }
 }
@@ -129,8 +136,8 @@ impl Moves {
         Diagnostic::from_spans(&moved, Some(Source::wgsl(&self.written)))
     }
 
-    /// naga's report on a validation error, at the places in `written`.
-    fn report_validation(&self, error: &WithSpan<ValidationError>) -> Diagnostic {
+    /// The report on an error that holds its places, at the places in `written`.
+    fn report_validation<E: Error + Clone>(&self, error: &WithSpan<E>) -> Diagnostic {
         let moved = self.relocate(error.as_inner().clone(), error.spans().cloned());
         Diagnostic::from_spans(&moved, Some(Source::wgsl(&self.written)))
     }

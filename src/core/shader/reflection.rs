@@ -2,13 +2,14 @@
 //! into the uniforms, textures and buffers a shader holds.
 
 use super::error::Source;
+use super::source::joined::Joined;
 use super::{Diagnostic, PushEntry, ShaderError, ShaderHash, StorageEntry};
 use super::{Uniform, UniformData, convert_type};
 use crate::core::renderer::device::CANDIDATES;
 use crate::texture::TextureStorageFormat;
 use naga::front::wgsl::{Frontend, Options};
 use naga::{
-    AddressSpace, Module,
+    AddressSpace, Module, WithSpan,
     valid::{Capabilities, ModuleInfo, ValidationFlags, Validator},
 };
 use sha2::{Digest, Sha256};
@@ -196,35 +197,56 @@ fn writes_storage(module: &Module, variable: &naga::GlobalVariable) -> bool {
     }
 }
 
+/// A storage texture in a format that needs a wgpu feature FragmentColor doesn't request.
+#[derive(Debug, Clone, thiserror::Error)]
+#[error(
+    "`{name}` is a storage texture of {format}, which needs {missing}, a feature FragmentColor doesn't request"
+)]
+struct StorageFeature {
+    name: String,
+    format: String,
+    missing: String,
+}
+
 /// Refuses a storage texture whose format needs a wgpu feature outside `CANDIDATES`,
 /// such as `r64uint`, which needs `TEXTURE_INT64_ATOMIC`, so no device FragmentColor opens binds it.
+/// The report points at the declaration, as naga's report on a feature a call needs does.
 fn check_storage(
     module: &Module,
-    variable: &naga::GlobalVariable,
+    handle: naga::Handle<naga::GlobalVariable>,
     name: &str,
+    wgsl: &Joined,
 ) -> Result<(), ShaderError> {
     let naga::TypeInner::Image {
         class: naga::ImageClass::Storage { format, .. },
         ..
-    } = module.types[variable.ty].inner
+    } = module.types[module.global_variables[handle].ty].inner
     else {
         return Ok(());
     };
     let format = TextureStorageFormat::from_naga(format).to_wgpu();
     let missing = format.required_features() - CANDIDATES;
-    match missing.is_empty() {
-        true => Ok(()),
-        false => Err(ShaderError::ParseError(format!(
-            "`{name}` is a storage texture of {format:?}, which needs {missing}, a feature FragmentColor doesn't request"
-        ))),
+    if missing.is_empty() {
+        return Ok(());
     }
+    let label = format!("needs {missing}");
+    let refusal = StorageFeature {
+        name: name.to_string(),
+        format: format!("{format:?}"),
+        missing: missing.to_string(),
+    };
+    let span = module.global_variables.get_span(handle);
+    let error = WithSpan::new(refusal).with_span(span, label);
+    Err(ShaderError::ValidationError(wgsl.report(&error)))
 }
 
 /// Reflects the module's bindings, leaving out the `filled` globals, which the renderer fills.
+/// A refusal that points at a declaration reports its place in `wgsl`, the text the module came from.
 pub(super) fn parse_uniforms(
     module: &Module,
     info: &ModuleInfo,
     filled: &[naga::Handle<naga::GlobalVariable>],
+    wgsl: &Joined,
 ) -> Result<HashMap<String, Uniform>, ShaderError> {
     let mut uniforms = HashMap::new();
     let mut slots: HashMap<(u32, u32), String> = HashMap::new();
@@ -302,7 +324,7 @@ pub(super) fn parse_uniforms(
                 "`{uniform_name}` is writable storage, which a @vertex entry point can't use"
             )));
         }
-        check_storage(module, variable, &uniform_name)?;
+        check_storage(module, handle, &uniform_name, wgsl)?;
 
         let ty = &module.types[variable.ty];
 

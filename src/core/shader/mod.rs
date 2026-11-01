@@ -468,7 +468,7 @@ impl ShaderObject {
             .as_ref()
             .map(LightRoots::handles)
             .unwrap_or_default();
-        let uniforms = parse_uniforms(&module, &info, &filled)?;
+        let uniforms = parse_uniforms(&module, &info, &filled, &wgsl)?;
         let storage = RwLock::new(UniformStorage::new(&uniforms)?);
         let hash = hash(&wgsl.text);
 
