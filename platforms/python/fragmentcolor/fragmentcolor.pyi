@@ -365,6 +365,10 @@ class Renderer:
         awaiting, so callers don't have to spin their own poll loop. On Web the
         browser schedules the callback; the helper just awaits.
 
+        The result holds exactly as many bytes as the binding spans, also for a
+        root of `f16` values, which can span 2 or 6 bytes and reads back as 2-byte
+        IEEE halves.
+
         Returns `RendererError::StorageBindingNotFound` when the shader does not
         declare a storage binding called `binding`, or when no render pass has yet
         materialized the GPU-side buffer (storage buffers are allocated lazily on
@@ -566,7 +570,7 @@ class Shader:
 
     It takes a WGSL or GLSL shader source as input, parses it, validates it, and exposes the uniforms as keys.
 
-    `Shader::new` refuses a source that no device FragmentColor opens can run, with a `ShaderError` that names the problem: a feature outside the set FragmentColor requests (such as `f16` or `f64`), two globals on one `@group` and `@binding` (a `lights` root included), writable storage in a `@vertex` entry point, an immediate root that breaks the uniform layout rules, a filtering `sampler` that samples a depth texture, and two vertex inputs with one name, which would read one mesh attribute. A shader that passes can still be one a given device can't run, which `Renderer::render` refuses, as [Device limits](https://fragmentcolor.org/api/core/shader#device-limits) describes.
+    `Shader::new` refuses a source that no device FragmentColor opens can run, with a `ShaderError` that names the problem: a feature outside the set FragmentColor requests (such as ray queries or `f64`), two globals on one `@group` and `@binding` (a `lights` root included), writable storage in a `@vertex` entry point, an immediate root that breaks the uniform layout rules, a filtering `sampler` that samples a depth texture, and two vertex inputs with one name, which would read one mesh attribute. A shader that passes can still be one a given device can't run, which `Renderer::render` refuses, as [Device limits](https://fragmentcolor.org/api/core/shader#device-limits) describes.
 
     `Shader::new` accepts a source string, a registry slug like `"sdf2d/circle"`, an `https://` URL, a local file path, or an array mixing any of those. Array parts are deduplicated by hash and concatenated in order, so you can pull pure helper functions from the public registry at `https://fragmentcolor.org/shaders/` into your own shader without copy-pasting. Override the registry base with [Shader::set_registry](https://fragmentcolor.org/api/core/shader#set_registry).
 
@@ -779,7 +783,7 @@ class Shader:
 
         The uniform's declared WGSL type decides how the value is read, so a call behaves the same in every language:
 
-        - A number fits an `f32`, `i32`, or `u32` uniform. Integer uniforms take whole numbers in range.
+        - A number fits an `f32`, `f16`, `i32`, or `u32` uniform. Integer uniforms take whole numbers in range. A float uniform rounds the number to its type, so an `f16` one keeps the nearest `f16`, and NaN, infinities and numbers past the type's range throw.
         - A vector takes exactly as many numbers as it has components. A `mat2x2`, `mat3x3`, or `mat4x4` takes 4, 9, or 16.
         - A `Texture` created by a `Renderer` binds to a texture uniform, a `texture_external` one included.
         - Raw bytes replace a whole storage-buffer or push-constant root: a byte slice in Rust, a `Uint8Array` in JavaScript, `bytes` (or a `bytearray` or `memoryview`) in Python, `Data` in Swift, or a `ByteArray` in Kotlin. The byte count must equal the root's size, and any other length throws.
@@ -790,7 +794,9 @@ class Shader:
         from fragmentcolor import Renderer, Shader
         r = Renderer()
         shader = Shader(\"\"\"
+        enable f16;
         @group(0) @binding(0) var<uniform> resolution: vec2<f32>;
+        @group(0) @binding(1) var<uniform> gain: f16;
 
         struct VOut { @builtin(position) pos: vec4<f32> };
         @vertex fn vs_main(@builtin(vertex_index) i: u32) -> VOut {
@@ -799,12 +805,13 @@ class Shader:
           out.pos = vec4<f32>(p[i], 0., 1.);
           return out;
         }
-        @fragment fn main() -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
+        @fragment fn main() -> @location(0) vec4<f32> { return vec4<f32>(f32(gain), 0., 0., 1.); }
 
         \"\"\")
 
         # Set scalars/vectors on declared uniforms
         shader.set("resolution", [800.0, 600.0])
+        shader.set("gain", 0.5)
         ```
         """
     def get(self, key: str) -> bool | int | float | bytes | _SamplerInfo | _TextureMeta | list[float] | list[int]:
@@ -815,6 +822,8 @@ class Shader:
         those bytes back for that root. Set a struct one field at a time
         (`"light.color"`) and an array one element at a time (`"weights[0]"`).
         Only a storage-buffer or push-constant root takes its whole bytes.
+
+        An `f16` uniform reads back as `f32` numbers that hold the value rounded to `f16`, so `0.1` reads back as `0.0999755859375`.
 
         A texture slot reads back the id of what it binds. A `Material` map's slot
         holds the map's id from the setter call on, before any `Renderer` loads it.
@@ -863,7 +872,7 @@ class Shader:
 
         `add_mesh` checks every vertex and instance of the mesh against the shader's `@location` inputs and returns `Result<(), ShaderError>`.
 
-        - An attribute set from numbers takes the type the shader declares at its location: floats for `f32` and `vecN<f32>`, integers for `u32`, `i32` and their vectors when every value is whole and fits.
+        - An attribute set from numbers takes the type the shader declares at its location: floats for `f32`, `f16` and their vectors, integers for `u32`, `i32` and their vectors when every value is whole and fits. The mesh holds 32-bit floats for an `f16` input, and the GPU converts them.
         - On success, the mesh is attached, its attributes keep those types for as long as the mesh lives, and it is drawn when this shader renders.
         - On a missing attribute or a value that doesn't fit, the error names the attribute, the declared type and the value, or the vertex or instance that lacks it. The mesh isn't attached and records no type.
         - A shader that declares another type for an attribute an earlier shader already typed on this mesh fails to attach.

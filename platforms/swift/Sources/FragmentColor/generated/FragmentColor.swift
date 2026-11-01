@@ -8158,6 +8158,7 @@ public func FfiConverterTypeTextureStorageFormat_lower(_ value: TextureStorageFo
  * A uniform value, as `Shader::get` reads it back.
  * A helper names it to forward one value to `Shader::set` on several shaders.
  * It is the plumbing behind `impl Into<UniformData>`, like `ShaderInput`, with no page of its own.
+ * The `Half` variants are the shapes of `f16` slots, which `get` reads back as the `f32` variant.
  */
 
 public indirect enum UniformData: Equatable, Hashable {
@@ -8229,6 +8230,41 @@ public indirect enum UniformData: Equatable, Hashable {
      * Mat4: 16 elements (flattened 4x4, column-major)
      */
     case mat4([Float]
+    )
+    /**
+     * Half: an `f16`, held as the `f32` it rounds to
+     */
+    case half(Float
+    )
+    /**
+     * HalfVec2: exactly 2 elements of a `vec2<f16>`
+     */
+    case halfVec2([Float]
+    )
+    /**
+     * HalfVec3: exactly 3 elements of a `vec3<f16>`
+     */
+    case halfVec3([Float]
+    )
+    /**
+     * HalfVec4: exactly 4 elements of a `vec4<f16>`
+     */
+    case halfVec4([Float]
+    )
+    /**
+     * HalfMat2: 4 elements of a `mat2x2<f16>`, column-major
+     */
+    case halfMat2([Float]
+    )
+    /**
+     * HalfMat3: 9 elements of a `mat3x3<f16>`, column-major
+     */
+    case halfMat3([Float]
+    )
+    /**
+     * HalfMat4: 16 elements of a `mat4x4<f16>`, column-major
+     */
+    case halfMat4([Float]
     )
     case texture(TextureMeta
     )
@@ -8330,25 +8366,46 @@ public struct FfiConverterTypeUniformData: FfiConverterRustBuffer {
         case 16: return .mat4(try FfiConverterSequenceFloat.read(from: &buf)
         )
         
-        case 17: return .texture(try FfiConverterTypeTextureMeta.read(from: &buf)
+        case 17: return .half(try FfiConverterFloat.read(from: &buf)
         )
         
-        case 18: return .sampler(try FfiConverterTypeSamplerInfo.read(from: &buf)
+        case 18: return .halfVec2(try FfiConverterSequenceFloat.read(from: &buf)
         )
         
-        case 19: return .array(try FfiConverterSequenceTypeArrayElement.read(from: &buf)
+        case 19: return .halfVec3(try FfiConverterSequenceFloat.read(from: &buf)
         )
         
-        case 20: return .`struct`(try FfiConverterTypeStructShape.read(from: &buf)
+        case 20: return .halfVec4(try FfiConverterSequenceFloat.read(from: &buf)
         )
         
-        case 21: return .storage(try FfiConverterSequenceTypeStorageEntry.read(from: &buf)
+        case 21: return .halfMat2(try FfiConverterSequenceFloat.read(from: &buf)
         )
         
-        case 22: return .pushConstant(try FfiConverterSequenceTypePushEntry.read(from: &buf)
+        case 22: return .halfMat3(try FfiConverterSequenceFloat.read(from: &buf)
         )
         
-        case 23: return .bytes(try FfiConverterData.read(from: &buf)
+        case 23: return .halfMat4(try FfiConverterSequenceFloat.read(from: &buf)
+        )
+        
+        case 24: return .texture(try FfiConverterTypeTextureMeta.read(from: &buf)
+        )
+        
+        case 25: return .sampler(try FfiConverterTypeSamplerInfo.read(from: &buf)
+        )
+        
+        case 26: return .array(try FfiConverterSequenceTypeArrayElement.read(from: &buf)
+        )
+        
+        case 27: return .`struct`(try FfiConverterTypeStructShape.read(from: &buf)
+        )
+        
+        case 28: return .storage(try FfiConverterSequenceTypeStorageEntry.read(from: &buf)
+        )
+        
+        case 29: return .pushConstant(try FfiConverterSequenceTypePushEntry.read(from: &buf)
+        )
+        
+        case 30: return .bytes(try FfiConverterData.read(from: &buf)
         )
         
         default: throw UniffiInternalError.unexpectedEnumCase
@@ -8439,38 +8496,73 @@ public struct FfiConverterTypeUniformData: FfiConverterRustBuffer {
             FfiConverterSequenceFloat.write(v1, into: &buf)
             
         
-        case let .texture(v1):
+        case let .half(v1):
             writeInt(&buf, Int32(17))
+            FfiConverterFloat.write(v1, into: &buf)
+            
+        
+        case let .halfVec2(v1):
+            writeInt(&buf, Int32(18))
+            FfiConverterSequenceFloat.write(v1, into: &buf)
+            
+        
+        case let .halfVec3(v1):
+            writeInt(&buf, Int32(19))
+            FfiConverterSequenceFloat.write(v1, into: &buf)
+            
+        
+        case let .halfVec4(v1):
+            writeInt(&buf, Int32(20))
+            FfiConverterSequenceFloat.write(v1, into: &buf)
+            
+        
+        case let .halfMat2(v1):
+            writeInt(&buf, Int32(21))
+            FfiConverterSequenceFloat.write(v1, into: &buf)
+            
+        
+        case let .halfMat3(v1):
+            writeInt(&buf, Int32(22))
+            FfiConverterSequenceFloat.write(v1, into: &buf)
+            
+        
+        case let .halfMat4(v1):
+            writeInt(&buf, Int32(23))
+            FfiConverterSequenceFloat.write(v1, into: &buf)
+            
+        
+        case let .texture(v1):
+            writeInt(&buf, Int32(24))
             FfiConverterTypeTextureMeta.write(v1, into: &buf)
             
         
         case let .sampler(v1):
-            writeInt(&buf, Int32(18))
+            writeInt(&buf, Int32(25))
             FfiConverterTypeSamplerInfo.write(v1, into: &buf)
             
         
         case let .array(v1):
-            writeInt(&buf, Int32(19))
+            writeInt(&buf, Int32(26))
             FfiConverterSequenceTypeArrayElement.write(v1, into: &buf)
             
         
         case let .`struct`(v1):
-            writeInt(&buf, Int32(20))
+            writeInt(&buf, Int32(27))
             FfiConverterTypeStructShape.write(v1, into: &buf)
             
         
         case let .storage(v1):
-            writeInt(&buf, Int32(21))
+            writeInt(&buf, Int32(28))
             FfiConverterSequenceTypeStorageEntry.write(v1, into: &buf)
             
         
         case let .pushConstant(v1):
-            writeInt(&buf, Int32(22))
+            writeInt(&buf, Int32(29))
             FfiConverterSequenceTypePushEntry.write(v1, into: &buf)
             
         
         case let .bytes(v1):
-            writeInt(&buf, Int32(23))
+            writeInt(&buf, Int32(30))
             FfiConverterData.write(v1, into: &buf)
             
         }

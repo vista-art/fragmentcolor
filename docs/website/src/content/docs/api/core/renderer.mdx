@@ -1110,6 +1110,10 @@ the implementation drives the device forward (`device.poll(Wait)`) before
 awaiting, so callers don't have to spin their own poll loop. On Web the
 browser schedules the callback; the helper just awaits.
 
+The result holds exactly as many bytes as the binding spans, also for a
+root of `f16` values, which can span 2 or 6 bytes and reads back as 2-byte
+IEEE halves.
+
 Returns `RendererError::StorageBindingNotFound` when the shader does not
 declare a storage binding called `binding`, or when no render pass has yet
 materialized the GPU-side buffer (storage buffers are allocated lazily on

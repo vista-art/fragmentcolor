@@ -628,7 +628,9 @@ class GeneratedExamples : ExampleCase() {
     fun core_shader_set() = example("docs/api/core/shader/set.md") {
         val r = Renderer()
         val shader = Shader("""
+        enable f16;
         @group(0) @binding(0) var<uniform> resolution: vec2<f32>;
+        @group(0) @binding(1) var<uniform> gain: f16;
 
         struct VOut { @builtin(position) pos: vec4<f32> };
         @vertex fn vs_main(@builtin(vertex_index) i: u32) -> VOut {
@@ -637,12 +639,13 @@ class GeneratedExamples : ExampleCase() {
           out.pos = vec4<f32>(p[i], 0., 1.);
           return out;
         }
-        @fragment fn main() -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
+        @fragment fn main() -> @location(0) vec4<f32> { return vec4<f32>(f32(gain), 0., 0., 1.); }
 
         """)
 
         // Set scalars/vectors on declared uniforms
         shader.set("resolution", listOf(800.0f, 600.0f))
+        shader.set("gain", 0.5f)
     }
 
     @Test
