@@ -113,6 +113,22 @@ pub(crate) fn refuse_count(key: &str, span: usize, count: usize) -> ShaderError 
     ShaderError::TypeMismatch(format!("{key}: expected {span} bytes, got {count}"))
 }
 
+/// Refuses a value with no loose form, which `set` takes in parts or as bytes,
+/// with an error like `u: expected numbers, a texture or bytes, got a whole struct`.
+pub(crate) fn refuse_shape(key: &str, shape: &UniformData) -> ShaderError {
+    use UniformData as U;
+    let found = match shape {
+        U::Struct(_) => "a whole struct (set one field with key.field)",
+        U::Array(_) => "a whole array (set one element with key[i])",
+        U::Storage(_) | U::PushConstant(_) => "a buffer root's shape (set its bytes instead)",
+        U::Sampler(_) => "a sampler, which binds automatically",
+        _ => "a value with no loose form",
+    };
+    ShaderError::TypeMismatch(format!(
+        "{key}: expected numbers, a texture or bytes, got {found}"
+    ))
+}
+
 /// Rounds `n` numbers to the nearest `f32`, refusing NaN, an infinity or a number past its range.
 fn floats(
     key: &str,

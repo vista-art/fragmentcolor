@@ -33,7 +33,7 @@ pub use uniforms::{
 
 pub use source::{ShaderInput, ShaderPart};
 
-pub(crate) use uniforms::input::{UniformInput, is_whole_in};
+pub(crate) use uniforms::input::{UniformInput, is_whole_in, refuse_shape};
 
 mod mesh_attach;
 use mesh_attach::Preview;
@@ -107,10 +107,7 @@ impl Shader {
 
     #[lsp_doc("docs/api/core/shader/set.md")]
     pub fn set(&self, key: &str, value: impl Into<UniformData>) -> Result<(), ShaderError> {
-        match UniformInput::try_from(value.into()) {
-            Ok(input) => self.object.set_input(key, input),
-            Err(data) => self.object.set(key, data),
-        }
+        self.object.set(key, value)
     }
 
     #[lsp_doc("docs/api/core/shader/get.md")]
@@ -272,40 +269,14 @@ impl ShaderObject {
         Self::wgsl(source)
     }
 
-    /// Sets a uniform value, now when the storage is free, or queued, last write wins.
-    /// It never waits for a draw. A texture waits while the shader binds another texture
-    /// or applies its queued values, since both hold `texture_writes`, so the latest one wins.
+    /// Sets a uniform value through `set_input`, which shapes and checks it against the key's
+    /// declared type, so every caller gets the rules `Shader::set` gives. A whole struct, array,
+    /// buffer shape or sampler has no loose form, and is refused: set a struct one field at a time.
     pub fn set(&self, key: &str, value: impl Into<UniformData>) -> Result<(), ShaderError> {
-        let value: UniformData = value.into();
-        if self.routes_ambient(key) {
-            let input = UniformInput::try_from(value)
-                .map_err(|_| ShaderError::TypeMismatch(AMBIENT_KEY.into()))?;
-            return self.set_input(key, input);
+        match UniformInput::try_from(value.into()) {
+            Ok(input) => self.set_input(key, input),
+            Err(shape) => Err(refuse_shape(key, &shape)),
         }
-        let texture = matches!(&value, UniformData::Texture(_));
-        let writing = texture.then(|| self.texture_writes.lock());
-        let released = self.write_value(key, value)?;
-        drop(writing);
-        drop(released);
-        Ok(())
-    }
-
-    /// Writes `value` under `key` and holds the texture it names. A texture with id 0 unsets
-    /// the key, which then holds neither a map nor a texture, and another slot's map is refused.
-    /// A caller writing a texture holds `texture_writes` and drops what this returns after it.
-    fn write_value(&self, key: &str, value: UniformData) -> Result<Released, ShaderError> {
-        let texture = match &value {
-            UniformData::Texture(meta) => Some(meta.id),
-            _ => None,
-        };
-        if let Some(id) = texture {
-            self.check_bind(key, id)?;
-        }
-        self.write_slot(key, value)?;
-        Ok(match texture {
-            Some(id) => self.bind_texture(key, id),
-            None => (None, None),
-        })
     }
 
     /// Writes `value` under `key`, or queues it in `pending` when the storage is busy.

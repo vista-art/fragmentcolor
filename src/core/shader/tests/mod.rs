@@ -1172,14 +1172,16 @@ fn set_rejects_wrong_lengths_and_keeps_the_value() {
 #[test]
 fn indexed_keys_check_the_declared_type() {
     let shader = Shader::new(TYPED).expect("shader");
-    // A vec4<u32> has the 16 bytes of a vec4<f32> but the wrong type.
+    // A vec4<u32> has the 16 bytes of a vec4<f32> but the wrong type, so the storage
+    // refuses it. `set` reaches the storage only with a value shaped to the slot.
     let uints = UniformData::UVec4(vec![1, 2, 3, 4]);
-    let err = shader
-        .object
-        .set("buf.items[1].v", uints.clone())
+    let mut storage = shader.object.storage.write();
+    let err = storage
+        .update("buf.items[1].v", &uints)
         .expect_err("vec4<u32> into vec4<f32>");
     assert!(matches!(err, ShaderError::TypeMismatch(_)));
-    assert!(shader.object.set("u.arr[1]", uints).is_err());
+    assert!(storage.update("u.arr[1]", &uints).is_err());
+    drop(storage);
 
     // Loose numbers resolve to the declared vec4<f32>.
     shader.set("buf.items[1].v", [1, 2, 3, 4]).expect("numbers");
@@ -1483,6 +1485,62 @@ fn f16_uniforms_set_and_get_plain_numbers() {
     );
     assert_eq!(shader.get::<f32>("gain").expect("gain"), 0.099_975_586);
     assert_eq!(shader.get::<[f32; 3]>("u.b").expect("u.b"), [4.0, 5.0, 6.0]);
+}
+
+// Story: a whole struct, array or sampler built in Rust is refused, so no value skips the
+// rounding and range checks: a Half field of 70000 or an f32 field of NaN never reaches the
+// bytes. Internal callers of ShaderObject::set get the same checks as Shader::set.
+#[test]
+fn whole_values_are_refused() {
+    let shader = Shader::new(HALVES).expect("shader");
+    shader.set("u.a", 0.5).expect("u.a");
+    let UniformData::Struct(mut whole) =
+        shader.object.storage.read().shape("u").expect("u").clone()
+    else {
+        panic!("u is a struct");
+    };
+    whole.fields[0].ty = vec![UniformData::Half(70000.0)];
+
+    let err = shader
+        .set("u", UniformData::Struct(whole))
+        .expect_err("a whole struct");
+    assert!(
+        err.to_string()
+            .ends_with("u: expected numbers, a texture or bytes, got a whole struct (set one field with key.field)"),
+        "{err}"
+    );
+    let items = shader
+        .object
+        .storage
+        .read()
+        .shape("buf.items")
+        .expect("items")
+        .clone();
+    let err = shader.set("buf.items", items).expect_err("a whole array");
+    assert!(err.to_string().contains("got a whole array"), "{err}");
+    let sampler = UniformData::Sampler(crate::texture::SamplerInfo { comparison: true });
+    assert!(shader.set("gain", sampler).is_err());
+    assert_eq!(shader.get::<f32>("u.a").expect("u.a"), 0.5);
+
+    let err = shader.object.set("u.a", 70000.0f32).expect_err("past f16");
+    assert!(
+        err.to_string().ends_with("u.a: expected f16, got 70000"),
+        "{err}"
+    );
+    let err = shader
+        .object
+        .set("u.b", [0.0, f32::NAN, 0.0])
+        .expect_err("NaN");
+    assert!(
+        err.to_string()
+            .ends_with("u.b: expected vec3<f16>, got NaN"),
+        "{err}"
+    );
+    shader
+        .object
+        .set("u.b", [1.0f32, 2.0, 3.0])
+        .expect("typed f32 values");
+    assert_eq!(shader.get::<[f32; 3]>("u.b").expect("u.b"), [1.0, 2.0, 3.0]);
 }
 
 // Story: naga refuses f16 in immediate data, as a root and inside a struct root,
