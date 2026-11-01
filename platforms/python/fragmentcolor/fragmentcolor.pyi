@@ -566,7 +566,7 @@ class Shader:
 
     It takes a WGSL or GLSL shader source as input, parses it, validates it, and exposes the uniforms as keys.
 
-    `Shader::new` refuses a source that no device FragmentColor opens can run, with a `ShaderError` that names the problem: a feature outside the set FragmentColor requests (such as `f16`, `texture_external` or `f64`), two globals on one `@group` and `@binding` (a `lights` root included), writable storage in a `@vertex` entry point, an immediate root that breaks the uniform layout rules, a filtering `sampler` that samples a depth texture, and two vertex inputs with one name, which would read one mesh attribute. A shader that passes can still be one a given device can't run, which `Renderer::render` refuses, as [Device limits](https://fragmentcolor.org/api/core/shader#device-limits) describes.
+    `Shader::new` refuses a source that no device FragmentColor opens can run, with a `ShaderError` that names the problem: a feature outside the set FragmentColor requests (such as `f16` or `f64`), two globals on one `@group` and `@binding` (a `lights` root included), writable storage in a `@vertex` entry point, an immediate root that breaks the uniform layout rules, a filtering `sampler` that samples a depth texture, and two vertex inputs with one name, which would read one mesh attribute. A shader that passes can still be one a given device can't run, which `Renderer::render` refuses, as [Device limits](https://fragmentcolor.org/api/core/shader#device-limits) describes.
 
     `Shader::new` accepts a source string, a registry slug like `"sdf2d/circle"`, an `https://` URL, a local file path, or an array mixing any of those. Array parts are deduplicated by hash and concatenated in order, so you can pull pure helper functions from the public registry at `https://fragmentcolor.org/shaders/` into your own shader without copy-pasting. Override the registry base with [Shader::set_registry](https://fragmentcolor.org/api/core/shader#set_registry).
 
@@ -781,7 +781,7 @@ class Shader:
 
         - A number fits an `f32`, `i32`, or `u32` uniform. Integer uniforms take whole numbers in range.
         - A vector takes exactly as many numbers as it has components. A `mat2x2`, `mat3x3`, or `mat4x4` takes 4, 9, or 16.
-        - A `Texture` created by a `Renderer` binds to a texture uniform.
+        - A `Texture` created by a `Renderer` binds to a texture uniform, a `texture_external` one included.
         - Raw bytes replace a whole storage-buffer or push-constant root: a byte slice in Rust, a `Uint8Array` in JavaScript, `bytes` (or a `bytearray` or `memoryview`) in Python, `Data` in Swift, or a `ByteArray` in Kotlin. The byte count must equal the root's size, and any other length throws.
 
         Example:
