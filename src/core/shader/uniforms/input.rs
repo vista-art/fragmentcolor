@@ -113,35 +113,45 @@ pub(crate) fn refuse_count(key: &str, span: usize, count: usize) -> ShaderError 
     ShaderError::TypeMismatch(format!("{key}: expected {span} bytes, got {count}"))
 }
 
+/// Rounds `n` numbers to the nearest `f32`, refusing NaN, an infinity or a number past its range.
 fn floats(
     key: &str,
     slot: &UniformData,
     numbers: &[f64],
     n: usize,
 ) -> Result<Vec<f32>, ShaderError> {
-    if numbers.len() != n {
-        return Err(count_mismatch(key, slot, numbers));
-    }
-    Ok(numbers.iter().map(|&v| v as f32).collect())
+    round_floats(key, slot, numbers, n, |value| value as f32)
 }
 
-/// Rounds `n` numbers to the nearest `f16`, refusing one that isn't finite after rounding:
-/// NaN, an infinity, or a number past ±65504 that doesn't round back to it. Nothing is clamped.
+/// Rounds `n` numbers to the nearest `f16`, refusing NaN, an infinity,
+/// or a number past ±65504 that doesn't round back to it.
 fn round_halves(
     key: &str,
     slot: &UniformData,
     numbers: &[f64],
     n: usize,
 ) -> Result<Vec<f32>, ShaderError> {
+    round_floats(key, slot, numbers, n, |value| {
+        half::f16::from_f64(value).to_f32()
+    })
+}
+
+/// Rounds `n` numbers with `round`, refusing one that isn't finite after rounding,
+/// with an error that names the number as given. Nothing is clamped.
+fn round_floats(
+    key: &str,
+    slot: &UniformData,
+    numbers: &[f64],
+    n: usize,
+    round: fn(f64) -> f32,
+) -> Result<Vec<f32>, ShaderError> {
     if numbers.len() != n {
         return Err(count_mismatch(key, slot, numbers));
     }
-    let rounded = numbers
-        .iter()
-        .map(|&value| (value, half::f16::from_f64(value)));
+    let rounded = numbers.iter().map(|&value| (value, round(value)));
     rounded
-        .map(|(value, half)| match half.is_finite() {
-            true => Ok(half.to_f32()),
+        .map(|(value, float)| match float.is_finite() {
+            true => Ok(float),
             false => Err(mismatch(key, slot, &show_number(value))),
         })
         .collect()
@@ -408,6 +418,39 @@ mod tests {
         let err = resolve(short, push.clone()).unwrap_err();
         assert!(err.ends_with("key: expected 8 bytes, got 3"), "{err}");
         assert!(resolve(long, push).is_err());
+    }
+
+    // Story: an f32 slot, a vector or matrix one included, takes any number that is finite
+    // after rounding to f32 and refuses NaN, infinities and numbers past the f32 range,
+    // naming the key, the type and the value, as an f16 slot does.
+    #[test]
+    fn float_slots_refuse_values_past_f32() {
+        let float = UniformData::Float(0.0);
+        let take = |value: f64| resolve(UniformInput::Number(value), float.clone());
+        assert_eq!(take(0.1), Ok(UniformData::Float(0.1)));
+        assert_eq!(take(-3.4e38), Ok(UniformData::Float(-3.4e38)));
+        assert_eq!(take(1e-50), Ok(UniformData::Float(0.0)));
+        for (value, shown) in [
+            (f64::NAN, "NaN"),
+            (f64::INFINITY, "inf"),
+            (f64::NEG_INFINITY, "-inf"),
+            (1e39, "1e39"),
+            (-1e39, "-1e39"),
+        ] {
+            let err = take(value).unwrap_err();
+            assert!(
+                err.ends_with(&format!("key: expected f32, got {shown}")),
+                "{err}"
+            );
+        }
+        let numbers = UniformInput::Numbers(vec![0.0, 1.0, f64::NAN, 0.0]);
+        let err = resolve(numbers, UniformData::Mat2(vec![0.0; 4])).unwrap_err();
+        assert!(err.ends_with("key: expected mat2x2<f32>, got NaN"), "{err}");
+        let err = resolve(UniformInput::Number(f64::NAN), UniformData::Bool(false)).unwrap_err();
+        assert!(err.ends_with("key: expected bool, got NaN"), "{err}");
+        // A Float value built in Rust takes the same path.
+        let input = UniformInput::try_from(UniformData::Float(f32::INFINITY)).expect("number");
+        assert!(resolve(input, float).is_err());
     }
 
     // Story: an f16 slot rounds each number to the nearest f16 and refuses one that isn't

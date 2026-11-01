@@ -204,6 +204,7 @@ A patch release that checks shaders, meshes, textures and passes against the dev
 - A texture write with id 0, which Swift and Kotlin can make with a raw id, unsets the slot, which then holds no texture and draws its PBR default where it has one. 0.12.6 left the slot as it was.
 - The GL backends refuse a uniform, storage or immediate struct whose layout `@size` or `@align` sets.
 - `Shader.set` with raw bytes throws unless they fill the whole storage or immediate root.
+- `Shader.set` on an `f32` uniform, vector or matrix throws for NaN, an infinity and a number past the `f32` range, such as `1e39`, in every language, with an error that names the key, the type and the value: `scale: expected f32, got NaN`. In 0.12.6 such a value reached the shader as NaN or an infinity, and `1e39` turned into an infinity with no error.
 - `Shader.list_keys` doesn't list array elements.
 - A glTF image whose body is corrupt fails at the first `load` into a `Renderer`, or native `render`, with an error that names the image, where 0.12.6 failed `Scene.load`. `Scene.load` still reads each image's header, its format and its size, and refuses one it can't read, naming the image.
 - `Renderer.createExternalTexture` leaves JavaScript, Swift and Kotlin, and `create_external_texture` leaves Rust's web build, with the `ExternalTextureHandle` it returned. Every call returned an error that said external texture import was not implemented yet. Video frames that sample without a copy come back as a new call once wgpu's external textures reach every backend.
