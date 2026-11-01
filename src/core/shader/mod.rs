@@ -487,7 +487,7 @@ impl ShaderObject {
 
     /// Create a Shader object from the joined WGSL `wgsl`.
     fn compile(wgsl: Joined) -> Result<Self, ShaderError> {
-        let module = wgsl.parse()?;
+        let mut module = wgsl.parse()?;
         let info = wgsl.validate(&module)?;
         rewrites::immediates::check_immediates(&module)?;
         check_samplers(&module, &info)?;
@@ -507,6 +507,8 @@ impl ShaderObject {
             let aligned = wgpu::util::align_to(size, 256);
             total_bytes += aligned;
         }
+        // After every read of `info`, whose type facts don't cover a type this adds.
+        rewrites::half_type::register_half(&mut module, &info);
 
         static NEXT_ID: AtomicU64 = AtomicU64::new(1);
         let object = Self {
