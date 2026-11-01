@@ -1651,6 +1651,50 @@ struct Out { @builtin(position) at: vec4<f32>, @location(0) tint: vec4<f32> };
         err.to_string().contains("tint: expected vec4<f16>"),
         "{err}"
     );
+
+    // Each value of an f16 input, the position included, must stay finite after rounding
+    // to f16, and each value of an f32 input after rounding to f32. A refused mesh
+    // records nothing, so it attaches once its values fit.
+    let mesh_of = |tints: [[f64; 4]; 3], far: f32| {
+        let mesh = crate::Mesh::new();
+        let corners = [[0.0, 0.0], [far, 0.0], [0.0, 1.0]];
+        mesh.add_vertices((0..3).map(|index| {
+            crate::Vertex::new(corners[index])
+                .set("tint", tints[index])
+                .set("gain", 0.5)
+        }));
+        mesh
+    };
+    let fine = [[1.0, 0.5, 0.25, 1.0]; 3];
+    let mut past = fine;
+    past[1][2] = 70000.0;
+    let err = half
+        .add_mesh(&mesh_of(past, 1.0))
+        .expect_err("70000 is past f16");
+    assert!(
+        err.to_string()
+            .ends_with("tint: expected vec4<f16>, got 70000 at vertex 1"),
+        "{err}"
+    );
+    let err = half
+        .add_mesh(&mesh_of(fine, 70000.0))
+        .expect_err("a far position");
+    assert!(
+        err.to_string()
+            .ends_with("position: expected vec2<f16>, got 70000 at vertex 1"),
+        "{err}"
+    );
+    full.add_mesh(&mesh_of(past, 70000.0))
+        .expect("an f32 input takes 70000");
+    let mut broken = fine;
+    broken[2][0] = f64::NAN;
+    let err = full.add_mesh(&mesh_of(broken, 1.0)).expect_err("NaN");
+    assert!(
+        err.to_string()
+            .ends_with("tint: expected vec4<f32>, got NaN at vertex 2"),
+        "{err}"
+    );
+    half.add_mesh(&mesh_of(fine, 1.0)).expect("values that fit");
 }
 
 // Story: the WGSL the browser's WebGPU gets from naga's writer keeps `enable f16;`,

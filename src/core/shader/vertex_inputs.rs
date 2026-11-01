@@ -13,6 +13,8 @@ pub(crate) struct VertexInputDesc {
     pub format: wgpu::VertexFormat,
     /// The WGSL type the shader declares, such as `vec2<f16>`, which attach errors name.
     pub declared: &'static str,
+    /// Whether the input is `f16`, whose range the attach checks each value against.
+    pub half: bool,
 }
 
 impl ShaderObject {
@@ -65,7 +67,9 @@ impl ShaderObject {
         let naga::Binding::Location { location, .. } = binding else {
             return Ok(());
         };
-        let (format, declared) = map_input(&self.module.types[ty])?;
+        let ty = &self.module.types[ty];
+        let (format, declared) = map_input(ty)?;
+        let half = ty.inner.scalar_width() == Some(2);
         let name = name.clone().unwrap_or_else(|| format!("attr{location}"));
         // Each input reads the mesh attribute of its name, so two inputs can't share one.
         if let Some(first) = inputs.iter().find(|input| input.name == name) {
@@ -79,6 +83,7 @@ impl ShaderObject {
             location: *location,
             format,
             declared,
+            half,
         });
         Ok(())
     }

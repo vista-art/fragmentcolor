@@ -3,6 +3,7 @@
 
 use super::error::MeshError;
 use crate::core::is_whole_in;
+use crate::errors::show_number;
 use wgpu::VertexFormat;
 
 /// A vertex or instance attribute value, as `Vertex::set` and `Instance::set` take it.
@@ -235,6 +236,22 @@ impl VertexData {
         self.convert(format).map(drop)
     }
 
+    /// Checks that each float of this value is finite after rounding to `f16`, as an
+    /// `f16` input reads it, and returns the first number that isn't, as given.
+    pub(crate) fn check_half(&self) -> Result<(), f64> {
+        match *self {
+            Self::F32(value) => check_halves([f64::from(value)]),
+            Self::F32x2(values) => check_halves(values.map(f64::from)),
+            Self::F32x3(values) => check_halves(values.map(f64::from)),
+            Self::F32x4(values) => check_halves(values.map(f64::from)),
+            Self::Number(value) => check_halves([value]),
+            Self::Number2(values) => check_halves(values),
+            Self::Number3(values) => check_halves(values),
+            Self::Number4(values) => check_halves(values),
+            Self::U32(_) | Self::U32x2(_) | Self::U32x3(_) | Self::U32x4(_) => Ok(()),
+        }
+    }
+
     /// Appends this value's bytes in `format` to `out`, or says why it doesn't fit.
     pub(crate) fn write(&self, format: VertexFormat, out: &mut Vec<u8>) -> Result<(), Misfit> {
         let components = self.convert(format)?;
@@ -269,16 +286,10 @@ impl VertexData {
     /// This value's components in `format`, or why it doesn't fit.
     fn convert(&self, format: VertexFormat) -> Result<Components, Misfit> {
         match *self {
-            Self::F32(value) => convert_typed(format, VertexFormat::Float32, &[value.to_bits()]),
-            Self::F32x2(values) => {
-                convert_typed(format, VertexFormat::Float32x2, &values.map(f32::to_bits))
-            }
-            Self::F32x3(values) => {
-                convert_typed(format, VertexFormat::Float32x3, &values.map(f32::to_bits))
-            }
-            Self::F32x4(values) => {
-                convert_typed(format, VertexFormat::Float32x4, &values.map(f32::to_bits))
-            }
+            Self::F32(value) => convert_floats(format, VertexFormat::Float32, &[value]),
+            Self::F32x2(values) => convert_floats(format, VertexFormat::Float32x2, &values),
+            Self::F32x3(values) => convert_floats(format, VertexFormat::Float32x3, &values),
+            Self::F32x4(values) => convert_floats(format, VertexFormat::Float32x4, &values),
             Self::U32(value) => convert_typed(format, VertexFormat::Uint32, &[value]),
             Self::U32x2(values) => convert_typed(format, VertexFormat::Uint32x2, &values),
             Self::U32x3(values) => convert_typed(format, VertexFormat::Uint32x3, &values),
@@ -288,6 +299,27 @@ impl VertexData {
             Self::Number3(values) => convert_numbers(format, &values),
             Self::Number4(values) => convert_numbers(format, &values),
         }
+    }
+}
+
+/// A typed float value's components, when its own format is `format`
+/// and each one is finite, as an `f32` uniform takes it.
+fn convert_floats(
+    format: VertexFormat,
+    own: VertexFormat,
+    values: &[f32],
+) -> Result<Components, Misfit> {
+    let mut bits = [0; 4];
+    for (slot, value) in bits.iter_mut().zip(values) {
+        *slot = value.to_bits();
+    }
+    let components = convert_typed(format, own, &bits[..values.len()])?;
+    match values.iter().find(|value| !value.is_finite()) {
+        Some(value) => Err(Misfit {
+            expected: describe(format),
+            found: show_number(f64::from(*value)),
+        }),
+        None => Ok(components),
     }
 }
 
@@ -306,7 +338,8 @@ fn convert_typed(
     Ok(Components::new(bits))
 }
 
-/// Plain numbers in `format`: floats as they are, integers when whole and in range.
+/// Plain numbers in `format`: floats when finite after rounding to `f32`,
+/// as an `f32` uniform takes them, and integers when whole and in range.
 fn convert_numbers(format: VertexFormat, numbers: &[f64]) -> Result<Components, Misfit> {
     let misfit = |found: String| Misfit {
         expected: describe(format),
@@ -324,13 +357,23 @@ fn convert_numbers(format: VertexFormat, numbers: &[f64]) -> Result<Components, 
     let mut bits = [0; 4];
     for (slot, &value) in bits.iter_mut().zip(numbers) {
         *slot = match scalar {
-            Scalar::Float => (value as f32).to_bits(),
+            Scalar::Float if (value as f32).is_finite() => (value as f32).to_bits(),
             Scalar::Uint if is_whole_in(value, &unsigned) => value as u32,
             Scalar::Sint if is_whole_in(value, &signed) => value as i32 as u32,
-            _ => return Err(misfit(value.to_string())),
+            _ => return Err(misfit(show_number(value))),
         };
     }
     Ok(Components { bits, len })
+}
+
+/// Checks that each number is finite after rounding to `f16`: NaN, infinities and numbers
+/// past ±65504 that don't round back to it fail. Returns the first that fails, as given.
+pub(crate) fn check_halves(numbers: impl IntoIterator<Item = f64>) -> Result<(), f64> {
+    let mut numbers = numbers.into_iter();
+    match numbers.find(|number| !half::f16::from_f64(*number).is_finite()) {
+        Some(number) => Err(number),
+        None => Ok(()),
+    }
 }
 
 /// The scalar type and component count of a 32-bit format, the kind shader inputs reflect to.
@@ -392,6 +435,42 @@ mod tests {
             .iter()
             .flat_map(|value| value.to_ne_bytes())
             .collect()
+    }
+
+    // Story: a float attribute takes a number only when it is finite after rounding to f32,
+    // a typed f32 included, as an f32 uniform does, and an f16 input's values must stay
+    // finite after rounding to f16 too. The error names the number as given.
+    #[test]
+    fn floats_must_stay_finite() {
+        let float = VertexFormat::Float32;
+        assert_eq!(
+            encode(VertexData::Number(1e39), float),
+            misfit("f32", "1e39")
+        );
+        assert_eq!(
+            encode(
+                VertexData::Number2([0.0, f64::NAN]),
+                VertexFormat::Float32x2
+            ),
+            misfit("vec2<f32>", "NaN")
+        );
+        assert_eq!(
+            encode(VertexData::F32(f32::INFINITY), float),
+            misfit("f32", "inf")
+        );
+        assert_eq!(
+            encode(VertexData::Number(3.4e38), float),
+            Ok(3.4e38f32.to_ne_bytes().to_vec())
+        );
+
+        assert_eq!(
+            VertexData::Number2([65519.0, -65504.0]).check_half(),
+            Ok(())
+        );
+        assert_eq!(VertexData::Number(70000.0).check_half(), Err(70000.0));
+        let typed = VertexData::F32x3([0.0, 1.0, 1e5]);
+        assert_eq!(typed.check_half(), Err(1e5));
+        assert_eq!(VertexData::U32(70000).check_half(), Ok(()));
     }
 
     // Story: plain numbers take the declared type, exactly, at the edges of each range.

@@ -3,8 +3,9 @@
 
 use super::vertex_inputs::VertexInputDesc;
 use super::{ShaderError, ShaderObject};
+use crate::errors::show_number;
 use crate::geometry::{AttributeTypes, Binding, MeshObject, Shape, VertexSchema};
-use crate::geometry::{POSITION, build_columns, describe, explain_position};
+use crate::geometry::{POSITION, build_columns, check_halves, describe, explain_position};
 use crate::{Instance, Vertex, VertexData};
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
@@ -270,9 +271,11 @@ impl ShaderObject {
         let mut added = AttributeTypes::default();
         // What the shader reads from each stream, and the input that reads it.
         let mut read = HashMap::new();
+        // The input that reads the built-in position, when one does.
+        let mut reads_position = None;
         for input in &inputs {
             match find_source(input, position, vertex.as_ref(), instance.as_ref())? {
-                Source::Position(format) if format == input.format => {}
+                Source::Position(format) if format == input.format => reads_position = Some(input),
                 Source::Position(format) => {
                     return Err(mismatch(
                         POSITION,
@@ -287,7 +290,7 @@ impl ShaderObject {
             }
         }
 
-        check_vertices(&verts, &known, &added, &read)?;
+        check_vertices(&verts, &known, &added, &read, reads_position)?;
         check_instances(&insts, &known, &added, &read)?;
         let mut names = AttributeTypes::default();
         for ((stream, name), input) in read {
@@ -422,14 +425,15 @@ fn check_position(vertices: &[Vertex]) -> Result<(), ShaderError> {
     }
 }
 
-/// Checks every vertex: its position against the first one's, each value the
-/// first vertex also holds against the format that attribute takes, and that
-/// it holds every attribute the shader reads.
+/// Checks every vertex: its position against the first one's, and against the `f16` range
+/// when `reads_position` is an `f16` input, each value the first vertex also holds against
+/// the format that attribute takes, and that it holds every attribute the shader reads.
 fn check_vertices(
     verts: &[Vertex],
     known: &AttributeTypes,
     added: &AttributeTypes,
     read: &HashMap<(Stream, &str), &VertexInputDesc>,
+    reads_position: Option<&VertexInputDesc>,
 ) -> Result<(), ShaderError> {
     let Some(first) = verts.first() else {
         return Ok(());
@@ -441,6 +445,12 @@ fn check_vertices(
         if own != position {
             let found = format!("{} at vertex {index}", describe(own));
             return Err(mismatch(POSITION, describe(position), found));
+        }
+        if let Some(input) = reads_position.filter(|input| input.half)
+            && let Err(number) = check_halves(read_position(vertex))
+        {
+            let found = format!("{} at vertex {index}", show_number(number));
+            return Err(mismatch(POSITION, input.declared, found));
         }
         check_values(&vertex.properties, &formats, Stream::Vertex, index, read)?;
     }
@@ -489,8 +499,8 @@ fn resolve_formats<'item>(
 }
 
 /// Checks one item's values. An attribute the shader reads must be there,
-/// since the GPU would read zeros in its place. An error names the type
-/// the shader declares for an attribute it reads.
+/// since the GPU would read zeros in its place, and fit `f16` for an `f16` input.
+/// An error names the type the shader declares for an attribute it reads, such as `vec2<f16>`.
 fn check_values(
     properties: &HashMap<String, VertexData>,
     formats: &[(&str, VertexFormat)],
@@ -506,6 +516,12 @@ fn check_values(
                     let expected = input.map_or(misfit.expected, |input| input.declared);
                     let found = format!("{} at {} {index}", misfit.found, stream.label());
                     return Err(mismatch(name, expected, found));
+                }
+                if let Some(input) = input.filter(|input| input.half)
+                    && let Err(number) = value.check_half()
+                {
+                    let found = format!("{} at {} {index}", show_number(number), stream.label());
+                    return Err(mismatch(name, input.declared, found));
                 }
             }
             None => {
@@ -533,6 +549,16 @@ fn read_attributes(
             (name.clone(), attribute)
         })
         .collect()
+}
+
+/// The components of a vertex's position that it packs: x and y, and z for a 3D one.
+fn read_position(vertex: &Vertex) -> Vec<f64> {
+    let [x, y, z, _] = vertex.position.0.to_array();
+    let components = match vertex.dimensions {
+        0..=2 => vec![x, y],
+        _ => vec![x, y, z],
+    };
+    components.into_iter().map(f64::from).collect()
 }
 
 /// The format a position of `dimensions` packs as.
