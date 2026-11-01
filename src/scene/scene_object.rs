@@ -1,8 +1,8 @@
 //! `SceneObject`: a value a `Pass` takes, such as a `Model`, a `Camera` or a `Light`.
 //!
 //! Implementors are responsible for whatever bookkeeping makes them part of
-//! the pass — registering themselves in the relevant storage list, applying
-//! initial uniform state to existing shaders, etc. — and may also opt into
+//! the pass, such as registering themselves in the relevant storage list or
+//! applying initial uniform state to existing shaders. They may also opt into
 //! a hook the pass calls when a *new* shader joins, so they can re-apply.
 //! Camera and Light use this hook for live propagation; Model doesn't
 //! need it (its work is fully done at attach time).

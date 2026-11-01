@@ -1,4 +1,4 @@
-//! Scene — top-level container for [`Model`](crate::Model),
+//! Scene: the top-level container for [`Model`](crate::Model),
 //! [`Camera`](crate::Camera), [`Light`](crate::Light) (directional / point
 //! / spot, all one type), and any user-defined
 //! [`SceneObject`](crate::scene::SceneObject). Owns one or more
@@ -6,7 +6,7 @@
 //! [`Renderable`](crate::Renderable), so the whole scene goes to the
 //! [`Renderer`](crate::Renderer) in a single call.
 //!
-//! `Scene::new()` is sync — no `Renderer` argument, no async, nothing to
+//! `Scene::new()` is sync, with no `Renderer` argument and nothing to
 //! await. The first time a SceneObject is added the Scene allocates a
 //! default Pass to hold it; the first time the Scene is rendered the
 //! underlying GPU resources initialize on demand. Same lazy-init pattern
@@ -18,7 +18,7 @@
 //! `Scene::add` targets is an ordinary member of the vec, and the CRUD
 //! surface (`add_pass`, `remove_pass`, `get_pass`, `list_passes`,
 //! `set_passes`) lets the caller read, append, reorder, or replace the
-//! whole graph — the same composability every layer below `Scene` already
+//! whole graph, with the same composability every layer below `Scene`
 //! has.
 //!
 //! When the user has added Models but no Camera or Light, the Scene injects
@@ -100,8 +100,8 @@ pub(crate) struct SceneState {
     /// Typed handles to every SceneObject the user (or the loader) added.
     /// Each handle is an Arc-shared `Clone` of the original, so mutating
     /// one of these from `scene.cameras()[i].look_at(...)` propagates to
-    /// every shader the Camera was wired into — same live-handle semantics
-    /// the `Pass::add` path already gives.
+    /// every shader the Camera was wired into, with the same live-handle
+    /// semantics the `Pass::add` path gives.
     pub(crate) models: RwLock<Vec<crate::scene::Model>>,
     pub(crate) cameras: RwLock<Vec<Camera>>,
     pub(crate) lights: RwLock<Vec<Light>>,
@@ -137,7 +137,7 @@ impl Drop for FirstAdd<'_> {
 /// a position (index) or a pass name. Built from a `usize` or a `&str` /
 /// `String` via `Into`, so callers write `scene.add_to(0, &model)` or
 /// `scene.add_to("geometry", &model)` without naming this type. Transport
-/// plumbing — there's no separate doc page for it.
+/// plumbing with no separate doc page.
 #[derive(Debug, Clone)]
 pub enum PassRef {
     Index(usize),
@@ -302,7 +302,7 @@ impl Scene {
         pass.add(object)?;
         #[cfg(test)]
         crate::testing::race_hooks::run("scene add");
-        // TypeId equality is exact — wrapping a Camera in a user newtype
+        // TypeId equality is exact: wrapping a Camera in a user newtype
         // counts as "user-supplied" and skips the typed lane (it still rides
         // the pass as a `SceneObject`); custom types just wouldn't show up in
         // the typed-getter slot, which matches what the user asked for by
@@ -320,8 +320,8 @@ impl Scene {
         // Re-stamp the stashed ambient onto whatever shaders just joined
         // so callers can `scene.ambient(...)` before any models are added
         // and still see the value carry through. Empty / no-shaders adds
-        // (Camera, Light) skip the write silently — the next Model add
-        // will pick it up.
+        // (Camera, Light) skip the write silently, and the next Model add
+        // picks it up.
         if let Some(amb) = *self.inner.ambient.read() {
             for shader in pass.object.shaders.read().iter() {
                 let _ = shader.set("lights.ambient", amb);
@@ -349,7 +349,7 @@ impl Scene {
     /// Snapshot of every [`Model`](crate::Model) added to this Scene via
     /// [`Scene::add`] (including Models the loader created from glTF
     /// `mesh` nodes). Each entry is an Arc-shared clone of the original
-    /// handle — mutating a returned `Model` (`set_visible`, `translate`,
+    /// handle. Mutating a returned `Model` (`set_visible`, `translate`,
     /// …) propagates live to every shader the Model was wired into, with
     /// no re-attach needed.
     #[lsp_doc("docs/api/scene/scene/models.md")]
@@ -360,7 +360,7 @@ impl Scene {
     /// Snapshot of every [`Camera`](crate::Camera) added to this Scene via
     /// [`Scene::add`] (including Cameras the loader created from glTF
     /// `camera` nodes, unless you skipped them via the loader's camera
-    /// filter). Each entry is an Arc-shared clone — `camera.look_at(...)`
+    /// filter). Each entry is an Arc-shared clone, so `camera.look_at(...)`
     /// on a returned handle drives every shader the Camera is wired into.
     #[lsp_doc("docs/api/scene/scene/cameras.md")]
     pub fn cameras(&self) -> Vec<Camera> {
@@ -582,11 +582,11 @@ impl Scene {
     }
 
     /// Inject default Camera / Light into the default Pass when injection is
-    /// enabled and the user hasn't supplied their own. Idempotent — the
+    /// enabled and the user hasn't supplied their own. Idempotent: the
     /// sticky `has_camera` / `has_light` flags flip on first injection, so
     /// subsequent `passes()` calls are no-ops on this front. Defaults are
     /// also stashed into the Scene's typed lanes so `scene.cameras()` /
-    /// `scene.lights()` surface them — anyone fishing the default camera
+    /// `scene.lights()` surface them. Anyone fishing the default camera
     /// back out to drive it per frame should hit the getter and find it
     /// there. With no default Pass (a pure `add_pass` composition) there's
     /// nothing to attach to, so injection is skipped.
@@ -617,7 +617,7 @@ impl Scene {
                 .read()
                 .clone()
                 .unwrap_or_else(Camera::create_stock);
-            // Camera::attach always succeeds — discard the never-error result.
+            // Camera::attach always succeeds, so discard the never-error result.
             let _ = pass.add(&camera);
             self.inner.cameras.write().push(camera);
             *self.inner.has_camera.write() = true;
@@ -690,12 +690,12 @@ mod tests {
     #[test]
     fn new_starts_empty() {
         let scene = Scene::new();
-        // No passes exist until something gets added — stays cheap when the
+        // No passes exist until something gets added. That stays cheap when the
         // user wires up the scene from a config and only later attaches
         // anything.
         assert!(scene.inner.passes.read().is_empty());
         assert!(scene.inner.default_pass.read().is_none());
-        // Nothing rendered, no defaults injected — passes() on an empty scene
+        // Nothing rendered, no defaults injected: passes() on an empty scene
         // returns an empty list.
         assert!(scene.passes().is_empty());
     }
@@ -721,7 +721,7 @@ mod tests {
     #[test]
     fn passes_render_in_insertion_order() {
         let scene = Scene::new();
-        // add_pass first, then a Model — the default Pass is appended after
+        // add_pass first, then a Model. The default Pass is appended after
         // the backdrop, so the render order follows insertion order.
         let backdrop = Pass::new("backdrop");
         scene.add_pass(&backdrop);
@@ -767,7 +767,7 @@ mod tests {
         let model = Model::new(pbr_triangle_mesh(), material.clone());
         scene.add(&model).expect("add");
 
-        // Trigger the default-fallback path — `passes()` is what the renderer
+        // Trigger the default-fallback path. `passes()` is what the renderer
         // calls.
         let _ = scene.passes();
 
@@ -781,7 +781,7 @@ mod tests {
         let lights = material.shader().object.collect_lights();
         assert_eq!(lights[0].color, [1.0, 1.0, 1.0]);
         assert_eq!(lights[0].direction, [0.0, -0.3, -1.0], "the stock light");
-        // Sticky flags now true — second pass through is a no-op.
+        // Sticky flags are true, so a second pass through is a no-op.
         assert!(*scene.inner.has_camera.read());
         assert!(*scene.inner.has_light.read());
     }
@@ -868,7 +868,7 @@ mod tests {
     #[test]
     fn typed_getters_capture_defaults_after_render() {
         // The default-injection path bypasses `Scene::add` and goes
-        // straight to `pass.add(...)` — the typed lanes must still pick
+        // straight to `pass.add(...)`. The typed lanes must still pick
         // those up so consumers can grab the default camera/light back.
         let scene = Scene::new();
         let model = Model::new(pbr_triangle_mesh(), Material::pbr());
@@ -878,7 +878,7 @@ mod tests {
         let _ = scene.passes();
         assert_eq!(scene.cameras().len(), 1, "default camera surfaces");
         assert_eq!(scene.lights().len(), 1, "default light surfaces");
-        // Defaults are real handles — drive the default camera per frame:
+        // Defaults are real handles. Drive the default camera per frame:
         let default_camera = scene.cameras().into_iter().next().unwrap();
         default_camera
             .look_at([7.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])

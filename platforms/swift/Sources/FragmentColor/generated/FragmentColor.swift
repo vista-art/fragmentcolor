@@ -3345,7 +3345,7 @@ public func FfiConverterTypeRenderer_lower(_ value: Renderer) -> UInt64 {
 public protocol SceneProtocol: AnyObject, Sendable {
     
     /**
-     * Unified `Scene.add` — branches on the runtime mobile handle. Adding
+     * Unified `Scene.add`, which branches on the runtime mobile handle. Adding
      * a new `SceneObject` Rust-side means adding one extra variant to
      * [`SceneObjectHandle`](crate::SceneObjectHandle) and one arm here.
      * Every Scene mutator returns the scene, as in Rust, so calls chain.
@@ -3482,7 +3482,7 @@ public static func loadBytes(bytes: Data, cameras: Bool = true, lights: Bool = t
 
     
     /**
-     * Unified `Scene.add` — branches on the runtime mobile handle. Adding
+     * Unified `Scene.add`, which branches on the runtime mobile handle. Adding
      * a new `SceneObject` Rust-side means adding one extra variant to
      * [`SceneObjectHandle`](crate::SceneObjectHandle) and one arm here.
      * Every Scene mutator returns the scene, as in Rust, so calls chain.
@@ -5940,7 +5940,7 @@ public func FfiConverterTypeTextureUsage_lower(_ value: TextureUsage) -> RustBuf
 /**
  * How the renderer interprets the alpha channel of a Material's output.
  *
- * Mirrors the glTF 2.0 `alphaMode` field — `OPAQUE`, `MASK`, `BLEND` — with
+ * Mirrors the glTF 2.0 `alphaMode` field (`OPAQUE`, `MASK`, `BLEND`) with
  * the same semantics:
  *
  * - `Opaque`: depth-test on, blending off. Alpha bits go to the framebuffer
@@ -5952,7 +5952,7 @@ public func FfiConverterTypeTextureUsage_lower(_ value: TextureUsage) -> RustBuf
  * - `Blend`: depth-test on but depth-write **off**, color target uses
  * standard `SrcAlpha / OneMinusSrcAlpha` over-blend. The renderer sorts
  * Models with this mode back-to-front by eye-space Z before drawing,
- * using the Camera attached via `Pass::add(&camera)` — no caller-side
+ * using the Camera attached via `Pass::add(&camera)`, with no caller-side
  * sorting required. Sort granularity is per-Model (not per-fragment),
  * so self-intersecting translucent meshes can still show artifacts.
  */
@@ -9642,7 +9642,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_model_visible() != 27855) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_scene_add() != 15900) {
+    if (uniffi_fragmentcolor_checksum_method_scene_add() != 33116) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_scene_addpass() != 18750) {

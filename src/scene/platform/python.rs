@@ -434,7 +434,7 @@ impl Scene {
         Ok(Scene::load(source)?)
     }
 
-    /// Unified Scene::add — branches on the runtime Python type. Anything
+    /// Unified Scene::add, which branches on the runtime Python type. Anything
     /// implementing `SceneObject` on the Rust side gets routed here on
     /// the Python side, and adding a new SceneObject means adding one
     /// extra cast arm below.
@@ -572,7 +572,7 @@ impl Scene {
         self.lights()
     }
 
-    // Internal duck-typed interface used by PyRenderable dispatch — not part
+    // Internal duck-typed interface used by PyRenderable dispatch, not part
     // of public docs.
     #[doc(hidden)]
     #[pyo3(name = "passes")]
@@ -581,7 +581,7 @@ impl Scene {
         crate::PyPassIterator(list.iter().cloned().collect())
     }
 
-    // Internal duck-typed interface used by PyRenderable dispatch — not part
+    // Internal duck-typed interface used by PyRenderable dispatch, not part
     // of public docs.
     #[doc(hidden)]
     pub fn renderable_type(&self) -> &'static str {

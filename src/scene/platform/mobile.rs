@@ -368,7 +368,7 @@ impl Scene {
         Ok(Arc::new(Scene::load(source)?))
     }
 
-    /// Unified `Scene.add` — branches on the runtime mobile handle. Adding
+    /// Unified `Scene.add`, which branches on the runtime mobile handle. Adding
     /// a new `SceneObject` Rust-side means adding one extra variant to
     /// [`SceneObjectHandle`](crate::SceneObjectHandle) and one arm here.
     /// Every Scene mutator returns the scene, as in Rust, so calls chain.

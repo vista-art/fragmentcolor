@@ -1,4 +1,4 @@
-//! Light — single type covering the three glTF `KHR_lights_punctual` kinds
+//! Light: a single type covering the three glTF `KHR_lights_punctual` kinds
 //! (directional, point, spot). The kind is set once at construction via the
 //! [`Light::directional`] / [`Light::point`] / [`Light::spot`] constructors;
 //! kind-specific setters (`set_position`, `set_direction`, `set_range`,
@@ -269,8 +269,8 @@ pub struct Light {
 crate::impl_fc_kind!(Light, "Light");
 
 impl Light {
-    /// Build a directional light — parallel rays in `direction`, no position.
-    /// Fit for sun / sky / fill — anything where every shaded surface
+    /// Build a directional light: parallel rays in `direction`, no position.
+    /// Fit for sun / sky / fill, or anything where every shaded surface
     /// receives light from the same world-space direction.
     #[lsp_doc("docs/api/scene/light/directional.md")]
     pub fn directional(direction: [f32; 3], color: [f32; 3]) -> Self {
@@ -284,7 +284,7 @@ impl Light {
         }
     }
 
-    /// Build a point light — radiates from `position` with inverse-square
+    /// Build a point light, which radiates from `position` with inverse-square
     /// distance falloff. `set_range` caps the influence radius (default 0 =
     /// unlimited, matching glTF `KHR_lights_punctual`).
     #[lsp_doc("docs/api/scene/light/point.md")]
@@ -299,7 +299,7 @@ impl Light {
         }
     }
 
-    /// Build a spot light — point light constrained to a cone. `position`
+    /// Build a spot light: a point light constrained to a cone. `position`
     /// is the apex, `direction` is the cone axis, cone half-angles default
     /// to `(0, π/4)` (full center, 45° outer); tune via `set_cone_angles`.
     #[lsp_doc("docs/api/scene/light/spot.md")]
@@ -321,7 +321,7 @@ impl Light {
     }
 
     // ------------------------------------------------------------------
-    // Universal getters — defined for every kind.
+    // Universal getters, defined for every kind.
     // ------------------------------------------------------------------
 
     /// Read the linear-RGB color (defined for every kind).
@@ -337,7 +337,7 @@ impl Light {
     }
 
     // ------------------------------------------------------------------
-    // Universal setters — defined for every kind.
+    // Universal setters, defined for every kind.
     // ------------------------------------------------------------------
 
     /// Update the linear-RGB color. Every shader the Light reaches draws
@@ -357,7 +357,7 @@ impl Light {
     }
 
     // ------------------------------------------------------------------
-    // Kind-specific getters — return `None` on the kind that doesn't apply.
+    // Kind-specific getters. They return `None` on the kind that doesn't apply.
     // ------------------------------------------------------------------
 
     /// Read the world-space position. `None` for a directional light.
@@ -411,7 +411,7 @@ impl Light {
     }
 
     // ------------------------------------------------------------------
-    // Kind-specific setters — return Err on the kind that doesn't apply.
+    // Kind-specific setters. They return Err on the kind that doesn't apply.
     // ------------------------------------------------------------------
 
     /// Update the world-space position. Errors on a directional light.
