@@ -268,7 +268,7 @@ impl ShaderObject {
         };
 
         let mut added = AttributeTypes::default();
-        // What the shader reads from each stream, in the format each input declares.
+        // What the shader reads from each stream, and the input that reads it.
         let mut read = HashMap::new();
         for input in &inputs {
             match find_source(input, position, vertex.as_ref(), instance.as_ref())? {
@@ -276,13 +276,13 @@ impl ShaderObject {
                 Source::Position(format) => {
                     return Err(mismatch(
                         POSITION,
-                        input.format,
+                        input.declared,
                         format!("{} at vertex 0", describe(format)),
                     ));
                 }
                 Source::Attribute(stream, name, attribute) => {
                     bind_attribute(stream, name, attribute.shape, input, &known, &mut added)?;
-                    read.insert((stream, name), input.format);
+                    read.insert((stream, name), input);
                 }
             }
         }
@@ -290,10 +290,10 @@ impl ShaderObject {
         check_vertices(&verts, &known, &added, &read)?;
         check_instances(&insts, &known, &added, &read)?;
         let mut names = AttributeTypes::default();
-        for ((stream, name), format) in read {
+        for ((stream, name), input) in read {
             stream
                 .select_mut(&mut names)
-                .insert(name.to_string(), format);
+                .insert(name.to_string(), input.format);
         }
         Ok(Binding {
             types: added,
@@ -380,14 +380,14 @@ fn bind_attribute(
     if let Some(fixed) = fixed
         && fixed != input.format
     {
-        return Err(conflict(name, fixed, input.format));
+        return Err(conflict(name, fixed, input.declared));
     }
     let place = format!("{} 0", stream.label());
     let count = match shape {
         Shape::Typed(format) if format == input.format => return Ok(()),
         Shape::Typed(format) => {
             let found = format!("{} at {place}", describe(format));
-            return Err(mismatch(name, input.format, found));
+            return Err(mismatch(name, input.declared, found));
         }
         Shape::Numbers(count) => count,
     };
@@ -396,11 +396,11 @@ fn bind_attribute(
     }
     if !count.fits(input.format) {
         let found = format!("{} number(s) at {place}", count.len());
-        return Err(mismatch(name, input.format, found));
+        return Err(mismatch(name, input.declared, found));
     }
     match stream.select_mut(added).entry(name.to_string()) {
         Entry::Occupied(entry) if *entry.get() != input.format => {
-            Err(conflict(name, *entry.get(), input.format))
+            Err(conflict(name, *entry.get(), input.declared))
         }
         Entry::Occupied(_) => Ok(()),
         Entry::Vacant(entry) => {
@@ -429,7 +429,7 @@ fn check_vertices(
     verts: &[Vertex],
     known: &AttributeTypes,
     added: &AttributeTypes,
-    read: &HashMap<(Stream, &str), VertexFormat>,
+    read: &HashMap<(Stream, &str), &VertexInputDesc>,
 ) -> Result<(), ShaderError> {
     let Some(first) = verts.first() else {
         return Ok(());
@@ -440,7 +440,7 @@ fn check_vertices(
         let own = position_format(vertex.dimensions);
         if own != position {
             let found = format!("{} at vertex {index}", describe(own));
-            return Err(mismatch(POSITION, position, found));
+            return Err(mismatch(POSITION, describe(position), found));
         }
         check_values(&vertex.properties, &formats, Stream::Vertex, index, read)?;
     }
@@ -453,7 +453,7 @@ fn check_instances(
     insts: &[Instance],
     known: &AttributeTypes,
     added: &AttributeTypes,
-    read: &HashMap<(Stream, &str), VertexFormat>,
+    read: &HashMap<(Stream, &str), &VertexInputDesc>,
 ) -> Result<(), ShaderError> {
     let Some(first) = insts.first() else {
         return Ok(());
@@ -489,30 +489,31 @@ fn resolve_formats<'item>(
 }
 
 /// Checks one item's values. An attribute the shader reads must be there,
-/// since the GPU would read zeros in its place.
+/// since the GPU would read zeros in its place. An error names the type
+/// the shader declares for an attribute it reads.
 fn check_values(
     properties: &HashMap<String, VertexData>,
     formats: &[(&str, VertexFormat)],
     stream: Stream,
     index: usize,
-    read: &HashMap<(Stream, &str), VertexFormat>,
+    read: &HashMap<(Stream, &str), &VertexInputDesc>,
 ) -> Result<(), ShaderError> {
     for &(name, format) in formats {
+        let input = read.get(&(stream, name));
         match properties.get(name) {
             Some(value) => {
                 if let Err(misfit) = value.check(format) {
-                    return Err(ShaderError::AttributeMismatch {
-                        name: name.to_string(),
-                        expected: misfit.expected.to_string(),
-                        found: format!("{} at {} {index}", misfit.found, stream.label()),
-                    });
+                    let expected = input.map_or(misfit.expected, |input| input.declared);
+                    let found = format!("{} at {} {index}", misfit.found, stream.label());
+                    return Err(mismatch(name, expected, found));
                 }
             }
-            None if read.contains_key(&(stream, name)) => {
-                let found = format!("no value at {} {index}", stream.label());
-                return Err(mismatch(name, format, found));
+            None => {
+                if let Some(input) = input {
+                    let found = format!("no value at {} {index}", stream.label());
+                    return Err(mismatch(name, input.declared, found));
+                }
             }
-            None => {}
         }
     }
     Ok(())
@@ -542,18 +543,20 @@ fn position_format(dimensions: u8) -> VertexFormat {
     }
 }
 
-fn mismatch(name: &str, expected: VertexFormat, found: String) -> ShaderError {
+/// An attribute whose value doesn't fit the `expected` WGSL type.
+fn mismatch(name: &str, expected: &str, found: String) -> ShaderError {
     ShaderError::AttributeMismatch {
         name: name.to_string(),
-        expected: describe(expected).to_string(),
+        expected: expected.to_string(),
         found,
     }
 }
 
-fn conflict(name: &str, fixed: VertexFormat, declared: VertexFormat) -> ShaderError {
+/// An attribute this mesh holds as `fixed`, which a shader input `declared` another way.
+fn conflict(name: &str, fixed: VertexFormat, declared: &str) -> ShaderError {
     ShaderError::AttributeConflict {
         name: name.to_string(),
         fixed: describe(fixed).to_string(),
-        declared: describe(declared).to_string(),
+        declared: declared.to_string(),
     }
 }
