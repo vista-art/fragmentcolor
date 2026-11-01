@@ -4,7 +4,7 @@ The [Shader](https://fragmentcolor.org/api/core/shader) object is the main build
 
 It takes a WGSL or GLSL shader source as input, parses it, validates it, and exposes the uniforms as keys.
 
-`Shader::new` refuses a source that no device FragmentColor opens can run, with a `ShaderError` that names the problem: a feature outside the set FragmentColor requests (such as `f16` or `f64`), two globals on one `@group` and `@binding` (a `lights` root included), writable storage in a `@vertex` entry point, an immediate root that breaks the uniform layout rules, a filtering `sampler` that samples a depth texture, and two vertex inputs with one name, which would read one mesh attribute. A shader that passes can still be one a given device can't run, which `Renderer::render` refuses, as [Device limits](https://fragmentcolor.org/api/core/shader#device-limits) describes.
+`Shader::new` refuses a source that no device FragmentColor opens can run, with a `ShaderError` that names the problem: a feature outside the set FragmentColor requests (such as ray queries or `f64`), two globals on one `@group` and `@binding` (a `lights` root included), writable storage in a `@vertex` entry point, an immediate root that breaks the uniform layout rules, a filtering `sampler` that samples a depth texture, and two vertex inputs with one name, which would read one mesh attribute. A shader that passes can still be one a given device can't run, which `Renderer::render` refuses, as [Device limits](https://fragmentcolor.org/api/core/shader#device-limits) describes.
 
 `Shader::new` accepts a source string, a registry slug like `"sdf2d/circle"`, an `https://` URL, a local file path, or an array mixing any of those. Array parts are deduplicated by hash and concatenated in order, so you can pull pure helper functions from the public registry at `https://fragmentcolor.org/shaders/` into your own shader without copy-pasting. Override the registry base with [Shader::set_registry](https://fragmentcolor.org/api/core/shader#set_registry).
 
@@ -194,12 +194,40 @@ fn cs_main(@builtin(local_invocation_index) index: u32) {
 }
 ```
 
+## Half precision
+
+After `enable f16;`, a shader holds 16-bit floats: `f16`, its vectors and its square matrices, in uniforms, storage buffers and vertex inputs. The directive opens the source, or the part that needs it when `Shader::new` joins several parts.
+
+```wgsl
+enable f16;
+
+struct Light { color: vec3<f16>, power: f16 };
+@group(0) @binding(0) var<uniform> light: Light;
+@group(0) @binding(1) var<uniform> gain: f16;
+
+@fragment
+fn fs_main() -> @location(0) vec4<f32> {
+  let color = light.color * light.power * gain;
+  return vec4<f32>(vec3<f32>(color), 1.0);
+}
+```
+
+`set` takes plain numbers for an `f16` key, as it does for an `f32` one, and rounds each to the nearest `f16`. NaN, infinities and numbers past ±65504 that don't round back to it throw, and the key keeps its value. `get` returns the rounded value as `f32` numbers in every language, so `0.1` reads back as `0.0999755859375`. Past 2048, an `f16` skips some whole numbers, as an `f32` does past 2^24, and rounding one raises no error.
+
+A vertex input declared as `f16` or `vec4<f16>` reads the mesh's 32-bit floats, which the GPU converts, so one mesh feeds `f32` and `f16` shaders alike. An attach error names the type the shader declares, such as `vec2<f16>`.
+
+Values take WGSL's `f16` layout: 2 bytes for each component, a `vec3<f16>` aligned to 8 bytes, and the columns of a `mat3x3<f16>` 8 bytes apart. A root such as `var<uniform> gain: f16` spans 2 bytes, and `Renderer::read_storage` returns exactly as many bytes as a storage root spans. Immediate data can't hold `f16`, which `Shader::new` refuses.
+
+A color output must be `vec4<f32>`, never `vec4<f16>`, since wgpu refuses a narrower float at `@location(0)`. Convert the result before the fragment shader returns it, as `vec4<f32>(vec3<f32>(color), 1.0)` does above.
+
+Every platform accepts such a shader at `Shader::new`. It draws where the device has `SHADER_F16`: every Metal device, DX12 with Shader Model 6.2, Vulkan devices with `f16` arithmetic and 16-bit storage, and the browser's WebGPU where the browser offers `shader-f16`. On WebGL2, OpenGL and every other device, `Renderer::render` refuses the shader with `RendererError::FeatureError` before it takes a frame, and the error's `feature` names `SHADER_F16`.
+
 ## Device limits
 
 `Renderer::render` checks each shader against the device before it takes a frame, so every platform returns the same error from the call that caused it, the web included. Each refusal has a typed error with fields:
 
 - `RendererError::LimitError { item, limit, value, max }` for a group past `max_bind_groups`, a binding past `max_bindings_per_bind_group`, more bindings of a kind in one stage than the device takes, a uniform or storage buffer past its binding size limit, a workgroup past the device's sizes, invocations or workgroup memory, and a vertex input at a location past `max_vertex_attributes`. A mesh whose stride or buffers pass the device's limits gets it too.
-- `RendererError::FeatureError { item, feature }` for a compute shader on a device without compute, storage a stage of the device can't bind, a storage format or access the device lacks, such as an atomic storage texture on a device without `TEXTURE_ATOMIC`, an external texture on a device without `EXTERNAL_TEXTURE`, an explicit layout on a GL backend, a shader that measures its light roots with `arrayLength` on a device that takes lights through a uniform block, a shader feature the device lacks, such as subgroups, whose `feature` names the wgpu flag, and anything else the device's shader validator refuses.
+- `RendererError::FeatureError { item, feature }` for a compute shader on a device without compute, storage a stage of the device can't bind, a storage format or access the device lacks, such as an atomic storage texture on a device without `TEXTURE_ATOMIC`, an external texture on a device without `EXTERNAL_TEXTURE`, an explicit layout on a GL backend, a shader that measures its light roots with `arrayLength` on a device that takes lights through a uniform block, a shader feature the device lacks, such as subgroups or `f16`, whose `feature` names the wgpu flag, and anything else the device's shader validator refuses.
 - `RendererError::BindingError { uniform, expected, found }` for a texture uniform that was never set, or whose texture its slot can't take by format, usage, dimension, sample count or mip levels.
 - `RendererError::EntryError { stage }` for a render shader without its `@vertex` or `@fragment` entry point.
 
