@@ -35,7 +35,7 @@ impl Pass {
         }
     }
 
-    // Internal duck-typed interface used by PyRenderable dispatch — not part of public docs.
+    // Internal duck-typed interface used by PyRenderable dispatch, not part of public docs.
     #[doc(hidden)]
     #[pyo3(name = "passes")]
     pub fn passes_py(&self) -> crate::PyPassIterator {
@@ -66,7 +66,7 @@ impl Pass {
         Ok(self.add_mesh(mesh)?)
     }
 
-    /// Unified `Pass.add` — branches on the runtime Python type. Adding a
+    /// Unified `Pass.add`, which branches on the runtime Python type. Adding a
     /// new `SceneObject` Rust-side means adding one extra cast arm below.
     #[pyo3(name = "add")]
     #[lsp_doc("docs/api/core/pass/add.md")]
@@ -176,7 +176,7 @@ impl Pass {
         })
     }
 
-    // Internal duck-typed interface used by PyRenderable dispatch — not part of public docs.
+    // Internal duck-typed interface used by PyRenderable dispatch, not part of public docs.
     #[doc(hidden)]
     pub fn renderable_type(&self) -> &'static str {
         "Pass"

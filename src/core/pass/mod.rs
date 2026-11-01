@@ -113,8 +113,8 @@ impl Pass {
         self.object.add_mesh(mesh)
     }
 
-    /// Absorb a [`SceneObject`](crate::scene::SceneObject) — Model, Camera,
-    /// Light, or any custom node — into this pass. Each implementation owns
+    /// Absorb a [`SceneObject`](crate::scene::SceneObject) into this pass:
+    /// a Model, Camera, Light, or any custom node. Each implementation owns
     /// its own attach behavior: Model queues a draw, Camera and Light wire
     /// their uniforms into every shader the pass renders (current and
     /// future). Chainable; errors short-circuit the chain.
@@ -367,8 +367,8 @@ static GRAPH_VERSION: AtomicU64 = AtomicU64::new(1);
 /// World-space camera state cached on a Pass via `Camera::attach`. Carried
 /// here (not just inside the shader uniform) so the renderer can read the
 /// eye position and view matrix without round-tripping through the shader's
-/// `Shader::get("camera.position")` path — which would only work for
-/// shaders that happen to expose those uniforms under canonical names.
+/// `Shader::get("camera.position")` path, which works only for shaders
+/// that happen to expose those uniforms under canonical names.
 ///
 /// Used by `process_render_pass` to sort the `Pass::model_entries` whose
 /// Material declares `alpha_mode: Blend` back-to-front by eye-space depth
@@ -378,7 +378,7 @@ static GRAPH_VERSION: AtomicU64 = AtomicU64::new(1);
 pub(crate) struct CameraSnapshot {
     /// View matrix (world → camera), column-major. Mirrors the `view`
     /// component of `Camera::view_proj`. The renderer needs this for the
-    /// sort — eye-space Z is `(view * world)[2]`, not just `length(eye -
+    /// sort. Eye-space Z is `(view * world)[2]`, not just `length(eye -
     /// world)`. World-space distance ties incorrectly for objects spread
     /// laterally on a vertical plane (a row of glass panels viewed
     /// edge-on); eye-Z resolves them in the right order.
@@ -402,7 +402,7 @@ pub struct PassObject {
     // Per-Pass live references to Models queued via `Pass::add`. Each entry
     // carries an Arc-shared transform so the renderer reads the current value at
     // draw time. Grouped by (shader, mesh) the entries become the rows of a
-    // Pass-owned instance buffer — that's the batched-instancing path: many
+    // Pass-owned instance buffer. That's the batched-instancing path: many
     // Models sharing a (Material, Mesh) pair collapse to one draw with N
     // instances, with no shader duplication and no mutation of the Mesh's own
     // instance buffer (so the same Mesh in another Pass with different Models
@@ -426,12 +426,12 @@ pub struct PassObject {
     /// taken when `Camera::attach` runs (and refreshed by `Camera::look_at`
     /// through `Camera::propagate`). The renderer reads this to sort
     /// translucent draws (`alpha_mode: Blend`) back-to-front by per-Model
-    /// eye-space depth. `None` means no Camera was attached to this pass
-    /// — the renderer falls back to insertion order, which is correct for
+    /// eye-space depth. `None` means no Camera was attached to this pass,
+    /// and the renderer falls back to insertion order, which is correct for
     /// opaque-only passes and the best it can do otherwise.
     ///
     /// Storing the view matrix (not just the eye position) lets the sort
-    /// account for non-axis-aligned cameras — eye-Z depth in camera space
+    /// account for non-axis-aligned cameras. Eye-Z depth in camera space
     /// is what matters for over-blend correctness, not world-space
     /// distance from the eye. Stored as a column-major `[[f32; 4]; 4]` to
     /// match `Camera::view_proj` and `glam::Mat4::to_cols_array_2d`.

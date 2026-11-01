@@ -2397,7 +2397,7 @@ public func FfiConverterTypeModel_lower(_ value: Model) -> UInt64 {
 public protocol PassProtocol: AnyObject, Sendable {
     
     /**
-     * Unified `Pass.add` — branches on the runtime mobile handle. Adding
+     * Unified `Pass.add`, which branches on the runtime mobile handle. Adding
      * a new `SceneObject` Rust-side means adding one extra variant to
      * [`SceneObjectHandle`](crate::SceneObjectHandle) and one arm here.
      * Returns the pass, as Rust's `add` does, so calls chain.
@@ -2576,7 +2576,7 @@ public static func fromShader(name: String, shader: Shader) -> Pass  {
 
     
     /**
-     * Unified `Pass.add` — branches on the runtime mobile handle. Adding
+     * Unified `Pass.add`, which branches on the runtime mobile handle. Adding
      * a new `SceneObject` Rust-side means adding one extra variant to
      * [`SceneObjectHandle`](crate::SceneObjectHandle) and one arm here.
      * Returns the pass, as Rust's `add` does, so calls chain.
@@ -9348,7 +9348,7 @@ private let initializationResult: InitializationResult = {
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_pass_add() != 25095) {
+    if (uniffi_fragmentcolor_checksum_method_pass_add() != 10561) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_pass_addmesh() != 47938) {
