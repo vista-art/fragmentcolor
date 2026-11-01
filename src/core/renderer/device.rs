@@ -53,7 +53,8 @@ pub(crate) const CANDIDATES: wgpu::Features = wgpu::Features::IMMEDIATES
     .union(wgpu::Features::SUBGROUP_BARRIER)
     .union(wgpu::Features::PRIMITIVE_INDEX)
     .union(wgpu::Features::TEXTURE_ATOMIC)
-    .union(wgpu::Features::EXTERNAL_TEXTURE);
+    .union(wgpu::Features::EXTERNAL_TEXTURE)
+    .union(wgpu::Features::SHADER_F16);
 
 /// Opens the device with each candidate the adapter offers, on every backend.
 /// wgpu takes its experimental features through `experimental_features` only,

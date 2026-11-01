@@ -1252,7 +1252,7 @@ fn after_vertex(rest: &str) -> String {
 
 // Story: a shader that needs a feature a device may open with passes Shader::new on
 // every device, and the renderer checks it against its own device: subgroups in each
-// stage, `primitive_index`, immediate data, texture atomics and `texture_external`.
+// stage, `primitive_index`, immediate data, texture atomics, `texture_external` and `f16`.
 #[test]
 fn device_features_pass_at_new() {
     let sources = [
@@ -1286,6 +1286,12 @@ fn cs_main(@builtin(local_invocation_index) index: u32, @builtin(subgroup_size) 
             .to_string(),
         after_vertex(
             "@group(0) @binding(0) var video: texture_external;\n@fragment fn fs_main() -> @location(0) vec4<f32> { return textureLoad(video, vec2<u32>(0u)); }",
+        ),
+        format!(
+            "enable f16;\n{}",
+            after_vertex(
+                "@fragment fn fs_main() -> @location(0) vec4<f32> { let h: f16 = 1.0h; return vec4<f32>(f32(h)); }",
+            )
         ),
     ];
     for source in sources {
@@ -1325,16 +1331,10 @@ fn external_textures_reflect() {
 }
 
 // Story: a shader that needs a feature no device FragmentColor opens with fails at
-// Shader::new, never at render: `f16`, 64-bit texture atomics, ray queries and `f64`.
+// Shader::new, never at render: 64-bit texture atomics, ray queries and `f64`.
 #[test]
 fn features_no_device_opens_fail_at_new() {
     let sources = [
-        format!(
-            "enable f16;\n{}",
-            after_vertex(
-                "@fragment fn fs_main() -> @location(0) vec4<f32> { let h: f16 = 1.0h; return vec4<f32>(f32(h)); }",
-            )
-        ),
         "@group(0) @binding(0) var counts: texture_storage_2d<r64uint, atomic>;
 @compute @workgroup_size(1) fn cs_main() { textureAtomicMax(counts, vec2<i32>(0), 1lu); }"
             .to_string(),
@@ -1378,6 +1378,243 @@ fn is_valid_anywhere(source: &str) -> bool {
     Validator::new(ValidationFlags::all(), Capabilities::all())
         .validate(&module)
         .is_ok()
+}
+
+const HALVES: &str = "enable f16;
+struct U { a: f16, b: vec3<f16>, m: mat3x3<f16>, c: vec4<f16> };
+struct Buf { items: array<vec3<f16>, 3> };
+@group(0) @binding(0) var<uniform> gain: f16;
+@group(0) @binding(1) var<uniform> u: U;
+@group(0) @binding(2) var<storage, read> buf: Buf;
+@group(0) @binding(3) var<uniform> pair: vec2<f16>;
+@group(0) @binding(4) var<uniform> m2: mat2x2<f16>;
+@group(0) @binding(5) var<uniform> m4: mat4x4<f16>;
+@vertex fn vs_main() -> @builtin(position) vec4<f32> { return vec4<f32>(0.0); }
+@fragment fn fs_main() -> @location(0) vec4<f32> {
+  let x = gain + u.a + u.b.x + u.m[0].x + u.c.w + buf.items[1].y + pair.x + m2[1].y + m4[3].w;
+  return vec4<f32>(f32(x));
+}";
+
+/// The f16 values at `offset` in the CPU bytes of `key`, widened to f32.
+fn read_halves(shader: &Shader, key: &str, offset: usize, count: usize) -> Vec<f32> {
+    let storage = shader.object.storage.read();
+    let bytes = storage.get_bytes(key).expect("bytes");
+    let pairs = bytes[offset..offset + 2 * count].as_chunks::<2>().0;
+    pairs
+        .iter()
+        .map(|pair| half::f16::from_ne_bytes(*pair).to_f32())
+        .collect()
+}
+
+/// `values` rounded to the nearest f16, as an f16 slot keeps them.
+fn round<const N: usize>(values: [f32; N]) -> [f32; N] {
+    values.map(|value| half::f16::from_f32(value).to_f32())
+}
+
+// Story: f16 uniforms, struct fields and storage elements take plain numbers and typed
+// f32 values, round each to the nearest f16, and read back as f32 values. Their CPU bytes
+// sit at naga's offsets, and a value past f16 fails and leaves the old one in place.
+#[test]
+fn f16_uniforms_set_and_get_plain_numbers() {
+    let shader = Shader::new(HALVES).expect("shader");
+
+    shader.set("gain", 0.1).expect("gain");
+    shader.set("u.a", 2).expect("u.a");
+    shader.set("u.b", [1.0, 0.2, -3.0]).expect("u.b");
+    let columns = [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]];
+    shader.set("u.m", columns).expect("u.m");
+    shader.set("u.c", [0.5, 0.25, 0.125, 65519.0]).expect("u.c");
+    shader.set("buf.items[1]", [0.3, 0.6, 0.9]).expect("items");
+    shader.set("pair", [-1.5, 1e-9]).expect("pair");
+    shader.set("m2", [1.0, 2.0, 3.0, 4.0]).expect("m2");
+    let sixteen: Vec<f32> = (0..16).map(|value| value as f32 * 0.1).collect();
+    shader.set("m4", sixteen.clone()).expect("m4");
+
+    assert_eq!(shader.get::<f32>("gain").expect("gain"), 0.099_975_586);
+    assert_eq!(shader.get::<f32>("u.a").expect("u.a"), 2.0);
+    let b: [f32; 3] = shader.get("u.b").expect("u.b");
+    assert_eq!(b, round([1.0, 0.2, -3.0]));
+    let m: [[f32; 3]; 3] = shader.get("u.m").expect("u.m");
+    assert_eq!(m, columns);
+    let c: [f32; 4] = shader.get("u.c").expect("u.c");
+    assert_eq!(c, [0.5, 0.25, 0.125, 65504.0]);
+    let item: [f32; 3] = shader.get("buf.items[1]").expect("items");
+    assert_eq!(item, round([0.3, 0.6, 0.9]));
+    assert_eq!(shader.get::<[f32; 2]>("pair").expect("pair"), [-1.5, 0.0]);
+    let m2: [[f32; 2]; 2] = shader.get("m2").expect("m2");
+    assert_eq!(m2, [[1.0, 2.0], [3.0, 4.0]]);
+    let m4: Vec<f32> = shader.get("m4").expect("m4");
+    let rounded: Vec<f32> = sixteen
+        .iter()
+        .map(|value| half::f16::from_f32(*value).to_f32())
+        .collect();
+    assert_eq!(m4, rounded);
+
+    // The CPU bytes hold halves at naga's offsets: b at 8, m's columns 8 bytes apart from 16.
+    assert_eq!(read_halves(&shader, "u", 8, 3), b);
+    for (index, column) in columns.iter().enumerate() {
+        let values = read_halves(&shader, "u", 16 + 8 * index, 3);
+        assert_eq!(values, column);
+    }
+    assert_eq!(read_halves(&shader, "buf", 8, 3), item);
+    assert_eq!(read_halves(&shader, "gain", 0, 1), [0.099_975_586]);
+
+    // Typed f32 values take the same path and are checked the same way.
+    shader.set("u.b", [4.0f32, 5.0, 6.0]).expect("typed u.b");
+    assert_eq!(shader.get::<[f32; 3]>("u.b").expect("u.b"), [4.0, 5.0, 6.0]);
+    let err = shader.set("gain", 70000.0).expect_err("70000 is past f16");
+    assert!(
+        err.to_string().ends_with("gain: expected f16, got 70000"),
+        "{err}"
+    );
+    let err = shader.set("u.b", [1.0, f32::NAN, 0.0]).expect_err("NaN");
+    assert!(
+        err.to_string()
+            .ends_with("u.b: expected vec3<f16>, got NaN"),
+        "{err}"
+    );
+    let err = shader
+        .set("buf.items[1]", [0.0, 0.0])
+        .expect_err("two numbers");
+    assert!(
+        err.to_string()
+            .ends_with("buf.items[1]: expected vec3<f16>, got 2 number(s)"),
+        "{err}"
+    );
+    assert_eq!(shader.get::<f32>("gain").expect("gain"), 0.099_975_586);
+    assert_eq!(shader.get::<[f32; 3]>("u.b").expect("u.b"), [4.0, 5.0, 6.0]);
+}
+
+// Story: naga refuses f16 in immediate data, as a root and inside a struct root,
+// so Shader::new fails with naga's report.
+#[test]
+fn f16_immediates_fail_at_new() {
+    let sources = [
+        "enable f16;\nvar<immediate> pc: f16;\n@compute @workgroup_size(1) fn cs_main() { _ = pc; }",
+        "enable f16;\nstruct P { scale: f32, gain: f16 };\nvar<immediate> pc: P;\n@compute @workgroup_size(1) fn cs_main() { _ = pc.gain; }",
+    ];
+    for source in sources {
+        let error = Shader::new(source).expect_err("f16 immediates");
+        assert!(matches!(error, ShaderError::ValidationError(_)), "{error}");
+    }
+}
+
+// Story: an f16 vertex input reads the mesh's 32-bit floats, from plain numbers or
+// typed f32 values, and a shader that reads the same attribute as f32 shares the mesh.
+// An attach error names the type the shader declares.
+#[test]
+fn f16_vertex_inputs_take_float_buffers() {
+    let half = Shader::new(
+        "enable f16;
+struct Out { @builtin(position) at: vec4<f32>, @location(0) tint: vec4<f32> };
+@vertex fn vs_main(@location(0) pos: vec2<f16>, @location(1) tint: vec4<f16>, @location(2) gain: f16) -> Out {
+  return Out(vec4<f32>(vec2<f32>(pos), 0.0, 1.0), vec4<f32>(tint * gain));
+}
+@fragment fn fs_main(in: Out) -> @location(0) vec4<f32> { return in.tint; }",
+    )
+    .expect("shader");
+    let full = Shader::new(
+        "struct Out { @builtin(position) at: vec4<f32>, @location(0) tint: vec4<f32> };
+@vertex fn vs_main(@location(0) pos: vec2<f32>, @location(1) tint: vec4<f32>) -> Out {
+  return Out(vec4<f32>(pos, 0.0, 1.0), tint);
+}
+@fragment fn fs_main(in: Out) -> @location(0) vec4<f32> { return in.tint; }",
+    )
+    .expect("shader");
+
+    let inputs = half.object.reflect_vertex_inputs().expect("inputs");
+    let formats: Vec<(wgpu::VertexFormat, &str)> = inputs
+        .iter()
+        .map(|input| (input.format, input.declared))
+        .collect();
+    assert_eq!(
+        formats,
+        [
+            (wgpu::VertexFormat::Float32x2, "vec2<f16>"),
+            (wgpu::VertexFormat::Float32x4, "vec4<f16>"),
+            (wgpu::VertexFormat::Float32, "f16"),
+        ]
+    );
+
+    let corners = [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]];
+    let plain = crate::Mesh::new();
+    plain.add_vertices(corners.map(|corner| {
+        crate::Vertex::new(corner)
+            .set("tint", [1.0, 0.5, 0.25, 1.0])
+            .set("gain", 0.5)
+    }));
+    let typed = crate::Mesh::new();
+    typed.add_vertices(corners.map(|corner| {
+        crate::Vertex::new(corner)
+            .set("tint", [1.0f32, 0.5, 0.25, 1.0])
+            .set("gain", 0.5f32)
+    }));
+    half.add_mesh(&plain).expect("plain numbers");
+    half.add_mesh(&typed).expect("typed f32 values");
+    full.add_mesh(&plain)
+        .expect("an f32 shader shares the mesh");
+
+    let short = crate::Mesh::new();
+    short.add_vertices(corners.map(|corner| {
+        crate::Vertex::new(corner)
+            .set("tint", [1.0, 0.5, 0.25])
+            .set("gain", 0.5)
+    }));
+    let err = half.add_mesh(&short).expect_err("three numbers for a vec4");
+    assert!(
+        err.to_string()
+            .ends_with("tint: expected vec4<f16>, got 3 number(s) at vertex 0"),
+        "{err}"
+    );
+    let ids = crate::Mesh::new();
+    ids.add_vertices(corners.map(|corner| {
+        crate::Vertex::new(corner)
+            .set("tint", [1u32, 2, 3, 4])
+            .set("gain", 0.5)
+    }));
+    let err = half.add_mesh(&ids).expect_err("u32 values for a vec4<f16>");
+    assert!(
+        err.to_string().contains("tint: expected vec4<f16>"),
+        "{err}"
+    );
+}
+
+// Story: the WGSL the browser's WebGPU gets from naga's writer keeps `enable f16;`,
+// for an f16 uniform and for a module whose only f16 is an inferred literal.
+#[test]
+fn f16_survives_the_wgsl_writer() {
+    let bodies = [
+        "@group(0) @binding(0) var<uniform> gain: f16;\n@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(f32(gain)); }",
+        "@fragment fn fs_main() -> @location(0) vec4<f32> { let x = 1.5h; return vec4<f32>(f32(x * 2.0h)); }",
+    ];
+    for body in bodies {
+        let source = format!("enable f16;\n{}", after_vertex(body));
+        let shader = Shader::new(source.as_str()).expect("shader");
+        let module = &shader.object.module;
+        let info = crate::core::validate_module(module, None).expect("info");
+        let flags = naga::back::wgsl::WriterFlags::empty();
+        let text = naga::back::wgsl::write_string(module, &info, flags).expect("wgsl");
+
+        assert!(text.starts_with("enable f16;"), "{text}");
+        let written = crate::core::parse_wgsl(&text).expect("the written WGSL parses");
+        crate::core::validate_module(&written, None).expect("the written WGSL validates");
+    }
+}
+
+// Story: a helper part may carry `enable f16;`, which moves to the top of the composed source.
+#[test]
+fn f16_directive_in_a_helper_part() {
+    let helper = "enable f16;\nfn halve(value: f16) -> f16 { return value * 0.5h; }";
+    let main = after_vertex(
+        "@group(0) @binding(0) var<uniform> gain: f16;
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(f32(halve(gain))); }",
+    );
+
+    let shader = Shader::new([helper, main.as_str()]).expect("composed shader");
+
+    shader.set("gain", 0.75).expect("gain");
+    assert_eq!(shader.get::<f32>("gain").expect("gain"), 0.75);
+    assert!(shader.object.source.starts_with("enable f16;"));
 }
 
 // Story: naga 30 refuses `enable subgroups;` as an extension it doesn't implement yet,

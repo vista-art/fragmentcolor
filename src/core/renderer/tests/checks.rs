@@ -1148,7 +1148,8 @@ enable primitive_index;
 // A vertex stage needs SUBGROUP_VERTEX, which no Metal device offers, a subgroup
 // barrier needs SUBGROUP_BARRIER, which no DX12 device offers, an atomic storage
 // texture needs TEXTURE_ATOMIC, which neither the browser's WebGPU nor GL offers,
-// and an external texture needs EXTERNAL_TEXTURE, which only Metal and DX12 offer.
+// an external texture needs EXTERNAL_TEXTURE, which only Metal and DX12 offer,
+// and f16 needs SHADER_F16, which GL never offers.
 #[test]
 fn missing_features_name_their_flags() {
     pollster::block_on(async move {
@@ -1200,6 +1201,7 @@ fn cs_main(@builtin(local_invocation_index) index: u32) { sums[index] = subgroup
         // So does the external texture check, which runs beside it.
         let external = fullscreen(EXTERNAL_LOAD).expect("shader");
         let video = "'video' at @group(0) @binding(0)";
+        let half = half_fullscreen(HALF_TINT).expect("shader");
         let cases = [
             (&compute_add, shader, [Some("SUBGROUP"), None, None, None]),
             (&barrier, shader, barrier_flags),
@@ -1216,6 +1218,7 @@ fn cs_main(@builtin(local_invocation_index) index: u32) { sums[index] = subgroup
                 video,
                 [Some("EXTERNAL_TEXTURE"), None, None, None],
             ),
+            (&half, shader, [Some("SHADER_F16"), None, None, None]),
         ];
 
         for (shader, item, expected) in cases {
@@ -1644,6 +1647,210 @@ fn external_slots_conflict_with_their_target() {
             ),
         }
         assert!(uncaptured.lock().is_empty(), "got {:?}", uncaptured.lock());
+    });
+}
+
+/// A render shader that opens with `enable f16;`: the fullscreen vertex stage, then `rest`.
+fn half_fullscreen(rest: &str) -> Result<Shader, ShaderError> {
+    Shader::new(format!("enable f16;\n{VERTEX}\n{rest}").as_str())
+}
+
+/// A fullscreen shader that writes an f16 tint times a bare f16 gain, a 2-byte root.
+const HALF_TINT: &str = "@group(0) @binding(0) var<uniform> tint: vec4<f16>;
+@group(0) @binding(1) var<uniform> gain: f16;
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(tint * gain); }";
+
+/// Asserts that the one pixel of `image` is about `[64, 128, 191, 255]`,
+/// the color `[0.25, 0.5, 0.75, 1.0]` writes into Rgba8Unorm.
+fn assert_tint(image: &[u8], what: &str) {
+    let expected = [64u8, 128, 191, 255];
+    let close = image
+        .iter()
+        .zip(expected)
+        .all(|(got, want)| got.abs_diff(want) <= 1);
+    assert!(close, "{what} drew {image:?}, not {expected:?}");
+}
+
+/// Whether the device runs f16, which every Metal device does. Without it,
+/// render must refuse `shader` with a FeatureError before any GPU work.
+fn check_half(
+    renderer: &Renderer,
+    context: &RenderContext,
+    uncaptured: &Uncaptured,
+    shader: &Shader,
+) -> bool {
+    #[cfg(target_os = "macos")]
+    assert!(
+        context.features.contains(wgpu::Features::SHADER_F16),
+        "Metal offers SHADER_F16"
+    );
+    if context.features.contains(wgpu::Features::SHADER_F16) {
+        eprintln!("the device has SHADER_F16, so the draw was checked");
+        return true;
+    }
+    eprintln!("the device lacks SHADER_F16, so only the refusal was checked");
+    assert_refused!(
+        refuse(renderer, context, uncaptured, shader).expect("refused"),
+        RendererError::FeatureError { .. },
+        "the shader needs SHADER_F16, which the device lacks"
+    );
+    false
+}
+
+// Story: a shader reads an f16 vec4 uniform and a bare f16 uniform, whose 2-byte root
+// uploads padded to a whole word, where the device has SHADER_F16, as Metal does.
+#[test]
+fn f16_uniforms_render() {
+    pollster::block_on(async move {
+        let (renderer, context, uncaptured) = setup().await.expect("render context");
+        let shader = half_fullscreen(HALF_TINT).expect("shader");
+        if !check_half(&renderer, &context, &uncaptured, &shader) {
+            return;
+        }
+        let target = renderer
+            .create_texture_target([1, 1])
+            .await
+            .expect("texture target");
+
+        shader.set("tint", [0.25, 0.5, 0.75, 1.0]).expect("tint");
+        shader.set("gain", 1.0).expect("gain");
+        renderer.render(&shader, &target).expect("render");
+
+        assert_tint(
+            &target.get_image().await.expect("read back"),
+            "the uniforms",
+        );
+        assert!(uncaptured.lock().is_empty(), "got {:?}", uncaptured.lock());
+    });
+}
+
+// Story: a compute shader writes a 6-byte f16 storage root, which read_storage returns
+// exactly, and a fragment shader reads a vec3<f16> storage root set on the CPU. Both
+// buffers, their bindings and the readback round the root up to a whole word.
+#[test]
+fn f16_storage_round_trips() {
+    pollster::block_on(async move {
+        let (renderer, context, uncaptured) = setup().await.expect("render context");
+        let compute = Shader::new(
+            "enable f16;
+@group(0) @binding(0) var<storage, read_write> out: array<f16, 3>;
+@compute @workgroup_size(1) fn cs_main() { out[0] = 0.0h; out[1] = 1.5h; out[2] = 3.0h; }",
+        )
+        .expect("shader");
+        let draw = half_fullscreen(
+            "@group(0) @binding(0) var<storage, read> tint: vec3<f16>;
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(vec3<f32>(tint), 1.0); }",
+        )
+        .expect("shader");
+        if !check_half(&renderer, &context, &uncaptured, &draw) {
+            return;
+        }
+        let target = renderer
+            .create_texture_target([1, 1])
+            .await
+            .expect("texture target");
+
+        renderer.render(&compute, &target).expect("compute");
+        let bytes = renderer.read_storage(&compute, "out").await.expect("out");
+        // A storage root that isn't a struct takes its bytes whole: three halves, 6 bytes.
+        let tint: Vec<u8> = [0.25f32, 0.5, 0.75]
+            .iter()
+            .flat_map(|value| half::f16::from_f32(*value).to_ne_bytes())
+            .collect();
+        draw.set("tint", tint.as_slice()).expect("tint");
+        renderer.render(&draw, &target).expect("draw");
+
+        let pairs = bytes.as_chunks::<2>().0.iter();
+        let values: Vec<f32> = pairs
+            .map(|pair| half::f16::from_ne_bytes(*pair).to_f32())
+            .collect();
+        assert_eq!(values, [0.0, 1.5, 3.0], "{bytes:?}");
+        assert_tint(
+            &target.get_image().await.expect("read back"),
+            "the storage root",
+        );
+        assert!(uncaptured.lock().is_empty(), "got {:?}", uncaptured.lock());
+    });
+}
+
+// Story: f16 vertex inputs read a mesh's 32-bit floats, plain numbers for the position
+// and the tint, and the GPU converts them, where the device has SHADER_F16.
+#[test]
+fn f16_vertex_inputs_draw() {
+    pollster::block_on(async move {
+        let (renderer, context, uncaptured) = setup().await.expect("render context");
+        let shader = Shader::new(
+            "enable f16;
+struct Out { @builtin(position) at: vec4<f32>, @location(0) tint: vec4<f32> };
+@vertex fn vs_main(@location(0) position: vec2<f16>, @location(1) tint: vec4<f16>) -> Out {
+  return Out(vec4<f32>(vec2<f32>(position), 0.0, 1.0), vec4<f32>(tint));
+}
+@fragment fn fs_main(in: Out) -> @location(0) vec4<f32> { return in.tint; }",
+        )
+        .expect("shader");
+        let mesh = Mesh::new();
+        mesh.add_vertices(
+            [[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]]
+                .map(|corner| Vertex::new(corner).set("tint", [0.25, 0.5, 0.75, 1.0])),
+        );
+        shader.add_mesh(&mesh).expect("mesh");
+        if !check_half(&renderer, &context, &uncaptured, &shader) {
+            return;
+        }
+        let target = renderer
+            .create_texture_target([1, 1])
+            .await
+            .expect("texture target");
+
+        renderer.render(&shader, &target).expect("render");
+
+        assert_tint(&target.get_image().await.expect("read back"), "the mesh");
+        assert!(uncaptured.lock().is_empty(), "got {:?}", uncaptured.lock());
+    });
+}
+
+// Story: on a device without SHADER_F16, as GL and some Vulkan devices are, render refuses
+// an f16 shader with a FeatureError that names the flag, before any GPU work. A copy of any
+// device without the feature shows it, a GL one with padded uniforms included, whether the
+// padding takes the shader (an 8-byte root) or leaves it (a 2-byte root), and so does a
+// shader whose only f16 is an inferred literal.
+#[test]
+fn f16_needs_the_feature() {
+    pollster::block_on(async move {
+        let (_renderer, context, _) = setup().await.expect("render context");
+        let half = wgpu::Features::SHADER_F16;
+        let mut gl = copy_context(&context);
+        gl.features = context.features - half;
+        gl.backend = wgpu::Backend::Gl;
+        gl.aligned_uniform_bindings.store(true, Ordering::Relaxed);
+        let shaders = [
+            half_fullscreen(HALF_TINT),
+            half_fullscreen(
+                "@group(0) @binding(0) var<uniform> tint: vec4<f16>;
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(tint); }",
+            ),
+            half_fullscreen(
+                "@fragment fn fs_main() -> @location(0) vec4<f32> { let x = 0.5h; return vec4<f32>(f32(x)); }",
+            ),
+        ];
+
+        let expected = vec![
+            ("item", Field::Text("the shader".into())),
+            ("feature", Field::Text("SHADER_F16".into())),
+        ];
+        for shader in shaders {
+            let shader = shader.expect("shader");
+            let error = refuse_without(&context, half, &shader).expect("refused");
+            let on_gl = gl.check_shader(&shader.object).unwrap_err();
+
+            assert_eq!(error.list_fields(), expected);
+            assert_eq!(on_gl.list_fields(), expected);
+            assert_refused!(
+                error,
+                RendererError::FeatureError { .. },
+                "the shader needs SHADER_F16, which the device lacks"
+            );
+        }
     });
 }
 
