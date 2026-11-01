@@ -1252,7 +1252,7 @@ fn after_vertex(rest: &str) -> String {
 
 // Story: a shader that needs a feature a device may open with passes Shader::new on
 // every device, and the renderer checks it against its own device: subgroups in each
-// stage, `primitive_index` and immediate data.
+// stage, `primitive_index`, immediate data and texture atomics.
 #[test]
 fn device_features_pass_at_new() {
     let sources = [
@@ -1278,6 +1278,12 @@ fn cs_main(@builtin(local_invocation_index) index: u32, @builtin(subgroup_size) 
         after_vertex(
             "var<immediate> pc: vec4<f32>;\n@fragment fn fs_main() -> @location(0) vec4<f32> { return pc; }",
         ),
+        "@group(0) @binding(0) var counts: texture_storage_2d<r32uint, atomic>;
+@compute @workgroup_size(1) fn cs_main() { textureAtomicAdd(counts, vec2<i32>(0), 1u); }"
+            .to_string(),
+        "@group(0) @binding(0) var lows: texture_storage_2d<r32sint, atomic>;
+@compute @workgroup_size(1) fn cs_main() { textureAtomicMin(lows, vec2<u32>(0u), -1i); }"
+            .to_string(),
     ];
     for source in sources {
         let result = Shader::new(source.as_str());
@@ -1286,8 +1292,8 @@ fn cs_main(@builtin(local_invocation_index) index: u32, @builtin(subgroup_size) 
 }
 
 // Story: a shader that needs a feature no device FragmentColor opens with fails at
-// Shader::new, never at render: `f16`, `texture_external`, texture atomics, ray queries
-// and `f64`.
+// Shader::new, never at render: `f16`, `texture_external`, 64-bit texture atomics,
+// ray queries and `f64`.
 #[test]
 fn features_no_device_opens_fail_at_new() {
     let sources = [
@@ -1300,8 +1306,8 @@ fn features_no_device_opens_fail_at_new() {
         after_vertex(
             "@group(0) @binding(0) var video: texture_external;\n@fragment fn fs_main() -> @location(0) vec4<f32> { return textureLoad(video, vec2<u32>(0u)); }",
         ),
-        "@group(0) @binding(0) var counts: texture_storage_2d<r32uint, atomic>;
-@compute @workgroup_size(1) fn cs_main() { textureAtomicAdd(counts, vec2<i32>(0), 1u); }"
+        "@group(0) @binding(0) var counts: texture_storage_2d<r64uint, atomic>;
+@compute @workgroup_size(1) fn cs_main() { textureAtomicMax(counts, vec2<i32>(0), 1lu); }"
             .to_string(),
         "enable wgpu_ray_query;\n@compute @workgroup_size(1) fn cs_main() {}".to_string(),
         "@compute @workgroup_size(1) fn cs_main() { let x: f64 = 1.0lf; }".to_string(),

@@ -1145,8 +1145,9 @@ enable primitive_index;
 
 // Story: a shader that uses a feature the device lacks is refused with the wgpu flags
 // it needs, the fewest that let the device's validator take it, on every device alike.
-// A vertex stage needs SUBGROUP_VERTEX, which no Metal device offers, and a subgroup
-// barrier needs SUBGROUP_BARRIER, which no DX12 device offers.
+// A vertex stage needs SUBGROUP_VERTEX, which no Metal device offers, a subgroup
+// barrier needs SUBGROUP_BARRIER, which no DX12 device offers, and an atomic storage
+// texture needs TEXTURE_ATOMIC, which neither the browser's WebGPU nor GL offers.
 #[test]
 fn missing_features_name_their_flags() {
     pollster::block_on(async move {
@@ -1189,16 +1190,26 @@ fn cs_main(@builtin(local_invocation_index) index: u32) { sums[index] = subgroup
             Some("SUBGROUP_BARRIER"),
             None,
         ];
+        // The storage check meets an atomic slot before the module check, and names its slot.
+        let atomic = Shader::new(ATOMIC_COUNTS).expect("shader");
         let vertex = Some("SUBGROUP_VERTEX");
+        let shader = "the shader";
+        let counts = "'counts' at @group(0) @binding(0)";
+        let atomic_flags = Some("TEXTURE_ATOMIC for a R32Uint storage texture");
         let cases = [
-            (&compute_add, [Some("SUBGROUP"), None, None, None]),
-            (&barrier, barrier_flags),
-            (&vertex_add, [vertex, vertex, vertex, None]),
-            (&fragment_add, [Some("SUBGROUP"), None, None, None]),
-            (&primitive, [Some("PRIMITIVE_INDEX"), None, None, None]),
+            (&compute_add, shader, [Some("SUBGROUP"), None, None, None]),
+            (&barrier, shader, barrier_flags),
+            (&vertex_add, shader, [vertex, vertex, vertex, None]),
+            (&fragment_add, shader, [Some("SUBGROUP"), None, None, None]),
+            (
+                &primitive,
+                shader,
+                [Some("PRIMITIVE_INDEX"), None, None, None],
+            ),
+            (&atomic, counts, [atomic_flags, None, None, None]),
         ];
 
-        for (shader, expected) in cases {
+        for (shader, item, expected) in cases {
             for (features, flags) in profiles.into_iter().zip(expected) {
                 let mut device = copy_context(&context);
                 device.features = features;
@@ -1210,7 +1221,7 @@ fn cs_main(@builtin(local_invocation_index) index: u32) { sums[index] = subgroup
                     Some(flags) => assert_refused!(
                         checked.unwrap_err(),
                         RendererError::FeatureError { .. },
-                        &format!("the shader needs {flags}, which the device lacks")
+                        &format!("{item} needs {flags}, which the device lacks")
                     ),
                 }
             }
@@ -1237,6 +1248,104 @@ fn refusals_no_feature_fixes_keep_naga_report() {
             error,
             RendererError::FeatureError { .. },
             "the shader needs what the device's shader validator refuses: "
+        );
+    });
+}
+
+/// A compute shader that adds 1 to a texel of `counts` in each invocation.
+/// Dispatched as 8x8 workgroups of 8x8, it counts 256 into each texel of a 4x4 texture.
+const ATOMIC_COUNTS: &str = r#"
+@group(0) @binding(0) var counts: texture_storage_2d<r32uint, atomic>;
+@compute @workgroup_size(8, 8)
+fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
+  textureAtomicAdd(counts, id.xy / 16u, 1u);
+}
+"#;
+
+// Story: a compute shader counts into an R32Uint storage texture with texture atomics
+// where the device has TEXTURE_ATOMIC, whose storage textures in that format take wgpu's
+// STORAGE_ATOMIC usage, and render refuses it before any GPU work where the device lacks it.
+#[test]
+fn atomic_storage_textures_count() {
+    pollster::block_on(async move {
+        let (renderer, context, uncaptured) = setup().await.expect("render context");
+        let shader = Shader::new(ATOMIC_COUNTS).expect("shader");
+        let counts = renderer
+            .create_storage_texture(([4, 4], crate::TextureFormat::R32Uint))
+            .await
+            .expect("texture");
+        shader.set("counts", &counts).expect("counts");
+        let pass = crate::Pass::from_shader("count", &shader);
+        pass.set_compute_dispatch(8, 8, 1);
+        let atomic = context.features.contains(wgpu::Features::TEXTURE_ATOMIC);
+
+        let usage = counts.object().usage;
+
+        assert_eq!(
+            usage.contains(wgpu::TextureUsages::STORAGE_ATOMIC),
+            atomic,
+            "{usage:?}"
+        );
+        if atomic {
+            eprintln!("the device has TEXTURE_ATOMIC, so the counts were checked");
+            let target = renderer
+                .create_texture_target([4, 4])
+                .await
+                .expect("texture target");
+            renderer.render(&pass, &target).expect("render");
+            let bytes = renderer
+                .read_texture(*counts.id())
+                .await
+                .expect("read back");
+            assert_eq!(read_words(&bytes), [256; 16]);
+            assert!(uncaptured.lock().is_empty(), "got {:?}", uncaptured.lock());
+        } else {
+            eprintln!("the device lacks TEXTURE_ATOMIC, so only the refusal was checked");
+            assert_refused!(
+                refuse(&renderer, &context, &uncaptured, &shader).expect("refused"),
+                RendererError::FeatureError { .. },
+                "needs TEXTURE_ATOMIC for a R32Uint storage texture, which the device lacks"
+            );
+        }
+    });
+}
+
+// Story: on a device without TEXTURE_ATOMIC, as the browser's WebGPU and GL are,
+// an R32Uint storage texture takes no STORAGE_ATOMIC usage, and render refuses an atomic
+// slot with a FeatureError that names the feature, before it builds a layout the browser's
+// wgpu backend can't build. A copy of any device without the feature shows it.
+#[test]
+fn atomic_storage_needs_texture_atomics() {
+    pollster::block_on(async move {
+        let (_renderer, context, _) = setup().await.expect("render context");
+        let mut lacking = copy_context(&context);
+        lacking.features = context.features - wgpu::Features::TEXTURE_ATOMIC;
+        let (renderer, lacking) = adopt(lacking);
+        let uncaptured = super::record_uncaptured(&lacking);
+        let usage = wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::COPY_SRC;
+        let counts =
+            create_texture(&lacking, wgpu::TextureFormat::R32Uint, usage).expect("texture");
+        let shader = Shader::new(ATOMIC_COUNTS).expect("shader");
+        shader.set("counts", &counts).expect("counts");
+
+        let error = refuse(&renderer, &lacking, &uncaptured, &shader).expect("refused");
+
+        assert_eq!(counts.object().usage, usage);
+        let expected = vec![
+            (
+                "item",
+                Field::Text("'counts' at @group(0) @binding(0)".into()),
+            ),
+            (
+                "feature",
+                Field::Text("TEXTURE_ATOMIC for a R32Uint storage texture".into()),
+            ),
+        ];
+        assert_eq!(error.list_fields(), expected);
+        assert_refused!(
+            error,
+            RendererError::FeatureError { .. },
+            "'counts' at @group(0) @binding(0) needs TEXTURE_ATOMIC for a R32Uint storage texture, which the device lacks"
         );
     });
 }

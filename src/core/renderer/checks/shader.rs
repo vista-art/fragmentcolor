@@ -266,14 +266,21 @@ impl RenderContext {
         Ok(())
     }
 
-    /// Refuses a storage texture `format` the device can't bind with `access`.
+    /// Refuses a storage texture `format` the device can't bind with `access`. A feature
+    /// it lacks comes first, `TEXTURE_ATOMIC` for atomic access included, and is named by its flag.
     fn check_storage_format(
         &self,
         name: &str,
         format: wgpu::TextureFormat,
         access: StorageTextureAccess,
     ) -> Result<(), Refusal> {
-        let missing = format.required_features() - self.features;
+        let needed = match access {
+            StorageTextureAccess::Atomic => {
+                format.required_features() | wgpu::Features::TEXTURE_ATOMIC
+            }
+            _ => format.required_features(),
+        };
+        let missing = needed - self.features;
         if !missing.is_empty() {
             return Err(Refusal::Feature {
                 item: name.to_string(),
