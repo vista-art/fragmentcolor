@@ -133,16 +133,36 @@ pub(crate) fn format_features(
 }
 
 /// Checks the device makes `format` with `usage` and `dimension`,
-/// so a texture wgpu would refuse never reaches `device.create_texture`.
+/// so a texture wgpu would refuse never reaches `device.create_texture`,
+/// and returns the usage to create it with, as `add_atomic` widens it.
 pub(crate) fn check_format(
     context: &RenderContext,
     format: wgpu::TextureFormat,
     usage: wgpu::TextureUsages,
     dimension: wgpu::TextureDimension,
-) -> Result<(), TextureError> {
+) -> Result<wgpu::TextureUsages, TextureError> {
     check_feature(context.device.features(), format)?;
     let allowed = format_features(context, format).allowed_usages;
-    check_support(allowed, format, usage, dimension)
+    check_support(allowed, format, usage, dimension)?;
+    Ok(add_atomic(context.features, allowed, usage))
+}
+
+/// `usage` with `STORAGE_ATOMIC` added when it holds `STORAGE_BINDING`
+/// and the device binds the format atomically: it has `TEXTURE_ATOMIC`,
+/// and the format `allowed` takes the usage. Metal needs it on the texture to run
+/// texture atomics, wgpu never checks it at bind time, and no `TextureUsage` flag names it.
+fn add_atomic(
+    features: wgpu::Features,
+    allowed: wgpu::TextureUsages,
+    usage: wgpu::TextureUsages,
+) -> wgpu::TextureUsages {
+    let binds = usage.contains(wgpu::TextureUsages::STORAGE_BINDING)
+        && allowed.contains(wgpu::TextureUsages::STORAGE_ATOMIC)
+        && features.contains(wgpu::Features::TEXTURE_ATOMIC);
+    match binds {
+        true => usage | wgpu::TextureUsages::STORAGE_ATOMIC,
+        false => usage,
+    }
 }
 
 /// Checks that the device's `features` hold every feature `format` needs.
@@ -277,6 +297,30 @@ mod tests {
             assert_eq!(format as usize, code, "{format:?}");
             assert_eq!(FORMATS[code], format);
         }
+    }
+
+    // Story: a storage texture takes wgpu's STORAGE_ATOMIC usage only where the device
+    // has TEXTURE_ATOMIC and binds the format atomically, as R32Uint but never R32Float.
+    #[test]
+    fn adds_atomic_usage_where_the_device_binds_it() {
+        let atomic = wgpu::Features::TEXTURE_ATOMIC;
+        let none = wgpu::Features::empty();
+        let allowed = |format: wgpu::TextureFormat, features| {
+            format.guaranteed_format_features(features).allowed_usages
+        };
+        let uint = allowed(wgpu::TextureFormat::R32Uint, atomic);
+        let storage = wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::COPY_SRC;
+        let sampled = wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_SRC;
+
+        let added = add_atomic(atomic, uint, storage);
+
+        assert_eq!(added, storage | wgpu::TextureUsages::STORAGE_ATOMIC);
+        assert_eq!(add_atomic(none, uint, storage), storage);
+        let plain = allowed(wgpu::TextureFormat::R32Uint, none);
+        assert_eq!(add_atomic(atomic, plain, storage), storage);
+        assert_eq!(add_atomic(atomic, uint, sampled), sampled);
+        let float = allowed(wgpu::TextureFormat::R32Float, atomic);
+        assert_eq!(add_atomic(atomic, float, storage), storage);
     }
 
     // Story: Default logical formats map to practical wgpu defaults.
