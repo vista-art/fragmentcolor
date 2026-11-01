@@ -18,8 +18,9 @@ pub(crate) use storage::StorageBufferPool;
 mod texture;
 pub(crate) use texture::*;
 
-/// `size` rounded up to a multiple of the 4 bytes wgpu copies, writes, maps and binds storage in.
-/// A root of `f16` values can span 2 or 6 bytes.
+/// `size` rounded up to whole 4-byte words.
+/// A root of `f16` values can span 2 or 6 bytes,
+/// and wgpu copies, writes, maps and binds storage in words.
 pub(crate) fn align_size(size: u64) -> u64 {
     wgpu::util::align_to(size, wgpu::COPY_BUFFER_ALIGNMENT)
 }

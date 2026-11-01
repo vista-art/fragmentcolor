@@ -236,8 +236,8 @@ impl VertexData {
         self.convert(format).map(drop)
     }
 
-    /// Checks that each float of this value is finite after rounding to `f16`, as an
-    /// `f16` input reads it, and returns the first number that isn't, as given.
+    /// Checks each float against `f16`, as an `f16` input reads it:
+    /// it must stay finite after rounding, and the first that doesn't comes back as given.
     pub(crate) fn check_half(&self) -> Result<(), f64> {
         match *self {
             Self::F32(value) => check_halves([f64::from(value)]),
@@ -302,8 +302,8 @@ impl VertexData {
     }
 }
 
-/// A typed float value's components, when its own format is `format`
-/// and each one is finite, as an `f32` uniform takes it.
+/// A typed float value's components, when its format is `format`
+/// and each one is finite, the rule an `f32` uniform follows too.
 fn convert_floats(
     format: VertexFormat,
     own: VertexFormat,

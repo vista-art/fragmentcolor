@@ -107,16 +107,18 @@ impl TextureFacts {
 impl RenderContext {
     /// Refuses a shader this device can't run, before it takes a frame or builds a pipeline.
     ///
-    /// That covers groups and bindings past the device's limits, too many bindings of a kind
-    /// in one stage, a vertex input at a location past `max_vertex_attributes`, buffers past
-    /// their size limits, storage the device can't bind, an external texture on a device
-    /// without `EXTERNAL_TEXTURE`, missing entry points, a compute shader on a device without
-    /// compute, a workgroup past its size, invocation or memory limits, explicit layouts the
-    /// backend can't keep, light roots measured with `arrayLength` where lights come through
-    /// a uniform block, a feature the shader uses that the device lacks, named by its wgpu
-    /// flag, and anything else the device's shader validator refuses.
-    /// The verdict is kept by source hash, so each source is checked once per context,
-    /// whether it passes or not.
+    /// - Groups, bindings and buffers past the device's limits.
+    /// - Too many bindings of a kind in one stage.
+    /// - A vertex input at a location past `max_vertex_attributes`.
+    /// - Storage the device can't bind, and an external texture without `EXTERNAL_TEXTURE`.
+    /// - A missing entry point.
+    /// - A compute shader on a device without compute, or a workgroup past its limits.
+    /// - An explicit layout the backend can't keep.
+    /// - Light roots measured with `arrayLength` where lights come through a uniform block.
+    /// - A feature the device lacks, named by its wgpu flag.
+    /// - Anything else the device's shader validator refuses.
+    ///
+    /// The verdict stays by source hash, passed or refused, so a source is checked once per context.
     pub(in crate::core::renderer) fn check_shader(
         &self,
         shader: &ShaderObject,
@@ -515,9 +517,10 @@ fn refuse_module(error: &dyn std::error::Error) -> Refusal {
     }
 }
 
-/// The fewest candidate features missing from `features` that let `module` pass,
-/// or none when even all of them fall short. The walk tries the last declared flag first,
-/// so `SUBGROUP_VERTEX`, whose naga capability holds `SUBGROUP`'s, stays only for a vertex stage.
+/// The candidate features missing from `features` that let `module` pass,
+/// each of them needed, or none at all when even every candidate falls short.
+/// The walk drops the last declared flag first, so `SUBGROUP_VERTEX`, whose naga capability
+/// holds `SUBGROUP`'s, stays only for a vertex stage, and that order decides which set is kept.
 fn find_missing(
     module: &naga::Module,
     features: wgpu::Features,
@@ -632,8 +635,8 @@ enum Kind {
 }
 
 impl Kind {
-    /// How many bindings of this kind `ty` counts as. An external texture counts as
-    /// four sampled textures, a sampler and a uniform buffer, as wgpu counts it.
+    /// How many bindings of this kind `ty` counts as, as wgpu counts them:
+    /// an external texture is four sampled textures, a sampler and a uniform buffer.
     fn count(self, ty: &BindingType) -> u64 {
         let kind = match ty {
             BindingType::ExternalTexture => {
@@ -683,9 +686,9 @@ impl Kind {
     }
 }
 
-/// Refuses more bindings of one kind in a stage than the device takes, counting each binding
-/// in every stage it is visible to, as wgpu does. Buffers of both kinds also count together,
-/// the uniform buffer of an external texture included.
+/// Refuses more bindings of one kind in a stage than the device takes.
+/// Each binding counts in every stage it is visible to, as wgpu counts it,
+/// and buffers of both kinds count together, an external texture's uniform buffer included.
 fn check_counts(slots: &[Slot], limits: &wgpu::Limits) -> Result<(), Refusal> {
     let stages = [
         (ShaderStages::VERTEX, "the vertex stage"),

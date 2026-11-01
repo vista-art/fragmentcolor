@@ -4,9 +4,9 @@ use naga::proc::TypeResolution;
 use naga::valid::ModuleInfo;
 use naga::{Module, Scalar, Span, Type, TypeInner};
 
-/// Registers the `f16` scalar type in `module` when an expression holds an `f16` value,
-/// such as `1.5h`, and no type names one. naga's WGSL writer writes `enable f16;`
-/// only for a module whose types hold `f16`, and the browser refuses `f16` code without it.
+/// Registers the `f16` type in a `module` whose `f16` values have no type,
+/// such as `1.5h`. naga's WGSL writer writes `enable f16;` only for a module
+/// whose types hold `f16`, and the browser refuses `f16` code without the directive.
 pub(crate) fn register_half(module: &mut Module, info: &ModuleInfo) {
     let types = &module.types;
     if types

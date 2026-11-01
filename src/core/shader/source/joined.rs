@@ -1,5 +1,5 @@
-//! WGSL parts joined into one source, with the directives each later part opens with
-//! moved to the top, the only place WGSL takes them. naga's reports on the joined text
+//! WGSL parts joined into one source, each later part's directives
+//! moved to the top, the only place WGSL takes them. naga's reports on it
 //! point at the line and column where the parts, joined as written, hold each place.
 
 use crate::ShaderError;
@@ -24,8 +24,8 @@ const DIRECTIVES: [&str; 3] = ["enable", "requires", "diagnostic"];
 pub(crate) struct Joined {
     /// The text naga parses.
     pub(crate) text: String,
-    /// Where the directives at the top of `text` came from,
-    /// or `None` when `text` is the parts as written.
+    /// `None` when `text` is the parts as written,
+    /// else where the directives at the top of `text` came from.
     moves: Option<Moves>,
 }
 
@@ -49,8 +49,8 @@ impl From<&str> for Joined {
 }
 
 impl Joined {
-    /// `parts` joined in order, with the directives each part after the first opens with
-    /// moved to the top. Without such directives the text is the parts as written.
+    /// `parts` joined in order, with the directives each part after the first
+    /// opens with moved to the top. Without such directives the text is the parts as written.
     pub(crate) fn join(parts: &[&str]) -> Self {
         let written = parts.join(SEPARATOR);
         let mut moved = Vec::new();
@@ -92,8 +92,7 @@ impl Joined {
         }
     }
 
-    /// Parses the joined text, or returns naga's report,
-    /// which points into the parts as written.
+    /// Parses the joined text, or returns naga's report, which points into the parts as written.
     pub(crate) fn parse(&self) -> Result<Module, ShaderError> {
         let Some(moves) = &self.moves else {
             return parse_wgsl(&self.text);
@@ -214,8 +213,8 @@ impl Error for Report {
     }
 }
 
-/// The directives `part` opens with, before its first declaration,
-/// each one a byte range that ends past its `;`.
+/// The directives `part` opens with, each a byte range
+/// that ends past its `;`, all before its first declaration.
 fn find_directives(part: &str) -> Vec<Range<usize>> {
     let mut found = Vec::new();
     let mut at = skip_trivia(part, 0);
@@ -263,8 +262,8 @@ fn skip_trivia(text: &str, mut at: usize) -> usize {
     text.len()
 }
 
-/// The bytes of the block comment `text` opens with, nested comments included,
-/// or all of `text` when the comment never closes.
+/// The bytes of the block comment `text` opens with,
+/// nested comments included, or all of `text` when it never closes.
 fn measure_block(text: &str) -> usize {
     let mut depth = 0;
     let mut at = 0;
@@ -300,8 +299,8 @@ fn is_line_break(character: char) -> bool {
     )
 }
 
-/// `text` with every character in `ranges` turned to spaces of the same byte length,
-/// line breaks kept, so every other byte stays where it was.
+/// `text` with each character in `ranges` but line breaks
+/// turned to spaces of the same byte length, so no other byte moves.
 fn blank(text: &str, ranges: &[Range<usize>]) -> String {
     let mut blanked = String::with_capacity(text.len());
     for (at, character) in text.char_indices() {

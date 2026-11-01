@@ -158,8 +158,8 @@ impl RenderContext {
     }
 }
 
-/// The view a slot of `meta` binds: the base level for an external texture,
-/// which takes one level, and the whole texture for every other slot.
+/// The view a slot of `meta` binds: the whole texture for most slots,
+/// and the base level for an external texture, which takes one level alone.
 pub(super) fn pick_view(texture: &TextureObject, meta: &TextureMeta) -> wgpu::TextureView {
     match meta.class {
         TextureClass::External() => texture.inner.create_view(&wgpu::TextureViewDescriptor {

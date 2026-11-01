@@ -139,8 +139,8 @@ fn floats(
     round_floats(key, slot, numbers, n, |value| value as f32)
 }
 
-/// Rounds `n` numbers to the nearest `f16`, refusing NaN, an infinity,
-/// or a number past ±65504 that doesn't round back to it.
+/// Rounds `n` numbers to the nearest `f16`, refusing NaN,
+/// an infinity, or a number past ±65504 that doesn't round back to it.
 fn round_halves(
     key: &str,
     slot: &UniformData,
@@ -152,8 +152,8 @@ fn round_halves(
     })
 }
 
-/// Rounds `n` numbers with `round`, refusing one that isn't finite after rounding,
-/// with an error that names the number as given. Nothing is clamped.
+/// Rounds `n` numbers with `round` and clamps none of them.
+/// One that isn't finite after rounding fails, and the error names it as given.
 fn round_floats(
     key: &str,
     slot: &UniformData,

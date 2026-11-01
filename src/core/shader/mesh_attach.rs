@@ -425,9 +425,9 @@ fn check_position(vertices: &[Vertex]) -> Result<(), ShaderError> {
     }
 }
 
-/// Checks every vertex: its position against the first one's, and against the `f16` range
-/// when `reads_position` is an `f16` input, each value the first vertex also holds against
-/// the format that attribute takes, and that it holds every attribute the shader reads.
+/// Checks every vertex: that it holds every attribute the shader reads,
+/// its position against the first one's and, for an `f16` input, the `f16` range,
+/// and each value the first vertex also holds against the format that attribute takes.
 fn check_vertices(
     verts: &[Vertex],
     known: &AttributeTypes,

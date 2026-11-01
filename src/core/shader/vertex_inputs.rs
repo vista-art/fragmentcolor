@@ -89,9 +89,8 @@ impl ShaderObject {
     }
 }
 
-/// The buffer format a vertex input reads and the WGSL type it declares.
-/// An `f16` input reads 32-bit floats, which the GPU converts,
-/// so one mesh feeds `f32` and `f16` inputs alike.
+/// The buffer format a vertex input reads, and the WGSL type it declares.
+/// An `f16` input reads 32-bit floats, which the GPU converts, so a mesh feeds both.
 fn map_input(ty: &naga::Type) -> Result<(wgpu::VertexFormat, &'static str), ShaderError> {
     use naga::{ScalarKind as Kind, TypeInner, VectorSize as Size};
     use wgpu::VertexFormat as Format;

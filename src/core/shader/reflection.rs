@@ -208,9 +208,9 @@ struct StorageFeature {
     missing: String,
 }
 
-/// Refuses a storage texture whose format needs a wgpu feature outside `CANDIDATES`,
-/// such as `r64uint`, which needs `TEXTURE_INT64_ATOMIC`, so no device FragmentColor opens binds it.
-/// The report points at the declaration, as naga's report on a feature a call needs does.
+/// Refuses a storage texture whose format needs a feature outside `CANDIDATES`,
+/// such as `r64uint`, which needs `TEXTURE_INT64_ATOMIC`, so no device binds it.
+/// The report points at the declaration, as naga's report on an atomic call on it does.
 fn check_storage(
     module: &Module,
     handle: naga::Handle<naga::GlobalVariable>,

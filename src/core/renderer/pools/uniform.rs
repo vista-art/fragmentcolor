@@ -105,8 +105,8 @@ impl UniformBufferPool {
         }
     }
 
-    /// Uploads `data`, zero-padded to the 4 bytes a write takes, and returns where it went.
-    /// The location keeps the size of `data`.
+    /// Uploads `data` and returns where it went, with the size of `data`.
+    /// The write pads it with zeros to whole 4-byte words, as wgpu takes them.
     pub fn upload(
         &mut self,
         data: &[u8],

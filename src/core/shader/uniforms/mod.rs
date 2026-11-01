@@ -281,9 +281,9 @@ impl UniformData {
     }
 
     /// Reads the value of a slot shaped like `self` out of its bytes.
-    /// Numbers decode into the same variant, `f16` ones into the `f32` variant of their shape,
-    /// and textures and samplers keep their binding. Structs, arrays, and buffer roots read
-    /// as raw bytes, since an array shape keeps one element.
+    /// Textures and samplers keep their binding, and numbers decode into the same variant,
+    /// `f16` ones into the `f32` variant of their shape. Structs, arrays, and buffer roots
+    /// read as raw bytes, since an array shape holds one element, not a value for each one.
     pub(crate) fn decode(&self, bytes: &[u8]) -> UniformData {
         fn words<T: bytemuck::Pod>(bytes: &[u8]) -> Vec<T> {
             let chunks = bytes.chunks_exact(std::mem::size_of::<T>());

@@ -1014,8 +1014,8 @@ fn cube_slots_take_no_texture_yet() {
     });
 }
 
-/// A compute shader that adds 1 across each subgroup of a 64-invocation workgroup,
-/// and keeps the subgroup size each invocation sees.
+/// A compute shader that adds 1 across each subgroup
+/// of a 64-invocation workgroup and keeps the subgroup size each one sees.
 const SUBGROUP_SUMS: &str = r#"
 @group(0) @binding(0) var<storage, read_write> sums: array<u32, 64>;
 @group(0) @binding(1) var<storage, read_write> sizes: array<u32, 64>;
@@ -1144,7 +1144,7 @@ enable primitive_index;
 }
 
 // Story: a shader that uses a feature the device lacks is refused with the wgpu flags
-// it needs, the fewest that let the device's validator take it, on every device alike.
+// it needs, a set the device's validator takes with none it can drop, on every device alike.
 // A vertex stage needs SUBGROUP_VERTEX, which no Metal device offers, a subgroup
 // barrier needs SUBGROUP_BARRIER, which no DX12 device offers, an atomic storage
 // texture needs TEXTURE_ATOMIC, which neither the browser's WebGPU nor GL offers,
@@ -1660,8 +1660,8 @@ const HALF_TINT: &str = "@group(0) @binding(0) var<uniform> tint: vec4<f16>;
 @group(0) @binding(1) var<uniform> gain: f16;
 @fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(tint * gain); }";
 
-/// Asserts that the one pixel of `image` is about `[64, 128, 191, 255]`,
-/// the color `[0.25, 0.5, 0.75, 1.0]` writes into Rgba8Unorm.
+/// Asserts that the one pixel of `image` is within 1 of
+/// `[64, 128, 191, 255]`, what `[0.25, 0.5, 0.75, 1.0]` writes into Rgba8Unorm.
 fn assert_tint(image: &[u8], what: &str) {
     let expected = [64u8, 128, 191, 255];
     let close = image
@@ -1671,8 +1671,8 @@ fn assert_tint(image: &[u8], what: &str) {
     assert!(close, "{what} drew {image:?}, not {expected:?}");
 }
 
-/// Whether the device runs f16, which every Metal device does. Without it,
-/// render must refuse `shader` with a FeatureError before any GPU work.
+/// Whether the device runs f16, as every Metal device does.
+/// Without it, render must refuse `shader` with a FeatureError before any GPU work.
 fn check_half(
     renderer: &Renderer,
     context: &RenderContext,

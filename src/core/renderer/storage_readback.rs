@@ -34,8 +34,8 @@ impl Renderer {
 }
 
 /// Copy `[0, span)` of `buffer` into a pooled readback buffer, map it,
-/// extract the bytes, and return them. The copy and the map take `span`
-/// rounded up to 4 bytes, and the result is exactly `span` bytes.
+/// and return exactly `span` bytes of it. The copy and the map both take
+/// `span` rounded up to whole 4-byte words, the size wgpu copies and maps.
 ///
 /// Caller has already validated:
 ///   - the shader declares the storage binding,
