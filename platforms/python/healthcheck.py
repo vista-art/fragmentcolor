@@ -398,6 +398,35 @@ def check_shader_refusals(renderer):
     renderer.render(Shader(SOLID_SHADER), target)
 
 
+def check_texture_atomics(renderer):
+    """A compute shader counts into an R32Uint storage texture with texture atomics where the
+    device has TEXTURE_ATOMIC, and render raises FeatureError, naming it, where it doesn't."""
+    counts = renderer.create_storage_texture([4, 4], TextureFormat.R32Uint)
+    shader = Shader("""
+@group(0) @binding(0) var counts: texture_storage_2d<r32uint, atomic>;
+@compute @workgroup_size(8, 8)
+fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
+  textureAtomicAdd(counts, id.xy / 16u, 1u);
+}
+""")
+    shader.set("counts", counts)
+    counting = Pass.from_shader("count", shader)
+    counting.set_compute_dispatch(8, 8, 1)
+    target = renderer.create_texture_target([4, 4])
+    try:
+        renderer.render(counting, target)
+    except FeatureError as e:
+        assert e.item == "'counts' at @group(0) @binding(0)", f"item {e.item}"
+        assert e.feature == "TEXTURE_ATOMIC for a R32Uint storage texture", f"feature {e.feature}"
+        print(f"texture atomics raised FeatureError: {e}")
+        return
+    image = counts.get_image()
+    assert image.shape == (4, 4, 4), f"shape {image.shape}"
+    values = image.view(np.uint32)
+    assert (values == 256).all(), f"counts {values.ravel().tolist()}"
+    print("texture atomics counted 256 into each texel")
+
+
 def check_pass_targets(renderer):
     """A target with a mip chain raises InvalidInputError, and render refuses a pass
     that samples its own target, or a target from another Renderer, before any GPU work."""
@@ -1496,6 +1525,7 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
     check_require_graph(renderer)
     check_pass_targets(renderer)
     check_shader_refusals(renderer)
+    check_texture_atomics(renderer)
     check_value_types()
     check_number_errors(renderer)
     check_empty_regions()

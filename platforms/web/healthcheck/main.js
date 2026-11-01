@@ -1251,6 +1251,16 @@ await withModule('platforms.web.healthcheck.device_checks', async () => {
     if (feature.message !== `${feature.item} needs ${feature.feature}, which the device lacks` || feature.name !== 'FeatureError') {
       fail(`a storage format the device lacks threw item ${feature.item}, feature ${feature.feature}, name ${feature.name}`);
     }
+    // The browser's WebGPU and WebGL2 have no texture atomics. The storage check refuses
+    // an atomic slot before any bind group layout, which wgpu's browser backend can't build.
+    const atomic = new Shader(`@group(0) @binding(0) var counts: texture_storage_2d<r32uint, atomic>;
+@compute @workgroup_size(1) fn cs_main() { textureAtomicAdd(counts, vec2<i32>(0), 1u); }`);
+    const atomics = refuses('render with texture atomics',
+      /'counts' at @group\(0\) @binding\(0\) needs TEXTURE_ATOMIC for a R32Uint storage texture/,
+      () => renderer.render(atomic, target));
+    if (atomics.name !== 'FeatureError' || atomics.feature !== 'TEXTURE_ATOMIC for a R32Uint storage texture') {
+      fail(`texture atomics threw item ${atomics.item}, feature ${atomics.feature}, name ${atomics.name}`);
+    }
     const wide = new Shader(`@compute @workgroup_size(4096) fn cs_main() {}`);
     refuses('dispatch of a workgroup past the device', /max_compute_workgroup_size_x|needs COMPUTE_SHADERS/,
       () => renderer.render(wide, target));
