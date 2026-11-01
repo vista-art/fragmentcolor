@@ -380,8 +380,10 @@ impl RenderContext {
                 }
                 // Persistent buffers
                 for (binding, buf, span) in resources.persistent_storage_buffers.iter() {
-                    // Bind exactly the reflected span; do not pad, to avoid range overflow
-                    let size_nz = unsafe { std::num::NonZeroU64::new_unchecked(*span) };
+                    // The reflected span, rounded up to the 4 bytes a storage binding takes,
+                    // which the buffer holds.
+                    let size_nz =
+                        unsafe { std::num::NonZeroU64::new_unchecked(pools::align_size(*span)) };
                     entries.push(wgpu::BindGroupEntry {
                         binding: *binding,
                         resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
@@ -652,8 +654,10 @@ impl RenderContext {
                 }
                 // Persistent buffers
                 for (binding, buf, span) in owned.storage_buffers.iter() {
-                    // Bind exactly the reflected span; do not pad, to avoid range overflow
-                    let size_nz = unsafe { std::num::NonZeroU64::new_unchecked(*span) };
+                    // The reflected span, rounded up to the 4 bytes a storage binding takes,
+                    // which the buffer holds.
+                    let size_nz =
+                        unsafe { std::num::NonZeroU64::new_unchecked(pools::align_size(*span)) };
                     entries.push(wgpu::BindGroupEntry {
                         binding: *binding,
                         resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {

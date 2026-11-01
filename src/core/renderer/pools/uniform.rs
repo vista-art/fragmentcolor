@@ -1,5 +1,6 @@
 //! `UniformBufferPool`: uniform buffers cut into fixed chunks and rewound once per frame.
 
+use super::pad_bytes;
 use std::num::NonZeroU64;
 
 /// Default chunk size for buffer allocation (64KB)
@@ -104,7 +105,8 @@ impl UniformBufferPool {
         }
     }
 
-    /// Upload raw bytes to the pool, returns buffer location
+    /// Uploads `data`, zero-padded to the 4 bytes a write takes, and returns where it went.
+    /// The location keeps the size of `data`.
     pub fn upload(
         &mut self,
         data: &[u8],
@@ -134,7 +136,7 @@ impl UniformBufferPool {
                     None => self.dedicated.push(buffer),
                 }
             }
-            queue.write_buffer(&self.dedicated[index], 0, data);
+            queue.write_buffer(&self.dedicated[index], 0, &pad_bytes(data));
             return BufferLocation {
                 chunk_index: index,
                 offset: 0,
@@ -160,7 +162,12 @@ impl UniformBufferPool {
         }
 
         // Write to current chunk
-        queue.write_buffer(&self.buffers[self.current_chunk], self.current_offset, data);
+        let padded = pad_bytes(data);
+        queue.write_buffer(
+            &self.buffers[self.current_chunk],
+            self.current_offset,
+            &padded,
+        );
 
         let location = BufferLocation {
             chunk_index: self.current_chunk,
@@ -269,6 +276,36 @@ mod tests {
             let loc0 = pool.upload(&zero, &queue, &device);
             let b0 = pool.get_binding(loc0);
             assert!(b0.size.is_none());
+        });
+    }
+
+    // Story: an upload whose size isn't a multiple of 4 bytes, such as a 2-byte f16 root
+    // or a 6-byte vec3<f16>, writes padded with zeros, in a chunk and in a buffer of its own,
+    // and its location keeps the root's size.
+    #[test]
+    fn uploads_pad_to_whole_words() {
+        pollster::block_on(async move {
+            let (device, queue) = device_and_queue().await;
+            let mut pool = UniformBufferPool::with_params(
+                "word pool",
+                &device,
+                wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                1024,
+            );
+            let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
+
+            let sizes = [2, 5, 6, 2050];
+            let locations: Vec<BufferLocation> = sizes
+                .iter()
+                .map(|&size| pool.upload(&vec![7u8; size], &queue, &device))
+                .collect();
+            queue.submit(None);
+
+            assert!(scope.pop().await.is_none(), "a write was refused");
+            for (location, size) in locations.iter().zip(sizes) {
+                assert_eq!(location.size, size as u64);
+            }
+            assert!(locations[3].dedicated);
         });
     }
 
