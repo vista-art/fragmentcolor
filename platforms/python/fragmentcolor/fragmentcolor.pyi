@@ -4377,9 +4377,9 @@ class Material:
     reads:
 
     ```text
-    let red = Material::pbr().base_color([1.0, 0.0, 0.0, 1.0]);
+    let red = Material::pbr().base_color([1.0, 0.0, 0.0, 1.0])?;
     let same = red.clone();
-    same.base_color([0.0, 1.0, 0.0, 1.0]); // both `red` and `same` now read green
+    same.base_color([0.0, 1.0, 0.0, 1.0])?; // both `red` and `same` now read green
     ```
 
     Same goes for the chained-setter return: `Material::pbr().metallic(...)`
@@ -4560,9 +4560,15 @@ class Material:
         Wrap an arbitrary `Shader` as a `Material` so it can be paired with a
         `Mesh` to form a `Model`. The PBR-named setters (`base_color`, `metallic`,
         …) still work; they call `shader.set(...)` under matching uniform paths
-        (`material.base_color`, etc.). If your shader doesn't declare those
-        uniforms the setters log-warn and return self unchanged; set custom uniforms
+        (`material.base_color`, etc.). A setter skips a uniform your shader doesn't
+        declare with a log warning and returns the Material, so set custom uniforms
         directly via `material.shader().set(...)`.
+
+        A value your shader declares but can't hold, such as a number past ±65504
+        for an `f16` field, returns `MaterialError::Shader` with the shader's error,
+        and the call changes nothing, a whole `uv_transform` included. JavaScript
+        throws an `Error` named `MaterialError`, Python raises `MaterialError`, Swift
+        throws `FragmentColorError` and Kotlin throws `FragmentColorException`.
 
         `Material::custom` is the escape hatch for any shading model that isn't
         glTF-spec PBR: toon shading, flat unlit colors, wireframe debug views,
@@ -4845,6 +4851,15 @@ class Material:
         [Material: Cloning is an Arc-share](https://fragmentcolor.org/api/scene/material#cloning-is-an-arc-share-not-a-deep-copy)
         for what that means for mutation visibility.
 
+        An item that is NaN or an infinity returns `MaterialError::NotFinite`,
+        which names the call and the item, and the material keeps the value it
+        had. The other languages also refuse an item past the 32-bit float range,
+        such as `1e39`, with a message like `Material.baseColor: item 3 must be a
+        finite number that fits a 32-bit float, got 1e39`. JavaScript throws an
+        `Error` named `InvalidInputError`, Python raises `InvalidInputError`,
+        Swift throws `FragmentColorError` and Kotlin throws
+        `FragmentColorException`.
+
         Example:
 
         ```python
@@ -4865,6 +4880,14 @@ class Material:
         out-of-the-box surface reads as a clean dielectric rather than dark gunmetal
         under the factor-driven defaults.
 
+        NaN or an infinity returns `MaterialError::NotFinite`, which names the
+        call, and the material keeps the value it had. The other languages also
+        refuse a number past the 32-bit float range, such as `1e39`, with a
+        message like `Material.metallic: value must be a finite number that fits a
+        32-bit float, got 1e39`. JavaScript throws an `Error` named
+        `InvalidInputError`, Python raises `InvalidInputError`, Swift throws
+        `FragmentColorError` and Kotlin throws `FragmentColorException`.
+
         Example:
 
         ```python
@@ -4881,6 +4904,14 @@ class Material:
         shared with glTF 2.0.
 
         Maps to the `material.roughness` uniform. Default is `1.0`.
+
+        NaN or an infinity returns `MaterialError::NotFinite`, which names the
+        call, and the material keeps the value it had. The other languages also
+        refuse a number past the 32-bit float range, such as `1e39`, with a
+        message like `Material.roughness: value must be a finite number that fits
+        a 32-bit float, got 1e39`. JavaScript throws an `Error` named
+        `InvalidInputError`, Python raises `InvalidInputError`, Swift throws
+        `FragmentColorError` and Kotlin throws `FragmentColorException`.
 
         Example:
 
@@ -4901,6 +4932,14 @@ class Material:
         PBR shader samples `normal_map`, decodes the bytes, and scales the XY
         perturbation by this value before combining with the world-space normal.
 
+        NaN or an infinity returns `MaterialError::NotFinite`, which names the
+        call, and the material keeps the value it had. The other languages also
+        refuse a number past the 32-bit float range, such as `1e39`, with a
+        message like `Material.normalScale: value must be a finite number that
+        fits a 32-bit float, got 1e39`. JavaScript throws an `Error` named
+        `InvalidInputError`, Python raises `InvalidInputError`, Swift throws
+        `FragmentColorError` and Kotlin throws `FragmentColorException`.
+
         Example:
 
         ```python
@@ -4919,6 +4958,14 @@ class Material:
         default PBR shader samples `occlusion_map.r` and `mix(1.0, sampled, strength)`s
         the result into the diffuse term.
 
+        NaN or an infinity returns `MaterialError::NotFinite`, which names the
+        call, and the material keeps the value it had. The other languages also
+        refuse a number past the 32-bit float range, such as `1e39`, with a
+        message like `Material.occlusionStrength: value must be a finite number
+        that fits a 32-bit float, got 1e39`. JavaScript throws an `Error` named
+        `InvalidInputError`, Python raises `InvalidInputError`, Swift throws
+        `FragmentColorError` and Kotlin throws `FragmentColorException`.
+
         Example:
 
         ```python
@@ -4935,6 +4982,15 @@ class Material:
         you can go beyond.
 
         Maps to the `material.emissive` uniform. Default is `[0, 0, 0]`.
+
+        An item that is NaN or an infinity returns `MaterialError::NotFinite`,
+        which names the call and the item, and the material keeps the value it
+        had. The other languages also refuse an item past the 32-bit float range,
+        such as `1e39`, with a message like `Material.emissive: item 1 must be a
+        finite number that fits a 32-bit float, got 1e39`. JavaScript throws an
+        `Error` named `InvalidInputError`, Python raises `InvalidInputError`,
+        Swift throws `FragmentColorError` and Kotlin throws
+        `FragmentColorException`.
 
         Example:
 
@@ -4954,6 +5010,14 @@ class Material:
         Only `AlphaMode::Mask` reads this value; in `Opaque` and `Blend` modes the
         fragment shader ignores it. Use it together with `Material::alpha_mode`
         when you want hard-edged cut-out transparency (foliage, chain-link, decals).
+
+        NaN or an infinity returns `MaterialError::NotFinite`, which names the
+        call, and the material keeps the value it had. The other languages also
+        refuse a number past the 32-bit float range, such as `1e39`, with a
+        message like `Material.alphaCutoff: value must be a finite number that
+        fits a 32-bit float, got 1e39`. JavaScript throws an `Error` named
+        `InvalidInputError`, Python raises `InvalidInputError`, Swift throws
+        `FragmentColorError` and Kotlin throws `FragmentColorException`.
 
         Example:
 
@@ -4983,6 +5047,17 @@ class Material:
         transform to the UV set that
         [`texture_uv`](https://fragmentcolor.org/api/scene/material#texture_uv)
         picks for it.
+
+        A number that is NaN or an infinity returns `MaterialError::NotFinite`,
+        which names the part, such as `Material::uv_transform: rotation must be
+        finite, got NaN`, and leaves every slot as it was: the setter checks the
+        offset, the scale and the rotation before it writes any of them. The other
+        languages also refuse a number past the 32-bit float range, such as
+        `1e39`, with a message like `Material.uvTransform: rotation must be a
+        finite number that fits a 32-bit float, got 1e39`. JavaScript throws an
+        `Error` named `InvalidInputError`, Python raises `InvalidInputError`,
+        Swift throws `FragmentColorError` and Kotlin throws
+        `FragmentColorException`.
 
         Example:
 
@@ -5062,6 +5137,17 @@ class Material:
         left at its 1×1 default doesn't count. So a material with only an
         occlusion map tiles it with the occlusion map's own options, and one with
         a clamped base color texture clamps a tiled normal map too.
+
+        A number that is NaN or an infinity returns `MaterialError::NotFinite`,
+        which names the part, such as `Material::texture_transform: rotation must
+        be finite, got NaN`, and leaves the slot as it was: the setter checks the
+        offset, the scale and the rotation before it writes any of them. The other
+        languages also refuse a number past the 32-bit float range, such as
+        `1e39`, with a message like `Material.textureTransform: rotation must be a
+        finite number that fits a 32-bit float, got 1e39`. JavaScript throws an
+        `Error` named `InvalidInputError`, Python raises `InvalidInputError`,
+        Swift throws `FragmentColorError` and Kotlin throws
+        `FragmentColorException`.
 
         Example:
 

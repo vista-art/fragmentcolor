@@ -1252,7 +1252,7 @@ public func FfiConverterTypeLight_lower(_ value: Light) -> UInt64 {
 
 public protocol MaterialProtocol: AnyObject, Sendable {
     
-    func alphaCutoff(value: Float)  -> Material
+    func alphaCutoff(value: Float) throws  -> Material
     
     func alphaMode(mode: AlphaMode)  -> Material
     
@@ -1278,7 +1278,7 @@ public protocol MaterialProtocol: AnyObject, Sendable {
     
     func emissiveTexture(texture: Texture)  -> Material
     
-    func metallic(value: Float)  -> Material
+    func metallic(value: Float) throws  -> Material
     
     /**
      * The texture input form of `metallicRoughnessTexture`, uploaded when the scene loads.
@@ -1288,7 +1288,7 @@ public protocol MaterialProtocol: AnyObject, Sendable {
     
     func metallicRoughnessTexture(texture: Texture)  -> Material
     
-    func normalScale(value: Float)  -> Material
+    func normalScale(value: Float) throws  -> Material
     
     /**
      * The texture input form of `normalTexture`, uploaded when the scene loads.
@@ -1304,11 +1304,11 @@ public protocol MaterialProtocol: AnyObject, Sendable {
      */
     func occlusionSource(input: TextureInputMobile, options: TextureOptions?)  -> Material
     
-    func occlusionStrength(value: Float)  -> Material
+    func occlusionStrength(value: Float) throws  -> Material
     
     func occlusionTexture(texture: Texture)  -> Material
     
-    func roughness(value: Float)  -> Material
+    func roughness(value: Float) throws  -> Material
     
     func shader()  -> Shader
     
@@ -1389,8 +1389,8 @@ public static func pbr() -> Material  {
     
 
     
-open func alphaCutoff(value: Float) -> Material  {
-    return try!  FfiConverterTypeMaterial_lift(try! rustCall() {
+open func alphaCutoff(value: Float)throws  -> Material  {
+    return try  FfiConverterTypeMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
         uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_material_alphacutoff(
             self.uniffiCloneHandle(),
@@ -1489,8 +1489,8 @@ open func emissiveTexture(texture: Texture) -> Material  {
 })
 }
     
-open func metallic(value: Float) -> Material  {
-    return try!  FfiConverterTypeMaterial_lift(try! rustCall() {
+open func metallic(value: Float)throws  -> Material  {
+    return try  FfiConverterTypeMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
         uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_material_metallic(
             self.uniffiCloneHandle(),
@@ -1524,8 +1524,8 @@ open func metallicRoughnessTexture(texture: Texture) -> Material  {
 })
 }
     
-open func normalScale(value: Float) -> Material  {
-    return try!  FfiConverterTypeMaterial_lift(try! rustCall() {
+open func normalScale(value: Float)throws  -> Material  {
+    return try  FfiConverterTypeMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
         uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_material_normalscale(
             self.uniffiCloneHandle(),
@@ -1574,8 +1574,8 @@ open func occlusionSource(input: TextureInputMobile, options: TextureOptions? = 
 })
 }
     
-open func occlusionStrength(value: Float) -> Material  {
-    return try!  FfiConverterTypeMaterial_lift(try! rustCall() {
+open func occlusionStrength(value: Float)throws  -> Material  {
+    return try  FfiConverterTypeMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
         uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_material_occlusionstrength(
             self.uniffiCloneHandle(),
@@ -1594,8 +1594,8 @@ open func occlusionTexture(texture: Texture) -> Material  {
 })
 }
     
-open func roughness(value: Float) -> Material  {
-    return try!  FfiConverterTypeMaterial_lift(try! rustCall() {
+open func roughness(value: Float)throws  -> Material  {
+    return try  FfiConverterTypeMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
         uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_material_roughness(
             self.uniffiCloneHandle(),
@@ -9659,7 +9659,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_light_setrange() != 31032) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_material_alphacutoff() != 31095) {
+    if (uniffi_fragmentcolor_checksum_method_material_alphacutoff() != 34284) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_material_alphamode() != 6741) {
@@ -9686,7 +9686,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_material_emissivetexture() != 48836) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_material_metallic() != 49634) {
+    if (uniffi_fragmentcolor_checksum_method_material_metallic() != 48955) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_material_metallicroughnesssource() != 19854) {
@@ -9695,7 +9695,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_material_metallicroughnesstexture() != 61346) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_material_normalscale() != 63544) {
+    if (uniffi_fragmentcolor_checksum_method_material_normalscale() != 29790) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_material_normalsource() != 48890) {
@@ -9707,13 +9707,13 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_material_occlusionsource() != 34202) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_material_occlusionstrength() != 62867) {
+    if (uniffi_fragmentcolor_checksum_method_material_occlusionstrength() != 40961) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_material_occlusiontexture() != 16407) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_material_roughness() != 47595) {
+    if (uniffi_fragmentcolor_checksum_method_material_roughness() != 58115) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_material_shader() != 47089) {
