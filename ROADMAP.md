@@ -7,7 +7,7 @@
 
 **Sequence.**
 
-1. **0.12.x:** fixes, shader support and tooling that keep today's public signatures.
+1. **0.12.x:** fixes, shader support and tooling that keep today's public signatures. 0.12.7 is the exception: it changes signatures in every language so that 0.13.0 starts from typed errors, one set of number rules and types at the crate root, and its CHANGELOG opens with an upgrade list.
 2. **0.13.0:** one breaking minor with every break and API addition that the earlier plan spread from 0.13.0 to 0.14.x: the primitives an engine drives, instances that live on `Mesh`, the 3D and scene layers with draw merging, plugins, live shader editing, the dependency features, and the record and enum changes the reference scenes need.
 3. **0.13.x:** patches that break no public API: fixes, USD loading, the feature tracks, which only add calls (characters and the 2D layer among them), the Mario walk-through and the first integrations.
 4. **0.14:** light and surfaces, the next breaking minor: PBR lighting designed once, targets with options, the texture shapes and formats 0.13.0 leaves out, and pipeline completion, with a pbrt-v4 subset rasterized as its acceptance test.
@@ -19,11 +19,11 @@ Open decisions, further down, lists the choices still open, each with a recommen
 
 ## 0.12.x: fixes and groundwork
 
-0.12.6 brings the binding and renderer fixes listed in the CHANGELOG.
+0.12.6 and 0.12.7 bring the binding and renderer fixes listed in the CHANGELOG.
 
 ### 0.12.7
 
-Items found while reviewing 0.12.6.
+Items found while reviewing 0.12.6, and the checks and error model that 0.13.0 builds on.
 
 - [x] Lift the `wasm-bindgen` pin (`=0.2.118`): `impl_js_bridge!` reads a class through wasm-bindgen's public `TryFromJsValue`, from a fresh handle the class shares, where it handed `RefFromWasmAbi` a raw `u32`. The family moves in step from 0.2.126
 - [x] `headless_window` is the constructor `HeadlessWindow::new`, so the public API has no free function. Only the window-target doctests and tests use it (0.12.7)
@@ -41,6 +41,13 @@ Items found while reviewing 0.12.6.
 - [x] `Texture::resize` for textures a pass draws into, in every binding. Clones, pass targets, shader uniforms and `TextureTarget::texture()` handles follow it and `TextureTarget::resize`
 - [x] Clustered lights with no fixed cap. A compute pass sorts each pass's lights with a range into a grid of cells over its camera view, and a fragment shades only its cell's lights and the lights without one. WebGL2 and native OpenGL take the lights through a uniform block sized to the device. The cap comes from the device, and the storage `lights` and `light_grid` roots are what a custom shader declares (0.12.7)
 - [x] Each healthcheck's `paths` filter lists every file the crate compiles in, the shader library and the fixtures included, so a PR that changes only the website, a post or a tutorial runs no healthcheck. A branch that touches `src`, such as a release, runs them all on every push
+- [x] `render` checks each shader, mesh, texture and pass against the device before it takes a frame, and refuses what the device can't run with a typed error that names it. Pipelines build and frames record inside error scopes, so what the GPU rejects returns as `RendererError::DeviceError`, where `render` returned success and drew nothing (0.12.7)
+- [x] Every error has a class that matches across the bindings: Python raises a `FragmentColorError` subclass and a JavaScript error is named after it, both read from `Classify` (0.12.7)
+- [x] One set of number rules for every binding, in `src/bindings/numbers.rs`: NaN, infinities, floats past `f32`, fractions in integer slots and negative sizes are errors that name the call and the item, where they were clamped, zeroed or dropped (0.12.7)
+- [x] The renderer frees a texture when its last handle, uniform and pass target drop (0.12.7)
+- [x] `Material::pbr` encodes light for the target's format, as sRGB on the 8-bit targets FC creates (0.12.7)
+- [x] Every public Rust type lives at the crate root, `src/` follows the docs' categories, and Rust builds one type from another with `From`, `TryFrom` and `FromStr` where it had named constructors (0.12.7)
+- [x] `StorageAccess` reaches naga's type through a crate-private function, as rule 14 asks (0.12.7)
 
 ### First, because 0.13.0 needs them
 
@@ -67,20 +74,18 @@ Items found while reviewing 0.12.6.
 ### Bug fixes
 
 - [x] JavaScript `renderer.render([...])` records the whole list as one frame, as Rust and Python do, and `renderer.load([...])` loads every item (0.12.6)
-- [ ] A changed storage root uploads only the bytes that changed, where today it uploads the whole root
+- [ ] A storage `set` uploads only the bytes that changed. Today it uploads the whole root from its CPU copy, which overwrites what a compute pass wrote since the last `read_storage`, and the `set` and `read_storage` pages say so (0.12.8)
 - [x] Compute pipelines take immediates, as render pipelines do (0.12.7)
 - [x] A shader whose meshes have different vertex layouts gets one pipeline per layout, and meshes with equal layouts share one (0.12.7)
 - [x] Swift and Kotlin `Scene.load` take glTF bytes as well as a path: Swift `Scene.load(_ bytes: Data)` and Kotlin `Scene.load(bytes: ByteArray)`, so the generated examples pass the bytes their comment describes (0.12.6)
-- [ ] The transient MSAA texture survives into a following pass that loads it
-- [ ] Extend the Apple split from `compute → compute` to `compute (storage write) → render (sampled read)` in one command buffer
 - [x] Render pipelines take the first `@vertex` and `@fragment` entry points, as vertex input reflection and compute do (0.12.6)
 - [x] `pass.set_viewport` takes effect: the pass draws inside the region, clipped to its target (0.12.6)
-- [ ] FC resolves override defaults with naga's `process_overrides` before the module reaches wgpu. Today naga's WGSL writer prints the placeholder 1 for a `@workgroup_size` that names an override, so the browser runs one thread per workgroup where native runs the default
+- [x] FC resolves override defaults with naga's `process_overrides` before the module reaches wgpu, so a `@workgroup_size` that names an override runs its default on the web as on native (0.12.7)
 - [x] A mesh recounts its instances on every upload, so a mesh whose instance list shrinks stops drawing stale trailing instances (0.12.6)
 - [x] Python raises `FragmentColorError` for renderer and texture errors, as it does for shader errors (0.12.6)
 - [x] `create_target` returns `InitializationError::Error` when the surface reports no formats for the adapter, such as a second canvas on WebGL2 (0.12.6). The case gets its own `InitializationError` variant in 0.13.0, once the error enums are `#[non_exhaustive]`
 - [x] A shader and mesh pair whose models are all hidden draws nothing, where it drew one stray instance from the mesh's own instance buffer (0.12.7)
-- [ ] `Scene::passes` lists each pass once. Today a member that another member `require`s is listed twice
+- [x] `Scene::passes` lists each pass once, and a list of passes renders each one once, after the passes it requires, in every language (0.12.7)
 - [x] The glTF loader checks `primitive.mode()`: `Scene.load` fails on a primitive drawn as points or lines, where it read them as triangles, and expands triangle strips and fans into lists (0.12.7)
 - [x] Turn on the `gltf` crate's `extras` feature, so `Scene::load` reads files that carry application attributes such as `_ID` (0.12.6). The loader ignores the extras until 0.13.0
 - [x] PBR normals follow the cofactor of the model matrix's upper 3x3, `cross(m1, m2)`, `cross(m2, m0)` and `cross(m0, m1)`, so `Model::scale` with unequal factors lights the way the surfaces face (0.12.7)
@@ -102,7 +107,7 @@ These landed in 0.12.6. JavaScript errors and the JavaScript `Shader` constructo
 
 ### Shader support
 
-- [ ] Reflect vertex inputs declared through a struct. `VertexInput.docs` in 0.13.0 needs them, since naga keeps no doc comments on function arguments
+- [x] Reflect vertex inputs declared through a struct. `VertexInput.docs` in 0.13.0 needs them, since naga keeps no doc comments on function arguments
 - [ ] 16-bit integer shaders (`i16`, `u16` behind `enable wgpu_int16;`) where the adapter supports them, cherry-picked from `v0.13.0-dev` since it adds no call
 - [x] A shader naga refuses reports naga's message with the source lines it points at, and the Rust `ShaderError` carries each place as a `SourceLocation` with a line, a column and a length (0.12.7)
 - [x] `f16`, subgroups, texture atomics on `r32uint` and `r32sint`, `texture_external` and `primitive_index` work in every language. A device opens with each one its adapter offers, and `Renderer::render` refuses a shader that needs one the device lacks with a `FeatureError` that names it (0.12.7)
@@ -145,7 +150,7 @@ The breaks, detailed below: `add_mesh` on `Pass` takes a shader and an instance 
 5. **`Pipeline`, override constants and the record changes.** Overrides need 3 and 4, and `camera.sort` reads `Pipeline`. `SamplerOptions`, `TextureOptions` and `TextureFormat` change in the same step, and the error enums and returned records turn `#[non_exhaustive]`
 6. **`ScreenRegion` and viewports.** The magic `resolution` reads the viewport
 7. **`Buffer`.** Needs 3 and 4. Storage ownership and freeing on drop share its registry code
-8. **Instances on `Mesh`.** Needs 3 and 4. `VertexInput.docs` waits for struct inputs
+8. **Instances on `Mesh`.** Needs 3 and 4
 9. **Draw list on `Pass`, with neighbor merging.** Needs 5 and 8
 10. **`submit` and `initialize`.** `render` stops blocking, and `Renderer::load` becomes warm-up
 11. **Identity and live editing.** Needs 7 and 9. Magic uniforms need 4, 6 and the clock from 10
@@ -168,7 +173,7 @@ Core holds `Renderer`, the targets, `Shader` with `Pipeline`, `Pass`, `Mesh`, `T
 - [ ] Cargo features gate dependencies only, and no feature removes a type, a variant or a method. The dependency features are on by default: `gltf`, `obj`, the `image` and `ktx2` codecs, `exr`, `network`, and `usd` once it lands. Today `image`, `ktx2` and `gltf` are required. The `shaders-*` features keep embedding the registry's WGSL
 - [ ] An `exr` decoder, through the `image` crate's `exr` codec, as a default dependency feature. The `image` codecs are `jpeg`, `png`, `bmp` and `hdr` today. It adds no call, and every environment map and reference image in the first pbrt-v4 scenes is an EXR
 - [ ] With a decoder off, `Scene::load` of that format and `create_texture` of that codec return a typed error that names the feature, the way a URL returns `NetworkError::feature_disabled()` without `network`. Each error type has one such case, which later decoders such as `usd` and `basis` reuse, so a patch adds no variant. `SceneLoadError` and `TextureError` carry the decoder's message instead of wrapping `gltf::Error` and `image::ImageError`
-- [ ] `network` joins the defaults, which reverses the rule in `Cargo.toml` that keeps a TLS stack out of default builds. ureq builds only on Linux, macOS and Windows, so every `network` gate names those systems, as `agent()` does. Today `From<ureq::Error>` checks only `not(wasm)` and would break the iOS and Android builds. Mobile keeps returning an error, with a message of its own, since `FEATURE_DISABLED` blames a feature that is now on. Every desktop wheel then compiles native-tls, so a dry run of the wheel matrix checks that its six manylinux and four musllinux targets in `publish_py.yml` find OpenSSL, which `Cargo.toml` promises only for maturin's manylinux images
+- [ ] `network` joins the defaults, which reverses the rule in `Cargo.toml` that keeps a TLS stack out of default builds. ureq builds only on Linux, macOS and Windows, so every `network` gate names those systems, as `agent()` and the ureq conversion do. Mobile keeps returning an error, with a message of its own, since `FEATURE_DISABLED` blames a feature that is now on. Every desktop wheel then compiles native-tls, so a dry run of the wheel matrix checks that its six manylinux and four musllinux targets in `publish_py.yml` find OpenSSL, which `Cargo.toml` promises only for maturin's manylinux images
 - [ ] `mobile` and `uniffi-cli` gate uniffi, which builds on every target but wasm today, and the `mobile` cfg alias in `build.rs` also requires `feature = "mobile"`. Like `python`, they gate a binding dependency and its glue
 - [ ] Every packaging script turns on every dependency feature: `tools/build_web`, which drops the defaults to leave out the embedded registry and so must name each decoder, the maturin list in `pyproject.toml`, `tools/build_ios` and `tools/build_android`
 - [ ] The feature list in `scripts/reflect.rs` follows the new features: the dependency features hold in every binding build, `mobile` on iOS and Android, and `winit` and `uniffi/cli` leave. A feature name with no entry fails the build. Today an unknown feature counts as compiled, and so does its `not(...)` arm
@@ -213,8 +218,8 @@ Core holds `Renderer`, the targets, `Shader` with `Pipeline`, `Pass`, `Mesh`, `T
 - [ ] Presets as static constructors: `Pipeline::opaque()`, `Pipeline::transparent()` and `Pipeline::additive()`. In JavaScript they return plain objects, so `{ ...Pipeline.transparent(), cull: Cull.Back }` works
 - [ ] Enums `Blend { Off, Alpha, Premultiplied, Additive }`, `Cull { Off, Front, Back }`, `FrontFace { CounterClockwise, Clockwise }`, `Topology` and `Compare`, which renames `CompareFunction` and gains `Hash`. `SamplerOptions.compare` keeps its field name
 - [ ] The pipeline cache key carries the record, and strip topologies set a strip index format
-- [ ] Before any wgpu call, FC checks override values, blendable formats and the device's features, each with a typed error, and caches a failed build under its key
-- [ ] Pipeline creation runs inside `validate`, so wgpu failures return typed errors on native and WebGL2
+- [ ] Before any wgpu call, FC checks override values and blendable formats, each with a typed error, as it has checked the device's features since 0.12.7. A failed build stays out of the cache, so the next frame reports it again
+- [x] Pipeline creation runs inside error scopes, so wgpu failures return typed errors on native and WebGL2 (0.12.7)
 - [ ] Every public error enum turns `#[non_exhaustive]`, and so does every record FC returns and users never build: the `layout()` records and `HdrInfo`. A patch can then add a variant or a field without breaking callers, and a field it adds carries a uniffi default. No FragmentColor type has the attribute today. The surface that lists no formats then gets its own `InitializationError` variant
 - [ ] `Material`'s `alpha_mode` and `double_sided` become sugar over `set_pipeline`
 
@@ -276,7 +281,7 @@ A `Buffer` holds uniform and storage roots. Instance data lives on `Mesh`, so a 
 - [ ] A storage `Buffer` bound to an `array<T>` root takes the shared key grammar: `[7].glow`, `[200:250].glow`, `[200:].glow`, and a bare `glow` for every element (`glow` is an example field)
 - [ ] Storage roots belong to their shader. A `Buffer` is the one way to share them, and `read_storage` reads it back through a shader that binds it. Today the renderer shares them by root name
 - [ ] One GPU copy per device for `Buffer` and `Mesh`
-- [ ] GPU objects are freed when their last handle drops, and `unregister_texture` becomes an early release
+- [ ] GPU objects are freed when their last handle drops, and `unregister_texture` becomes an early release. Textures are freed this way since 0.12.7
 - [ ] A pass error when one buffer is read-write storage and also has another role in the same pass
 - [x] `BufferPool` and `PoolStats` are gone, and `TexturePool` and `RenderContext` are internal (0.12.6)
 
@@ -501,7 +506,7 @@ The feature tracks, further down, land as patches from 0.13.1 on. A track item t
 Lighting is the one area where several features share a contract and each would break it: the PBR bindings, the `lights` layout and the bytes `light.pack()` returns, all under WebGL2's 16 sampled textures per stage and 4 bind groups. Shipped one patch at a time, shadows, image-based lighting and area lights would change that contract three times, so 0.14 designs them once, together with the targets and texture shapes they need. A pbrt-v4 subset, rasterized, is its acceptance test, the role the Bevy example plays for 0.13.0. Skinning, sprites and text only add calls, so they ship before it as 0.13.x tracks.
 
 - [ ] **PBR lighting, designed once** (3D). Shadows (directional cascades, spot, point cubes), image-based lighting from `.hdr` and equal-area octahedral maps, area lights through new `LightKind` cases (rectangle, disk, sphere) with LTC shading, and a glass preset, in one binding plan that fits WebGL2 and the clustered lights of 0.12.7. It versions the `Lights` layout if area lights or shadows need more room than the free words it has, and breaks the `light.pack()` bytes, the PBR bindings that `layout()` reports, and `LightKind`, which has three cases and no `#[non_exhaustive]`. The 0.13.x shadow and lighting examples become this API
-- [ ] **Targets with options** (core). Format and sample count per target, such as `Rgba16Float` and `R32Uint`, several color targets per pass (WebGL2 allows 4), and targets that are one layer, face or mip of a texture. A cube-map `Camera` (3D) sits on top, for reflection probes and point-light shadows. It breaks the renderer-wide sample count and the shape of pass targets
+- [ ] **Targets with options** (core). Format and sample count per target, such as `Rgba16Float` and `R32Uint`, several color targets per pass (WebGL2 allows 4), and targets that are one layer, face or mip of a texture. A cube-map `Camera` (3D) sits on top, for reflection probes and point-light shadows. It breaks the renderer-wide sample count and the shape of pass targets. The transient MSAA texture then has to survive into a following pass that loads it, a case no target reaches while the sample count stays 1
 - [ ] **Texture shapes and formats** (core) that 0.13.0 leaves out: depth cubes and depth arrays for shadows, and the target, depth-stencil and storage formats the items above need
 - [ ] **Pipeline completion** (core). Stencil with a depth-stencil format, and `Blend::Custom` with a `BlendFactors` record, up from Later. A new `Blend` case breaks an exhaustive `switch` in Swift and `when` in Kotlin, so it waits for a breaking minor
 - [ ] **Acceptance test: a pbrt-v4 subset, rasterized** (test tooling), milestone M2 below. `bmw-m6` and `contemporary-bathroom` come first, the only scenes of the first set with a stated license
@@ -606,6 +611,7 @@ Sources, read 2026-10-22: github.com/mmp/pbrt-v4-scenes, github.com/mmp/pbrt-v4,
 - [ ] Video without a copy, as a new call, once wgpu's `ExternalTexture` reaches Vulkan and the web. wgpu 30.0.1 has it on DX12 and Metal
 - [ ] Indirect draws and GPU culling, which WebGPU has and WebGL2 lacks, and occlusion queries
 - [ ] Bindless and multi-draw-indirect stay out of core until WebGPU standardizes them
+- [ ] On Apple GPUs, split the command buffer between a compute pass that writes storage and a render pass that samples it, as between two compute passes, once a test reproduces a failure there. `compute_texture` runs that case in one `render`
 
 ### More engines and frameworks
 
@@ -649,6 +655,8 @@ Latest moves:
 - **New in 0.13.x:** the Characters track, with skinned animation and glTF node animation from Later, the 2D layer, `scene.export_triangles`, the Mario walk-through, `integrations/pbrt`, the path tracer integration, unlit and toon presets and frustum culling from Later, depth-only passes, picking, debug lines, GPU timings and the workers fix.
 - **New in 0.14:** PBR lighting with shadow mapping and the glass preset from Later and the area cases of `LightKind`, targets with options with the cube-map `Camera` from Later, texture shapes and formats, stencil from the All bindings list, and `Blend::Custom` from Later.
 - **New goal:** Reference scenes, with M1 to M3.
+- **Landed in 0.12.7:** device checks before every frame, typed GPU errors and error classes in every binding, the number rules, textures freed on drop, sRGB encoding by target, the crate-root layout with conversion traits, the naga features, struct vertex inputs, override defaults on the web, pass lists that run each pass once, and pipelines built inside error scopes.
+- **Moved from 0.12.x:** the transient MSAA case to the 0.14 targets with options, since no target reaches it while the sample count stays 1, and the Apple compute-to-render split to Later, until a test reproduces it. Ranged storage uploads go to 0.12.8.
 - **Landed in 0.12.6:** the exact `[w, h]` `ScreenRegion`, `WindowTarget` in JavaScript and Python, `WindowTarget`, `TextureTarget` and `TextureRegion` in Swift and Kotlin, with aliases for the old names until 0.13.0, uniffi names in reflect, `TextureUsage` flags as JavaScript numbers, vertex and instance attributes typed by the shader, an internal `PassInput`, KTX2 detection by identifier, the `#[lsp_doc]` check on methods, the one-frame JavaScript list render, and, from 0.13.0, JavaScript `Error` objects, the throwing JavaScript `Shader` constructor and the applied viewport.
 
 Moves before that:
