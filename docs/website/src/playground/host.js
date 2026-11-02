@@ -8,7 +8,7 @@
 import { loadProgram } from "./program.js";
 import { describeControls, renderControls, sliderRange } from "./controls.js";
 import { LANGUAGES, generateCode, parseLibrary, replaceLibrary } from "./codegen.js";
-import { HARNESS } from "./harness.js";
+import { harness } from "./harness.js";
 import { LibraryPicker } from "./picker.js";
 import { loadFragmentColor, supports } from "../runtime.js";
 import { Gestures } from "../gestures.js";
@@ -168,12 +168,16 @@ export class Playground {
       reset: root.querySelector(".fcp-reset"),
       copy: root.querySelector(".fcp-copy"),
       fullscreen: root.querySelector(".fcp-fullscreen"),
+      stick: root.querySelector(".fcp-stick"),
+      keyHint: root.querySelector(".fcp-key-hint"),
     };
     this.edits = new Map();
     this.overrides = new Map();
     this.pointer = null;
     // Wheel, drag and pinch since the last frame, for demos with `gestures: true`.
     this.gestures = null;
+    // Keys held while the canvas has focus, and the touch stick, for demos with `keys: true`.
+    this.keys = { down: new Set(), stick: [0, 0] };
     this.program = null;
     this.pending = null;
     this.buildToken = 0;
@@ -229,6 +233,7 @@ export class Playground {
     this.root.dataset.active = demo.id;
     // A demo that takes gestures keeps the wheel and touches on the canvas from scrolling the page.
     this.gestures.enabled = Boolean(demo.gestures);
+    this.takeKeys(Boolean(demo.keys));
     this.loadTabs(this.edits.get(demo.id) ?? this.original(demo));
     this.showError(null);
 
@@ -281,8 +286,8 @@ export class Playground {
     }
     tabs.push({ id: "js", label: "main.js", kind: "js", state: this.editorState(js, "js", true) });
     // Reading index.js counts as reading JavaScript, so the next demo opens on main.js.
-    const harness = this.editorState(HARNESS, "js", false);
-    tabs.push({ id: "index.js", label: "index.js", kind: "js", language: "js", readonly: true, state: harness });
+    const index = this.editorState(harness(this.demo), "js", false);
+    tabs.push({ id: "index.js", label: "index.js", kind: "js", language: "js", readonly: true, state: index });
     for (const lang of LANGUAGES.filter((l) => l.id !== "js")) {
       const { id, label, file } = lang;
       tabs.push({ id, label, file, kind: id, generated: true, readonly: true, state: null });
@@ -731,8 +736,9 @@ export class Playground {
     const { pointer: pinch, ...gesture } = this.gestures.take();
     // A pinch zooms around the point between the fingers, so that point becomes the pointer.
     if (pinch) this.pointer = pinch;
+    const keys = { down: new Set(this.keys.down), stick: [...this.keys.stick] };
     const time = (now - program.epoch) / 1000;
-    program.module.frame(program.state, this.renderer, this.target, time, size, pinch ?? pointer, gesture);
+    program.module.frame(program.state, this.renderer, this.target, time, size, pinch ?? pointer, gesture, keys);
   }
 
   tick(now) {
@@ -771,6 +777,79 @@ export class Playground {
     this.target?.resize([w, h]);
   }
 
+  // Lets the canvas take focus and shows the touch stick when the demo takes
+  // keys. Any other demo leaves the keyboard and the touches to the page.
+  takeKeys(on) {
+    const { canvas, ui } = this;
+    if (on) canvas.tabIndex = 0;
+    else canvas.removeAttribute("tabindex");
+    if (!on && document.activeElement === canvas) canvas.blur();
+    if (ui.stick) ui.stick.hidden = !on;
+    if (ui.keyHint) ui.keyHint.hidden = !on;
+    this.keys.down.clear();
+    this.releaseStick();
+  }
+
+  releaseStick() {
+    this.keys.stick = [0, 0];
+    this.stickPointer = null;
+    const knob = this.ui.stick?.firstElementChild;
+    if (knob) knob.style.transform = "";
+  }
+
+  // Turns the keyboard and the touch stick into the keys frame receives: the
+  // KeyboardEvent.code of every key held down, and the stick as [x, y] from
+  // -1 to 1 with y up. Keys count only while the canvas has focus, which a
+  // click or Tab gives it. Shortcuts with a modifier, Tab and Escape stay
+  // with the browser and the site, and only the keys that would scroll the
+  // page skip their default.
+  wireKeys() {
+    const { canvas, ui } = this;
+    const scrolling = new Set(["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "PageUp", "PageDown", "Home", "End"]);
+    this.on(canvas, "pointerdown", () => {
+      if (this.demo?.keys) canvas.focus({ preventScroll: true });
+    });
+    this.on(canvas, "keydown", (e) => {
+      if (!this.demo?.keys || e.code === "Tab") return;
+      if (e.code === "Escape") return canvas.blur();
+      // macOS sends no keyup for a key released while Cmd is down, so a modifier lifts every key.
+      if (e.metaKey || e.ctrlKey || e.altKey) return this.keys.down.clear();
+      this.keys.down.add(e.code);
+      if (scrolling.has(e.code)) e.preventDefault();
+    });
+    this.on(canvas, "keyup", (e) => this.keys.down.delete(e.code));
+    this.on(canvas, "blur", () => this.keys.down.clear());
+
+    const stick = ui.stick;
+    if (!stick) return;
+    const knob = stick.firstElementChild;
+    const push = (e) => {
+      const rect = stick.getBoundingClientRect();
+      const radius = rect.width / 2;
+      let x = (e.clientX - rect.left - radius) / radius;
+      let y = (rect.top + radius - e.clientY) / radius;
+      const length = Math.hypot(x, y);
+      if (length > 1) [x, y] = [x / length, y / length];
+      this.keys.stick = [x, y];
+      knob.style.transform = `translate(${x * radius * 0.6}px, ${-y * radius * 0.6}px)`;
+    };
+    this.on(stick, "pointerdown", (e) => {
+      e.preventDefault();
+      stick.setPointerCapture(e.pointerId);
+      this.stickPointer = e.pointerId;
+      push(e);
+    });
+    this.on(stick, "pointermove", (e) => {
+      if (e.pointerId === this.stickPointer) push(e);
+    });
+    const release = (e) => {
+      if (e.pointerId === this.stickPointer) this.releaseStick();
+    };
+    this.on(stick, "pointerup", release);
+    this.on(stick, "pointercancel", release);
+    this.on(stick, "lostpointercapture", release);
+  }
+
   wire() {
     const { canvas, ui } = this;
     const track = (e) => {
@@ -784,6 +863,7 @@ export class Playground {
     this.on(canvas, "pointerdown", track);
     this.gestures = new Gestures(canvas);
     this.cleanups.push(() => this.gestures.detach());
+    this.wireKeys();
     this.cleanups.push(this.cm.watchSiteTheme(() => this.applyTheme()));
 
     this.on(ui.add, "click", () => this.picker.open(parseLibrary(this.text("js")) ?? []));
