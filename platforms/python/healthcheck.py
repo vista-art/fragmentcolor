@@ -398,6 +398,123 @@ def check_shader_refusals(renderer):
     renderer.render(Shader(SOLID_SHADER), target)
 
 
+def check_texture_atomics(renderer):
+    """A compute shader counts into an R32Uint storage texture with texture atomics where the
+    device has TEXTURE_ATOMIC, and render raises FeatureError, naming it, where it doesn't."""
+    counts = renderer.create_storage_texture([4, 4], TextureFormat.R32Uint)
+    shader = Shader("""
+@group(0) @binding(0) var counts: texture_storage_2d<r32uint, atomic>;
+@compute @workgroup_size(8, 8)
+fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
+  textureAtomicAdd(counts, id.xy / 16u, 1u);
+}
+""")
+    shader.set("counts", counts)
+    counting = Pass.from_shader("count", shader)
+    counting.set_compute_dispatch(8, 8, 1)
+    target = renderer.create_texture_target([4, 4])
+    try:
+        renderer.render(counting, target)
+    except FeatureError as e:
+        assert e.item == "'counts' at @group(0) @binding(0)", f"item {e.item}"
+        assert e.feature == "TEXTURE_ATOMIC for a R32Uint storage texture", f"feature {e.feature}"
+        print(f"texture atomics raised FeatureError: {e}")
+        return
+    image = counts.get_image()
+    assert image.shape == (4, 4, 4), f"shape {image.shape}"
+    values = image.view(np.uint32)
+    assert (values == 256).all(), f"counts {values.ravel().tolist()}"
+    print("texture atomics counted 256 into each texel")
+
+
+def check_external_textures(renderer):
+    """A shader reads a Texture through texture_external where the device has EXTERNAL_TEXTURE,
+    as Metal does, and render raises FeatureError, naming it, where it doesn't, as on Vulkan.
+    The slot refuses an sRGB texture with BindingError, which names the formats it takes."""
+    pixels = bytes([200, 10, 30, 255, 40, 220, 60, 255, 70, 80, 240, 255, 120, 130, 140, 255])
+    shader = Shader("""
+@group(0) @binding(0) var video: texture_external;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+  return vec4f(p[i], 0., 1.);
+}
+@fragment fn fs_main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+  return textureLoad(video, vec2<u32>(pos.xy));
+}
+""")
+    shader.set("video", renderer.create_texture(pixels, size=[2, 2], format=TextureFormat.Rgba8Unorm))
+    target = renderer.create_texture_target([2, 2])
+    try:
+        renderer.render(shader, target)
+    except FeatureError as e:
+        assert e.item == "'video' at @group(0) @binding(0)", f"item {e.item}"
+        assert e.feature == "EXTERNAL_TEXTURE", f"feature {e.feature}"
+        print(f"an external texture raised FeatureError: {e}")
+        return
+    image = target.get_image()
+    assert image.tobytes() == pixels, f"textureLoad read {image.ravel().tolist()}"
+
+    srgb = renderer.create_texture(pixels, size=[2, 2], format=TextureFormat.Rgba8UnormSrgb)
+    shader.set("video", srgb)
+    try:
+        renderer.render(shader, target)
+    except BindingError as e:
+        assert e.uniform == "video", f"uniform {e.uniform}"
+        assert e.expected == "an Rgba8Unorm, Bgra8Unorm or Rgba16Float texture", f"expected {e.expected}"
+        assert e.found == "Rgba8UnormSrgb", f"found {e.found}"
+    else:
+        raise AssertionError("an sRGB texture in an external slot should raise BindingError")
+    print("texture_external read each texel, and an sRGB texture raised BindingError")
+
+
+def check_half_values(renderer):
+    """f16 uniforms take plain numbers, NumPy halves included, round them to the nearest f16
+    and read back as floats, and NaN, infinities and numbers past f16 raise FragmentColorError.
+    render draws where the device has SHADER_F16 and raises FeatureError, naming it, where it doesn't."""
+    shader = Shader("""enable f16;
+struct Light { color: vec3<f16>, power: f16 };
+@group(0) @binding(0) var<uniform> gain: f16;
+@group(0) @binding(1) var<uniform> tint: vec4<f16>;
+@group(0) @binding(2) var<uniform> light: Light;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+  return vec4f(p[i], 0., 1.);
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> {
+  return vec4<f32>(tint * gain) + vec4<f32>(vec3<f32>(light.color) * f32(light.power), 0.0);
+}
+""")
+    shader.set("gain", 0.1)
+    assert shader.get("gain") == 0.0999755859375, f"gain read back {shader.get('gain')}"
+    shader.set("light.color", [1, 2, 3])
+    assert list(shader.get("light.color")) == [1.0, 2.0, 3.0]
+    shader.set("tint", np.array([0.25, 0.5, 0.75, 1.0], dtype=np.float16))
+    assert list(shader.get("tint")) == [0.25, 0.5, 0.75, 1.0]
+    for bad, shown in ((70000, "70000"), (float("nan"), "NaN"), (float("inf"), "inf")):
+        try:
+            shader.set("gain", bad)
+        except FragmentColorError as e:
+            assert str(e).endswith(f"gain: expected f16, got {shown}"), str(e)
+        else:
+            raise AssertionError(f"shader.set('gain', {bad}) should raise")
+    assert shader.get("gain") == 0.0999755859375
+
+    shader.set("gain", 1)
+    shader.set("light.power", 0)
+    target = renderer.create_texture_target([1, 1])
+    try:
+        renderer.render(shader, target)
+    except FeatureError as e:
+        assert e.item == "the shader", f"item {e.item}"
+        assert e.feature == "SHADER_F16", f"feature {e.feature}"
+        print(f"an f16 shader raised FeatureError: {e}")
+        return
+    pixel = target.get_image().ravel().tolist()
+    expected = [64, 128, 191, 255]
+    assert all(abs(got - want) <= 1 for got, want in zip(pixel, expected)), f"f16 drew {pixel}"
+    print("f16 uniforms rounded, refused NaN and 70000, and drew the tint")
+
+
 def check_pass_targets(renderer):
     """A target with a mip chain raises InvalidInputError, and render refuses a pass
     that samples its own target, or a target from another Renderer, before any GPU work."""
@@ -1496,6 +1613,9 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
     check_require_graph(renderer)
     check_pass_targets(renderer)
     check_shader_refusals(renderer)
+    check_texture_atomics(renderer)
+    check_external_textures(renderer)
+    check_half_values(renderer)
     check_value_types()
     check_number_errors(renderer)
     check_empty_regions()

@@ -3,9 +3,9 @@
 //! The device checks and the pipeline builds read the same `Layout`, so what a
 //! check passes is what the pipeline binds.
 
-use crate::core::renderer::RenderContext;
 use crate::core::renderer::lights::{self, LightPath};
 use crate::core::renderer::pipelines::PushMode;
+use crate::core::renderer::{RenderContext, pools};
 use crate::core::{PushEntry, StorageEntry, Uniform, UniformData};
 use crate::core::{list_explicit, lower_immediates, name_entries, validate_module, write_layouts};
 use crate::texture::{TextureClass, TextureDim, TextureMeta, TextureScalarKind};
@@ -121,9 +121,10 @@ fn pick_binding(data: &UniformData, size: u32) -> Option<wgpu::BindingType> {
                 },
                 has_dynamic_offset: false,
                 // A span of 0 can't bind, so it binds the 16 bytes WebGPU takes at least.
+                // Any other span binds rounded up to 4 bytes, as the renderer binds it.
                 min_binding_size: NonZeroU64::new(match *span {
                     0 => 16,
-                    span => u64::from(span),
+                    span => pools::align_size(u64::from(span)),
                 }),
             },
             None => describe_uniform(size),

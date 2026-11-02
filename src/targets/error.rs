@@ -27,15 +27,15 @@ impl From<wasm_bindgen::JsValue> for DisplayError {
 }
 
 #[cfg(any(python, wasm, test))]
-impl crate::error::Classify for DisplayError {
-    fn classify(&self) -> crate::error::ErrorClass {
-        crate::error::ErrorClass::Base
+impl crate::errors::Classify for DisplayError {
+    fn classify(&self) -> crate::errors::ErrorClass {
+        crate::errors::ErrorClass::Base
     }
 }
 
 #[cfg(wasm)]
 impl From<DisplayError> for wasm_bindgen::JsValue {
     fn from(error: DisplayError) -> Self {
-        crate::error::WebError::from(error).into()
+        crate::errors::WebError::from(error).into()
     }
 }

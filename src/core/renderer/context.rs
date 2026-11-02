@@ -8,7 +8,7 @@ use crate::core::renderer::frame::bind_groups::PbrDefaults;
 use crate::core::renderer::lights::{self, LightPath};
 use crate::core::renderer::pipelines::{ComputePipeline, ComputePipelineKey};
 use crate::core::renderer::pipelines::{RenderPipeline, RenderPipelineKey};
-use crate::core::renderer::{InitializationError, Renderer, checks, device};
+use crate::core::renderer::{InitializationError, Renderer, checks, device, pools};
 use crate::core::renderer::{
     ReadbackBufferPool, StorageBufferPool, TexturePool, UniformBufferPool,
 };
@@ -170,6 +170,7 @@ impl RenderContext {
     /// The persistent buffer behind the storage root `name`.
     /// It is created, or recreated at a new `span`, with the shader's bytes,
     /// and takes a fresh upload only when `set` has changed them since the last frame.
+    /// It holds `span` rounded up to 4 bytes, the size the root binds and reads back at.
     pub(super) fn storage_buffer(
         &self,
         shader: &ShaderObject,
@@ -185,7 +186,7 @@ impl RenderContext {
         let buffer = existing.unwrap_or_else(|| {
             let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some(&format!("Persistent Storage Buffer: {name}")),
-                size: span,
+                size: pools::align_size(span),
                 usage: wgpu::BufferUsages::STORAGE
                     | wgpu::BufferUsages::COPY_DST
                     | wgpu::BufferUsages::COPY_SRC,
@@ -200,10 +201,13 @@ impl RenderContext {
         let dirty = storage.is_storage_dirty(name);
         if created || dirty {
             match storage.get_bytes(name) {
-                Some(bytes) => self.queue.write_buffer(&buffer, 0, bytes),
-                None => self
+                Some(bytes) => self
                     .queue
-                    .write_buffer(&buffer, 0, &vec![0u8; span as usize]),
+                    .write_buffer(&buffer, 0, &pools::pad_bytes(bytes)),
+                None => {
+                    let zeros = vec![0u8; pools::align_size(span) as usize];
+                    self.queue.write_buffer(&buffer, 0, &zeros)
+                }
             }
         }
         if dirty {

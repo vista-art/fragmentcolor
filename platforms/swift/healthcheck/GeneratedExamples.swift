@@ -10,23 +10,6 @@ import FragmentColor
 import QuartzCore
 
 final class GeneratedExamples: ExampleCase {
-    func test_core_device_error_DeviceError() async {
-        await example("docs/api/core/device_error/device_error.md") {
-            let renderer = Renderer()
-            let target = try await renderer.createTextureTarget([16, 16])
-            let shader = Shader.default()
-
-            // A GPU error in this frame returns as a DeviceError.
-            try renderer.render(shader, target)
-        }
-    }
-
-    func test_core_error_kind_ErrorKind() async {
-        await example("docs/api/core/error_kind/error_kind.md") {
-            let kind = ErrorKind.memory
-        }
-    }
-
     func test_core_pass_Pass() async {
         await example("docs/api/core/pass/pass.md") {
             let canvas = CAMetalLayer()
@@ -288,6 +271,19 @@ final class GeneratedExamples: ExampleCase {
             // Pre-seeded with bytes.
             let pixels = Array(repeating: 0, count: 64 * 64 * 4)
             let tex2 = try await r.createStorageTexture([64, 64], TextureFormat.rgba, pixels)
+
+            // One 32-bit counter per texel, for texture atomics.
+            let counts = try await r.createStorageTexture([4, 4], TextureFormat.r32Uint)
+            let shader = try Shader("""
+            @group(0) @binding(0) var counts: texture_storage_2d<r32uint, atomic>;
+
+            @compute @workgroup_size(8, 8)
+            fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
+              textureAtomicAdd(counts, id.xy / 16u, 1u);
+            }
+
+            """)
+            try shader.set("counts", counts)
         }
     }
 
@@ -702,7 +698,9 @@ final class GeneratedExamples: ExampleCase {
         await example("docs/api/core/shader/set.md") {
             let r = Renderer()
             let shader = try Shader("""
+            enable f16;
             @group(0) @binding(0) var<uniform> resolution: vec2<f32>;
+            @group(0) @binding(1) var<uniform> gain: f16;
 
             struct VOut { @builtin(position) pos: vec4<f32> };
             @vertex fn vs_main(@builtin(vertex_index) i: u32) -> VOut {
@@ -711,12 +709,13 @@ final class GeneratedExamples: ExampleCase {
               out.pos = vec4<f32>(p[i], 0., 1.);
               return out;
             }
-            @fragment fn main() -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
+            @fragment fn main() -> @location(0) vec4<f32> { return vec4<f32>(f32(gain), 0., 0., 1.); }
 
             """)
 
             // Set scalars/vectors on declared uniforms
             try shader.set("resolution", [800.0, 600.0])
+            try shader.set("gain", 0.5)
         }
     }
 
@@ -753,6 +752,23 @@ final class GeneratedExamples: ExampleCase {
 
             try shader.validateMesh(mesh) // Ok
             try pass.addMesh(mesh)
+        }
+    }
+
+    func test_errors_device_error_DeviceError() async {
+        await example("docs/api/errors/device_error/device_error.md") {
+            let renderer = Renderer()
+            let target = try await renderer.createTextureTarget([16, 16])
+            let shader = Shader.default()
+
+            // A GPU error in this frame returns as a DeviceError.
+            try renderer.render(shader, target)
+        }
+    }
+
+    func test_errors_error_kind_ErrorKind() async {
+        await example("docs/api/errors/error_kind/error_kind.md") {
+            let kind = ErrorKind.memory
         }
     }
 

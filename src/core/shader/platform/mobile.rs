@@ -19,7 +19,7 @@ use lsp_doc::lsp_doc;
 use crate::Shader;
 use crate::UniformData;
 use crate::core::shader::UniformInput;
-use crate::error::platform::mobile::FragmentColorError;
+use crate::errors::platform::mobile::FragmentColorError;
 use crate::texture::TextureId;
 use crate::{Mesh, Vertex};
 

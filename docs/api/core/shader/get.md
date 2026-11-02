@@ -7,6 +7,8 @@ those bytes back for that root. Set a struct one field at a time
 (`"light.color"`) and an array one element at a time (`"weights[0]"`).
 Only a storage-buffer or push-constant root takes its whole bytes.
 
+An `f16` uniform reads back as `f32` numbers that hold the value rounded to `f16`, so `0.1` reads back as `0.0999755859375`.
+
 A texture slot reads back the id of what it binds. A `Material` map's slot
 holds the map's id from the setter call on, before any `Renderer` loads it.
 

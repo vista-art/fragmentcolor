@@ -1,7 +1,7 @@
 //! The Python exception classes, `raise` and `PythonError`.
 
 use crate::core::Field;
-use crate::error::{Classify, ErrorClass};
+use crate::errors::{Classify, ErrorClass};
 use pyo3::{
     create_exception,
     exceptions::{PyBaseException, PyException},

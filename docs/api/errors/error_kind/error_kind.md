@@ -1,6 +1,6 @@
 # ErrorKind
 
-Names the kind of GPU error a [DeviceError](https://fragmentcolor.org/api/core/deviceerror) carries, from the error scope that caught it.
+Names the kind of GPU error a [DeviceError](https://fragmentcolor.org/api/errors/deviceerror) carries, from the error scope that caught it.
 
 - `Validation`: a call broke a rule of the GPU API, such as a bind group that doesn't match its layout.
 - `Internal`: the GPU or its driver failed for a reason of its own, such as a shader the backend compiler refuses.

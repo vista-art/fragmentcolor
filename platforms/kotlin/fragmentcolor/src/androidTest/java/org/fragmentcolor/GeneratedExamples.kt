@@ -14,21 +14,6 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class GeneratedExamples : ExampleCase() {
     @Test
-    fun core_device_error_DeviceError() = example("docs/api/core/device_error/device_error.md") {
-        val renderer = Renderer()
-        val target = renderer.createTextureTarget(listOf(16u, 16u))
-        val shader = Shader.default()
-
-        // A GPU error in this frame returns as a DeviceError.
-        renderer.render(shader, target)
-    }
-
-    @Test
-    fun core_error_kind_ErrorKind() = example("docs/api/core/error_kind/error_kind.md") {
-        val kind = ErrorKind.MEMORY
-    }
-
-    @Test
     fun core_pass_Pass() = example("docs/api/core/pass/pass.md") {
         val surfaceTexture = android.graphics.SurfaceTexture(0)
         val canvas = android.view.Surface(surfaceTexture)
@@ -267,6 +252,19 @@ class GeneratedExamples : ExampleCase() {
         // Pre-seeded with bytes.
         val pixels = ByteArray(64 * 64 * 4)
         val tex2 = r.createStorageTexture(listOf(64u, 64u), TextureFormat.RGBA, pixels)
+
+        // One 32-bit counter per texel, for texture atomics.
+        val counts = r.createStorageTexture(listOf(4u, 4u), TextureFormat.R32_UINT)
+        val shader = Shader("""
+        @group(0) @binding(0) var counts: texture_storage_2d<r32uint, atomic>;
+
+        @compute @workgroup_size(8, 8)
+        fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
+          textureAtomicAdd(counts, id.xy / 16u, 1u);
+        }
+
+        """)
+        shader.set("counts", counts)
     }
 
     @Test
@@ -630,7 +628,9 @@ class GeneratedExamples : ExampleCase() {
     fun core_shader_set() = example("docs/api/core/shader/set.md") {
         val r = Renderer()
         val shader = Shader("""
+        enable f16;
         @group(0) @binding(0) var<uniform> resolution: vec2<f32>;
+        @group(0) @binding(1) var<uniform> gain: f16;
 
         struct VOut { @builtin(position) pos: vec4<f32> };
         @vertex fn vs_main(@builtin(vertex_index) i: u32) -> VOut {
@@ -639,12 +639,13 @@ class GeneratedExamples : ExampleCase() {
           out.pos = vec4<f32>(p[i], 0., 1.);
           return out;
         }
-        @fragment fn main() -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
+        @fragment fn main() -> @location(0) vec4<f32> { return vec4<f32>(f32(gain), 0., 0., 1.); }
 
         """)
 
         // Set scalars/vectors on declared uniforms
         shader.set("resolution", listOf(800.0f, 600.0f))
+        shader.set("gain", 0.5f)
     }
 
     @Test
@@ -675,6 +676,21 @@ class GeneratedExamples : ExampleCase() {
 
         shader.validateMesh(mesh) // Ok
         pass.addMesh(mesh)
+    }
+
+    @Test
+    fun errors_device_error_DeviceError() = example("docs/api/errors/device_error/device_error.md") {
+        val renderer = Renderer()
+        val target = renderer.createTextureTarget(listOf(16u, 16u))
+        val shader = Shader.default()
+
+        // A GPU error in this frame returns as a DeviceError.
+        renderer.render(shader, target)
+    }
+
+    @Test
+    fun errors_error_kind_ErrorKind() = example("docs/api/errors/error_kind/error_kind.md") {
+        val kind = ErrorKind.MEMORY
     }
 
     @Test

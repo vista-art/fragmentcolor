@@ -1,6 +1,7 @@
 //! Checks a shader against the device before any wgpu call:
 //! limits, features, entry points and the textures its slots take.
 
+use crate::core::renderer::device::CANDIDATES;
 use crate::core::renderer::frame::bind_groups::{PbrDefaults, report_missing};
 use crate::core::renderer::lights::LightPath;
 use crate::core::renderer::pipelines::PushMode;
@@ -13,9 +14,10 @@ use crate::core::{LayoutLoss, list_explicit, write_layouts};
 use crate::texture::format_features;
 use crate::{ShaderObject, TextureObject, UniformData};
 use naga::ShaderStage;
-use naga::valid::ModuleInfo;
+use naga::valid::{ModuleInfo, ValidationFlags};
 use std::sync::atomic::Ordering;
 use wgpu::{BindingType, BufferBindingType, DownlevelFlags, ShaderStages, StorageTextureAccess};
+use wgpu_naga_bridge::features_to_naga_capabilities;
 
 /// What `check_shader` decided for a shader source on one device.
 #[derive(Debug, Clone)]
@@ -105,14 +107,18 @@ impl TextureFacts {
 impl RenderContext {
     /// Refuses a shader this device can't run, before it takes a frame or builds a pipeline.
     ///
-    /// That covers groups and bindings past the device's limits, too many bindings of a kind
-    /// in one stage, a vertex input at a location past `max_vertex_attributes`, buffers past
-    /// their size limits, storage the device can't bind, missing entry points, a compute shader
-    /// on a device without compute, a workgroup past its size, invocation or memory limits,
-    /// explicit layouts the backend can't keep, light roots measured with `arrayLength` where
-    /// lights come through a uniform block, and anything else the device's shader validator
-    /// refuses. The verdict is kept by source hash, so each source is checked once per context,
-    /// whether it passes or not.
+    /// - Groups, bindings and buffers past the device's limits.
+    /// - Too many bindings of a kind in one stage.
+    /// - A vertex input at a location past `max_vertex_attributes`.
+    /// - Storage the device can't bind, and an external texture without `EXTERNAL_TEXTURE`.
+    /// - A missing entry point.
+    /// - A compute shader on a device without compute, or a workgroup past its limits.
+    /// - An explicit layout the backend can't keep.
+    /// - Light roots measured with `arrayLength` where lights come through a uniform block.
+    /// - A feature the device lacks, named by its wgpu flag.
+    /// - Anything else the device's shader validator refuses.
+    ///
+    /// The verdict stays by source hash, passed or refused, so a source is checked once per context.
     pub(in crate::core::renderer) fn check_shader(
         &self,
         shader: &ShaderObject,
@@ -149,6 +155,7 @@ impl RenderContext {
                 let name = describe_slot(&layout, slot);
                 check_slot(&name, slot, &self.limits)?;
                 self.check_storage(&name, slot)?;
+                self.check_external(&name, slot)?;
             }
             check_counts(&layout.slots, &self.limits)?;
             if !compute {
@@ -263,14 +270,36 @@ impl RenderContext {
         Ok(())
     }
 
-    /// Refuses a storage texture `format` the device can't bind with `access`.
+    /// Refuses an external texture slot on a device without `EXTERNAL_TEXTURE`.
+    fn check_external(&self, name: &str, slot: &Slot) -> Result<(), Refusal> {
+        let BindingType::ExternalTexture = slot.entry.ty else {
+            return Ok(());
+        };
+        let missing = wgpu::Features::EXTERNAL_TEXTURE - self.features;
+        if missing.is_empty() {
+            return Ok(());
+        }
+        Err(Refusal::Feature {
+            item: name.to_string(),
+            feature: missing.to_string(),
+        })
+    }
+
+    /// Refuses a storage texture `format` the device can't bind with `access`. A feature
+    /// it lacks comes first, `TEXTURE_ATOMIC` for atomic access included, and is named by its flag.
     fn check_storage_format(
         &self,
         name: &str,
         format: wgpu::TextureFormat,
         access: StorageTextureAccess,
     ) -> Result<(), Refusal> {
-        let missing = format.required_features() - self.features;
+        let needed = match access {
+            StorageTextureAccess::Atomic => {
+                format.required_features() | wgpu::Features::TEXTURE_ATOMIC
+            }
+            _ => format.required_features(),
+        };
+        let missing = needed - self.features;
         if !missing.is_empty() {
             return Err(Refusal::Feature {
                 item: name.to_string(),
@@ -318,11 +347,11 @@ impl RenderContext {
         let mut validator = wgpu_naga_bridge::create_validator(
             self.features,
             self.downlevel,
-            naga::valid::ValidationFlags::all(),
+            ValidationFlags::all(),
         );
         let info = match validator.validate(&module) {
             Ok(info) => info,
-            Err(error) => return Ok(Err(refuse_module(&error))),
+            Err(error) => return Ok(Err(self.refuse_invalid(&module, &error))),
         };
         if self.writes_wgsl.load(Ordering::Relaxed)
             && let Err(loss) = write_layouts(&module, &info)
@@ -333,6 +362,20 @@ impl RenderContext {
         match naga::back::pipeline_constants::process_overrides(&module, &info, None, &constants) {
             Ok((resolved, info)) => Ok(Ok((resolved.into_owned(), info.into_owned()))),
             Err(error) => Ok(Err(refuse_module(&error))),
+        }
+    }
+
+    /// The refusal of `module`, which the device's validator refused with `error`:
+    /// the candidate features the device lacks that let it pass, named as wgpu flags,
+    /// or naga's report when no candidate the device lacks would make the module pass.
+    fn refuse_invalid(&self, module: &naga::Module, error: &dyn std::error::Error) -> Refusal {
+        let missing = find_missing(module, self.features, self.downlevel);
+        if missing.is_empty() {
+            return refuse_module(error);
+        }
+        Refusal::Feature {
+            item: "the shader".into(),
+            feature: missing.to_string(),
         }
     }
 
@@ -474,6 +517,36 @@ fn refuse_module(error: &dyn std::error::Error) -> Refusal {
     }
 }
 
+/// The candidate features missing from `features` that let `module` pass,
+/// each of them needed, or none at all when even every candidate falls short.
+/// The walk drops the last declared flag first, so `SUBGROUP_VERTEX`, whose naga capability
+/// holds `SUBGROUP`'s, stays only for a vertex stage, and that order decides which set is kept.
+fn find_missing(
+    module: &naga::Module,
+    features: wgpu::Features,
+    downlevel: DownlevelFlags,
+) -> wgpu::Features {
+    let passes = |extra: wgpu::Features| {
+        wgpu_naga_bridge::create_validator(features | extra, downlevel, ValidationFlags::all())
+            .validate(module)
+            .is_ok()
+    };
+    let mut missing = (CANDIDATES - features)
+        .iter()
+        .filter(|flag| !features_to_naga_capabilities(*flag, DownlevelFlags::empty()).is_empty())
+        .fold(wgpu::Features::empty(), |set, flag| set | flag);
+    if missing.is_empty() || !passes(missing) {
+        return wgpu::Features::empty();
+    }
+    let flags: Vec<wgpu::Features> = missing.iter().collect();
+    for flag in flags.into_iter().rev() {
+        if passes(missing - flag) {
+            missing.remove(flag);
+        }
+    }
+    missing
+}
+
 /// The refusal for a module whose explicit layouts the WGSL the browser's WebGPU gets can't keep.
 /// It names the struct as the GL refusal does, and says where that text moves it.
 pub(in crate::core::renderer) fn refuse_layout(loss: LayoutLoss) -> Refusal {
@@ -562,9 +635,17 @@ enum Kind {
 }
 
 impl Kind {
-    /// The kind `ty` counts as, or `None` for a binding no stage limit counts.
-    fn read(ty: &BindingType) -> Option<Self> {
-        Some(match ty {
+    /// How many bindings of this kind `ty` counts as, as wgpu counts them:
+    /// an external texture is four sampled textures, a sampler and a uniform buffer.
+    fn count(self, ty: &BindingType) -> u64 {
+        let kind = match ty {
+            BindingType::ExternalTexture => {
+                return match self {
+                    Kind::SampledTexture => 4,
+                    Kind::Sampler | Kind::UniformBuffer => 1,
+                    Kind::StorageBuffer | Kind::StorageTexture => 0,
+                };
+            }
             BindingType::Buffer {
                 ty: BufferBindingType::Uniform,
                 ..
@@ -573,8 +654,9 @@ impl Kind {
             BindingType::Texture { .. } => Kind::SampledTexture,
             BindingType::Sampler(_) => Kind::Sampler,
             BindingType::StorageTexture { .. } => Kind::StorageTexture,
-            _ => return None,
-        })
+            _ => return 0,
+        };
+        u64::from(kind == self)
     }
 
     /// The limit on this kind in one stage, and its name.
@@ -604,8 +686,9 @@ impl Kind {
     }
 }
 
-/// Refuses more bindings of one kind in a stage than the device takes, counting each binding
-/// in every stage it is visible to, as wgpu does. Buffers of both kinds also count together.
+/// Refuses more bindings of one kind in a stage than the device takes.
+/// Each binding counts in every stage it is visible to, as wgpu counts it,
+/// and buffers of both kinds count together, an external texture's uniform buffer included.
 fn check_counts(slots: &[Slot], limits: &wgpu::Limits) -> Result<(), Refusal> {
     let stages = [
         (ShaderStages::VERTEX, "the vertex stage"),
@@ -620,20 +703,17 @@ fn check_counts(slots: &[Slot], limits: &wgpu::Limits) -> Result<(), Refusal> {
         Kind::StorageTexture,
     ];
     for (stage, item) in stages {
-        let visible: Vec<Kind> = slots
+        let visible: Vec<&BindingType> = slots
             .iter()
             .filter(|slot| slot.entry.visibility.contains(stage))
-            .filter_map(|slot| Kind::read(&slot.entry.ty))
+            .map(|slot| &slot.entry.ty)
             .collect();
+        let count = |kind: Kind| -> u64 { visible.iter().map(|ty| kind.count(ty)).sum() };
         for kind in kinds {
-            let count = visible.iter().filter(|seen| **seen == kind).count() as u64;
             let (max, limit) = kind.limit(limits);
-            check_limit(item, limit, count, u64::from(max))?;
+            check_limit(item, limit, count(kind), u64::from(max))?;
         }
-        let buffers = visible
-            .iter()
-            .filter(|kind| matches!(kind, Kind::UniformBuffer | Kind::StorageBuffer))
-            .count() as u64;
+        let buffers = count(Kind::UniformBuffer) + count(Kind::StorageBuffer);
         let max = u64::from(limits.max_buffers_and_acceleration_structures_per_shader_stage);
         check_limit(
             item,
@@ -744,13 +824,33 @@ pub(in crate::core::renderer) fn check_texture(
             }
             Ok(())
         }
-        BindingType::ExternalTexture => Err(wrong(
-            "a video frame, which no texture fills yet".into(),
-            "a texture".into(),
-        )),
+        // The slot binds the base level alone, so a texture of any mip count fits.
+        BindingType::ExternalTexture => {
+            if !usage.contains(wgpu::TextureUsages::TEXTURE_BINDING) {
+                let expected = "a texture with TEXTURE_BINDING usage".into();
+                return Err(wrong(expected, format!("usage {usage:?}")));
+            }
+            check_view(name, wgpu::TextureViewDimension::D2, dimension)?;
+            if samples != 1 {
+                let expected = "a single-sampled texture".into();
+                return Err(wrong(expected, format!("{samples} samples")));
+            }
+            if !EXTERNAL_FORMATS.contains(&format) {
+                let expected = "an Rgba8Unorm, Bgra8Unorm or Rgba16Float texture".into();
+                return Err(wrong(expected, format!("{format:?}")));
+            }
+            Ok(())
+        }
         _ => Ok(()),
     }
 }
+
+/// The formats wgpu binds in an external texture slot.
+const EXTERNAL_FORMATS: [wgpu::TextureFormat; 3] = [
+    wgpu::TextureFormat::Rgba8Unorm,
+    wgpu::TextureFormat::Bgra8Unorm,
+    wgpu::TextureFormat::Rgba16Float,
+];
 
 /// Refuses a texture whose view has another dimension than the slot. A FragmentColor
 /// texture's view is a 1D, 2D or 3D view of all of it, so a cube or array slot takes none.

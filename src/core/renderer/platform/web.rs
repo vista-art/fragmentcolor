@@ -1,7 +1,7 @@
 //! The `Renderer` methods JavaScript calls.
 
 use crate::bindings::web::{describe, read_text, read_unsigned};
-use crate::error::{ErrorClass, WebError, defer};
+use crate::errors::{ErrorClass, WebError, defer};
 use crate::texture::{
     js_to_texture_bytes, js_to_texture_id, read_format, read_texture_input, read_usage,
 };

@@ -1,6 +1,6 @@
 #![cfg(wasm)]
 
-use crate::error::{ErrorClass, WebError};
+use crate::errors::{ErrorClass, WebError};
 use js_sys::{Array, ArrayBuffer, Reflect, Uint8Array, Uint8ClampedArray};
 use lsp_doc::lsp_doc;
 use wasm_bindgen::JsCast;
@@ -8,7 +8,7 @@ use wasm_bindgen::prelude::*;
 
 use crate::bindings::web::{describe, read_count, read_number, read_unsigned};
 use crate::texture::loading::decode::check_pixels;
-use crate::texture::{TextureError, swap_bgra};
+use crate::texture::{FORMATS, TextureError, swap_bgra};
 use crate::{
     CompareFunction, Mipmap, SamplerOptions, Size, Texture, TextureData, TextureFormat, TextureId,
     TextureInput, TextureOptions,
@@ -154,7 +154,7 @@ impl Texture {
     pub fn get_image_js(&self) -> js_sys::Promise {
         let start = crate::core::Start::now(Some(&self.context));
         let texture = self.clone();
-        crate::error::defer(async move {
+        crate::errors::defer(async move {
             let object = texture.object();
             let bytes = crate::texture::read_pixels_from(&texture.context, &object, start).await?;
             Ok(js_sys::Uint8Array::from(bytes.as_slice()).into())
@@ -361,9 +361,8 @@ fn read_field(object: &JsValue, name: &str) -> Option<JsValue> {
         .filter(|value| !value.is_undefined() && !value.is_null())
 }
 
-/// Maps a `TextureFormat` from JS, a number in the variant order of
-/// `src/texture/format.rs`, to the format. Anything else is an error,
-/// where wasm-bindgen would read `undefined`, `NaN` or a fraction as a code.
+/// The `TextureFormat` a JS number names by its place in `FORMATS`. Any other value
+/// is an error, where wasm-bindgen would read `undefined`, `NaN` or a fraction as a code.
 pub(crate) fn read_format(value: &JsValue) -> Result<TextureFormat, WebError> {
     let code = value.as_f64().ok_or_else(|| {
         WebError::type_error(&format!(
@@ -371,32 +370,13 @@ pub(crate) fn read_format(value: &JsValue) -> Result<TextureFormat, WebError> {
             crate::bindings::web::describe(value)
         ))
     })?;
-    let format = match read_unsigned(code, "format")? {
-        0 => TextureFormat::R8Unorm,
-        1 => TextureFormat::Rg8Unorm,
-        2 => TextureFormat::R16Unorm,
-        3 => TextureFormat::Rg16Unorm,
-        4 => TextureFormat::Rgba8Unorm,
-        5 => TextureFormat::Rgba8UnormSrgb,
-        6 => TextureFormat::Bgra8Unorm,
-        7 => TextureFormat::Rgba16Unorm,
-        8 => TextureFormat::Rgba16Float,
-        9 => TextureFormat::Rgba32Float,
-        10 => TextureFormat::Rgba32Uint,
-        11 => TextureFormat::Rgba32Sint,
-        12 => TextureFormat::Depth32Float,
-        13 => TextureFormat::Rgba,
-        14 => TextureFormat::Bgra,
-        15 => TextureFormat::Lab,
-        16 => TextureFormat::L8,
-        _ => {
-            return Err(WebError::new(
-                ErrorClass::InvalidInput,
-                &format!("{code} is not a TextureFormat"),
-            ));
-        }
-    };
-    Ok(format)
+    let index = read_unsigned(code, "format")? as usize;
+    FORMATS.get(index).copied().ok_or_else(|| {
+        WebError::new(
+            ErrorClass::InvalidInput,
+            &format!("{code} is not a TextureFormat"),
+        )
+    })
 }
 
 /// A texture source decoded from JS, for the call `label` names.

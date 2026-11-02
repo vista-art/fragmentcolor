@@ -37,7 +37,7 @@ impl TextureObject {
         usage: wgpu::TextureUsages,
         options: SamplerOptions,
     ) -> Result<Self, TextureError> {
-        check_format(context, format, usage, pick_dimension(size))?;
+        let usage = check_format(context, format, usage, pick_dimension(size))?;
         let descriptor = Self::texture_descriptor("Generic Texture", size, format, usage, 1, 1); // @TODO mip_count, sample_count
         let inner = context.device.create_texture(&descriptor);
         let size = inner.size();
@@ -159,7 +159,7 @@ impl TextureObject {
         generate_mipmaps: bool,
         usage: wgpu::TextureUsages,
     ) -> Result<Self, TextureError> {
-        check_format(context, format, usage, pick_dimension(size))?;
+        let usage = check_format(context, format, usage, pick_dimension(size))?;
         check_upload(format)?;
         check_extent(&context.device.limits(), size, pick_dimension(size))?;
         let bpp = measure_texel(format)?;
@@ -228,7 +228,7 @@ impl TextureObject {
             depth_or_array_layers: 1,
         };
         let format = format_override.unwrap_or_else(|| infer_format(image.color()));
-        check_format(context, format, usage, pick_dimension(size))?;
+        let usage = check_format(context, format, usage, pick_dimension(size))?;
         check_upload(format)?;
         check_decode(format)?;
         check_extent(&context.device.limits(), size, pick_dimension(size))?;
@@ -277,7 +277,7 @@ impl TextureObject {
         }
         let levels = chain.levels.as_slice();
         let format = pick.apply(chain.format, "a Mipmap")?;
-        check_format(context, format, usage, wgpu::TextureDimension::D2)?;
+        let usage = check_format(context, format, usage, wgpu::TextureDimension::D2)?;
         let bpp = measure_texel(format)?;
 
         for (i, level_bytes) in levels.iter().enumerate() {

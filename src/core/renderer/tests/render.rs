@@ -11,7 +11,7 @@ use std::time::Duration;
 
 use crate::targets::TargetFrame;
 use crate::testing::device::request_small_device;
-use crate::{Pass, PassObject, Shader};
+use crate::{ErrorKind, Pass, PassObject, Shader};
 
 // Story: Creating a texture from RGBA8 raw bytes with explicit size succeeds and yields expected size.
 #[test]
@@ -1740,7 +1740,7 @@ fn churn(mesh: crate::Mesh, uploads: Arc<std::sync::atomic::AtomicUsize>, left: 
 #[test]
 fn a_mesh_that_keeps_changing_fails_its_quick_view() {
     pollster::block_on(async move {
-        use crate::error::Classify;
+        use crate::errors::Classify;
         let renderer = Renderer::new();
         let target = renderer
             .create_texture_target([8, 8])

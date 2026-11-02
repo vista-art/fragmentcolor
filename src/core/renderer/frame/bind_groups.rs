@@ -3,8 +3,8 @@
 
 use crate::core::renderer::pipelines::PushMode;
 use crate::core::renderer::{RenderContext, RendererError, pools};
-use crate::texture::TextureMeta;
-use crate::{ShaderError, ShaderObject};
+use crate::texture::{TextureClass, TextureMeta};
+use crate::{ShaderError, ShaderObject, TextureObject};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -155,6 +155,18 @@ impl RenderContext {
             groups.push((*group, empty));
         }
         Ok(groups)
+    }
+}
+
+/// The view a slot of `meta` binds: the whole texture for most slots,
+/// and the base level for an external texture, which takes one level alone.
+pub(super) fn pick_view(texture: &TextureObject, meta: &TextureMeta) -> wgpu::TextureView {
+    match meta.class {
+        TextureClass::External() => texture.inner.create_view(&wgpu::TextureViewDescriptor {
+            mip_level_count: Some(1),
+            ..Default::default()
+        }),
+        _ => texture.create_view(),
     }
 }
 

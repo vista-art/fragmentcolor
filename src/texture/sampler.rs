@@ -1,7 +1,7 @@
 #[cfg(wasm)]
 use crate::bindings::web::{read_flag, read_given};
 #[cfg(wasm)]
-use crate::error::WebError;
+use crate::errors::WebError;
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 

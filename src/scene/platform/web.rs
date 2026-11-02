@@ -1,6 +1,6 @@
 #![cfg(wasm)]
 
-use crate::error::{ErrorClass, WebError};
+use crate::errors::{ErrorClass, WebError};
 use lsp_doc::lsp_doc;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;

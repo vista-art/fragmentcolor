@@ -13,7 +13,7 @@ pub mod guides;
 mod bindings;
 mod conversion_macros;
 mod core;
-mod error;
+mod errors;
 mod geometry;
 mod network;
 mod scene;
@@ -30,7 +30,7 @@ mod winit_app;
 pub use winit_app::*;
 
 pub use self::core::*;
-pub use error::*;
+pub use errors::*;
 pub use geometry::*;
 pub use network::NetworkError;
 pub use scene::*;

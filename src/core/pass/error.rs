@@ -84,9 +84,9 @@ impl From<pyo3::PyErr> for PassError {
 /// refuses it: a color, a viewport, a target texture or a dispatch. Any other error
 /// is a `FragmentColorError`.
 #[cfg(any(python, wasm, test))]
-impl crate::error::Classify for PassError {
-    fn classify(&self) -> crate::error::ErrorClass {
-        use crate::error::ErrorClass;
+impl crate::errors::Classify for PassError {
+    fn classify(&self) -> crate::errors::ErrorClass {
+        use crate::errors::ErrorClass;
         match self {
             PassError::Color(_)
             | PassError::Viewport(_)
@@ -101,7 +101,7 @@ impl crate::error::Classify for PassError {
 #[cfg(python)]
 impl From<PassError> for pyo3::PyErr {
     fn from(error: PassError) -> Self {
-        crate::error::raise_error(&error)
+        crate::errors::raise_error(&error)
     }
 }
 
@@ -122,7 +122,7 @@ impl From<wasm_bindgen::JsValue> for PassError {
 #[cfg(wasm)]
 impl From<PassError> for wasm_bindgen::JsValue {
     fn from(error: PassError) -> Self {
-        crate::error::WebError::from(error).into()
+        crate::errors::WebError::from(error).into()
     }
 }
 

@@ -1,7 +1,10 @@
-//! `FragmentColorError`, and `ErrorClass` and
-//! `Classify`: the class each binding raises an error as.
+//! The crate's errors: `FragmentColorError`, `ErrorKind`,
+//! and `ErrorClass` and `Classify`, the class each binding raises an error as.
 
 use thiserror::Error;
+
+mod error_kind;
+pub use error_kind::*;
 
 pub(crate) mod platform;
 #[cfg(any(python, wasm))]
@@ -31,6 +34,15 @@ pub enum FragmentColorError {
     #[cfg(wasm)]
     #[error("FragmentColor WASM Error: {0}")]
     Error(String),
+}
+
+/// A number as an error prints it: a large one in exponent form, such as `1e39`.
+pub(crate) fn show_number(value: f64) -> String {
+    if value.is_finite() && value.abs() >= 1e16 {
+        format!("{value:e}")
+    } else {
+        value.to_string()
+    }
 }
 
 /// The class of error each binding raises, named after the Python exception class.

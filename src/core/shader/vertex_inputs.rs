@@ -9,7 +9,12 @@ use crate::{Vertex, VertexData};
 pub(crate) struct VertexInputDesc {
     pub name: String,
     pub location: u32,
+    /// The format the mesh's buffer holds the input in, 32-bit floats for an `f16` input too.
     pub format: wgpu::VertexFormat,
+    /// The WGSL type the shader declares, such as `vec2<f16>`, which attach errors name.
+    pub declared: &'static str,
+    /// Whether the input is `f16`, whose range the attach checks each value against.
+    pub half: bool,
 }
 
 impl ShaderObject {
@@ -62,7 +67,9 @@ impl ShaderObject {
         let naga::Binding::Location { location, .. } = binding else {
             return Ok(());
         };
-        let format = naga_ty_to_vertex_format(&self.module.types[ty])?;
+        let ty = &self.module.types[ty];
+        let (format, declared) = map_input(ty)?;
+        let half = ty.inner.scalar_width() == Some(2);
         let name = name.clone().unwrap_or_else(|| format!("attr{location}"));
         // Each input reads the mesh attribute of its name, so two inputs can't share one.
         if let Some(first) = inputs.iter().find(|input| input.name == name) {
@@ -75,37 +82,46 @@ impl ShaderObject {
             name,
             location: *location,
             format,
+            declared,
+            half,
         });
         Ok(())
     }
 }
 
-fn naga_ty_to_vertex_format(ty: &naga::Type) -> Result<wgpu::VertexFormat, ShaderError> {
-    use naga::{ScalarKind, TypeInner, VectorSize};
+/// The buffer format a vertex input reads, and the WGSL type it declares.
+/// An `f16` input reads 32-bit floats, which the GPU converts, so a mesh feeds both.
+fn map_input(ty: &naga::Type) -> Result<(wgpu::VertexFormat, &'static str), ShaderError> {
+    use naga::{ScalarKind as Kind, TypeInner, VectorSize as Size};
+    use wgpu::VertexFormat as Format;
     match &ty.inner {
-        TypeInner::Scalar(s) => match s.kind {
-            ScalarKind::Float if s.width == 4 => Ok(wgpu::VertexFormat::Float32),
-            ScalarKind::Sint if s.width == 4 => Ok(wgpu::VertexFormat::Sint32),
-            ScalarKind::Uint if s.width == 4 => Ok(wgpu::VertexFormat::Uint32),
+        TypeInner::Scalar(scalar) => match (scalar.kind, scalar.width) {
+            (Kind::Float, 4) => Ok((Format::Float32, "f32")),
+            (Kind::Float, 2) => Ok((Format::Float32, "f16")),
+            (Kind::Sint, 4) => Ok((Format::Sint32, "i32")),
+            (Kind::Uint, 4) => Ok((Format::Uint32, "u32")),
             _ => Err(ShaderError::TypeMismatch(
                 "Unsupported scalar width/kind for vertex input".into(),
             )),
         },
-        TypeInner::Vector { size, scalar, .. } => match (size, scalar.kind, scalar.width) {
-            (VectorSize::Bi, ScalarKind::Float, 4) => Ok(wgpu::VertexFormat::Float32x2),
-            (VectorSize::Tri, ScalarKind::Float, 4) => Ok(wgpu::VertexFormat::Float32x3),
-            (VectorSize::Quad, ScalarKind::Float, 4) => Ok(wgpu::VertexFormat::Float32x4),
-            (VectorSize::Bi, ScalarKind::Sint, 4) => Ok(wgpu::VertexFormat::Sint32x2),
-            (VectorSize::Tri, ScalarKind::Sint, 4) => Ok(wgpu::VertexFormat::Sint32x3),
-            (VectorSize::Quad, ScalarKind::Sint, 4) => Ok(wgpu::VertexFormat::Sint32x4),
-            (VectorSize::Bi, ScalarKind::Uint, 4) => Ok(wgpu::VertexFormat::Uint32x2),
-            (VectorSize::Tri, ScalarKind::Uint, 4) => Ok(wgpu::VertexFormat::Uint32x3),
-            (VectorSize::Quad, ScalarKind::Uint, 4) => Ok(wgpu::VertexFormat::Uint32x4),
+        TypeInner::Vector { size, scalar } => match (size, scalar.kind, scalar.width) {
+            (Size::Bi, Kind::Float, 4) => Ok((Format::Float32x2, "vec2<f32>")),
+            (Size::Tri, Kind::Float, 4) => Ok((Format::Float32x3, "vec3<f32>")),
+            (Size::Quad, Kind::Float, 4) => Ok((Format::Float32x4, "vec4<f32>")),
+            (Size::Bi, Kind::Float, 2) => Ok((Format::Float32x2, "vec2<f16>")),
+            (Size::Tri, Kind::Float, 2) => Ok((Format::Float32x3, "vec3<f16>")),
+            (Size::Quad, Kind::Float, 2) => Ok((Format::Float32x4, "vec4<f16>")),
+            (Size::Bi, Kind::Sint, 4) => Ok((Format::Sint32x2, "vec2<i32>")),
+            (Size::Tri, Kind::Sint, 4) => Ok((Format::Sint32x3, "vec3<i32>")),
+            (Size::Quad, Kind::Sint, 4) => Ok((Format::Sint32x4, "vec4<i32>")),
+            (Size::Bi, Kind::Uint, 4) => Ok((Format::Uint32x2, "vec2<u32>")),
+            (Size::Tri, Kind::Uint, 4) => Ok((Format::Uint32x3, "vec3<u32>")),
+            (Size::Quad, Kind::Uint, 4) => Ok((Format::Uint32x4, "vec4<u32>")),
             _ => Err(ShaderError::TypeMismatch(
                 "Unsupported vector type for vertex input".into(),
             )),
         },
-        // Matrices or other types are not supported as direct vertex attributes in this first pass
+        // Matrices and other types aren't vertex attributes.
         _ => Err(ShaderError::TypeMismatch(
             "Unsupported vertex input type".into(),
         )),
@@ -166,4 +182,39 @@ pub(super) fn build_wgsl_from_vertex(v: &Vertex) -> String {
     );
 
     format!("{vs}\n{fs}", vs = vs_src, fs = fs_src)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use wgpu::VertexFormat as Format;
+
+    // Story: an f16 input reads the 32-bit float format of its size and keeps its WGSL
+    // type for errors, beside f32, i32 and u32 inputs, which read their own formats.
+    #[test]
+    fn half_inputs_read_float_formats() {
+        let module = naga::front::wgsl::parse_str(
+            "enable f16;
+@vertex fn vs_main(@location(0) a: f16, @location(1) b: vec2<f16>, @location(2) c: vec3<f16>,
+  @location(3) d: vec4<f16>, @location(4) e: vec3<f32>, @location(5) f: vec2<u32>,
+  @location(6) g: i32) -> @builtin(position) vec4<f32> { return vec4<f32>(0.0); }",
+        )
+        .expect("module");
+        let arguments = &module.entry_points[0].function.arguments;
+        let inputs: Vec<(Format, &str)> = arguments
+            .iter()
+            .map(|argument| map_input(&module.types[argument.ty]).expect("input"))
+            .collect();
+
+        let expected = [
+            (Format::Float32, "f16"),
+            (Format::Float32x2, "vec2<f16>"),
+            (Format::Float32x3, "vec3<f16>"),
+            (Format::Float32x4, "vec4<f16>"),
+            (Format::Float32x3, "vec3<f32>"),
+            (Format::Uint32x2, "vec2<u32>"),
+            (Format::Sint32, "i32"),
+        ];
+        assert_eq!(inputs, expected);
+    }
 }

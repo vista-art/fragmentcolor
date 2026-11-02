@@ -12,8 +12,8 @@ mod binding_checks {
     //!   Python raises. A `#[wasm_bindgen]` function that returns `Result<_, E>` returns
     //!   `WebError`, or an `E` whose `From<E> for JsValue` is exactly
     //!   `WebError::from(error).into()`, and so is every such `From` in the crate. A function
-    //!   that returns a `Promise` builds it with `error::defer`, whose future fails with a
-    //!   `WebError`, and nothing outside `src/error/platform/web.rs` calls `future_to_promise`.
+    //!   that returns a `Promise` builds it with `errors::defer`, whose future fails with a
+    //!   `WebError`, and nothing outside `src/errors/platform/web.rs` calls `future_to_promise`.
 
     use std::collections::{BTreeMap, BTreeSet};
     use std::fs;
@@ -591,7 +591,7 @@ mod binding_checks {
 
     /// What the scan of `src` finds: the fallible and deferred exports, each
     /// `From<E> for JsValue` by the name of `E` with whether it goes through `WebError`,
-    /// and the files that build a promise without `error::defer`.
+    /// and the files that build a promise without `errors::defer`.
     #[derive(Default)]
     struct Exports {
         fallible: Vec<Fallible>,
@@ -611,7 +611,7 @@ mod binding_checks {
             };
             let relative = file.strip_prefix(root).unwrap_or(&file);
             scan_items(&parsed.items, relative, &mut exports);
-            let home = relative == Path::new("src/error/platform/web.rs");
+            let home = relative == Path::new("src/errors/platform/web.rs");
             if !home && names(&parsed.to_token_stream(), "future_to_promise") {
                 exports.builders.push(relative.to_path_buf());
             }
@@ -646,7 +646,7 @@ mod binding_checks {
         for d in &exports.deferred {
             if !names(&d.body, "defer") {
                 problems.push(format!(
-                    "{}: `{}` returns a `Promise` that `error::defer` didn't build. \
+                    "{}: `{}` returns a `Promise` that `errors::defer` didn't build. \
                      Build it with `defer`, whose future fails with a `WebError`.",
                     d.file.display(),
                     d.name
@@ -655,7 +655,7 @@ mod binding_checks {
         }
         for file in &exports.builders {
             problems.push(format!(
-                "{}: calls `future_to_promise`, whose promise can reject with any `JsValue`. Use `error::defer`.",
+                "{}: calls `future_to_promise`, whose promise can reject with any `JsValue`. Use `errors::defer`.",
                 file.display()
             ));
         }
@@ -785,7 +785,7 @@ mod binding_checks {
 
     /// Whether a `From<E> for JsValue` impl's `from` is exactly `WebError::from(error).into()`,
     /// with `error` its own parameter. A `From<E> for WebError` outside
-    /// `src/error/platform/web.rs` can only build its value through a constructor
+    /// `src/errors/platform/web.rs` can only build its value through a constructor
     /// that names a class, so this form always names one.
     fn converts_through(imp: &syn::ItemImpl) -> bool {
         let Some(from) = imp.items.iter().find_map(|item| match item {

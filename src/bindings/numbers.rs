@@ -1,6 +1,7 @@
 //! How every binding reads numbers: whole numbers for counts and sizes,
 //! and finite 32-bit floats for colors, positions, directions, axes and UV transforms.
 
+use crate::errors::show_number;
 use crate::{Color, Vertex};
 
 /// One size, region or count number from JavaScript: a whole number from 0 to `u32::MAX`.
@@ -21,16 +22,16 @@ pub(crate) struct NumberError {
 }
 
 #[cfg(any(wasm, test))]
-impl crate::error::Classify for NumberError {
-    fn classify(&self) -> crate::error::ErrorClass {
-        crate::error::ErrorClass::InvalidInput
+impl crate::errors::Classify for NumberError {
+    fn classify(&self) -> crate::errors::ErrorClass {
+        crate::errors::ErrorClass::InvalidInput
     }
 }
 
 #[cfg(wasm)]
-impl From<NumberError> for crate::error::WebError {
+impl From<NumberError> for crate::errors::WebError {
     fn from(error: NumberError) -> Self {
-        crate::error::WebError::from_error(&error)
+        crate::errors::WebError::from_error(&error)
     }
 }
 
@@ -49,7 +50,7 @@ pub(crate) fn read_unsigned(value: f64, what: &str) -> Result<u32, NumberError> 
 pub(crate) enum VectorError {
     #[error(
         "{label}: item {index} must be a finite number that fits a 32-bit float, got {}",
-        show(*value)
+        show_number(*value)
     )]
     Item {
         label: String,
@@ -62,15 +63,6 @@ pub(crate) enum VectorError {
         expected: String,
         count: usize,
     },
-}
-
-/// The number as an error prints it: a large one in exponent form, such as `1e39`.
-fn show(value: f64) -> String {
-    if value.is_finite() && value.abs() >= 1e16 {
-        format!("{value:e}")
-    } else {
-        value.to_string()
-    }
 }
 
 /// Reads each number of a float vector as an `f32`, the rule every binding shares.
@@ -152,20 +144,20 @@ pub(crate) fn read_position(
 #[cfg(python)]
 impl From<VectorError> for pyo3::PyErr {
     fn from(error: VectorError) -> Self {
-        crate::error::raise_error(&error)
+        crate::errors::raise_error(&error)
     }
 }
 
 #[cfg(any(python, wasm, test))]
-impl crate::error::Classify for VectorError {
-    fn classify(&self) -> crate::error::ErrorClass {
-        crate::error::ErrorClass::InvalidInput
+impl crate::errors::Classify for VectorError {
+    fn classify(&self) -> crate::errors::ErrorClass {
+        crate::errors::ErrorClass::InvalidInput
     }
 }
 
 /// A float vector Swift and Kotlin can't use throws a render error, as a bad region does.
 #[cfg(mobile)]
-impl From<VectorError> for crate::error::platform::mobile::FragmentColorError {
+impl From<VectorError> for crate::errors::platform::mobile::FragmentColorError {
     fn from(error: VectorError) -> Self {
         Self::Render(error.to_string())
     }

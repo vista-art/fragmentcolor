@@ -180,6 +180,43 @@ final class Healthcheck: ExampleCase {
         }
     }
 
+    // Metal has EXTERNAL_TEXTURE, so a texture_external slot reads an ordinary texture,
+    // and refuses an sRGB one with a case that names the formats the slot takes.
+    func testExternalTexturesReadTextures() async throws {
+        let renderer = Renderer()
+        let target = try await renderer.createTextureTarget([2, 2])
+        let shader = try Shader(source: """
+            @group(0) @binding(0) var video: texture_external;
+            @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+              let p = array<vec2<f32>, 3>(vec2f(-1., -1.), vec2f(3., -1.), vec2f(-1., 3.));
+              return vec4f(p[i], 0., 1.);
+            }
+            @fragment fn fs_main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+              return textureLoad(video, vec2<u32>(pos.xy));
+            }
+        """)
+        let pixels: [UInt8] = [200, 10, 30, 255, 40, 220, 60, 255, 70, 80, 240, 255, 120, 130, 140, 255]
+        let size = Size(width: 2, height: 2, depth: nil)
+        let video = try await renderer.createTexture(pixels, TextureOptions(size: size, format: .rgba8Unorm))
+        try shader.set("video", video)
+        try renderer.render(shader, target)
+        try assertEqual(Array(try await target.getImage()), pixels, "textureLoad of an Rgba8Unorm texture")
+
+        let srgb = try await renderer.createTexture(pixels, TextureOptions(size: size, format: .rgba8UnormSrgb))
+        try shader.set("video", srgb)
+        do {
+            try renderer.render(shader, target)
+            throw HealthcheckError.assertion("an sRGB texture in an external slot should throw")
+        } catch let error as FragmentColorError {
+            guard case let .Binding(uniform, expected, found) = error else {
+                throw HealthcheckError.assertion("render threw \(error), not Binding")
+            }
+            try assertEqual(uniform, "video", "Binding uniform")
+            try assertEqual(expected, "an Rgba8Unorm, Bgra8Unorm or Rgba16Float texture", "Binding expected")
+            try assertEqual(found, "Rgba8UnormSrgb", "Binding found")
+        }
+    }
+
     // A size with layers reaches the check the other languages run: a texture
     // target has one layer, so a depth of 2 throws.
     func testTextureTargetRefusesLayers() async throws {
@@ -616,6 +653,55 @@ final class Healthcheck: ExampleCase {
         let blob = Data((0..<32).map { UInt8($0) })
         try shader.set("particles", blob)
         try assertEqual(shader.get("particles"), .bytes(blob), "storage root from Data")
+    }
+
+    // f16 uniforms take plain numbers rounded to the nearest f16 and read back as floats,
+    // and NaN, infinities and numbers past f16 throw. render draws where the device has
+    // SHADER_F16, as every Metal device does, and throws a Feature case that names it elsewhere.
+    func testHalfUniforms() async throws {
+        let renderer = Renderer()
+        let target = try await renderer.createTextureTarget([1, 1])
+        let shader = try Shader(source: """
+            enable f16;
+            @group(0) @binding(0) var<uniform> gain: f16;
+            @group(0) @binding(1) var<uniform> tint: vec4<f16>;
+            @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+              let p = array<vec2<f32>, 3>(vec2f(-1., -1.), vec2f(3., -1.), vec2f(-1., 3.));
+              return vec4f(p[i], 0., 1.);
+            }
+            @fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(tint * gain); }
+        """)
+
+        try shader.set("gain", 0.1)
+        try assertEqual(shader.get("gain"), .float(0.0999755859375), "f16 from a Double")
+        try assertEqual(try shader.get("gain").float, Float(0.0999755859375), "the float accessor")
+        try shader.set("tint", [0.25, 0.5, 0.75, 1.0])
+        try assertEqual(shader.get("tint"), .vec4([0.25, 0.5, 0.75, 1]), "vec4<f16> reads back as a vec4")
+        for value in [70000.0, Double.nan, Double.infinity] {
+            do {
+                try shader.set("gain", value)
+                throw HealthcheckError.assertion("set(\"gain\", \(value)) should throw")
+            } catch is FragmentColorError {}
+        }
+        try assertEqual(shader.get("gain"), .float(0.0999755859375), "gain kept after rejected sets")
+        try assertEqual(UniformData.halfVec2([1, 2]).floats, [1, 2], "the floats accessor")
+
+        try shader.set("gain", 1)
+        do {
+            try renderer.render(shader, target)
+        } catch let error as FragmentColorError {
+            guard case let .Feature(item, feature) = error else {
+                throw HealthcheckError.assertion("render threw \(error), not Feature")
+            }
+            try assertEqual(item, "the shader", "Feature item")
+            try assertEqual(feature, "SHADER_F16", "Feature feature")
+            return
+        }
+        let pixel = Array(try await target.getImage().prefix(4))
+        let expected: [UInt8] = [64, 128, 191, 255]
+        for (got, want) in zip(pixel, expected) where abs(Int(got) - Int(want)) > 1 {
+            throw HealthcheckError.assertion("f16 drew \(pixel), not \(expected)")
+        }
     }
 
     // Vertex and Instance numbers take the type the shader declares when the mesh attaches.

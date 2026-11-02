@@ -25,8 +25,6 @@ def take_gpu_errors():
 def run_all():
     base = pathlib.Path(__file__).parent
     examples = [
-        ('core/device_error/DeviceError.py', 'docs/api/core/device_error/device_error.md'),
-        ('core/error_kind/ErrorKind.py', 'docs/api/core/error_kind/error_kind.md'),
         ('core/pass/Pass.py', 'docs/api/core/pass/pass.md'),
         ('core/pass/add.py', 'docs/api/core/pass/add.md'),
         ('core/pass/add_mesh.py', 'docs/api/core/pass/add_mesh.md'),
@@ -73,6 +71,8 @@ def run_all():
         ('core/shader/set.py', 'docs/api/core/shader/set.md'),
         ('core/shader/set_registry.py', 'docs/api/core/shader/set_registry.md'),
         ('core/shader/validate_mesh.py', 'docs/api/core/shader/validate_mesh.md'),
+        ('errors/device_error/DeviceError.py', 'docs/api/errors/device_error/device_error.md'),
+        ('errors/error_kind/ErrorKind.py', 'docs/api/errors/error_kind/error_kind.md'),
         ('geometry/instance/Instance.py', 'docs/api/geometry/instance/instance.md'),
         ('geometry/instance/new.py', 'docs/api/geometry/instance/new.md'),
         ('geometry/instance/set.py', 'docs/api/geometry/instance/set.md'),

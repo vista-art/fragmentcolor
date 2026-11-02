@@ -1,6 +1,6 @@
 #![cfg(wasm)]
 
-use crate::error::WebError;
+use crate::errors::WebError;
 use crate::texture::TextureError;
 use crate::{RenderContext, ShaderError, Size, Target, TargetFrame, TextureTarget, WindowTarget};
 use lsp_doc::lsp_doc;
@@ -113,7 +113,7 @@ impl TextureTarget {
     pub fn get_image_js(&self) -> js_sys::Promise {
         let start = crate::core::Start::now(Some(&self.context));
         let target = self.clone();
-        crate::error::defer(async move {
+        crate::errors::defer(async move {
             let pixels = target.read_image_from(start).await?;
             Ok(js_sys::Uint8Array::from(pixels.as_slice()).into())
         })

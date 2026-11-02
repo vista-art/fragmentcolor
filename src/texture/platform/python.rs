@@ -425,7 +425,7 @@ fn read_array(texture: &Texture) -> PyResult<Py<numpy::PyArrayDyn<u8>>> {
     };
     let expected: usize = shape.iter().product();
     if data.len() != expected {
-        return Err(crate::error::PyFragmentColorError::new_err(format!(
+        return Err(crate::errors::PyFragmentColorError::new_err(format!(
             "Unexpected image data length: expected {expected}, got {}",
             data.len()
         )));

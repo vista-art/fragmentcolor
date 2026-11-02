@@ -4,7 +4,7 @@ A GPU error that an error scope caught. [`Renderer::render`](https://fragmentcol
 
 It holds three values, under the same names in every language:
 
-- `kind`, an [ErrorKind](https://fragmentcolor.org/api/core/errorkind): `Validation`, `Internal` or `Memory`.
+- `kind`, an [ErrorKind](https://fragmentcolor.org/api/errors/errorkind): `Validation`, `Internal` or `Memory`.
 - `label`, the step that raised it: `render pipeline`, `compute pipeline`, `light binning pipeline` or `frame`, and in Rust, Python, Swift and Kotlin also a bind group or texture view inside the frame.
 - `detail`, the device's own words about what went wrong.
 

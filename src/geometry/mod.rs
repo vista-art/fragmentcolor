@@ -14,7 +14,7 @@ pub use instance::*;
 
 mod vertex_data;
 pub use vertex_data::VertexData;
-pub(crate) use vertex_data::{Shape, describe};
+pub(crate) use vertex_data::{Shape, check_halves, describe};
 
 mod quad;
 pub use quad::*;

@@ -299,9 +299,7 @@ impl RenderContext {
         };
         bindings.sort_by_key(|(slot, _, _)| *slot);
         for (_, name, meta) in bindings {
-            let Some(access) = TextureUse::from_class(&meta.class) else {
-                continue;
-            };
+            let access = TextureUse::from_class(&meta.class);
             if let Some(texture) = self.get_texture(&meta.id) {
                 accesses.bind(&texture.inner, access, &name)?;
             }

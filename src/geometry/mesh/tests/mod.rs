@@ -7,7 +7,7 @@ use crate::testing::device::request_small_device;
 
 impl MeshObject {
     /// What the shader `shader` reads, while it holds the mesh.
-    pub(crate) fn reads_of(&self, shader: u64) -> Option<AttributeTypes> {
+    pub(crate) fn reads_of(&self, shader: u64) -> Option<Reads> {
         let required = self.required.read();
         required.get(&shader).map(|attached| attached.reads.clone())
     }
@@ -102,6 +102,115 @@ fn ensure_packed_rejects_values_that_differ_from_the_layout() {
             assert_eq!(text, "offset: expected vec2<f32>, got f32 at instance 1");
         }
         other => panic!("expected an invalid instance, got {other:?}"),
+    }
+}
+
+/// A shader that reads its position, a tint and an instance offset,
+/// each one as `f16` when `half` is set, and as `f32` when it isn't.
+fn tint_shader(half: bool) -> Shader {
+    let float = if half { "f16" } else { "f32" };
+    let source = format!(
+        "enable f16;
+struct Out {{ @builtin(position) at: vec4<f32>, @location(0) tint: vec4<f32> }};
+@vertex fn vs_main(@location(0) position: vec2<{float}>, @location(1) tint: vec4<{float}>,
+  @location(2) offset: vec2<{float}>) -> Out {{
+  return Out(vec4<f32>(vec2<f32>(position + offset), 0.0, 1.0), vec4<f32>(tint));
+}}
+@fragment fn fs_main(in: Out) -> @location(0) vec4<f32> {{ return in.tint; }}"
+    );
+    Shader::new(source.as_str()).expect("shader")
+}
+
+/// A vertex at `corner` with a tint of `red` and full green, blue and alpha.
+fn tinted(corner: [f32; 2], red: f64) -> Vertex {
+    Vertex::new(corner).set("tint", [red, 1.0, 1.0, 1.0])
+}
+
+/// A mesh of one triangle whose vertices `tint_shader` reads, and one instance.
+fn tinted_triangle() -> Mesh {
+    let mesh = Mesh::new();
+    mesh.add_vertices([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]].map(|corner| tinted(corner, 0.5)));
+    mesh.add_instance(Instance::new().set("offset", [0.0, 0.0]));
+    mesh
+}
+
+/// The text of the error the next pack of `mesh` fails with, or `None` when it packs.
+fn refuse_pack(mesh: &Mesh) -> Option<String> {
+    match mesh.object.ensure_packed() {
+        Ok(_) => None,
+        Err(MeshError::InvalidVertex(text) | MeshError::InvalidInstance(text)) => Some(text),
+        Err(other) => panic!("expected an invalid vertex or instance, got {other:?}"),
+    }
+}
+
+// Story: a vertex or instance added after the attach, which an f16 input reads, must stay
+// finite after rounding to f16, the position included, as the attach checks the first ones.
+// The pack refuses one that doesn't with the type the shader declares, so the GPU never
+// gets it, and the error stays until the value is gone.
+#[test]
+fn later_values_meet_the_f16_rule() {
+    let half = tint_shader(true);
+    let mesh = tinted_triangle();
+    half.add_mesh(&mesh).expect("values that fit");
+    assert_eq!(refuse_pack(&mesh), None);
+
+    mesh.add_vertices([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]].map(|corner| tinted(corner, 1.0)));
+    mesh.add_vertex(tinted([2.0, 0.0], 70000.0));
+    mesh.add_vertices([tinted([0.0, 2.0], 1.0), tinted([2.0, 2.0], 1.0)]);
+    let refused = refuse_pack(&mesh).expect("70000 is past f16");
+    assert_eq!(refused, "tint: expected vec4<f16>, got 70000 at vertex 6");
+    assert_eq!(refuse_pack(&mesh).as_deref(), Some(refused.as_str()));
+
+    let mesh = tinted_triangle();
+    half.add_mesh(&mesh).expect("values that fit");
+    mesh.add_vertices([
+        tinted([70000.0, 0.0], 1.0),
+        tinted([1.0, 0.0], 1.0),
+        tinted([0.0, 1.0], 1.0),
+    ]);
+    let refused = refuse_pack(&mesh).expect("a far position");
+    assert_eq!(
+        refused,
+        "position: expected vec2<f16>, got 70000 at vertex 3"
+    );
+
+    let mesh = tinted_triangle();
+    half.add_mesh(&mesh).expect("values that fit");
+    mesh.add_instance(Instance::new().set("offset", [0.0, f64::INFINITY]));
+    let refused = refuse_pack(&mesh).expect("an infinite offset");
+    assert_eq!(refused, "offset: expected vec2<f16>, got inf at instance 1");
+}
+
+// Story: on a mesh that an f32 shader and an f16 shader both hold, a later value must fit
+// f16 while the f16 shader holds the mesh, whichever attached first. Once it lets the mesh go,
+// with remove_mesh or when it drops, the f32 rule is the one left, and 70000 packs.
+#[test]
+fn a_shared_mesh_meets_the_f16_rule_while_an_f16_shader_holds_it() {
+    let full = tint_shader(false);
+    for f16_first in [true, false] {
+        let half = tint_shader(true);
+        let mesh = tinted_triangle();
+        let order = if f16_first {
+            [&half, &full]
+        } else {
+            [&full, &half]
+        };
+        for shader in order {
+            shader.add_mesh(&mesh).expect("values that fit");
+        }
+        mesh.add_vertices(
+            [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]].map(|corner| tinted(corner, 70000.0)),
+        );
+
+        let refused = refuse_pack(&mesh).expect("70000 is past f16");
+        assert_eq!(refused, "tint: expected vec4<f16>, got 70000 at vertex 3");
+
+        if f16_first {
+            half.remove_mesh(&mesh);
+        } else {
+            drop(half);
+        }
+        assert_eq!(refuse_pack(&mesh), None, "the f32 rule takes 70000");
     }
 }
 
@@ -747,9 +856,14 @@ fn a_pack_during_a_model_attach_finds_the_columns() {
         let context = RenderContext::new(device, queue);
         let mesh = Mesh::new();
         mesh.add_vertices([[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]]);
-        let mut read = AttributeTypes::default();
+        let mut read = Reads::default();
         for field in build_columns().fields {
-            read.instance.insert(field.name, field.fmt);
+            let column = Read {
+                format: field.fmt,
+                declared: "vec4<f32>",
+                half: false,
+            };
+            read.instance.insert(field.name, column);
         }
         let binding = Binding {
             read,

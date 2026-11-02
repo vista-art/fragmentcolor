@@ -1219,7 +1219,7 @@ mod reflect {
     }
 
     /// The builtin a class registered as `PythonError::<Variant>.class(py)` also extends,
-    /// read from the arm of `PythonError::class` in `src/error/platform/python.rs` that pairs
+    /// read from the arm of `PythonError::class` in `src/errors/platform/python.rs` that pairs
     /// the variant with `py.get_type::<PyValueError>()` or another builtin:
     /// `ValueError` for that one.
     fn read_builtin(root: &Path, value: &str) -> Option<String> {
@@ -1228,7 +1228,7 @@ mod reflect {
             .chars()
             .take_while(|c| c.is_alphanumeric() || *c == '_')
             .collect();
-        let path = root.join("src/error/platform/python.rs");
+        let path = root.join("src/errors/platform/python.rs");
         let text = fs::read_to_string(&path)
             .unwrap_or_else(|e| panic!("reflect: cannot read {}: {e}", path.display()));
         let arm = format!("PythonError::{variant} => (");

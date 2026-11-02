@@ -2,6 +2,7 @@ package org.fragmentcolor
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import kotlinx.coroutines.runBlocking
+import kotlin.math.abs
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -215,6 +216,30 @@ class Healthcheck : ExampleCase() {
         val lone = Shader("@fragment fn main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }")
         val entry = assertFailsWith<FragmentColorException.Entry> { renderer.render(lone, target) }
         assertEquals("@vertex", entry.stage)
+    }
+
+    // Android's Vulkan and GLES have no EXTERNAL_TEXTURE, so render refuses a texture_external
+    // slot before any GPU work, with a case that names the slot and the feature.
+    @Test
+    fun externalTexturesNeedTheFeature() = runBlocking {
+        val renderer = Renderer()
+        val target = renderer.createTextureTarget(listOf(2u, 2u))
+        val shader = Shader(
+            """
+            @group(0) @binding(0) var video: texture_external;
+            @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+              let p = array<vec2<f32>, 3>(vec2f(-1., -1.), vec2f(3., -1.), vec2f(-1., 3.));
+              return vec4f(p[i], 0., 1.);
+            }
+            @fragment fn fs_main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+              return textureLoad(video, vec2<u32>(pos.xy));
+            }
+            """.trimIndent()
+        )
+        shader.set("video", renderer.createTexture(ByteArray(2 * 2 * 4), listOf(2u, 2u)))
+        val feature = assertFailsWith<FragmentColorException.Feature> { renderer.render(shader, target) }
+        assertEquals("'video' at @group(0) @binding(0)", feature.item)
+        assertEquals("EXTERNAL_TEXTURE", feature.feature)
     }
 
     // A region or viewport with a side of 0, or a far edge past UInt.MAX_VALUE,
@@ -472,6 +497,50 @@ class Healthcheck : ExampleCase() {
         shader.set("particles", blob)
         val (bytes) = shader.get("particles") as UniformData.Bytes
         assertContentEquals(blob, bytes)
+    }
+
+    // f16 uniforms take plain numbers rounded to the nearest f16 and read back as floats,
+    // and NaN, infinities and numbers past f16 throw. render draws where the device has
+    // SHADER_F16 and throws a Feature case that names it where it doesn't.
+    @Test
+    fun halfUniformsRoundAndRefuse() = runBlocking {
+        val renderer = Renderer()
+        val target = renderer.createTextureTarget(listOf(1u, 1u))
+        val shader = Shader(
+            """
+            enable f16;
+            @group(0) @binding(0) var<uniform> gain: f16;
+            @group(0) @binding(1) var<uniform> tint: vec4<f16>;
+            @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+              let p = array<vec2<f32>, 3>(vec2f(-1., -1.), vec2f(3., -1.), vec2f(-1., 3.));
+              return vec4f(p[i], 0., 1.);
+            }
+            @fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(tint * gain); }
+            """.trimIndent()
+        )
+
+        shader.set("gain", 0.1)
+        assertEquals(UniformData.Float(0.099975586f), shader.get("gain"))
+        assertEquals(0.099975586f, shader.get("gain").float)
+        shader.set("tint", listOf(0.25f, 0.5f, 0.75f, 1f))
+        assertEquals(UniformData.Vec4(listOf(0.25f, 0.5f, 0.75f, 1f)), shader.get("tint"))
+        for (value in listOf(70000.0, Double.NaN, Double.POSITIVE_INFINITY)) {
+            assertFailsWith<FragmentColorException> { shader.set("gain", value) }
+        }
+        assertEquals(UniformData.Float(0.099975586f), shader.get("gain"))
+        assertEquals(listOf(1f, 2f), UniformData.HalfVec2(listOf(1f, 2f)).floats)
+
+        shader.set("gain", 1.0)
+        try {
+            renderer.render(shader, target)
+        } catch (feature: FragmentColorException.Feature) {
+            assertEquals("the shader", feature.item)
+            assertEquals("SHADER_F16", feature.feature)
+            return@runBlocking
+        }
+        val pixel = target.getImage().take(4).map { it.toInt() and 0xff }
+        val expected = listOf(64, 128, 191, 255)
+        assertTrue(pixel.zip(expected).all { (got, want) -> abs(got - want) <= 1 }, "f16 drew $pixel")
     }
 
     // Vertex and Instance numbers take the type the shader declares when the mesh attaches.

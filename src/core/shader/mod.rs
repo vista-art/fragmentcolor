@@ -5,7 +5,6 @@ use crate::geometry::MeshObject;
 use crate::texture::{Registration, TextureId};
 use crate::{AlphaMode, Mesh, PassObject, Renderable, Vertex};
 use dashmap::DashMap;
-use error::Source;
 pub use error::{Diagnostic, ShaderError, SourceLocation};
 use lsp_doc::lsp_doc;
 use naga::{
@@ -25,6 +24,7 @@ use wasm_bindgen::prelude::*;
 
 mod source;
 use source::defaults::*;
+use source::joined::Joined;
 pub(crate) mod uniforms;
 pub(crate) use uniforms::*;
 pub use uniforms::{
@@ -33,7 +33,7 @@ pub use uniforms::{
 
 pub use source::{ShaderInput, ShaderPart};
 
-pub(crate) use uniforms::input::{UniformInput, is_whole_in};
+pub(crate) use uniforms::input::{UniformInput, is_whole_in, refuse_shape};
 
 mod mesh_attach;
 use mesh_attach::Preview;
@@ -107,10 +107,7 @@ impl Shader {
 
     #[lsp_doc("docs/api/core/shader/set.md")]
     pub fn set(&self, key: &str, value: impl Into<UniformData>) -> Result<(), ShaderError> {
-        match UniformInput::try_from(value.into()) {
-            Ok(input) => self.object.set_input(key, input),
-            Err(data) => self.object.set(key, data),
-        }
+        self.object.set(key, value)
     }
 
     #[lsp_doc("docs/api/core/shader/get.md")]
@@ -272,40 +269,14 @@ impl ShaderObject {
         Self::wgsl(source)
     }
 
-    /// Sets a uniform value, now when the storage is free, or queued, last write wins.
-    /// It never waits for a draw. A texture waits while the shader binds another texture
-    /// or applies its queued values, since both hold `texture_writes`, so the latest one wins.
+    /// Sets a uniform value through `set_input`, which shapes and checks it against the key's
+    /// declared type, so every caller gets the rules `Shader::set` gives. A whole struct, array,
+    /// buffer shape or sampler has no loose form, and is refused: set a struct one field at a time.
     pub fn set(&self, key: &str, value: impl Into<UniformData>) -> Result<(), ShaderError> {
-        let value: UniformData = value.into();
-        if self.routes_ambient(key) {
-            let input = UniformInput::try_from(value)
-                .map_err(|_| ShaderError::TypeMismatch(AMBIENT_KEY.into()))?;
-            return self.set_input(key, input);
+        match UniformInput::try_from(value.into()) {
+            Ok(input) => self.set_input(key, input),
+            Err(shape) => Err(refuse_shape(key, &shape)),
         }
-        let texture = matches!(&value, UniformData::Texture(_));
-        let writing = texture.then(|| self.texture_writes.lock());
-        let released = self.write_value(key, value)?;
-        drop(writing);
-        drop(released);
-        Ok(())
-    }
-
-    /// Writes `value` under `key` and holds the texture it names. A texture with id 0 unsets
-    /// the key, which then holds neither a map nor a texture, and another slot's map is refused.
-    /// A caller writing a texture holds `texture_writes` and drops what this returns after it.
-    fn write_value(&self, key: &str, value: UniformData) -> Result<Released, ShaderError> {
-        let texture = match &value {
-            UniformData::Texture(meta) => Some(meta.id),
-            _ => None,
-        };
-        if let Some(id) = texture {
-            self.check_bind(key, id)?;
-        }
-        self.write_slot(key, value)?;
-        Ok(match texture {
-            Some(id) => self.bind_texture(key, id),
-            None => (None, None),
-        })
     }
 
     /// Writes `value` under `key`, or queues it in `pending` when the storage is busy.
@@ -476,8 +447,19 @@ impl ShaderObject {
 
     /// Create a Shader object from a WGSL source.
     pub fn wgsl(source: &str) -> Result<Self, ShaderError> {
-        let module = parse_wgsl(source)?;
-        let info = validate_module(&module, Some(Source::wgsl(source)))?;
+        Self::compile(Joined::from(source))
+    }
+
+    /// Create a Shader object from WGSL `parts`, joined in order,
+    /// with the directives each later part opens with at the top.
+    pub(crate) fn join(parts: &[&str]) -> Result<Self, ShaderError> {
+        Self::compile(Joined::join(parts))
+    }
+
+    /// Create a Shader object from the joined WGSL `wgsl`.
+    fn compile(wgsl: Joined) -> Result<Self, ShaderError> {
+        let mut module = wgsl.parse()?;
+        let info = wgsl.validate(&module)?;
         rewrites::immediates::check_immediates(&module)?;
         check_samplers(&module, &info)?;
 
@@ -486,9 +468,9 @@ impl ShaderObject {
             .as_ref()
             .map(LightRoots::handles)
             .unwrap_or_default();
-        let uniforms = parse_uniforms(&module, &info, &filled)?;
+        let uniforms = parse_uniforms(&module, &info, &filled, &wgsl)?;
         let storage = RwLock::new(UniformStorage::new(&uniforms)?);
-        let hash = hash(source);
+        let hash = hash(&wgsl.text);
 
         let mut total_bytes = 0;
         for uniform in uniforms.values() {
@@ -496,13 +478,15 @@ impl ShaderObject {
             let aligned = wgpu::util::align_to(size, 256);
             total_bytes += aligned;
         }
+        // After every read of `info`, whose type facts don't cover a type this adds.
+        rewrites::half_type::register_half(&mut module, &info);
 
         static NEXT_ID: AtomicU64 = AtomicU64::new(1);
         let object = Self {
             id: NEXT_ID.fetch_add(1, Ordering::Relaxed),
             hash,
             module,
-            source: source.to_string(),
+            source: wgsl.text,
             padded: OnceLock::new(),
             storage,
             total_bytes,

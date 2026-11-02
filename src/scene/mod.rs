@@ -19,3 +19,4 @@ pub use material::*;
 pub use model::*;
 pub use scene::{PassRef, Scene};
 pub use scene_object::SceneObject;
+pub(crate) use scene_object::push_uniform;

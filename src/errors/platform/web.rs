@@ -1,7 +1,7 @@
 //! `WebError`, `defer` and the `JsValue` conversions JavaScript throws.
 
 use crate::FragmentColorError;
-use crate::error::{Classify, ErrorClass};
+use crate::errors::{Classify, ErrorClass};
 
 /// The error a web binding throws: a JavaScript `Error` whose `name` is the class Python
 /// raises for the same error, or a `TypeError` for an argument of the wrong type, as Python's.

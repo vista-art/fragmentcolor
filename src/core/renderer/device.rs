@@ -47,31 +47,22 @@ pub(crate) const CANDIDATES: wgpu::Features = wgpu::Features::IMMEDIATES
     .union(wgpu::Features::TEXTURE_COMPRESSION_ASTC_HDR)
     .union(wgpu::Features::TEXTURE_FORMAT_16BIT_NORM)
     .union(wgpu::Features::FLOAT32_FILTERABLE)
-    .union(wgpu::Features::FLOAT32_BLENDABLE);
+    .union(wgpu::Features::FLOAT32_BLENDABLE)
+    .union(wgpu::Features::SUBGROUP)
+    .union(wgpu::Features::SUBGROUP_VERTEX)
+    .union(wgpu::Features::SUBGROUP_BARRIER)
+    .union(wgpu::Features::PRIMITIVE_INDEX)
+    .union(wgpu::Features::TEXTURE_ATOMIC)
+    .union(wgpu::Features::EXTERNAL_TEXTURE)
+    .union(wgpu::Features::SHADER_F16);
 
-/// Opens the device with the stable features the adapter offers.
+/// Opens the device with each candidate the adapter offers, on every backend.
+/// wgpu takes its experimental features through `experimental_features` only,
+/// so `CANDIDATES` holds none of them. The limits are the adapter's own, since some
+/// emulators offer less than `Limits::default()`, such as a smaller `max_buffer_size`.
 pub(crate) async fn request_device(
     adapter: &wgpu::Adapter,
 ) -> Result<(wgpu::Device, wgpu::Queue), WgpuFailure> {
-    // Features: probe a curated set of stable, end-user-relevant features
-    // and request only the ones the adapter advertises. Two constraints
-    // shape the list:
-    //   * `adapter.features()` includes wgpu-experimental features
-    //     (`EXPERIMENTAL_RAY_QUERY`, `EXPERIMENTAL_MESH_SHADER`,
-    //     `EXPERIMENTAL_COOPERATIVE_MATRIX`) that wgpu requires routed
-    //     through `experimental_features` — passing them via
-    //     `required_features` errors with `ExperimentalFeaturesNotEnabled`
-    //     on macOS Metal. We don't use any experimental features today.
-    //   * The Android emulator's SwiftShader Vulkan rejects `IMMEDIATES`
-    //     at device creation; the existing uniform-buffer fallback path
-    //     covers callers when the feature isn't available.
-    // Limits: take the adapter's advertised limits directly. wgpu's
-    // `Limits::default()` baseline exceeds what some emulators can
-    // provide (`max_buffer_size`, `max_storage_buffer_binding_size`),
-    // and Vulkan reports those mismatches via the same
-    // `VK_ERROR_FEATURE_NOT_PRESENT` we hit before — but with an empty
-    // wgpu-hal "Missing features:" log line because the constraint is on
-    // limits, not features.
     let requested_features = adapter.features() & CANDIDATES;
     let requested_limits = cap_limits(adapter);
 

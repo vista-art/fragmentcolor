@@ -14,24 +14,37 @@ A depth of 1, or none, makes a 2D texture, and a larger depth makes a 3D texture
 
 `options.usage` overrides the default mask of `STORAGE_BINDING | TEXTURE_BINDING | COPY_SRC | COPY_DST`. Every binding has the same named `TextureUsage` flags, combined with `|` (`or` in Kotlin). The other bindings take the size, format, optional bytes and optional usage as separate arguments. An empty mask, or a bit outside the five `TextureUsage` flags, is the same `InvalidInput` error. So is a usage the format can't take on this device, such as `STORAGE_BINDING` on `Depth32Float` or `Rgba8UnormSrgb`, and a depth texture with a depth past 1.
 
+`R32Uint`, `R32Sint` and `R32Float` hold one 32-bit value per texel, which reads back as 4 little-endian bytes. A compute shader reads and writes them in place through a `read_write` storage slot, which WebGPU guarantees for these three formats, so it works in the browser too. An `R32Uint` or `R32Sint` texture also binds to an `atomic` slot, such as `texture_storage_2d<r32uint, atomic>`, where [texture atomics](https://fragmentcolor.org/api/core/shader#texture-atomics) change a texel safely from many invocations at once. They need no usage flag of their own. Texture atomics run on Vulkan, DX12, and Metal from macOS 14 and iOS 17. The browser's WebGPU and GL have none, so there `Renderer::render` returns `RendererError::FeatureError` for such a shader before it takes a frame.
+
 ## Example
 
 ```rust
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Renderer, TextureFormat};
+use fragmentcolor::{Renderer, Shader, TextureFormat};
 
 let r = Renderer::new();
 
 // Empty storage texture.
 let tex = r.create_storage_texture(([64, 64], TextureFormat::Rgba)).await?;
-# _ = tex;
 
 // Pre-seeded with bytes.
 let pixels = vec![0; 64 * 64 * 4];
 let tex2 = r
     .create_storage_texture(([64, 64], TextureFormat::Rgba, pixels))
     .await?;
-# _ = tex2;
+
+// One 32-bit counter per texel, for texture atomics.
+let counts = r.create_storage_texture(([4, 4], TextureFormat::R32Uint)).await?;
+let shader = Shader::new(r#"
+@group(0) @binding(0) var counts: texture_storage_2d<r32uint, atomic>;
+
+@compute @workgroup_size(8, 8)
+fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
+  textureAtomicAdd(counts, id.xy / 16u, 1u);
+}
+"#)?;
+shader.set("counts", &counts)?;
+# _ = (tex, tex2);
 # Ok(())
 # }
 # fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }

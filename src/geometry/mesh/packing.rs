@@ -3,8 +3,10 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use super::schema::{Field, VertexSchema};
-use crate::geometry::{Instance, MeshError, POSITION, Vertex, describe, explain_position};
+use super::schema::{Field, Read, Reads, VertexSchema};
+use crate::errors::show_number;
+use crate::geometry::explain_position;
+use crate::geometry::{Instance, MeshError, POSITION, Vertex, VertexData, check_halves};
 
 /// The bytes and indices the last pack made, with the change counts they hold.
 #[derive(Debug, Default)]
@@ -50,22 +52,39 @@ pub(super) struct Repacked {
     pub(super) instances: bool,
 }
 
-/// Packs vertex `index` in the mesh layout `schema`. A field an attached shader reads
-/// (`required`) must hold a value, and any other field the vertex leaves out packs as zeros.
+/// Packs vertex `index` in the mesh layout `schema`.
+/// A field an attached shader reads (`required`) must hold a value,
+/// which fits `f16` when the shader reads it as `f16`, the position too.
+/// Every other field the vertex leaves out packs as zeros, as no shader reads it.
 pub(super) fn pack_vertex(
     out: &mut Vec<u8>,
     index: usize,
     v: &Vertex,
     schema: &VertexSchema,
-    required: &HashMap<String, wgpu::VertexFormat>,
+    required: &Reads,
 ) -> Result<(), MeshError> {
     if v.properties.contains_key(POSITION) {
         return Err(MeshError::InvalidVertex(explain_position(index)));
     }
+    let place = format!("vertex {index}");
     for f in schema.fields.iter() {
         match f.name.as_str() {
             POSITION => {
                 let [x, y, z, _] = v.position.0.to_array();
+                let components = match v.dimensions {
+                    0..=2 => vec![x, y],
+                    _ => vec![x, y, z],
+                };
+                if let Some(read) = required.position.filter(|read| read.half)
+                    && let Err(number) = check_halves(components.into_iter().map(f64::from))
+                {
+                    let found = show_number(number);
+                    let text = format!(
+                        "{POSITION}: expected {}, got {found} at {place}",
+                        read.declared
+                    );
+                    return Err(MeshError::InvalidVertex(text));
+                }
                 match (v.dimensions, f.fmt) {
                     (0..=2, wgpu::VertexFormat::Float32x2) => {
                         out.extend_from_slice(bytemuck::cast_slice(&[x, y]));
@@ -80,15 +99,15 @@ pub(super) fn pack_vertex(
                     }
                 }
             }
-            name => match v.properties.get(name) {
-                Some(value) => value.write(f.fmt, out).map_err(|misfit| {
-                    MeshError::InvalidVertex(misfit.explain(name, &format!("vertex {index}")))
-                })?,
-                None if required.contains_key(name) => {
-                    let place = format!("vertex {index}");
-                    return Err(MeshError::InvalidVertex(explain_missing(f, &place)));
+            name => match (v.properties.get(name), required.vertex.get(name)) {
+                (Some(value), read) => write_value(out, name, value, f.fmt, read, &place)
+                    .map_err(MeshError::InvalidVertex)?,
+                (None, Some(read)) => {
+                    return Err(MeshError::InvalidVertex(explain_missing(
+                        name, read, &place,
+                    )));
                 }
-                None => out.extend(std::iter::repeat_n(0u8, f.size as usize)),
+                (None, None) => out.extend(std::iter::repeat_n(0u8, f.size as usize)),
             },
         }
     }
@@ -101,36 +120,63 @@ pub(super) fn pack_instance(
     index: usize,
     i: &Instance,
     schema: &VertexSchema,
-    required: &HashMap<String, wgpu::VertexFormat>,
+    required: &HashMap<String, Read>,
 ) -> Result<(), MeshError> {
+    let place = format!("instance {index}");
     for f in schema.fields.iter() {
-        match i.properties.get(&f.name) {
-            Some(value) => value.write(f.fmt, out).map_err(|misfit| {
-                MeshError::InvalidInstance(misfit.explain(&f.name, &format!("instance {index}")))
-            })?,
-            None if required.contains_key(&f.name) => {
-                let place = format!("instance {index}");
-                return Err(MeshError::InvalidInstance(explain_missing(f, &place)));
+        match (i.properties.get(&f.name), required.get(&f.name)) {
+            (Some(value), read) => write_value(out, &f.name, value, f.fmt, read, &place)
+                .map_err(MeshError::InvalidInstance)?,
+            (None, Some(read)) => {
+                let text = explain_missing(&f.name, read, &place);
+                return Err(MeshError::InvalidInstance(text));
             }
-            None => out.extend(std::iter::repeat_n(0u8, f.size as usize)),
+            (None, None) => out.extend(std::iter::repeat_n(0u8, f.size as usize)),
         }
     }
     Ok(())
 }
 
-/// Why the item at `place` can't leave out `field`, worded as the attach words it.
-fn explain_missing(field: &Field, place: &str) -> String {
+/// Appends `value` in `format` to `out`, or says why it doesn't fit, worded as the attach
+/// words it. A value an `f16` input reads (`read`) must also stay finite after rounding to `f16`.
+fn write_value(
+    out: &mut Vec<u8>,
+    name: &str,
+    value: &VertexData,
+    format: wgpu::VertexFormat,
+    read: Option<&Read>,
+    place: &str,
+) -> Result<(), String> {
+    if let Some(read) = read.filter(|read| read.half)
+        && let Err(number) = value.check_half()
+    {
+        let found = show_number(number);
+        return Err(format!(
+            "{name}: expected {}, got {found} at {place}",
+            read.declared
+        ));
+    }
+    value.write(format, out).map_err(|misfit| match read {
+        Some(read) => format!(
+            "{name}: expected {}, got {} at {place}",
+            read.declared, misfit.found
+        ),
+        None => misfit.explain(name, place),
+    })
+}
+
+/// Why the item at `place` can't leave out the attribute `name`, worded as the attach words it.
+fn explain_missing(name: &str, read: &Read, place: &str) -> String {
     format!(
-        "{}: expected {}, got no value at {place}",
-        field.name,
-        describe(field.fmt)
+        "{name}: expected {}, got no value at {place}",
+        read.declared
     )
 }
 
 /// Refuses instances that can't hold an attribute a shader reads from them: one missing
 /// from the instance layout, which comes from the first instance or a Model's columns.
 pub(super) fn check_layout(
-    required: &HashMap<String, wgpu::VertexFormat>,
+    required: &HashMap<String, Read>,
     fields: &[Field],
     instances: usize,
 ) -> Result<(), MeshError> {
@@ -138,7 +184,7 @@ pub(super) fn check_layout(
         .iter()
         .filter(|(name, _)| !fields.iter().any(|field| &field.name == *name))
         .min_by_key(|(name, _)| name.as_str());
-    let Some((name, format)) = missing else {
+    let Some((name, read)) = missing else {
         return Ok(());
     };
     let found = match instances {
@@ -147,7 +193,7 @@ pub(super) fn check_layout(
     };
     Err(MeshError::InvalidInstance(format!(
         "{name}: expected {}, got {found}",
-        describe(*format)
+        read.declared
     )))
 }
 

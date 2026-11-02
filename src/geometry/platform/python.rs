@@ -35,7 +35,7 @@ impl TryFrom<PyAttributeValue> for VertexData {
 /// A mesh error raises the class its `classify` names.
 impl From<MeshError> for PyErr {
     fn from(error: MeshError) -> Self {
-        crate::error::raise_error(&error)
+        crate::errors::raise_error(&error)
     }
 }
 

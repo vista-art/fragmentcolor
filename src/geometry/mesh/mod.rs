@@ -30,7 +30,7 @@ use packing::{
     pack_vertex,
 };
 mod schema;
-pub(crate) use schema::{AttributeTypes, Binding, VertexSchema, build_columns};
+pub(crate) use schema::{AttributeTypes, Binding, Read, Reads, VertexSchema, build_columns};
 use schema::{check_conflicts, derive_instance_schema, derive_vertex_schema, reset_schema};
 
 #[derive(Clone, Debug)]
@@ -468,9 +468,9 @@ impl MeshObject {
     /// Adds `read` to what the shader `shader` reads. Returns, by stream,
     /// whether it names an attribute no attached shader read before, which
     /// the next pack checks every vertex or instance for.
-    fn require(&self, shader: u64, read: AttributeTypes) -> Repacked {
+    fn require(&self, shader: u64, read: Reads) -> Repacked {
         let mut required = self.required.write();
-        let unread = |name: &String, stream: fn(&AttributeTypes) -> &HashMap<String, _>| {
+        let unread = |name: &String, stream: fn(&Reads) -> &HashMap<String, Read>| {
             !required
                 .values()
                 .any(|attached| stream(&attached.reads).contains_key(name))
@@ -485,9 +485,7 @@ impl MeshObject {
                 .keys()
                 .any(|name| unread(name, |reads| &reads.instance)),
         };
-        let attached = required.entry(shader).or_default();
-        attached.reads.vertex.extend(read.vertex);
-        attached.reads.instance.extend(read.instance);
+        required.entry(shader).or_default().reads.merge(&read);
         fresh
     }
 
@@ -509,13 +507,12 @@ impl MeshObject {
         self.required.write().remove(&shader);
     }
 
-    /// The attributes some attached shader reads, by stream, with their formats.
-    fn read_required(&self) -> AttributeTypes {
+    /// What some attached shader reads, by stream, with an `f16` read kept over another.
+    fn read_required(&self) -> Reads {
         let required = self.required.read();
-        let mut union = AttributeTypes::default();
+        let mut union = Reads::default();
         for attached in required.values() {
-            union.vertex.extend(attached.reads.vertex.clone());
-            union.instance.extend(attached.reads.instance.clone());
+            union.merge(&attached.reads);
         }
         union
     }
@@ -537,7 +534,7 @@ impl MeshObject {
         };
         let required = self.read_required();
         if repacked.vertices {
-            self.pack_vertices(&mut packed, &required.vertex)?;
+            self.pack_vertices(&mut packed, &required)?;
         }
         if repacked.instances {
             self.pack_instances(&mut packed, &required.instance)?;
@@ -555,11 +552,7 @@ impl MeshObject {
     /// Packs the vertices and the list that draws them, under one hold of the vertices,
     /// so the list it checks is the list it packs. A missing layout is derived under its
     /// own lock, so a `declare` either lands before the derive reads `types` or resets it.
-    fn pack_vertices(
-        &self,
-        packed: &mut Packed,
-        required: &HashMap<String, wgpu::VertexFormat>,
-    ) -> Result<(), MeshError> {
+    fn pack_vertices(&self, packed: &mut Packed, required: &Reads) -> Result<(), MeshError> {
         #[cfg(test)]
         crate::testing::race_hooks::run("pack");
         let verts = self.verts.read();
@@ -620,7 +613,7 @@ impl MeshObject {
     fn pack_instances(
         &self,
         packed: &mut Packed,
-        required: &HashMap<String, wgpu::VertexFormat>,
+        required: &HashMap<String, Read>,
     ) -> Result<(), MeshError> {
         let insts = self.insts.read();
         let mut schema = self.instance_schema.write();

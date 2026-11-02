@@ -1,10 +1,10 @@
 ---
 title: DeviceError
 description: "A GPU error that an error scope caught. [`Renderer::render`](/api/core/renderer#render) returns one when a pipeline fails to build or a frame's commands fail, in place of drawing nothing without a word."
-category: core
-categoryLabel: Core
+category: errors
+categoryLabel: Errors
 sidebar:
-  order: 3
+  order: 0
 ---
 
 import { Code, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
@@ -15,7 +15,7 @@ A GPU error that an error scope caught. [`Renderer::render`](/api/core/renderer#
 
 It holds three values, under the same names in every language:
 
-- `kind`, an [ErrorKind](/api/core/errorkind): `Validation`, `Internal` or `Memory`.
+- `kind`, an [ErrorKind](/api/errors/errorkind): `Validation`, `Internal` or `Memory`.
 - `label`, the step that raised it: `render pipeline`, `compute pipeline`, `light binning pipeline` or `frame`, and in Rust, Python, Swift and Kotlin also a bind group or texture view inside the frame.
 - `detail`, the device's own words about what went wrong.
 

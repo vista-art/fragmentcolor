@@ -4,8 +4,8 @@
 use super::scopes::{Caught, Fault};
 #[cfg(wasm)]
 use crate::bindings::web::yield_to_event_loop;
-use crate::core::renderer::{ErrorKind, RendererError};
 use crate::texture::TextureError;
+use crate::{ErrorKind, RendererError};
 use parking_lot::Mutex;
 use std::collections::BTreeSet;
 #[cfg(wasm)]

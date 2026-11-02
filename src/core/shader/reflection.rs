@@ -2,12 +2,14 @@
 //! into the uniforms, textures and buffers a shader holds.
 
 use super::error::Source;
+use super::source::joined::Joined;
 use super::{Diagnostic, PushEntry, ShaderError, ShaderHash, StorageEntry};
 use super::{Uniform, UniformData, convert_type};
 use crate::core::renderer::device::CANDIDATES;
+use crate::texture::TextureStorageFormat;
 use naga::front::wgsl::{Frontend, Options};
 use naga::{
-    AddressSpace, Module,
+    AddressSpace, Module, WithSpan,
     valid::{Capabilities, ModuleInfo, ValidationFlags, Validator},
 };
 use sha2::{Digest, Sha256};
@@ -21,14 +23,14 @@ fn read_capabilities() -> Capabilities {
 }
 
 /// A WGSL parser that takes only what a device may support.
-fn create_parser() -> Frontend {
+pub(super) fn create_parser() -> Frontend {
     let mut options = Options::new();
     options.capabilities = read_capabilities();
     Frontend::new_with_options(options)
 }
 
-/// A validator that refuses what no device FragmentColor opens can run,
-/// such as `f16`, subgroups, `texture_external` or texture atomics.
+/// A validator that refuses what no device FragmentColor opens can run:
+/// ray queries, mesh shaders, `f64` and any other feature outside `CANDIDATES`.
 pub(crate) fn create_validator() -> Validator {
     Validator::new(ValidationFlags::all(), read_capabilities())
 }
@@ -51,7 +53,7 @@ pub(crate) fn validate_module(
 ) -> Result<ModuleInfo, ShaderError> {
     match create_validator().validate(module) {
         Ok(info) => Ok(info),
-        Err(error) => Err(ShaderError::ValidationError(Diagnostic::from_validation(
+        Err(error) => Err(ShaderError::ValidationError(Diagnostic::from_spans(
             &error, source,
         ))),
     }
@@ -195,11 +197,56 @@ fn writes_storage(module: &Module, variable: &naga::GlobalVariable) -> bool {
     }
 }
 
+/// A storage texture in a format that needs a wgpu feature FragmentColor doesn't request.
+#[derive(Debug, Clone, thiserror::Error)]
+#[error(
+    "`{name}` is a storage texture of {format}, which needs {missing}, a feature FragmentColor doesn't request"
+)]
+struct StorageFeature {
+    name: String,
+    format: String,
+    missing: String,
+}
+
+/// Refuses a storage texture whose format needs a feature outside `CANDIDATES`,
+/// such as `r64uint`, which needs `TEXTURE_INT64_ATOMIC`, so no device binds it.
+/// The report points at the declaration, as naga's report on an atomic call on it does.
+fn check_storage(
+    module: &Module,
+    handle: naga::Handle<naga::GlobalVariable>,
+    name: &str,
+    wgsl: &Joined,
+) -> Result<(), ShaderError> {
+    let naga::TypeInner::Image {
+        class: naga::ImageClass::Storage { format, .. },
+        ..
+    } = module.types[module.global_variables[handle].ty].inner
+    else {
+        return Ok(());
+    };
+    let format = TextureStorageFormat::from_naga(format).to_wgpu();
+    let missing = format.required_features() - CANDIDATES;
+    if missing.is_empty() {
+        return Ok(());
+    }
+    let label = format!("needs {missing}");
+    let refusal = StorageFeature {
+        name: name.to_string(),
+        format: format!("{format:?}"),
+        missing: missing.to_string(),
+    };
+    let span = module.global_variables.get_span(handle);
+    let error = WithSpan::new(refusal).with_span(span, label);
+    Err(ShaderError::ValidationError(wgsl.report(&error)))
+}
+
 /// Reflects the module's bindings, leaving out the `filled` globals, which the renderer fills.
+/// A refusal that points at a declaration reports its place in `wgsl`, the text the module came from.
 pub(super) fn parse_uniforms(
     module: &Module,
     info: &ModuleInfo,
     filled: &[naga::Handle<naga::GlobalVariable>],
+    wgsl: &Joined,
 ) -> Result<HashMap<String, Uniform>, ShaderError> {
     let mut uniforms = HashMap::new();
     let mut slots: HashMap<(u32, u32), String> = HashMap::new();
@@ -277,6 +324,7 @@ pub(super) fn parse_uniforms(
                 "`{uniform_name}` is writable storage, which a @vertex entry point can't use"
             )));
         }
+        check_storage(module, handle, &uniform_name, wgsl)?;
 
         let ty = &module.types[variable.ty];
 

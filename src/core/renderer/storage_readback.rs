@@ -3,7 +3,9 @@
 use crate::Shader;
 #[cfg(not(wasm))]
 use crate::core::renderer::{MAP_LIMIT, poll_map};
-use crate::core::renderer::{PendingReadback, RenderContext, Renderer, RendererError, Start};
+use crate::core::renderer::{
+    PendingReadback, RenderContext, Renderer, RendererError, Start, pools,
+};
 
 impl Renderer {
     /// Reads a storage binding back once the frames rendered before `start`
@@ -32,7 +34,8 @@ impl Renderer {
 }
 
 /// Copy `[0, span)` of `buffer` into a pooled readback buffer, map it,
-/// extract the bytes, and return them.
+/// and return exactly `span` bytes of it. The copy and the map both take
+/// `span` rounded up to whole 4-byte words, the size wgpu copies and maps.
 ///
 /// Caller has already validated:
 ///   - the shader declares the storage binding,
@@ -47,9 +50,11 @@ async fn read_buffer_bytes(
         return Ok(Vec::new());
     }
 
+    // Copies and maps take whole 4-byte words, and the buffer holds them.
+    let padded = pools::align_size(span);
     let staging = {
         let mut pool = context.readback_pool.write();
-        pool.get(&context.device, span)
+        pool.get(&context.device, padded)
     };
 
     let mut encoder = context
@@ -57,11 +62,11 @@ async fn read_buffer_bytes(
         .create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("Storage readback encoder"),
         });
-    encoder.copy_buffer_to_buffer(buffer, 0, &staging, 0, span);
+    encoder.copy_buffer_to_buffer(buffer, 0, &staging, 0, padded);
     context.queue.submit(Some(encoder.finish()));
     let readback = PendingReadback::new(&context.readback_pool, staging.clone());
 
-    let slice = staging.slice(0..span);
+    let slice = staging.slice(0..padded);
     let (sender, receiver) = futures::channel::oneshot::channel();
     slice.map_async(wgpu::MapMode::Read, move |result| {
         let _ = sender.send(result);
@@ -83,7 +88,7 @@ async fn read_buffer_bytes(
     let view = slice.get_mapped_range().map_err(|e| {
         RendererError::Error(format!("storage readback get_mapped_range failed: {e:?}"))
     })?;
-    let bytes = view.to_vec();
+    let bytes = view[..span as usize].to_vec();
     drop(view);
     staging.unmap();
     readback.finish();

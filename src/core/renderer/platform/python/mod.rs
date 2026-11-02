@@ -50,7 +50,7 @@ fn get_screen_info<'py>(
         Err(_) => canvas.call_method1("_rc_get_present_info", (vec!["screen"],))?,
     };
     if info.is_none() {
-        return Err(crate::error::PyFragmentColorError::new_err(
+        return Err(crate::errors::PyFragmentColorError::new_err(
             "Object can't render to screen",
         ));
     }
@@ -58,12 +58,12 @@ fn get_screen_info<'py>(
     let dict = info.cast_into::<PyDict>()?;
     let method = dict
         .get_item("method")?
-        .ok_or(crate::error::PyFragmentColorError::new_err(
+        .ok_or(crate::errors::PyFragmentColorError::new_err(
             "Missing present method",
         ))?
         .extract::<String>()?;
     if method != "screen" {
-        return Err(crate::error::PyFragmentColorError::new_err(
+        return Err(crate::errors::PyFragmentColorError::new_err(
             "Object can't render to screen",
         ));
     }
@@ -73,7 +73,7 @@ fn get_screen_info<'py>(
 
 fn get_required_u64(dict: &pyo3::Bound<'_, PyDict>, name: &str) -> Result<u64, PyErr> {
     dict.get_item(name)?
-        .ok_or(crate::error::PyFragmentColorError::new_err(format!(
+        .ok_or(crate::errors::PyFragmentColorError::new_err(format!(
             "Missing {name} handle",
         )))?
         .extract::<u64>()
