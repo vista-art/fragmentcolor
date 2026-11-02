@@ -357,7 +357,9 @@ mod tests {
                 .expect("texture target");
             let model = Model::new(
                 pbr_triangle_mesh(),
-                Material::pbr().base_color([0.6, 0.2, 0.8, 1.0]),
+                Material::pbr()
+                    .base_color([0.6, 0.2, 0.8, 1.0])
+                    .expect("base color"),
             );
             model.set_visible(false);
             let scene = crate::Scene::new();
@@ -553,7 +555,9 @@ mod tests {
             let refused = scene.add(&Model::new(bare.clone(), Material::pbr()));
             let glow = Material::pbr()
                 .base_color([0.0, 0.0, 0.0, 1.0])
-                .emissive([1.0, 0.0, 0.0]);
+                .expect("base color")
+                .emissive([1.0, 0.0, 0.0])
+                .expect("emissive");
             scene
                 .add(&Model::new(pbr_triangle_mesh(), glow))
                 .expect("add");

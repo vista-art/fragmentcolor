@@ -26,6 +26,17 @@ left at its 1×1 default doesn't count. So a material with only an
 occlusion map tiles it with the occlusion map's own options, and one with
 a clamped base color texture clamps a tiled normal map too.
 
+A number that is NaN or an infinity returns `MaterialError::NotFinite`,
+which names the part, such as `Material::texture_transform: rotation must
+be finite, got NaN`, and leaves the slot as it was: the setter checks the
+offset, the scale and the rotation before it writes any of them. The other
+languages also refuse a number past the 32-bit float range, such as
+`1e39`, with a message like `Material.textureTransform: rotation must be a
+finite number that fits a 32-bit float, got 1e39`. JavaScript throws an
+`Error` named `InvalidInputError`, Python raises `InvalidInputError`,
+Swift throws `FragmentColorError` and Kotlin throws
+`FragmentColorException`.
+
 ## Example
 
 ```rust
@@ -34,8 +45,8 @@ use fragmentcolor::{Material, TextureSlot};
 
 // Every map spans the surface twice, and the normal map eight times.
 let tiles = Material::pbr()
-    .uv_transform([0.0, 0.0], [2.0, 2.0], 0.0)
-    .texture_transform(TextureSlot::Normal, [0.0, 0.0], [8.0, 8.0], 0.0);
+    .uv_transform([0.0, 0.0], [2.0, 2.0], 0.0)?
+    .texture_transform(TextureSlot::Normal, [0.0, 0.0], [8.0, 8.0], 0.0)?;
 # let _ = tiles;
 # Ok(())
 # }

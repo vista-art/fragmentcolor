@@ -43,10 +43,10 @@ use fragmentcolor::{AlphaMode, Material};
 
 let foliage = Material::pbr()
     .alpha_mode(AlphaMode::Mask)
-    .alpha_cutoff(0.3);
+    .alpha_cutoff(0.3)?;
 
 let glass = Material::pbr()
-    .base_color([0.9, 0.95, 1.0, 0.25])
+    .base_color([0.9, 0.95, 1.0, 0.25])?
     .alpha_mode(AlphaMode::Blend);
 
 let solid = Material::pbr().alpha_mode(AlphaMode::Opaque);

@@ -287,6 +287,14 @@ class Healthcheck : ExampleCase() {
             "Material.textureTransform: scale" to {
                 material.textureTransform(TextureSlot.NORMAL, listOf(0f, 0f), listOf(Float.POSITIVE_INFINITY, 1f), 0f)
             },
+            "Material.metallic: value" to { material.metallic(Float.NaN) },
+            "Material.alphaCutoff: value" to { material.alphaCutoff(1e39) },
+            "Material.uvTransform: rotation" to {
+                material.uvTransform(doubleArrayOf(0.0, 0.0), doubleArrayOf(1.0, 1.0), Double.POSITIVE_INFINITY)
+            },
+            "Material.textureTransform: rotation" to {
+                material.textureTransform(TextureSlot.NORMAL, listOf(0f, 0f), listOf(1f, 1f), Float.NaN)
+            },
             "Vertex: position" to { Vertex(doubleArrayOf(1e39, 0.0, 0.0)) },
             "Vertex: position" to { Vertex(listOf(Float.NaN, 0f)) },
             "Vertex.pbr: position" to { Vertex.pbr(listOf(0.0, Double.POSITIVE_INFINITY, 0.0)) },

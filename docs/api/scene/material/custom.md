@@ -3,9 +3,15 @@
 Wrap an arbitrary `Shader` as a `Material` so it can be paired with a
 `Mesh` to form a `Model`. The PBR-named setters (`base_color`, `metallic`,
 …) still work; they call `shader.set(...)` under matching uniform paths
-(`material.base_color`, etc.). If your shader doesn't declare those
-uniforms the setters log-warn and return self unchanged; set custom uniforms
+(`material.base_color`, etc.). A setter skips a uniform your shader doesn't
+declare with a log warning and returns the Material, so set custom uniforms
 directly via `material.shader().set(...)`.
+
+A value your shader declares but can't hold, such as a number past ±65504
+for an `f16` field, returns `MaterialError::Shader` with the shader's error,
+and the call changes nothing, a whole `uv_transform` included. JavaScript
+throws an `Error` named `MaterialError`, Python raises `MaterialError`, Swift
+throws `FragmentColorError` and Kotlin throws `FragmentColorException`.
 
 `Material::custom` is the escape hatch for any shading model that isn't
 glTF-spec PBR: toon shading, flat unlit colors, wireframe debug views,

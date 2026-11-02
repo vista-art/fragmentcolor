@@ -18,8 +18,11 @@ fn wall() -> Model {
     );
     let material = Material::pbr()
         .base_color([1.0, 1.0, 1.0, 1.0])
+        .expect("base color")
         .roughness(1.0)
-        .metallic(0.0);
+        .expect("roughness")
+        .metallic(0.0)
+        .expect("metallic");
     Model::new(mesh, material)
 }
 

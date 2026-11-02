@@ -11,6 +11,12 @@
 //! `Shader` and reuses the same setter API for any uniform the custom
 //! shader happens to declare under matching paths.
 //!
+//! The number setters return a `MaterialError` for a number that isn't finite and
+//! for a value the shader can't hold, and a refused call changes nothing: `write`
+//! checks every value of a call against the shader before the first one lands.
+//! A key the shader doesn't declare is skipped with a warning, so a custom shader
+//! takes the factors it declares. The texture setters warn and keep the slot.
+//!
 //! Per-Model transform is *not* a Material uniform — it rides on a Pass-
 //! owned per-instance vertex-attribute buffer that the renderer builds from
 //! the Model entries `Pass::add` queues. That means many Models can share one Material's
@@ -26,6 +32,7 @@ use pyo3::prelude::*;
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
+use crate::core::UniformInput;
 use crate::texture::{TextureData, TextureMeta, TextureSource};
 use crate::{Shader, TextureInput, UniformData};
 
@@ -156,7 +163,7 @@ impl Material {
         let _ = self.shader.set("material.alpha_mode_flag", 0_u32);
         // Every texture slot samples UV0 through the identity transform.
         for slot in TextureSlot::ALL {
-            self.set_slot_uv(slot, UvSet::First, UvTransform::default());
+            let _ = self.set_slot_uv(slot, UvSet::First, UvTransform::default());
         }
         let identity = [
             [1.0_f32, 0.0, 0.0, 0.0],
@@ -176,67 +183,61 @@ impl Material {
     // --- factor setters ---
     //
     // Every setter takes `&self` and returns `Self` (an Arc-cloned handle
-    // to the same Material). This is the same shape Light and Camera use:
-    // chains naturally and stays callable on a borrowed Material, so the
-    // Python / JavaScript / Swift / Kotlin bindings can mirror the Rust
-    // signature exactly and the docs stay one-spelling-fits-all across
-    // languages.
+    // to the same Material), the same shape Light and Camera use, so it
+    // chains and stays callable on a borrowed Material. A number setter
+    // returns it in a `Result`, refusing a number that isn't finite.
 
     #[lsp_doc("docs/api/scene/material/base_color.md")]
-    pub fn base_color(&self, color: [f32; 4]) -> Self {
-        set_or_warn(&self.shader, "material.base_color", color);
-        self.clone()
+    pub fn base_color(&self, color: [f32; 4]) -> Result<Self, MaterialError> {
+        self.set_factor("Material::base_color", "material.base_color", &color)
     }
 
     #[lsp_doc("docs/api/scene/material/metallic.md")]
-    pub fn metallic(&self, value: f32) -> Self {
-        set_or_warn(&self.shader, "material.metallic", value);
-        self.clone()
+    pub fn metallic(&self, value: f32) -> Result<Self, MaterialError> {
+        self.set_factor("Material::metallic", "material.metallic", &[value])
     }
 
     #[lsp_doc("docs/api/scene/material/roughness.md")]
-    pub fn roughness(&self, value: f32) -> Self {
-        set_or_warn(&self.shader, "material.roughness", value);
-        self.clone()
+    pub fn roughness(&self, value: f32) -> Result<Self, MaterialError> {
+        self.set_factor("Material::roughness", "material.roughness", &[value])
     }
 
     #[lsp_doc("docs/api/scene/material/normal_scale.md")]
-    pub fn normal_scale(&self, value: f32) -> Self {
-        set_or_warn(&self.shader, "material.normal_scale", value);
-        self.clone()
+    pub fn normal_scale(&self, value: f32) -> Result<Self, MaterialError> {
+        self.set_factor("Material::normal_scale", "material.normal_scale", &[value])
     }
 
     #[lsp_doc("docs/api/scene/material/occlusion_strength.md")]
-    pub fn occlusion_strength(&self, value: f32) -> Self {
-        set_or_warn(&self.shader, "material.occlusion_strength", value);
-        self.clone()
+    pub fn occlusion_strength(&self, value: f32) -> Result<Self, MaterialError> {
+        let key = "material.occlusion_strength";
+        self.set_factor("Material::occlusion_strength", key, &[value])
     }
 
     #[lsp_doc("docs/api/scene/material/emissive.md")]
-    pub fn emissive(&self, factor: [f32; 3]) -> Self {
-        set_or_warn(&self.shader, "material.emissive", factor);
-        self.clone()
+    pub fn emissive(&self, factor: [f32; 3]) -> Result<Self, MaterialError> {
+        self.set_factor("Material::emissive", "material.emissive", &factor)
     }
 
     #[lsp_doc("docs/api/scene/material/alpha_cutoff.md")]
-    pub fn alpha_cutoff(&self, value: f32) -> Self {
-        set_or_warn(&self.shader, "material.alpha_cutoff", value);
-        self.clone()
+    pub fn alpha_cutoff(&self, value: f32) -> Result<Self, MaterialError> {
+        self.set_factor("Material::alpha_cutoff", "material.alpha_cutoff", &[value])
     }
 
     #[lsp_doc("docs/api/scene/material/uv_transform.md")]
-    pub fn uv_transform(&self, offset: [f32; 2], scale: [f32; 2], rotation: f32) -> Self {
-        self.set_transforms(UvTransform {
-            offset,
-            scale,
-            rotation,
-        });
-        self.clone()
+    pub fn uv_transform(
+        &self,
+        offset: [f32; 2],
+        scale: [f32; 2],
+        rotation: f32,
+    ) -> Result<Self, MaterialError> {
+        let transform = UvTransform::new(offset, scale, rotation);
+        self.set_transforms(transform.check("Material::uv_transform")?)?;
+        Ok(self.clone())
     }
 
     #[lsp_doc("docs/api/scene/material/texture_uv.md")]
     pub fn texture_uv(&self, slot: TextureSlot, set: u32) -> Result<Self, MaterialError> {
-        self.set_slot_set(slot, UvSet::try_from(set)?);
+        self.set_slot_set(slot, UvSet::try_from(set)?)?;
         Ok(self.clone())
     }
 
@@ -247,16 +248,10 @@ impl Material {
         offset: [f32; 2],
         scale: [f32; 2],
         rotation: f32,
-    ) -> Self {
-        self.set_slot_transform(
-            slot,
-            UvTransform {
-                offset,
-                scale,
-                rotation,
-            },
-        );
-        self.clone()
+    ) -> Result<Self, MaterialError> {
+        let transform = UvTransform::new(offset, scale, rotation);
+        self.set_slot_transform(slot, transform.check("Material::texture_transform")?)?;
+        Ok(self.clone())
     }
 
     // --- pipeline-state flags ---
@@ -264,7 +259,7 @@ impl Material {
     #[lsp_doc("docs/api/scene/material/alpha_mode.md")]
     pub fn alpha_mode(&self, mode: AlphaMode) -> Self {
         self.shader.object.set_alpha_mode(mode);
-        set_or_warn(&self.shader, "material.alpha_mode_flag", mode.flag());
+        self.write_flag(mode);
         self.clone()
     }
 
@@ -310,10 +305,78 @@ impl Material {
     }
 }
 
-pub(crate) fn set_or_warn<V: Into<UniformData>>(shader: &Shader, key: &str, value: V) {
-    if let Err(e) = shader.set(key, value) {
-        log::warn!("Material setter '{key}' did not apply: {e}");
+impl Material {
+    /// Writes the factor under `key` from `numbers`, all of them finite, as `call` takes it.
+    fn set_factor(&self, call: &str, key: &str, numbers: &[f32]) -> Result<Self, MaterialError> {
+        let item = (numbers.len() == 1).then_some("value");
+        check_finite(call, item, numbers)?;
+        self.write(vec![(key.to_string(), build_input(numbers))])?;
+        Ok(self.clone())
     }
+
+    /// Writes each value under its key, or none of them: every value is checked against
+    /// the shader before the first write. A key the shader doesn't declare is skipped
+    /// with a warning, since a `Material::custom` shader may leave a factor out.
+    pub(crate) fn write(&self, values: Vec<(String, UniformInput)>) -> Result<(), MaterialError> {
+        let object = &self.shader.object;
+        let mut checked = Vec::with_capacity(values.len());
+        for (key, input) in values {
+            match object.check_input(&key, &input) {
+                Ok(()) => checked.push((key, input)),
+                Err(error) if error.is_missing() => warn_skip(&key, &error),
+                Err(error) => return Err(error.into()),
+            }
+        }
+        for (key, input) in checked {
+            object.set_input(&key, input)?;
+        }
+        Ok(())
+    }
+
+    /// Writes the flag the PBR shader reads `mode` from. The enum picks the number,
+    /// so only a custom shader that declares the flag as something else refuses it,
+    /// which logs a warning, as a key the shader lacks does.
+    fn write_flag(&self, mode: AlphaMode) {
+        let key = "material.alpha_mode_flag";
+        let flag = UniformInput::Number(mode.flag().into());
+        if let Err(error) = self.write(vec![(key.to_string(), flag)]) {
+            log::warn!("Material setter '{key}' did not apply: {error}");
+        }
+    }
+}
+
+/// Refuses a number of `values` that isn't finite, naming `call`, then `item`,
+/// then the item's index when `values` holds more than one number.
+pub(crate) fn check_finite(
+    call: &str,
+    item: Option<&str>,
+    values: &[f32],
+) -> Result<(), MaterialError> {
+    let found = values
+        .iter()
+        .enumerate()
+        .find(|(_, value)| !value.is_finite());
+    let Some((index, &value)) = found else {
+        return Ok(());
+    };
+    let mut label = call.to_string();
+    if let Some(item) = item {
+        label = format!("{label}: {item}");
+    }
+    if values.len() > 1 {
+        label = format!("{label}: item {index}");
+    }
+    Err(MaterialError::NotFinite { label, value })
+}
+
+/// The numbers a uniform write takes, as a binding hands them over.
+pub(crate) fn build_input(numbers: &[f32]) -> UniformInput {
+    UniformInput::Numbers(numbers.iter().map(|&number| number.into()).collect())
+}
+
+/// Logs a key the Material's shader doesn't declare, which a setter skips.
+fn warn_skip(key: &str, error: &crate::ShaderError) {
+    log::warn!("Material setter '{key}' did not apply: {error}");
 }
 
 impl Material {
@@ -377,9 +440,13 @@ mod tests {
     fn builder_setters_update_uniforms() {
         let mat = Material::pbr()
             .base_color([0.4, 0.7, 0.2, 0.8])
+            .expect("base color")
             .metallic(0.6)
+            .expect("metallic")
             .roughness(0.25)
-            .emissive([0.0, 0.1, 0.0]);
+            .expect("roughness")
+            .emissive([0.0, 0.1, 0.0])
+            .expect("emissive");
 
         let base: [f32; 4] = mat.shader().get("material.base_color").unwrap();
         assert_eq!(base, [0.4, 0.7, 0.2, 0.8]);
@@ -393,7 +460,9 @@ mod tests {
 
     #[test]
     fn clone_shares_shader_state() {
-        let original = Material::pbr().base_color([1.0, 0.0, 0.0, 1.0]);
+        let original = Material::pbr()
+            .base_color([1.0, 0.0, 0.0, 1.0])
+            .expect("base color");
         let handle_b = original.clone();
         let _ = handle_b
             .shader()
@@ -437,8 +506,79 @@ mod tests {
         )
         .expect("compile");
 
-        let mat = Material::custom(shader).base_color([1.0, 0.5, 0.0, 1.0]);
+        let mat = Material::custom(shader)
+            .base_color([1.0, 0.5, 0.0, 1.0])
+            .expect("base color");
         let _ = mat;
+    }
+
+    // Story: a number setter refuses NaN and an infinity with an error that names the call
+    // and the item, and the material keeps the value it had.
+    #[test]
+    fn number_setters_refuse_numbers_that_are_not_finite() {
+        let material = Material::pbr()
+            .metallic(0.25)
+            .expect("metallic")
+            .emissive([0.5, 0.5, 0.5])
+            .expect("emissive");
+
+        let scalar = material.metallic(f32::NAN).expect_err("NaN");
+        let vector = material.emissive([0.0, f32::INFINITY, 0.0]);
+        let vector = vector.expect_err("infinity");
+
+        assert_eq!(
+            scalar.to_string(),
+            "Material::metallic: value must be finite, got NaN"
+        );
+        assert_eq!(
+            vector.to_string(),
+            "Material::emissive: item 1 must be finite, got inf"
+        );
+        let metallic: f32 = material.shader().get("material.metallic").expect("read");
+        let emissive: [f32; 3] = material.shader().get("material.emissive").expect("read");
+        assert_eq!((metallic, emissive), (0.25, [0.5, 0.5, 0.5]));
+        let cases = [
+            Material::pbr().base_color([0.0, 0.0, f32::NAN, 1.0]),
+            Material::pbr().roughness(f32::NEG_INFINITY),
+            Material::pbr().normal_scale(f32::NAN),
+            Material::pbr().occlusion_strength(f32::INFINITY),
+            Material::pbr().alpha_cutoff(f32::NAN),
+        ];
+        for case in cases {
+            let error = case.expect_err("not finite");
+            assert!(
+                matches!(error, MaterialError::NotFinite { .. }),
+                "{error:?}"
+            );
+        }
+    }
+
+    // Story: a custom shader whose roughness is an f16 refuses a roughness past its
+    // range with the shader's error, and a factor it doesn't declare is skipped.
+    #[test]
+    fn custom_shaders_refuse_what_their_fields_cannot_hold() {
+        let shader = Shader::new(
+            "enable f16;
+struct Factors { roughness: f16, metallic: f32 }
+@group(0) @binding(0) var<uniform> material: Factors;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  return vec4<f32>(f32(i), 0.0, 0.0, 1.0);
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> {
+  return vec4<f32>(f32(material.roughness), material.metallic, 0.0, 1.0);
+}",
+        )
+        .expect("shader");
+        let material = Material::custom(shader).roughness(0.5).expect("roughness");
+
+        let refused = material.roughness(70000.0).expect_err("past the f16 range");
+        let skipped = material.emissive([1.0, 0.0, 0.0]);
+
+        assert!(matches!(refused, MaterialError::Shader(_)), "{refused:?}");
+        assert!(refused.to_string().contains("expected f16, got 70000"));
+        let roughness: f32 = material.shader().get("material.roughness").expect("read");
+        assert_eq!(roughness, 0.5);
+        assert!(skipped.is_ok(), "{skipped:?}");
     }
 
     fn pbr_triangle_mesh() -> Mesh {
@@ -461,7 +601,9 @@ mod tests {
                 .create_texture_target([8u32, 8u32])
                 .await
                 .expect("texture target");
-            let mat = Material::pbr().base_color([0.6, 0.2, 0.8, 1.0]);
+            let mat = Material::pbr()
+                .base_color([0.6, 0.2, 0.8, 1.0])
+                .expect("base color");
             let model = crate::scene::Model::new(pbr_triangle_mesh(), mat);
             let pass = Pass::new("defaults-only");
             pass.add(&model).expect("add_model");
@@ -496,6 +638,7 @@ mod tests {
             });
             let mat = Material::pbr()
                 .base_color([1.0, 1.0, 1.0, 1.0])
+                .expect("base color")
                 .base_color_texture(&tex);
 
             mat.shader()

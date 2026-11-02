@@ -103,9 +103,9 @@ directly. The lights themselves have no keys: `set` and `get` on
 use fragmentcolor::Material;
 
 let bronze = Material::pbr()
-    .base_color([0.8, 0.5, 0.2, 1.0])
-    .metallic(1.0)
-    .roughness(0.3);
+    .base_color([0.8, 0.5, 0.2, 1.0])?
+    .metallic(1.0)?
+    .roughness(0.3)?;
 
 # let _bronze = bronze;
 # Ok(())

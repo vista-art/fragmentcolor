@@ -44,12 +44,15 @@ fn main() {
         // the base-color factor and the alpha differ.
         let red_glass = Material::pbr()
             .base_color([1.0, 0.2, 0.2, 0.45])
+            .expect("base color")
             .alpha_mode(AlphaMode::Blend);
         let green_glass = Material::pbr()
             .base_color([0.2, 1.0, 0.2, 0.45])
+            .expect("base color")
             .alpha_mode(AlphaMode::Blend);
         let blue_glass = Material::pbr()
             .base_color([0.2, 0.4, 1.0, 0.45])
+            .expect("base color")
             .alpha_mode(AlphaMode::Blend);
 
         let red = Model::new(quad(), red_glass);

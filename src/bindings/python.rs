@@ -135,6 +135,13 @@ impl PyFloat<'_> {
         let PyFloat::Number(value) = self;
         Ok(read_scalar(value, label)? as f32)
     }
+
+    /// The number as [`PyFloat::read`] reads it, for a Material factor or a UV rotation.
+    /// NaN, an infinity or a number past the `f32` range raises `InvalidInputError` that names `label`.
+    pub(crate) fn read_finite(&self, label: &str) -> PyResult<f32> {
+        let PyFloat::Number(value) = self;
+        Ok(numbers::read_finite(read_scalar(value, label)?, label)?)
+    }
 }
 
 /// Reads each int of a list, naming a failing item as `{label}: item {index}`.

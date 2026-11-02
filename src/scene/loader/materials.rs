@@ -46,11 +46,11 @@ pub(super) fn build_material(
 ) -> Result<Material, SceneLoadError> {
     let pbr = gltf_material.pbr_metallic_roughness();
     let mut material = Material::pbr()
-        .base_color(pbr.base_color_factor())
-        .metallic(pbr.metallic_factor())
-        .roughness(pbr.roughness_factor())
-        .emissive(gltf_material.emissive_factor())
-        .alpha_cutoff(gltf_material.alpha_cutoff().unwrap_or(0.5))
+        .base_color(pbr.base_color_factor())?
+        .metallic(pbr.metallic_factor())?
+        .roughness(pbr.roughness_factor())?
+        .emissive(gltf_material.emissive_factor())?
+        .alpha_cutoff(gltf_material.alpha_cutoff().unwrap_or(0.5))?
         .alpha_mode(match gltf_material.alpha_mode() {
             gltf::material::AlphaMode::Opaque => crate::AlphaMode::Opaque,
             gltf::material::AlphaMode::Mask => crate::AlphaMode::Mask,
@@ -59,13 +59,13 @@ pub(super) fn build_material(
         .double_sided(gltf_material.double_sided());
 
     if let Some(scale) = gltf_material.normal_texture().map(|info| info.scale()) {
-        material = material.normal_scale(scale);
+        material = material.normal_scale(scale)?;
     }
     if let Some(strength) = gltf_material
         .occlusion_texture()
         .map(|info| info.strength())
     {
-        material = material.occlusion_strength(strength);
+        material = material.occlusion_strength(strength)?;
     }
 
     let read = |texture: gltf::Texture<'_>| convert_image(&texture, images);
@@ -161,7 +161,8 @@ fn read_extension_uv(
 }
 
 /// Point one material slot at the UV set and transform its glTF texture reads.
-/// The PBR shader samples two UV sets, so `TEXCOORD_2` and above are an error.
+/// The PBR shader samples two UV sets, so `TEXCOORD_2` and above are an error,
+/// and so is a transform with a number that isn't finite, such as `1e39`.
 fn apply_uv(material: &Material, slot: TextureSlot, uv: TextureUv) -> Result<(), SceneLoadError> {
     let Ok(set) = UvSet::try_from(uv.uv_set) else {
         return Err(SceneLoadError::Invalid(format!(
@@ -170,8 +171,8 @@ fn apply_uv(material: &Material, slot: TextureSlot, uv: TextureUv) -> Result<(),
             uv.uv_set
         )));
     };
-    material.set_slot_uv(slot, set, uv.transform);
-    Ok(())
+    let transform = uv.transform.check(TEXTURE_TRANSFORM)?;
+    Ok(material.set_slot_uv(slot, set, transform)?)
 }
 
 /// The glTF property that holds a slot's texture reference.

@@ -273,6 +273,17 @@ internal fun readFloats(values: List<Double>, label: String): List<Float> =
         float
     }
 
+/** One number as a [Float], such as a roughness or a UV rotation, by the rule of [readFloats]. */
+internal fun readFinite(value: Double, label: String): Float {
+    val float = value.toFloat()
+    if (!float.isFinite()) {
+        throw FragmentColorException.Render(
+            "$label must be a finite number that fits a 32-bit float, got ${showNumber(value)}",
+        )
+    }
+    return float
+}
+
 /**
  * The number as the shared Rust message prints it: `NaN`, `inf`, `-inf`, or `1e39`.
  * Only those reach the message, since every other Double fits a Float.

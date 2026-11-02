@@ -3,16 +3,17 @@ package org.fragmentcolor
 // Idiomatic Kotlin wrappers on top of the uniffi-generated Material API,
 // matching Material+Extensions.swift. The generated calls take Float and
 // List<Float>; these take Double, FloatArray and DoubleArray as well.
+// A number setter throws for NaN, an infinity or a Double past the Float range.
 
-fun Material.metallic(value: Double): Material = metallic(value.toFloat())
+fun Material.metallic(value: Double): Material = metallic(readFinite(value, "Material.metallic: value"))
 
-fun Material.roughness(value: Double): Material = roughness(value.toFloat())
+fun Material.roughness(value: Double): Material = roughness(readFinite(value, "Material.roughness: value"))
 
-fun Material.normalScale(value: Double): Material = normalScale(value.toFloat())
+fun Material.normalScale(value: Double): Material = normalScale(readFinite(value, "Material.normalScale: value"))
 
-fun Material.occlusionStrength(value: Double): Material = occlusionStrength(value.toFloat())
+fun Material.occlusionStrength(value: Double): Material = occlusionStrength(readFinite(value, "Material.occlusionStrength: value"))
 
-fun Material.alphaCutoff(value: Double): Material = alphaCutoff(value.toFloat())
+fun Material.alphaCutoff(value: Double): Material = alphaCutoff(readFinite(value, "Material.alphaCutoff: value"))
 
 fun Material.baseColor(color: FloatArray): Material = baseColor(color.toList())
 
@@ -36,14 +37,14 @@ fun Material.uvTransform(offset: List<Double>, scale: List<Double>, rotation: Do
     uvTransform(
         readFloats(offset, "Material.uvTransform: offset"),
         readFloats(scale, "Material.uvTransform: scale"),
-        rotation.toFloat(),
+        readFinite(rotation, "Material.uvTransform: rotation"),
     )
 
 fun Material.uvTransform(offset: DoubleArray, scale: DoubleArray, rotation: Double): Material =
     uvTransform(
         readFloats(offset, "Material.uvTransform: offset"),
         readFloats(scale, "Material.uvTransform: scale"),
-        rotation.toFloat(),
+        readFinite(rotation, "Material.uvTransform: rotation"),
     )
 
 fun Material.textureTransform(slot: TextureSlot, offset: FloatArray, scale: FloatArray, rotation: Float): Material =
@@ -55,7 +56,7 @@ fun Material.textureTransform(slot: TextureSlot, offset: List<Double>, scale: Li
         slot,
         readFloats(offset, "Material.textureTransform: offset"),
         readFloats(scale, "Material.textureTransform: scale"),
-        rotation.toFloat(),
+        readFinite(rotation, "Material.textureTransform: rotation"),
     )
 
 fun Material.textureTransform(slot: TextureSlot, offset: DoubleArray, scale: DoubleArray, rotation: Double): Material =
@@ -63,7 +64,7 @@ fun Material.textureTransform(slot: TextureSlot, offset: DoubleArray, scale: Dou
         slot,
         readFloats(offset, "Material.textureTransform: offset"),
         readFloats(scale, "Material.textureTransform: scale"),
-        rotation.toFloat(),
+        readFinite(rotation, "Material.textureTransform: rotation"),
     )
 
 // Each texture setter takes what `Renderer.createTexture` takes, spelled the same way.

@@ -756,6 +756,18 @@ def check_scalars_and_pairs():
         Material.pbr().metallic(True)
     except TypeError as e:
         assert str(e) == "Material.metallic: value must be a number, got bool", e
+    # A Material factor or a UV rotation refuses NaN, an infinity and a number past
+    # the f32 range, as a color item does, and the material keeps its value.
+    material = Material.pbr().metallic(0.25)
+    for name, call in scalars.items():
+        if name.startswith("Material."):
+            for bad in (float("nan"), float("inf"), 1e39):
+                raises_invalid(f"{name}({bad})", lambda: call(bad))
+    try:
+        material.metallic(1e39)
+    except InvalidInputError as e:
+        assert str(e) == "Material.metallic: value must be a finite number that fits a 32-bit float, got 1e39", e
+    assert material.shader().get("material.metallic") == 0.25
 
     assert ScreenRegion([1, 2], [32, 16]) == ScreenRegion((1, 2), (32, 16))
     assert ScreenRegion(np.array([1, 2]), (32, 16)) == ScreenRegion((1, 2), (32, 16))

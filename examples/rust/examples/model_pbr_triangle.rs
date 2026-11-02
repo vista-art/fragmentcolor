@@ -31,8 +31,11 @@ fn main() {
 
         let material = Material::pbr()
             .base_color([0.85, 0.4, 0.2, 1.0])
+            .expect("base color")
             .metallic(0.0)
-            .roughness(0.35);
+            .expect("metallic")
+            .roughness(0.35)
+            .expect("roughness");
 
         let model = Model::new(mesh, material);
         // Nudge it slightly to the right to show the per-Model transform path.

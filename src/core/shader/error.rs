@@ -81,6 +81,13 @@ pub enum ShaderError {
     Error(String),
 }
 
+impl ShaderError {
+    /// Whether the error names a uniform or field the shader doesn't declare.
+    pub(crate) fn is_missing(&self) -> bool {
+        matches!(self, Self::UniformNotFound(_) | Self::FieldNotFound(_))
+    }
+}
+
 /// What naga reports about a shader: its message, with the source lines it points at
 /// when it has the source, and each place in the source it labels.
 ///

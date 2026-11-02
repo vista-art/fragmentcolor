@@ -601,6 +601,12 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     named('Material.uvTransform: offset', () => Material.pbr().uvTransform([1e39, 0], [1, 1], 0));
     named('Material.textureTransform: scale',
       () => Material.pbr().textureTransform(occlusion, [0, 0], [Infinity, 1], 0));
+    // A Material factor or a UV rotation follows the same rule.
+    named('Material.metallic: value', () => Material.pbr().metallic(NaN));
+    named('Material.alphaCutoff: value', () => Material.pbr().alphaCutoff(1e39));
+    named('Material.uvTransform: rotation', () => Material.pbr().uvTransform([0, 0], [1, 1], Infinity));
+    named('Material.textureTransform: rotation',
+      () => Material.pbr().textureTransform(occlusion, [0, 0], [1, 1], -Infinity));
     // A float vector is an array or a Float32Array, as a color is.
     named('Light.point: color', () => Light.point([0, 1, 0], new Float64Array([1, 1, 1])));
     // A vertex position and a Quad corner follow the same rule.

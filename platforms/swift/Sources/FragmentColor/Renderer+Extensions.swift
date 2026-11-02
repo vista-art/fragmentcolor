@@ -369,6 +369,17 @@ func readFloats(_ values: [Double], _ label: String) throws -> [Float] {
     }
 }
 
+/// One number as a `Float`, such as a roughness or a UV rotation, by the rule of `readFloats`.
+func readFinite(_ value: Double, _ label: String) throws -> Float {
+    let float = Float(value)
+    guard float.isFinite else {
+        throw FragmentColorError.Render(
+            "\(label) must be a finite number that fits a 32-bit float, got \(showNumber(value))"
+        )
+    }
+    return float
+}
+
 /// A vertex position of 1 to 4 numbers as Floats, each checked as `readFloats` checks it.
 func readPosition(_ values: [Double], _ label: String) throws -> [Float] {
     let floats = try readFloats(values, label)

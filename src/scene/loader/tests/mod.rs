@@ -850,6 +850,23 @@ fn load_reads_a_null_texture_transform_as_none_on_every_slot() {
     assert_eq!(read_slot(material, 2), (1, [0.0, 0.0], [1.0, 1.0], 0.0));
 }
 
+// Story: a texture transform whose number reads as an infinity in a 32-bit float,
+// such as an offset of 1e39, fails the load with an error that names the part.
+#[test]
+fn load_refuses_a_transform_past_the_float_range() {
+    let normal = quote(&[
+        "'materials':[{'normalTexture':{'index':0,",
+        "'extensions':{'KHR_texture_transform':{'offset':[0.0,1e39]}}}}]",
+    ]);
+    match load_textured(&normal) {
+        Err(SceneLoadError::Material(error)) => assert_eq!(
+            error.to_string(),
+            "KHR_texture_transform: offset: item 1 must be finite, got inf"
+        ),
+        other => panic!("expected SceneLoadError::Material, got {other:?}"),
+    }
+}
+
 #[test]
 fn load_refuses_a_third_texture_coord() {
     let occlusion = quote(&["'materials':[{'occlusionTexture':{'index':0,'texCoord':2}}]"]);

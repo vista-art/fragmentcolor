@@ -332,6 +332,19 @@ impl ShaderObject {
         Ok(())
     }
 
+    /// Shapes `input` to `key`'s declared type, as `set_input` does, and writes nothing.
+    /// It passes while another thread writes the storage, where `set_input` queues the value unshaped.
+    pub(crate) fn check_input(&self, key: &str, input: &UniformInput) -> Result<(), ShaderError> {
+        if self.routes_ambient(key) {
+            let ambient = UniformData::Vec3(vec![0.0; 3]);
+            return input.clone().resolve(key, &ambient).map(drop);
+        }
+        match self.storage.try_read() {
+            Some(storage) => input.clone().resolve(key, storage.shape(key)?).map(drop),
+            None => Ok(()),
+        }
+    }
+
     /// Whether `key` is the ambient term of light roots, which the shader keeps beside its lights.
     fn routes_ambient(&self, key: &str) -> bool {
         key == AMBIENT_KEY && self.light_roots.is_some()

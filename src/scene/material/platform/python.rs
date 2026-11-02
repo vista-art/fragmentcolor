@@ -39,43 +39,43 @@ impl Material {
     #[pyo3(name = "base_color")]
     #[lsp_doc("docs/api/scene/material/base_color.md")]
     pub fn base_color_py(&self, color: PyChannels<'_>) -> PyResult<Self> {
-        Ok(self.base_color(color.read_array("Material.base_color")?))
+        Ok(self.base_color(color.read_array("Material.base_color")?)?)
     }
 
     #[pyo3(name = "metallic")]
     #[lsp_doc("docs/api/scene/material/metallic.md")]
     pub fn metallic_py(&self, value: PyFloat<'_>) -> PyResult<Self> {
-        Ok(self.metallic(value.read("Material.metallic: value")?))
+        Ok(self.metallic(value.read_finite("Material.metallic: value")?)?)
     }
 
     #[pyo3(name = "roughness")]
     #[lsp_doc("docs/api/scene/material/roughness.md")]
     pub fn roughness_py(&self, value: PyFloat<'_>) -> PyResult<Self> {
-        Ok(self.roughness(value.read("Material.roughness: value")?))
+        Ok(self.roughness(value.read_finite("Material.roughness: value")?)?)
     }
 
     #[pyo3(name = "normal_scale")]
     #[lsp_doc("docs/api/scene/material/normal_scale.md")]
     pub fn normal_scale_py(&self, value: PyFloat<'_>) -> PyResult<Self> {
-        Ok(self.normal_scale(value.read("Material.normal_scale: value")?))
+        Ok(self.normal_scale(value.read_finite("Material.normal_scale: value")?)?)
     }
 
     #[pyo3(name = "occlusion_strength")]
     #[lsp_doc("docs/api/scene/material/occlusion_strength.md")]
     pub fn occlusion_strength_py(&self, value: PyFloat<'_>) -> PyResult<Self> {
-        Ok(self.occlusion_strength(value.read("Material.occlusion_strength: value")?))
+        Ok(self.occlusion_strength(value.read_finite("Material.occlusion_strength: value")?)?)
     }
 
     #[pyo3(name = "emissive")]
     #[lsp_doc("docs/api/scene/material/emissive.md")]
     pub fn emissive_py(&self, factor: PyChannels<'_>) -> PyResult<Self> {
-        Ok(self.emissive(factor.read_array("Material.emissive")?))
+        Ok(self.emissive(factor.read_array("Material.emissive")?)?)
     }
 
     #[pyo3(name = "alpha_cutoff")]
     #[lsp_doc("docs/api/scene/material/alpha_cutoff.md")]
     pub fn alpha_cutoff_py(&self, value: PyFloat<'_>) -> PyResult<Self> {
-        Ok(self.alpha_cutoff(value.read("Material.alpha_cutoff: value")?))
+        Ok(self.alpha_cutoff(value.read_finite("Material.alpha_cutoff: value")?)?)
     }
 
     #[pyo3(name = "uv_transform")]
@@ -88,8 +88,8 @@ impl Material {
     ) -> PyResult<Self> {
         let offset = offset.read_array("Material.uv_transform: offset")?;
         let scale = scale.read_array("Material.uv_transform: scale")?;
-        let rotation = rotation.read("Material.uv_transform: rotation")?;
-        Ok(self.uv_transform(offset, scale, rotation))
+        let rotation = rotation.read_finite("Material.uv_transform: rotation")?;
+        Ok(self.uv_transform(offset, scale, rotation)?)
     }
 
     #[pyo3(name = "texture_uv")]
@@ -109,8 +109,8 @@ impl Material {
     ) -> PyResult<Self> {
         let offset = offset.read_array("Material.texture_transform: offset")?;
         let scale = scale.read_array("Material.texture_transform: scale")?;
-        let rotation = rotation.read("Material.texture_transform: rotation")?;
-        Ok(self.texture_transform(slot, offset, scale, rotation))
+        let rotation = rotation.read_finite("Material.texture_transform: rotation")?;
+        Ok(self.texture_transform(slot, offset, scale, rotation)?)
     }
 
     #[pyo3(name = "alpha_mode")]

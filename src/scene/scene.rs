@@ -914,7 +914,9 @@ mod tests {
                 .expect("texture target");
             let model = Model::new(
                 pbr_triangle_mesh(),
-                Material::pbr().base_color([0.6, 0.2, 0.8, 1.0]),
+                Material::pbr()
+                    .base_color([0.6, 0.2, 0.8, 1.0])
+                    .expect("base color"),
             );
             let scene = Scene::new();
             scene.add(&model).expect("add model");

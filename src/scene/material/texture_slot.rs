@@ -11,7 +11,8 @@ use pyo3::prelude::*;
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
-use super::{Material, MaterialError, set_or_warn};
+use super::{Material, MaterialError, build_input, check_finite};
+use crate::core::UniformInput;
 
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(python, pyclass(eq, eq_int, from_py_object))]
@@ -77,6 +78,24 @@ impl TextureSlot {
     fn format_key(self, field: &str) -> String {
         format!("material.uv[{}].{field}", self as usize)
     }
+
+    /// The three writes of `transform` into this slot's `material.uv` entry.
+    fn build_transform(self, transform: UvTransform) -> [(String, UniformInput); 3] {
+        [
+            (self.format_key("offset"), build_input(&transform.offset)),
+            (self.format_key("scale"), build_input(&transform.scale)),
+            (
+                self.format_key("rotation"),
+                build_input(&[transform.rotation]),
+            ),
+        ]
+    }
+
+    /// The write of `set` into this slot's `material.uv` entry.
+    fn build_set(self, set: UvSet) -> (String, UniformInput) {
+        let number = UniformInput::Number(u32::from(set).into());
+        (self.format_key("uv_set"), number)
+    }
 }
 
 /// The vertex UV set a texture slot samples: `Vertex::UV0` or `Vertex::UV1`.
@@ -118,6 +137,25 @@ pub(crate) struct UvTransform {
     pub(crate) rotation: f32,
 }
 
+impl UvTransform {
+    /// A transform from its three parts, which `check` refuses unless each number is finite.
+    pub(crate) fn new(offset: [f32; 2], scale: [f32; 2], rotation: f32) -> Self {
+        Self {
+            offset,
+            scale,
+            rotation,
+        }
+    }
+
+    /// Refuses a transform with a number that isn't finite, naming the part after `call`.
+    pub(crate) fn check(self, call: &str) -> Result<Self, MaterialError> {
+        check_finite(call, Some("offset"), &self.offset)?;
+        check_finite(call, Some("scale"), &self.scale)?;
+        check_finite(call, Some("rotation"), &[self.rotation])?;
+        Ok(self)
+    }
+}
+
 impl Default for UvTransform {
     fn default() -> Self {
         Self {
@@ -129,33 +167,40 @@ impl Default for UvTransform {
 }
 
 impl Material {
-    /// Sets the UV set and the transform one texture slot samples with.
-    pub(crate) fn set_slot_uv(&self, slot: TextureSlot, set: UvSet, transform: UvTransform) {
-        self.set_slot_set(slot, set);
-        self.set_slot_transform(slot, transform);
+    /// Sets the UV set and the transform one texture slot samples with, or neither.
+    pub(crate) fn set_slot_uv(
+        &self,
+        slot: TextureSlot,
+        set: UvSet,
+        transform: UvTransform,
+    ) -> Result<(), MaterialError> {
+        let mut values = vec![slot.build_set(set)];
+        values.extend(slot.build_transform(transform));
+        self.write(values)
     }
 
     /// Sets the UV set one texture slot samples.
-    pub(crate) fn set_slot_set(&self, slot: TextureSlot, set: UvSet) {
-        set_or_warn(&self.shader, &slot.format_key("uv_set"), u32::from(set));
+    pub(crate) fn set_slot_set(&self, slot: TextureSlot, set: UvSet) -> Result<(), MaterialError> {
+        self.write(vec![slot.build_set(set)])
     }
 
     /// Sets the transform one texture slot applies to its UVs.
-    pub(crate) fn set_slot_transform(&self, slot: TextureSlot, transform: UvTransform) {
-        set_or_warn(&self.shader, &slot.format_key("offset"), transform.offset);
-        set_or_warn(&self.shader, &slot.format_key("scale"), transform.scale);
-        set_or_warn(
-            &self.shader,
-            &slot.format_key("rotation"),
-            transform.rotation,
-        );
+    pub(crate) fn set_slot_transform(
+        &self,
+        slot: TextureSlot,
+        transform: UvTransform,
+    ) -> Result<(), MaterialError> {
+        self.write(slot.build_transform(transform).into())
     }
 
-    /// Sets the same transform on all five texture slots.
-    pub(crate) fn set_transforms(&self, transform: UvTransform) {
-        for slot in TextureSlot::ALL {
-            self.set_slot_transform(slot, transform);
-        }
+    /// Sets the same transform on all five texture slots, or on none of them.
+    pub(crate) fn set_transforms(&self, transform: UvTransform) -> Result<(), MaterialError> {
+        let slots = TextureSlot::ALL.into_iter();
+        self.write(
+            slots
+                .flat_map(|slot| slot.build_transform(transform))
+                .collect(),
+        )
     }
 }
 
@@ -275,7 +320,9 @@ mod tests {
 
     #[test]
     fn uv_transform_sets_all_five_slots() {
-        let material = Material::pbr().uv_transform([0.5, 0.25], [2.0, 3.0], 0.5);
+        let material = Material::pbr()
+            .uv_transform([0.5, 0.25], [2.0, 3.0], 0.5)
+            .expect("uv transform");
         for slot in TextureSlot::ALL {
             let offset: [f32; 2] = read_field(&material, slot, "offset");
             let scale: [f32; 2] = read_field(&material, slot, "scale");
@@ -288,7 +335,9 @@ mod tests {
     fn texture_transform_after_uv_transform_replaces_one_slot() {
         let material = Material::pbr()
             .uv_transform([0.5, 0.0], [2.0, 2.0], 0.0)
-            .texture_transform(TextureSlot::Normal, [0.0, 0.25], [8.0, 8.0], 1.0);
+            .expect("uv transform")
+            .texture_transform(TextureSlot::Normal, [0.0, 0.25], [8.0, 8.0], 1.0)
+            .expect("texture transform");
         let normal: [f32; 2] = read_field(&material, TextureSlot::Normal, "scale");
         let base: [f32; 2] = read_field(&material, TextureSlot::BaseColor, "scale");
         let rotation: f32 = read_field(&material, TextureSlot::Normal, "rotation");
@@ -303,9 +352,70 @@ mod tests {
         let error = material
             .texture_uv(TextureSlot::Occlusion, 2)
             .expect_err("set 2 doesn't exist");
-        assert_eq!(error, MaterialError::UvSet(2));
+        assert!(matches!(error, MaterialError::UvSet(2)), "{error:?}");
         let set: u32 = read_field(&material, TextureSlot::Occlusion, "uv_set");
         assert_eq!(set, 1, "the slot keeps its set");
+    }
+
+    // Story: a transform with one number that isn't finite is refused whole, naming the
+    // call and the part, so no slot takes its offset or scale while its rotation fails.
+    #[test]
+    fn a_refused_transform_changes_no_slot() {
+        let material = Material::pbr()
+            .uv_transform([0.5, 0.0], [2.0, 2.0], 0.25)
+            .expect("uv transform");
+
+        let rotation = material.uv_transform([0.0, 0.0], [4.0, 4.0], f32::NAN);
+        let offset =
+            material.texture_transform(TextureSlot::Normal, [0.0, f32::INFINITY], [8.0, 8.0], 1.0);
+
+        let message = rotation.expect_err("NaN rotation").to_string();
+        assert_eq!(
+            message,
+            "Material::uv_transform: rotation must be finite, got NaN"
+        );
+        let message = offset.expect_err("infinite offset").to_string();
+        assert_eq!(
+            message,
+            "Material::texture_transform: offset: item 1 must be finite, got inf"
+        );
+        for slot in TextureSlot::ALL {
+            let offset: [f32; 2] = read_field(&material, slot, "offset");
+            let scale: [f32; 2] = read_field(&material, slot, "scale");
+            let rotation: f32 = read_field(&material, slot, "rotation");
+            assert_eq!((offset, scale, rotation), ([0.5, 0.0], [2.0, 2.0], 0.25));
+        }
+    }
+
+    // Story: a custom shader whose rotation is an f16 refuses a rotation past its range
+    // before any slot changes, so the offsets and scales of the call stay out too.
+    #[test]
+    fn a_transform_the_shader_refuses_changes_no_slot() {
+        let shader = crate::Shader::new(
+            "enable f16;
+struct TextureUv { offset: vec2<f32>, scale: vec2<f32>, rotation: f16, uv_set: u32, pad: vec2<u32> }
+struct Factors { uv: array<TextureUv, 5> }
+@group(0) @binding(0) var<uniform> material: Factors;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  return vec4<f32>(f32(i), 0.0, 0.0, 1.0);
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> {
+  return vec4<f32>(material.uv[4].offset, f32(material.uv[4].rotation), 1.0);
+}",
+        )
+        .expect("shader");
+        let material = Material::custom(shader);
+
+        let refused = material.uv_transform([0.5, 0.5], [2.0, 2.0], 70000.0);
+
+        assert!(
+            matches!(refused, Err(MaterialError::Shader(_))),
+            "{refused:?}"
+        );
+        for slot in TextureSlot::ALL {
+            let offset: [f32; 2] = read_field(&material, slot, "offset");
+            assert_eq!(offset, [0.0, 0.0], "{slot:?} took the offset");
+        }
     }
 
     // Story: occlusion moves by its own transform while base color keeps its own.
@@ -321,7 +431,8 @@ mod tests {
             let material = Material::pbr()
                 .base_color_texture(&colors)
                 .occlusion_texture(&shade)
-                .texture_transform(TextureSlot::Occlusion, [0.5, 0.0], [1.0, 1.0], 0.0);
+                .texture_transform(TextureSlot::Occlusion, [0.5, 0.0], [1.0, 1.0], 0.0)
+                .expect("texture transform");
 
             // Act
             let image = draw(&renderer, material, quad(|uv| uv)).await;
@@ -368,11 +479,10 @@ mod tests {
             // lands on the upper right one, which is green.
             let renderer = Renderer::new();
             let colors = texture(&renderer, [RED, GREEN, BLUE, WHITE]).await;
-            let material = Material::pbr().base_color_texture(&colors).uv_transform(
-                [0.0, 1.0],
-                [0.5, 0.5],
-                std::f32::consts::FRAC_PI_2,
-            );
+            let material = Material::pbr()
+                .base_color_texture(&colors)
+                .uv_transform([0.0, 1.0], [0.5, 0.5], std::f32::consts::FRAC_PI_2)
+                .expect("uv transform");
 
             // Act
             let image = draw(&renderer, material, quad(|uv| uv)).await;
