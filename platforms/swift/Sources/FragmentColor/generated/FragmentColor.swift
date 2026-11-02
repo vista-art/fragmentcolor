@@ -2053,7 +2053,7 @@ open class Mipmap: MipmapProtocol, @unchecked Sendable {
      * Build a chain from raw bytes + format (+ optional size). If
      * `size` is `None`, `bytes` is decoded as an image (PNG / JPEG / etc.);
      * if `Some(size)`, `bytes` is treated as raw pixel data already laid
-     * out for `format` at `size`. Pure CPU work — call from a Swift `Task`
+     * out for `format` at `size`. Pure CPU work. Call it from a Swift `Task`
      * or Kotlin coroutine on a background dispatcher, then hand the chain
      * to `renderer.createTexture(chain:)` for the GPU upload.
      *
@@ -2397,7 +2397,7 @@ public func FfiConverterTypeModel_lower(_ value: Model) -> UInt64 {
 public protocol PassProtocol: AnyObject, Sendable {
     
     /**
-     * Unified `Pass.add` — branches on the runtime mobile handle. Adding
+     * Unified `Pass.add`, which branches on the runtime mobile handle. Adding
      * a new `SceneObject` Rust-side means adding one extra variant to
      * [`SceneObjectHandle`](crate::SceneObjectHandle) and one arm here.
      * Returns the pass, as Rust's `add` does, so calls chain.
@@ -2576,7 +2576,7 @@ public static func fromShader(name: String, shader: Shader) -> Pass  {
 
     
     /**
-     * Unified `Pass.add` — branches on the runtime mobile handle. Adding
+     * Unified `Pass.add`, which branches on the runtime mobile handle. Adding
      * a new `SceneObject` Rust-side means adding one extra variant to
      * [`SceneObjectHandle`](crate::SceneObjectHandle) and one arm here.
      * Returns the pass, as Rust's `add` does, so calls chain.
@@ -2962,8 +2962,8 @@ public protocol RendererProtocol: AnyObject, Sendable {
     
     /**
      * Allocate a storage-class texture, optionally pre-seeded with `data`.
-     * Mirrors the canonical `Renderer::create_storage_texture(impl Into<TextureInput>)`
-     * — uniffi can't marshal `impl Into`, so the mobile shim takes the
+     * Mirrors the canonical `Renderer::create_storage_texture(impl Into<TextureInput>)`.
+     * Uniffi can't marshal `impl Into`, so the mobile shim takes the
      * fields directly and the body builds a `TextureInput` from them.
      * `usage_bits = None` defaults to STORAGE | TEXTURE | COPY_SRC | COPY_DST.
      * Both trailing arguments default to `None`, so Swift and Kotlin may leave them out.
@@ -2972,7 +2972,7 @@ public protocol RendererProtocol: AnyObject, Sendable {
     
     /**
      * Single mobile entry point for texture creation. Mirrors the canonical
-     * Rust `Renderer::create_texture(impl Into<TextureInput>)` — uniffi
+     * Rust `Renderer::create_texture(impl Into<TextureInput>)`. Uniffi
      * can't marshal `impl Into`, so the mobile shim takes the input as a
      * concrete enum + an optional `TextureOptions`. Swift / Kotlin
      * extension files supply the natural overloads (e.g. `renderer.createTexture(bytes)`,
@@ -2987,17 +2987,6 @@ public protocol RendererProtocol: AnyObject, Sendable {
      */
     func createTextureTarget(size: Size) async throws  -> TextureTarget
     
-    /**
-     * Single mobile `render` entry. Mirrors the canonical Rust
-     * `Renderer::render(&impl Renderable, &impl Target)` — uniffi can't
-     * marshal `&impl Trait`, so the mobile shim takes the concrete enums
-     * `RenderableHandle` (Shader / Pass / Mesh / Passes) and `TargetHandle`
-     * (Window / Texture). Swift and Kotlin extension files supply natural
-     * overloads (`renderer.render(shader, target)`,
-     * `renderer.render(pass, target)`, etc.) that wrap the concrete value
-     * into the matching enum variant invisibly, so callers never see the
-     * mobile-only mirror types.
-     */
     func load(renderable: RenderableHandle) async throws 
     
     func readStorage(shader: Shader, binding: String) async throws  -> Data
@@ -3011,6 +3000,17 @@ public protocol RendererProtocol: AnyObject, Sendable {
      */
     func readTexture(textureId: UInt64) async throws  -> Data
     
+    /**
+     * Single mobile `render` entry. Mirrors the canonical Rust
+     * `Renderer::render(&impl Renderable, &impl Target)`. Uniffi can't
+     * marshal `&impl Trait`, so the mobile shim takes the concrete enums
+     * `RenderableHandle` (Shader / Pass / Mesh / Passes) and `TargetHandle`
+     * (Window / Texture). Swift and Kotlin extension files supply natural
+     * overloads (`renderer.render(shader, target)`,
+     * `renderer.render(pass, target)`, etc.) that wrap the concrete value
+     * into the matching enum variant invisibly, so callers never see the
+     * mobile-only mirror types.
+     */
     func render(renderable: RenderableHandle, target: TargetHandle) throws 
     
     /**
@@ -3125,8 +3125,8 @@ open func createDepthTexture(size: Size)async throws  -> Texture  {
     
     /**
      * Allocate a storage-class texture, optionally pre-seeded with `data`.
-     * Mirrors the canonical `Renderer::create_storage_texture(impl Into<TextureInput>)`
-     * — uniffi can't marshal `impl Into`, so the mobile shim takes the
+     * Mirrors the canonical `Renderer::create_storage_texture(impl Into<TextureInput>)`.
+     * Uniffi can't marshal `impl Into`, so the mobile shim takes the
      * fields directly and the body builds a `TextureInput` from them.
      * `usage_bits = None` defaults to STORAGE | TEXTURE | COPY_SRC | COPY_DST.
      * Both trailing arguments default to `None`, so Swift and Kotlin may leave them out.
@@ -3149,7 +3149,7 @@ open func createStorageTexture(size: Size, format: TextureFormat, data: Data? = 
     
     /**
      * Single mobile entry point for texture creation. Mirrors the canonical
-     * Rust `Renderer::create_texture(impl Into<TextureInput>)` — uniffi
+     * Rust `Renderer::create_texture(impl Into<TextureInput>)`. Uniffi
      * can't marshal `impl Into`, so the mobile shim takes the input as a
      * concrete enum + an optional `TextureOptions`. Swift / Kotlin
      * extension files supply the natural overloads (e.g. `renderer.createTexture(bytes)`,
@@ -3192,17 +3192,6 @@ open func createTextureTarget(size: Size)async throws  -> TextureTarget  {
         )
 }
     
-    /**
-     * Single mobile `render` entry. Mirrors the canonical Rust
-     * `Renderer::render(&impl Renderable, &impl Target)` — uniffi can't
-     * marshal `&impl Trait`, so the mobile shim takes the concrete enums
-     * `RenderableHandle` (Shader / Pass / Mesh / Passes) and `TargetHandle`
-     * (Window / Texture). Swift and Kotlin extension files supply natural
-     * overloads (`renderer.render(shader, target)`,
-     * `renderer.render(pass, target)`, etc.) that wrap the concrete value
-     * into the matching enum variant invisibly, so callers never see the
-     * mobile-only mirror types.
-     */
 open func load(renderable: RenderableHandle)async throws   {
     return
         try  await uniffiRustCallAsync(
@@ -3258,6 +3247,17 @@ open func readTexture(textureId: UInt64)async throws  -> Data  {
         )
 }
     
+    /**
+     * Single mobile `render` entry. Mirrors the canonical Rust
+     * `Renderer::render(&impl Renderable, &impl Target)`. Uniffi can't
+     * marshal `&impl Trait`, so the mobile shim takes the concrete enums
+     * `RenderableHandle` (Shader / Pass / Mesh / Passes) and `TargetHandle`
+     * (Window / Texture). Swift and Kotlin extension files supply natural
+     * overloads (`renderer.render(shader, target)`,
+     * `renderer.render(pass, target)`, etc.) that wrap the concrete value
+     * into the matching enum variant invisibly, so callers never see the
+     * mobile-only mirror types.
+     */
 open func render(renderable: RenderableHandle, target: TargetHandle)throws   {try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
         uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_renderer_render(
@@ -3345,7 +3345,7 @@ public func FfiConverterTypeRenderer_lower(_ value: Renderer) -> UInt64 {
 public protocol SceneProtocol: AnyObject, Sendable {
     
     /**
-     * Unified `Scene.add` — branches on the runtime mobile handle. Adding
+     * Unified `Scene.add`, which branches on the runtime mobile handle. Adding
      * a new `SceneObject` Rust-side means adding one extra variant to
      * [`SceneObjectHandle`](crate::SceneObjectHandle) and one arm here.
      * Every Scene mutator returns the scene, as in Rust, so calls chain.
@@ -3482,7 +3482,7 @@ public static func loadBytes(bytes: Data, cameras: Bool = true, lights: Bool = t
 
     
     /**
-     * Unified `Scene.add` — branches on the runtime mobile handle. Adding
+     * Unified `Scene.add`, which branches on the runtime mobile handle. Adding
      * a new `SceneObject` Rust-side means adding one extra variant to
      * [`SceneObjectHandle`](crate::SceneObjectHandle) and one arm here.
      * Every Scene mutator returns the scene, as in Rust, so calls chain.
@@ -3760,7 +3760,7 @@ public protocol ShaderProtocol: AnyObject, Sendable {
     
     /**
      * Check whether a `Mesh`'s vertex/instance layout is compatible with
-     * this shader's `@location` inputs — without attaching it.
+     * this shader's `@location` inputs, without attaching it.
      */
     func validateMesh(mesh: Mesh) throws 
     
@@ -3857,7 +3857,7 @@ public static func `default`() -> Shader  {
      * Build a basic WGSL shader from the first vertex in a `Mesh`.
      * Automatically attaches the mesh so callers don't need a separate
      * `addMesh` call. Mobile shim because uniffi cannot marshal `&Mesh`
-     * (shared reference) across the FFI boundary — it requires `Arc<T>`.
+     * (shared reference) across the FFI boundary. It requires `Arc<T>`.
      */
 public static func fromMesh(mesh: Mesh)throws  -> Shader  {
     return try  FfiConverterTypeShader_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
@@ -3871,7 +3871,7 @@ public static func fromMesh(mesh: Mesh)throws  -> Shader  {
     /**
      * Build a basic WGSL shader from a single `Vertex` layout.
      * Mobile shim because uniffi cannot marshal `&Vertex` across the FFI
-     * boundary — it requires `Arc<T>`.
+     * boundary. It requires `Arc<T>`.
      */
 public static func fromVertex(vertex: Vertex)throws  -> Shader  {
     return try  FfiConverterTypeShader_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
@@ -4046,7 +4046,7 @@ open func set(key: String, value: UniformValue)throws   {try rustCallWithError(F
     
     /**
      * Check whether a `Mesh`'s vertex/instance layout is compatible with
-     * this shader's `@location` inputs — without attaching it.
+     * this shader's `@location` inputs, without attaching it.
      */
 open func validateMesh(mesh: Mesh)throws   {try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
         uniffiCallStatus in
@@ -4143,7 +4143,7 @@ public protocol TextureProtocol: AnyObject, Sendable {
     
     /**
      * Return the texture size (w × h[× d]). Mirrors the canonical
-     * `Texture::size()` — see [`crate::Size`].
+     * `Texture::size()`. See [`crate::Size`].
      */
     func size()  -> Size
     
@@ -4290,7 +4290,7 @@ open func setSamplerOptions(opts: SamplerOptions)  {try! rustCall() {
     
     /**
      * Return the texture size (w × h[× d]). Mirrors the canonical
-     * `Texture::size()` — see [`crate::Size`].
+     * `Texture::size()`. See [`crate::Size`].
      */
 open func size() -> Size  {
     return try!  FfiConverterTypeSize_lift(try! rustCall() {
@@ -5940,7 +5940,7 @@ public func FfiConverterTypeTextureUsage_lower(_ value: TextureUsage) -> RustBuf
 /**
  * How the renderer interprets the alpha channel of a Material's output.
  *
- * Mirrors the glTF 2.0 `alphaMode` field — `OPAQUE`, `MASK`, `BLEND` — with
+ * Mirrors the glTF 2.0 `alphaMode` field (`OPAQUE`, `MASK`, `BLEND`) with
  * the same semantics:
  *
  * - `Opaque`: depth-test on, blending off. Alpha bits go to the framebuffer
@@ -5952,7 +5952,7 @@ public func FfiConverterTypeTextureUsage_lower(_ value: TextureUsage) -> RustBuf
  * - `Blend`: depth-test on but depth-write **off**, color target uses
  * standard `SrcAlpha / OneMinusSrcAlpha` over-blend. The renderer sorts
  * Models with this mode back-to-front by eye-space Z before drawing,
- * using the Camera attached via `Pass::add(&camera)` — no caller-side
+ * using the Camera attached via `Pass::add(&camera)`, with no caller-side
  * sorting required. Sort granularity is per-Model (not per-fragment),
  * so self-intersecting translucent meshes can still show artifacts.
  */
@@ -6725,8 +6725,8 @@ public func FfiConverterTypePassTarget_lower(_ value: PassTarget) -> RustBuffer 
  * Mobile bindings carry a concrete enum because uniffi can't marshal
  * `&impl Renderable`. The Rust core stays generic; this enum exists so
  * Swift / Kotlin can call `renderer.render(shader, target)` (or `pass`,
- * `mesh`, list-of-passes) through a single mobile `render` entry point —
- * the Swift / Kotlin extension files supply natural overloads that wrap
+ * `mesh`, list-of-passes) through a single mobile `render` entry point.
+ * The Swift / Kotlin extension files supply natural overloads that wrap
  * the concrete handle into the matching variant invisibly.
  */
 
@@ -6739,13 +6739,13 @@ public enum RenderableHandle {
     case mesh(Mesh
     )
     /**
-     * Top-level [`Scene`](crate::Scene) — emits its ordered pass graph,
+     * Top-level [`Scene`](crate::Scene). Emits its ordered pass graph,
      * including the default Pass that holds the scene's `SceneObject`s.
      */
     case scene(Scene
     )
     /**
-     * Iterable of `Pass` instances — emits passes in order.
+     * Iterable of `Pass` instances. Emits passes in order.
      */
     case passes([Pass]
     )
@@ -6843,7 +6843,7 @@ public func FfiConverterTypeRenderableHandle_lower(_ value: RenderableHandle) ->
  * [`crate::scene::SceneObject`]. Mobile bindings carry a concrete enum
  * because uniffi can't marshal `&impl SceneObject`. The Rust core stays
  * generic; this enum exists so Swift / Kotlin can call `scene.add(...)`
- * or `pass.add(...)` through a single mobile entry point — the Swift /
+ * or `pass.add(...)` through a single mobile entry point. The Swift /
  * Kotlin extension files supply natural overloads that wrap the
  * concrete handle into the matching variant invisibly.
  */
@@ -7032,7 +7032,7 @@ public func FfiConverterTypeStorageAccess_lower(_ value: StorageAccess) -> RustB
 
 /**
  * Uniffi-marshallable union of every type that implements [`crate::Target`].
- * Same rationale as [`RenderableHandle`] — uniffi can't marshal
+ * Same rationale as [`RenderableHandle`]: uniffi can't marshal
  * `&impl Target`, so the mobile `render` entry takes this enum and the
  * implementation matches and dispatches to the typed `Renderer::render`
  * underneath.
@@ -9461,7 +9461,7 @@ private let initializationResult: InitializationResult = {
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_pass_add() != 53650) {
+    if (uniffi_fragmentcolor_checksum_method_pass_add() != 22732) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_pass_addmesh() != 56155) {
@@ -9506,16 +9506,16 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_renderer_createdepthtexture() != 59097) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_renderer_createstoragetexture() != 11117) {
+    if (uniffi_fragmentcolor_checksum_method_renderer_createstoragetexture() != 28418) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_renderer_createtexture() != 15937) {
+    if (uniffi_fragmentcolor_checksum_method_renderer_createtexture() != 29329) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_renderer_createtexturetarget() != 21423) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_renderer_load() != 26667) {
+    if (uniffi_fragmentcolor_checksum_method_renderer_load() != 42972) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_renderer_readstorage() != 56984) {
@@ -9524,7 +9524,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_renderer_readtexture() != 22506) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_renderer_render() != 4672) {
+    if (uniffi_fragmentcolor_checksum_method_renderer_render() != 15961) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_renderer_unregistertexture() != 6049) {
@@ -9566,7 +9566,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_shader_set() != 10555) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_shader_validatemesh() != 46565) {
+    if (uniffi_fragmentcolor_checksum_method_shader_validatemesh() != 34498) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_instance_set() != 42022) {
@@ -9755,7 +9755,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_model_visible() != 27855) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_scene_add() != 13774) {
+    if (uniffi_fragmentcolor_checksum_method_scene_add() != 29801) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_scene_addpass() != 18750) {
@@ -9842,7 +9842,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_texture_setsampleroptions() != 5358) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_texture_size() != 9241) {
+    if (uniffi_fragmentcolor_checksum_method_texture_size() != 33001) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_texture_write() != 22674) {
@@ -9887,10 +9887,10 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_constructor_shader_default() != 62478) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_constructor_shader_frommesh() != 44264) {
+    if (uniffi_fragmentcolor_checksum_constructor_shader_frommesh() != 48389) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_constructor_shader_fromvertex() != 63047) {
+    if (uniffi_fragmentcolor_checksum_constructor_shader_fromvertex() != 46159) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_constructor_shader_new() != 65257) {
@@ -9950,7 +9950,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_constructor_scene_new() != 58352) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_constructor_mipmap_build() != 57448) {
+    if (uniffi_fragmentcolor_checksum_constructor_mipmap_build() != 59480) {
         return InitializationResult.apiChecksumMismatch
     }
 
