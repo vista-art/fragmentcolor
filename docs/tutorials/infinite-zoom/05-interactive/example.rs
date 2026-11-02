@@ -819,7 +819,12 @@ impl Motion {
             || self.reference.bits < (-now).ceil() as usize + 120;
         let half = f64::from(image[1]) / 2.0;
         let shallow = (-finest).ceil() as usize + 40;
-        if stale && self.next.as_ref().is_none_or(|next| away(next, half) || next.bits < shallow) {
+        if stale
+            && self
+                .next
+                .as_ref()
+                .is_none_or(|next| away(next, half) || next.bits < shallow)
+        {
             let bits = (-finest).ceil() as usize + 200;
             let goal = self.point_at(aim, now);
             self.next = Some(Reference::start(
@@ -968,7 +973,9 @@ fn on_pinch(app: &App, _device: DeviceId, delta: f64, _phase: TouchPhase) {
 }
 
 fn on_resize(app: &App, size: &PhysicalSize<u32>) {
-    app.resize([size.width, size.height]);
+    if let Err(error) = app.resize([size.width, size.height]) {
+        eprintln!("resize failed: {error}");
+    }
 }
 
 fn on_redraw(app: &App) {
