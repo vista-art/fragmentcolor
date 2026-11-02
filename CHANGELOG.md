@@ -4,6 +4,19 @@
 
 A patch release that checks shaders, meshes, textures and passes against the device before the GPU sees them, and returns every failure as a typed error that matches across Rust, JavaScript, Python, Swift and Kotlin. Lights lose their fixed cap, a texture a pass draws into can resize, and each PBR texture slot picks its own UV set. Changes that can break code come last.
 
+### Upgrading from 0.12.6
+
+0.12.7 changes code in every language. Cargo's `0.12`, npm's `^0.12.6`, pip's `~=0.12.6` and SwiftPM's `.upToNextMinor(from: "0.12.6")` all pick it up, so pin `0.12.6` exactly until your code follows these groups of changes, which the last section lists one by one:
+
+- Calls that can fail say so. `render`, `resize`, `add_shader`, `set_clear_color`, `Shader::from_mesh`, the `Camera` constructors and the `Material` setters, among others, return a `Result` in Rust, throw in JavaScript and Kotlin, raise in Python and need `try` in Swift. `render` returns what the GPU rejects instead of success.
+- Errors have classes. Python raises a subclass of `FragmentColorError`, such as `InvalidInputError` or `DeviceError`, and a JavaScript error's `name` is that class. The Rust error enums gain variants, so a `match` that lists every variant needs new arms.
+- An invalid number is an error that names the call and the item: NaN, an infinity, a float past the `f32` range, a fraction where a whole number belongs, or a negative size. These were clamped, zeroed or dropped.
+- Rust imports every type from the crate root, as `fragmentcolor::ShaderError`, and builds one type from another with `From`, `TryFrom` and `str::parse`, such as `ScreenRegion::try_from((x, y, w, h))` and `"#ff8000".parse::<Color>()`.
+- A region of two pairs is an origin and a size in every language.
+- `TextureFormat` values from `Depth32Float` on are 3 higher, which moves the numbers JavaScript stores, Python's `int()` and Kotlin's `ordinal`.
+- PBR scenes on 8-bit targets draw brighter, since `Material::pbr` encodes them as sRGB, and a pass that draws models gets a depth buffer.
+- A `TextureId` alone doesn't keep its texture. The renderer frees a texture when its last handle, uniform and pass target drop.
+
 ### Renderer and meshes
 
 - `Shader.add_mesh` fails when a later vertex or instance lacks an attribute the shader reads, and the error names the attribute and the index: `color: expected vec4<f32>, got no value at vertex 3`. Only the first vertex and instance were checked, and a later one drew with zeros.
