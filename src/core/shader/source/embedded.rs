@@ -1,4 +1,4 @@
-//! Embedded shader registry — a feature-gated lookup from registry slugs
+//! Embedded shader registry: a feature-gated lookup from registry slugs
 //! (e.g. `"postfx/vignette"`) to the shader source compiled into the binary.
 //!
 //! `scripts/embedded_shaders.rs` generates the `lookup` function below into OUT_DIR

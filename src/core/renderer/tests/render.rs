@@ -413,7 +413,7 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
             "#;
         let shader = crate::Shader::new(wgsl).expect("shader");
 
-        // 4×4 R16Unorm raw data — same shape as a consumer's height tile.
+        // 4×4 R16Unorm raw data, the same shape as a consumer's height tile.
         let words: Vec<u16> = (0..16).map(|i| i * 4096).collect();
         let mut bytes: Vec<u8> = Vec::with_capacity(words.len() * 2);
         for w in &words {

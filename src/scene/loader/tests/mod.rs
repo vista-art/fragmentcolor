@@ -1038,7 +1038,7 @@ fn an_external_image_keeps_its_path() {
 fn compute_vertex_normals_indexed_yz_face() {
     // Triangle in the YZ plane. Face normal = +X. Without
     // face-normal computation the fallback +Z would shade this
-    // triangle as if it pointed forward — visibly wrong.
+    // triangle as if it pointed forward, which is visibly wrong.
     let positions = [[0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
     let indices = [0u32, 1, 2];
     let normals = compute_vertex_normals("test", &positions, Some(&indices)).expect("normals");
@@ -1063,7 +1063,7 @@ fn compute_vertex_normals_non_indexed_walks_triplets() {
 
 #[test]
 fn compute_vertex_normals_averages_shared_vertex() {
-    // Two coplanar triangles sharing vertex 0 — both contribute the
+    // Two coplanar triangles sharing vertex 0. Both contribute the
     // same +Z face normal, so the shared vertex normalizes to +Z too
     // (un-degenerate after normalization).
     let positions = [

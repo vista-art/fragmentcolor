@@ -45,7 +45,7 @@ impl Renderer {
         let context = self.context(None).await?;
         let size = options.size.ok_or_else(|| {
             RendererError::CreateTextureError(
-                "create_storage_texture requires options.size — pass `(size, format)` or set the field explicitly".into(),
+                "create_storage_texture requires options.size. Pass `(size, format)` or set the field explicitly".into(),
             )
         })?;
         let extent: wgpu::Extent3d = size.to_extent();

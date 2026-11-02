@@ -1178,7 +1178,7 @@ if __name__ == '__main__':
                         continue;
                     }
                 }
-                // Fallback: no identifier, or no closing '>' — just output '<'
+                // Fallback: no identifier, or no closing '>', so output '<' as is
                 out.push(c);
                 i += 1;
                 continue;
@@ -1297,10 +1297,10 @@ if __name__ == '__main__':
         };
         // Class entry-point examples use the CamelCase struct name as the
         // `file_stem` (e.g. `Texture`, `Mipmap`), so the natural
-        // override path is `Texture_py.md`. The earlier convention put the
-        // override at the snake_cased source-file stem (`texture_py.md`) —
-        // both happen to coexist in `git ls-files` because macOS HFS+ is
-        // case-insensitive. On Linux (case-sensitive) the lookup misses,
+        // override path is `Texture_py.md`. Some overrides sit at the
+        // snake_cased source-file stem (`texture_py.md`) instead. Either
+        // name resolves on macOS, whose file system is case-insensitive.
+        // On Linux (case-sensitive) a lookup for one name misses the other,
         // the override is silently ignored, and the fall-through Rust→
         // target conversion produces wrong API shape (e.g. CI's
         // `Texture.py` ends up with `create_texture((pixels, [1, 1]))`

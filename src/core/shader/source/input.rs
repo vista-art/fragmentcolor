@@ -303,8 +303,8 @@ mod tests {
         assert_source(&p, src);
     }
 
-    // Even a single-line `// foo` (no newline) shouldn't be a path — `//` is a
-    // comment marker in every language we target, never a path prefix.
+    // Even a single-line `// foo` (no newline) shouldn't be a path. `//` is a
+    // comment marker in every language FragmentColor targets, never a path prefix.
     #[test]
     fn classifier_single_line_starting_with_double_slash_is_source() {
         let p = ShaderPart::classify("//something");

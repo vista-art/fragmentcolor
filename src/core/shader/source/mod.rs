@@ -28,7 +28,7 @@ pub(super) mod joined;
 /// all platforms.
 ///
 /// Sync callers (`Shader::new`) use [`blocking::resolve`] in the
-/// `blocking` submodule below — same convention as `reqwest::blocking`.
+/// `blocking` submodule below, the same convention as `reqwest::blocking`.
 pub(super) async fn resolve(input: ShaderInput) -> Result<Arc<ShaderObject>, ShaderError> {
     if input.is_empty() {
         return Ok(Arc::new(ShaderObject::default()));
@@ -115,7 +115,7 @@ async fn fetch_url(url: &str) -> Result<Resolved, ShaderError> {
 
 /// Blocking variant of [`resolve`]. Used by `Shader::new`, which is sync
 /// across all platforms (uniffi/wasm-bindgen/pyo3 constructors can't be
-/// async). Mirrors `reqwest::blocking` — the namespace is the disambiguator,
+/// async). Mirrors `reqwest::blocking`: the namespace is the disambiguator,
 /// not a `_sync` suffix on the function name.
 ///
 /// On native, HTTP fetches go through `ureq` (blocking). On wasm, the
@@ -420,7 +420,7 @@ mod tests {
     // is consulted (the resolver tries to fetch the override URL and returns a
     // network error, not a classification error).
     //
-    // Uses `unknown_category/no_such_shader` — a slug shape that cannot match
+    // Uses `unknown_category/no_such_shader`, a slug shape that cannot match
     // any embedded entry regardless of which `shaders-*` features are on, so
     // the resolver always falls through to fetching the URL form.
     #[test]
@@ -439,7 +439,7 @@ mod tests {
     }
 
     // Story: Without any `shaders-*` feature enabled, the embedded lookup must
-    // return None for every slug — the resolver always falls back to URL fetch.
+    // return None for every slug, so the resolver always falls back to URL fetch.
     #[test]
     fn embedded_lookup_misses_when_no_feature_enabled() {
         // Lookups that would match if features were on:
@@ -462,8 +462,8 @@ mod tests {
     }
 
     // Story: When `shaders-postfx` is enabled, the embedded lookup returns the
-    // helper source verbatim and the resolver short-circuits the URL fetch —
-    // verified by pointing the registry at an unreachable URL and confirming
+    // helper source verbatim and the resolver short-circuits the URL fetch.
+    // The test points the registry at an unreachable URL and confirms that
     // a slug-only resolve still succeeds.
     #[cfg(feature = "shaders-postfx")]
     #[test]
@@ -477,7 +477,7 @@ mod tests {
         );
 
         // Compose with a small main shader and resolve through the full pipeline.
-        // Registry override points nowhere — if the resolver tried to fetch
+        // Registry override points nowhere. If the resolver tried to fetch
         // anything, this would error with a network failure instead.
         let main = r#"
 struct VOut { @builtin(position) pos: vec4<f32>, @location(0) uv: vec2<f32> };

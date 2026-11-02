@@ -1,4 +1,4 @@
-//! Material — PBR data + `Shader` bundle.
+//! Material: PBR data + `Shader` bundle.
 //!
 //! `Material::pbr()` ships FragmentColor's default physically-based shader
 //! and the glTF 2.0 PBR-MR field set as builder-style setters. The five
@@ -11,12 +11,12 @@
 //! `Shader` and reuses the same setter API for any uniform the custom
 //! shader happens to declare under matching paths.
 //!
-//! Per-Model transform is *not* a Material uniform — it rides on a Pass-
+//! Per-Model transform is *not* a Material uniform. It rides on a Pass-
 //! owned per-instance vertex-attribute buffer that the renderer builds from
 //! the Model entries `Pass::add` queues. That means many Models can share one Material's
 //! Shader without colliding on a `mesh.model` slot; the renderer batches them
 //! by pipeline hash and pays one bind-group setup for the whole group.
-//! Material itself is `Clone` (shallow, Arc-share) — cloning gives you another
+//! Material itself is `Clone` (shallow, Arc-share): cloning gives you another
 //! handle to the same underlying shader state, not an independent copy.
 
 use lsp_doc::lsp_doc;
@@ -43,7 +43,7 @@ mod platform;
 
 /// Assembled vertex+fragment+uniform block for the built-in PBR shader. The
 /// `mesh/transform` and `material/pbr` snippets are pulled in as composition
-/// parts at construction time — they declare no bindings of their own, only
+/// parts at construction time. They declare no bindings of their own, only
 /// helper functions, so they slot in cleanly alongside this main body.
 const PBR_MAIN: &str = include_str!("pbr_main.wgsl");
 
@@ -56,7 +56,7 @@ const PBR_LIGHTS: &str = include_str!("pbr_lights.wgsl");
 /// The registry snippets the built-in PBR shader composes from, baked in
 /// directly rather than resolved through the shader registry. They power the
 /// engine's own `Material::pbr()`, so they must be present on every platform
-/// regardless of which `shaders-<category>` features the consumer enabled —
+/// regardless of which `shaders-<category>` features the consumer enabled,
 /// including the slim web build (`--no-default-features`), whose synchronous
 /// constructor cannot fetch them over the network. Embedding the three files
 /// (a few KB) keeps `Material::pbr()` infallible and offline everywhere
@@ -91,7 +91,7 @@ impl Material {
     /// Infallible on every supported build configuration. The snippets the shader
     /// composes from (`mesh/transform`, `material/pbr` and `color/linear_to_srgb`) are baked
     /// into the binary directly, so construction needs no shader registry and
-    /// no network — it works the same on native, mobile, and the slim web
+    /// no network. It works the same on native, mobile, and the slim web
     /// build (`--no-default-features`), whose synchronous constructor cannot
     /// fetch over `fetch`.
     #[lsp_doc("docs/api/scene/material/pbr.md")]
@@ -122,9 +122,9 @@ impl Material {
     #[lsp_doc("docs/api/scene/material/custom.md")]
     pub fn custom(shader: Shader) -> Self {
         let mat = Self { shader };
-        // Same single-sided default as Material::pbr — opting into Material
+        // Same single-sided default as Material::pbr: opting into Material
         // semantics means opting into glTF 2.0 defaults, even when the
-        // underlying Shader was originally constructed standalone.
+        // underlying Shader was constructed standalone.
         mat.shader.object.set_alpha_mode(AlphaMode::default());
         mat.shader.object.set_double_sided(false);
         mat
@@ -138,8 +138,8 @@ impl Material {
     fn apply_defaults(&self) {
         // glTF 2.0 PBR-MR factor defaults, with two ergonomic deviations: we
         // default `metallic=0` and `roughness=1` instead of glTF's
-        // `metallic=1, roughness=1` (which renders as dark gunmetal — fine if
-        // you're loading a texture-driven glTF material, but a bad first-
+        // `metallic=1, roughness=1` (which renders as dark gunmetal: fine for
+        // a texture-driven glTF material, but a bad first
         // frame for someone calling `Material::pbr()` and rendering a
         // flat-color cube).
         let _ = self

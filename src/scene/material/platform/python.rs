@@ -30,7 +30,7 @@ impl Material {
     #[lsp_doc("docs/api/scene/material/shader.md")]
     pub fn shader_py(&self) -> Shader {
         // Returning a Clone of the inner Shader (Arc-share) is the natural
-        // Python shape — the caller can keep operating on it directly. The
+        // Python shape: the caller can keep operating on it directly. The
         // share semantics match Rust's `&Shader`: mutations on the returned
         // handle propagate back into the Material.
         self.shader.clone()

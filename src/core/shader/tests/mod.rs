@@ -1073,7 +1073,7 @@ fn set_nonblocking_when_locked_then_flush_applies() {
     assert!((r - 0.42).abs() < 1e-6);
 }
 
-// Story: last-wins semantics — multiple enqueued writes to the same key result in the last value
+// Story: last-wins semantics. Multiple enqueued writes to the same key result in the last value
 #[test]
 fn set_last_wins_queue_semantics() {
     let shader = Shader::new(SHADER).unwrap();

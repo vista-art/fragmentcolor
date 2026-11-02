@@ -278,7 +278,7 @@ impl RenderContext {
                                     .add_texture(uniform.binding, tex);
                             }
                         } else {
-                            // No user texture — fall back to the PBR default for
+                            // No user texture: fall back to the PBR default for
                             // the known glTF slot names so `Material::pbr` works
                             // without the caller supplying every map. The 1x1
                             // defaults look the same under any sampler, so they
@@ -493,7 +493,7 @@ impl RenderContext {
         // order (already sorted in `build_pass_draws`) and rebind the
         // owning shader's pipeline + bind groups whenever the shader or
         // the mesh's layout changes. Two translucent Materials in one Pass
-        // interleave correctly — A-far, B-mid, A-near sequences emit in
+        // interleave correctly: A-far, B-mid, A-near sequences emit in
         // global Z order rather than per-shader buckets.
         #[cfg(test)]
         crate::testing::race_hooks::run("blend phase");
@@ -614,8 +614,8 @@ impl RenderContext {
                         }
                     }
                     _ => {
-                        // Blocking read — same rationale as the storage-buffer
-                        // path above.
+                        // Blocking read, for the same reason as the
+                        // storage-buffer path above.
                         let storage = shader.storage.read();
                         let bytes = storage
                             .get_bytes(name)

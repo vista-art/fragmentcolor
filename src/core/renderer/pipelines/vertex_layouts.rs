@@ -77,7 +77,7 @@ pub(in crate::core::renderer) fn vertex_buffer_layouts(
     // global one, so a shader-location of 4 means "model_1" for the
     // instance buffer but might be "uv1" in the vertex map. Falling back to
     // location-match would then mis-attribute the slot. Name-first kills
-    // the ambiguity — `position`, `model_*`, `color0`, etc. resolve by
+    // the ambiguity: `position`, `model_*`, `color0`, etc. resolve by
     // string. Location-based matching catches the remaining case where the
     // shader's input name doesn't appear in either map (raw / generated
     // shaders).
@@ -122,7 +122,7 @@ pub(in crate::core::renderer) fn vertex_buffer_layouts(
             });
             placed = true;
         }
-        // 3) Position fallback — the only vertex slot that's commonly
+        // 3) Position fallback, the only vertex slot that's commonly
         //    unnamed in the mesh map.
         if !placed
             && vertex_input.location == vertex_location

@@ -280,7 +280,7 @@ impl Mipmap {
     /// Build a chain from `bytes` for `format`. If `size` is `None`, `bytes`
     /// is decoded as an image (PNG / JPEG / etc.); if `size` is provided,
     /// `bytes` is treated as raw pixel data already laid out for `format` at
-    /// `size`. Pure CPU work — call from a worker thread (e.g.
+    /// `size`. Pure CPU work. Call it from a worker thread (e.g.
     /// `ThreadPoolExecutor`) and pass the result to
     /// `renderer.create_texture(chain)` for the GPU upload.
     #[staticmethod]

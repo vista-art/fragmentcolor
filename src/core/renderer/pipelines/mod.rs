@@ -221,20 +221,17 @@ pub(super) fn create_render_pipeline(
                     AlphaMode::Opaque | AlphaMode::Mask => None,
                     AlphaMode::Blend => Some(wgpu::BlendState::ALPHA_BLENDING),
                 },
-                // Custom (non-glTF-MR) blend equations are tracked under
-                // the roadmap's "Custom blending" item — Material's
-                // AlphaMode covers the three glTF 2.0 modes; anything more
-                // exotic will ride on a separate per-Material slot.
+                // Material's AlphaMode covers the three glTF 2.0 modes.
                 write_mask: checks::pass::pick_writes(shader),
             })],
             compilation_options: wgpu::PipelineCompilationOptions::default(),
         }),
         primitive: wgpu::PrimitiveState {
             // `double_sided=true` (the ShaderObject default) leaves
-            // `cull_mode: None`, matching the renderer's pre-Material
-            // behavior. `Material::pbr` (and `Material::custom`) flip
-            // it to `false`, which engages standard back-face culling —
-            // the glTF 2.0 default for single-sided materials.
+            // `cull_mode: None`, so a bare Shader draws both faces.
+            // `Material::pbr` (and `Material::custom`) flip it to
+            // `false`, which engages standard back-face culling, the
+            // glTF 2.0 default for single-sided materials.
             cull_mode: if double_sided {
                 None
             } else {

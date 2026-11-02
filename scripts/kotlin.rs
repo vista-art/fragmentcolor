@@ -1,5 +1,5 @@
 mod kotlin {
-    //! Kotlin transpilation — second phase.
+    //! Kotlin transpilation, second phase.
     //!
     //! `convert::to_kotlin` runs the per-line emitter with `Lang::Kotlin`,
     //! producing a JS-shaped intermediate. This module finishes the job
@@ -1312,7 +1312,7 @@ mod kotlin {
         }
     }
 
-    // Drop `.unwrap()` — Kotlin uses exceptions, not Result types.
+    // Drop `.unwrap()`, since Kotlin uses exceptions, not Result types.
     fn drop_unwrap(line: &str) -> String {
         line.replace(".unwrap()", "")
     }
@@ -1323,7 +1323,7 @@ mod kotlin {
         while let Some(pos) = out.find("[..]") {
             out = format!("{}{}", &out[..pos], &out[pos + 4..]);
         }
-        // `.asSlice()` is a Rust-specific method — drop it entirely
+        // `.asSlice()` is a Rust-specific method, so drop it entirely
         out = out.replace(".asSlice()", "");
         out
     }
@@ -1334,7 +1334,7 @@ mod kotlin {
         let t = s.trim();
         try_floatify(t)
             .unwrap_or_else(|| {
-                // Not a bare number — try simple binary-op shapes like `a / b` or
+                // Not a bare number. Try simple binary-op shapes like `a / b` or
                 // `current * 0.5`. Walk operators outside of parens and floatify
                 // each numeric-looking operand. Identifiers / sub-expressions pass
                 // through unchanged.
@@ -1487,7 +1487,7 @@ mod kotlin {
                     let inner_trim = inner.trim();
                     // Skip empty `[]` (no items to wrap) and indexer
                     // patterns like `arr[0]` (single ident/expr without
-                    // commas — those are subscripts, not collection
+                    // commas, which are subscripts, not collection
                     // literals).
                     if !inner_trim.is_empty() && inner_trim.contains(',') {
                         let prev = if i == 0 { ' ' } else { chars[i - 1] };
@@ -1560,7 +1560,7 @@ mod kotlin {
                         }
                         if let Some(fc) = fill_close {
                             let count: String = chars[arg_start..arg_close].iter().collect();
-                            // Always produce ByteArray — all pixel-buffer fills are byte arrays
+                            // Always produce ByteArray, since all pixel-buffer fills are byte arrays
                             out.push_str(&format!("ByteArray({})", count.trim()));
                             i = arg_close + 1 + ".fill(".len() + fc + 1;
                             continue;
@@ -1733,7 +1733,7 @@ mod kotlin {
         let count = declared.entry(name.to_string()).or_insert(0);
         *count += 1;
         if *count == 1 {
-            // First occurrence — no rename needed
+            // First occurrence, no rename needed
             return line.to_string();
         }
         // Rename: replace the first occurrence of `val <name>` with `val <name>_<N>`
@@ -1775,7 +1775,7 @@ mod kotlin {
             }
 
             if in_tq {
-                // Inside triple-quoted string — don't join
+                // Inside triple-quoted string, so don't join
                 if let Some(ref mut p) = pending {
                     p.push('\n');
                     p.push_str(raw);

@@ -1,5 +1,5 @@
 mod swift {
-    //! Swift transpilation — second phase.
+    //! Swift transpilation, second phase.
     //!
     //! `convert::to_swift` runs the per-line emitter with `Lang::Swift`,
     //! producing a JS-shaped intermediate (Swift shares JS's control flow:
@@ -12,7 +12,7 @@ mod swift {
     //! 1. Backtick template literals (`...`) → triple-quoted strings (`"""..."""`)
     //!    so multi-line WGSL shaders translate directly.
     //! 2. Rewrite the fragmentcolor import (`import { X } from "fragmentcolor";` → `import FragmentColor`).
-    //! 3. Strip trailing semicolons — Swift terminates statements at newlines.
+    //! 3. Strip trailing semicolons, since Swift terminates statements at newlines.
     //! 4. Drop the `new` keyword (`new Renderer(...)` → `Renderer(...)`).
     //! 5. `const x = ...` → `let x = ...`.
     //! 6. `await foo(...)` → `try await foo(...)` (Swift requires `try` on async throws).
@@ -486,7 +486,7 @@ mod swift {
 
     /// Rename duplicate `let <name>` declarations inside a single
     /// static-func body. Swift's enum/static-func scope can't shadow
-    /// existing bindings — two `let shader = ...` lines collide with
+    /// existing bindings: two `let shader = ...` lines collide with
     /// "invalid redeclaration of 'shader'". We track names per
     /// `static func` and rewrite the second occurrence (and later)
     /// to `<name>2`, `<name>3`, … within the same function body.
@@ -875,7 +875,7 @@ mod swift {
 
     /// Strip Rust slice / `as_slice()` notation that has no equivalent in Swift:
     /// - `identifier[..]`   → `identifier`  (full-range borrow `&x[..]` after `&`-strip)
-    /// - `.asSlice()`        → ``            (Rust `.as_slice()` method — just drop it)
+    /// - `.asSlice()`        → ``            (Rust `.as_slice()` method, dropped)
     fn strip_rust_slice_notation(line: &str) -> String {
         // 1. Remove `.asSlice()` (comes from Rust `.as_slice()` transliterated by to_js).
         let line = line.replace(".asSlice()", "");

@@ -9,7 +9,7 @@ use wasm_bindgen::prelude::*;
 // Unified input type for creating textures (initial Rust subset)
 #[derive(Debug, Clone, Default)]
 pub enum TextureData {
-    /// No initial pixel data — allocate the texture and leave the contents
+    /// No initial pixel data: allocate the texture and leave the contents
     /// undefined. Required for `create_storage_texture` when seed data isn't
     /// provided. Pair with `options.size` (mandatory for this variant) and
     /// `options.format`.
@@ -36,7 +36,7 @@ pub enum TextureData {
     /// background thread for `Bytes`/`Path`/`Url` inputs; reach
     /// for this only when sharing a chain across textures or when you want
     /// explicit control over which thread does the work. Cross-language
-    /// callers typically don't construct this variant directly — they hand a
+    /// callers typically don't construct this variant directly. They hand a
     /// [`Mipmap`] straight to `Renderer::create_texture` and the unified
     /// entry point dispatches via `From<Mipmap> for TextureInput`.
     Prepared(Mipmap),
@@ -125,7 +125,7 @@ impl From<Mipmap> for TextureData {
 /// shapes) or as a struct literal when you need explicit control.
 ///
 /// The library never asks you to construct a `TextureInput` literally for the
-/// common cases — `renderer.create_texture(bytes)`,
+/// common cases: `renderer.create_texture(bytes)`,
 /// `renderer.create_texture((bytes, [w, h]))`, and
 /// `renderer.create_texture((bytes, TextureFormat::Rgba8Unorm))` all work
 /// because `Vec<u8>` / `&[u8]` / `Size` / `TextureFormat` etc. all `Into<TextureInput>`.
@@ -175,7 +175,7 @@ spec_from_input!(
 );
 
 // ---------------------------------------------------------------------------
-// (input, options-like) — second tuple element is anything that converts
+// (input, options-like): the second tuple element is anything that converts
 // into `TextureOptions`. Since `Size: Into<TextureOptions>` and
 // `TextureFormat: Into<TextureOptions>` (existing impls below), the same
 // bound covers the four old methods at once: `_with_size`, `_with_format`,
@@ -213,7 +213,7 @@ spec_from_input_with_options!(
 );
 
 // ---------------------------------------------------------------------------
-// Storage / size-driven shapes — `(size, format)` allocates an empty storage
+// Storage / size-driven shapes: `(size, format)` allocates an empty storage
 // texture (data = TextureData::Empty); `(size, format, bytes)` pre-seeds it.
 // These are the same `TextureInput` type the source-driven paths use, so
 // `create_texture`, `create_storage_texture`, and `Mipmap::build`
@@ -235,7 +235,7 @@ impl<S: Into<Size>, F: Into<TextureFormat>> From<(S, F)> for TextureInput {
     }
 }
 
-// Source-first 3-tuple: `(bytes, format, size)` — used by `Mipmap::build`
+// Source-first 3-tuple: `(bytes, format, size)`, used by `Mipmap::build`
 // for the raw-pixel path and by `Renderer::create_texture` whenever the caller
 // has already-decoded bytes plus a known size + format. The size-first
 // counterpart `(size, format, bytes)` lives below for the storage idiom; the

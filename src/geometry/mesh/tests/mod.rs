@@ -1106,7 +1106,7 @@ fn renderable_passes_creates_shader_from_first_vertex() {
 fn set_indices_preserves_non_deduped_vertices() {
     let mesh = Mesh::new();
     use crate::Vertex;
-    // Three vertices with fully identical attributes — the auto path
+    // Three vertices with fully identical attributes. The auto path
     // would collapse these into a single unique vertex.
     let v = Vertex::new([0.0f32, 0.0]).set("uv", [0.5f32, 0.5]);
     mesh.add_vertex(v.clone());
@@ -1173,7 +1173,7 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(0.,1.,0.,1.); }
         let mesh = Mesh::new();
         use crate::Vertex;
         // Four corners of a quad, sharing two positions across the
-        // diagonal — dedup would collapse them; explicit indices keep
+        // diagonal. Dedup would collapse them; explicit indices keep
         // every corner so we can draw two triangles cleanly.
         mesh.add_vertices([
             Vertex::new([-0.5f32, -0.5]),

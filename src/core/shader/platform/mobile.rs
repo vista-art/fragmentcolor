@@ -9,7 +9,7 @@
 //!
 //! The mesh-aware constructors (`fromMesh`, `fromVertex`) and instance methods
 //! (`addMesh`, `removeMesh`, `removeMeshes`, `clearMeshes`, `validateMesh`)
-//! accept `Arc<Mesh>` / `Arc<Vertex>` directly — uniffi natively marshals
+//! accept `Arc<Mesh>` / `Arc<Vertex>` directly, since uniffi natively marshals
 //! `Arc<T>` for any `uniffi::Object`.
 
 use std::sync::Arc;
@@ -158,7 +158,7 @@ impl Shader {
     /// Build a basic WGSL shader from the first vertex in a `Mesh`.
     /// Automatically attaches the mesh so callers don't need a separate
     /// `addMesh` call. Mobile shim because uniffi cannot marshal `&Mesh`
-    /// (shared reference) across the FFI boundary — it requires `Arc<T>`.
+    /// (shared reference) across the FFI boundary. It requires `Arc<T>`.
     #[uniffi::constructor(name = "fromMesh")]
     #[lsp_doc("docs/api/core/shader/hidden/from_mesh_mobile.md")]
     pub fn from_mesh_mobile(mesh: Arc<Mesh>) -> Result<Arc<Self>, FragmentColorError> {
@@ -167,7 +167,7 @@ impl Shader {
 
     /// Build a basic WGSL shader from a single `Vertex` layout.
     /// Mobile shim because uniffi cannot marshal `&Vertex` across the FFI
-    /// boundary — it requires `Arc<T>`.
+    /// boundary. It requires `Arc<T>`.
     #[uniffi::constructor(name = "fromVertex")]
     #[lsp_doc("docs/api/core/shader/hidden/from_vertex_mobile.md")]
     pub fn from_vertex_mobile(vertex: Arc<Vertex>) -> Result<Arc<Self>, FragmentColorError> {
@@ -210,7 +210,7 @@ impl Shader {
     }
 
     /// Check whether a `Mesh`'s vertex/instance layout is compatible with
-    /// this shader's `@location` inputs — without attaching it.
+    /// this shader's `@location` inputs, without attaching it.
     #[uniffi::method(name = "validateMesh")]
     #[lsp_doc("docs/api/core/shader/validate_mesh.md")]
     pub fn validate_mesh_mobile(

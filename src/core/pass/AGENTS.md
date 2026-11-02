@@ -1,4 +1,4 @@
-# AGENTS.md — Pass rules (short)
+# AGENTS.md: Pass rules (short)
 
 Role
 - Orchestrates one or more shaders and render-time knobs (viewport, clear, compute dispatch, per-pass targets).
@@ -9,7 +9,7 @@ Targets
 - `Pass::set_depth_target(target)` attaches an offscreen depth target; its size and sample count must match the color attachment at render time.
 - `ColorTarget::try_from` and `DepthTarget::try_from` refuse a texture with more than one mip level or layer (`check_plane`), since a pass draws into one level of one layer and can't pick it. A resize keeps both counts, so the check holds after one.
 - A pass that draws Models and has no depth target gets a pooled depth attachment from the renderer, matching its color attachment. `set_depth_target` replaces it. Passes without Models draw without depth.
-- There is no explicit `present(pass)` API — the last render pass in the executed DAG presents to the final frame by default.
+- There is no explicit `present(pass)` API. The last render pass in the executed DAG presents to the final frame by default.
 
 Viewport
 - `Pass::set_viewport` refuses a region with a width or height of 0, or one whose max lies before its min (`ScreenRegionError::Reversed`, never swapped back), with `PassError::Viewport`, whatever form it comes in, a region built field by field included. Two pairs, `((x, y), (w, h))` in Rust, `[[x, y], [w, h]]` in JavaScript and Kotlin, `[(x, y), (w, h)]` in Swift and either form in Python, are an origin and a size in every language. A pass with no viewport draws on the whole target.

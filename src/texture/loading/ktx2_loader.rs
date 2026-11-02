@@ -1,15 +1,15 @@
 //! KTX2 container loader.
 //!
 //! Parses a KTX2 byte slice via the `ktx2` crate, validates that the contents
-//! match the subset FragmentColor supports today (single-layer, single-face,
+//! match the subset FragmentColor supports (single-layer, single-face,
 //! 2D, no supercompression), maps the Vulkan format code to a
-//! [`wgpu::TextureFormat`], and uploads each pre-baked mip level directly. We
-//! deliberately skip the CPU `imageops::resize` chain we use for JPEG/PNG
-//! sources — the encoder already picked the format and built the chain.
+//! [`wgpu::TextureFormat`], and uploads each pre-baked mip level directly. It
+//! skips the CPU `imageops::resize` chain that JPEG/PNG sources go through,
+//! since the encoder already picked the format and built the chain.
 //!
 //! Cube maps, array textures, 3D textures, and Basis Universal supercompression
-//! are out of scope for this pass and will fail with a descriptive error so the
-//! caller sees them clearly rather than getting silently-wrong output.
+//! fail with a descriptive error, so the caller sees them clearly rather than
+//! getting silently wrong output.
 
 use ktx2::Format as VkFormat;
 
@@ -39,13 +39,13 @@ pub(crate) fn is_ktx2_file(path: &std::path::Path) -> bool {
 
 /// Map a KTX2 (Vulkan) format code to the equivalent `wgpu::TextureFormat`.
 ///
-/// Returns `None` for formats FragmentColor doesn't decode today; callers turn
+/// Returns `None` for formats FragmentColor doesn't decode; callers turn
 /// that into a [`TextureError`] explaining which format showed up.
 ///
 /// The supported set covers the formats consumers commonly ship:
 /// uncompressed 8-bit / 16-bit RGBA, BC1–7 (desktop), ETC2 (Android),
-/// ASTC 4×4 / 8×8 (mobile + WebGPU). Anything else falls through to `None`
-/// for now — extending the table is a one-line change per format.
+/// ASTC 4×4 / 8×8 (mobile + WebGPU). Anything else maps to `None`.
+/// Each new format is one line in the table.
 pub(crate) fn vk_format_to_wgpu(format: VkFormat) -> Option<wgpu::TextureFormat> {
     use wgpu::{AstcBlock, AstcChannel, TextureFormat};
 
@@ -108,8 +108,8 @@ pub(crate) fn vk_format_to_wgpu(format: VkFormat) -> Option<wgpu::TextureFormat>
 ///
 /// Validation rules (any violation returns `TextureError::CreateTextureError`,
 /// except a missing device feature, which returns `TextureError::UnsupportedFormatForUsage`):
-/// - `format` must be present (no Basis Universal — VK_FORMAT_UNDEFINED — yet).
-/// - `supercompression_scheme` must be `None` (no zstd/zlib/Basis transcoding yet).
+/// - `format` must be present (Basis Universal's `VK_FORMAT_UNDEFINED` unsupported).
+/// - `supercompression_scheme` must be `None` (zstd/zlib/Basis transcoding unsupported).
 /// - `face_count` must be 1 (cube maps unsupported).
 /// - `layer_count` must be 0 or 1 (array textures unsupported).
 /// - `pixel_depth` must be 0 or 1 (3D textures unsupported).
@@ -165,7 +165,7 @@ pub(crate) fn from_ktx2_bytes(
     })?;
     let wgpu_format = vk_format_to_wgpu(vk_format).ok_or_else(|| {
         TextureError::CreateTextureError(format!(
-            "KTX2 format {:?} is not supported yet — extend vk_format_to_wgpu to add it",
+            "KTX2 format {:?} is not supported yet. Extend vk_format_to_wgpu to add it",
             vk_format
         ))
     })?;
@@ -222,7 +222,7 @@ pub(crate) fn from_ktx2_bytes(
 
     let block_bytes = wgpu_format.block_copy_size(None).ok_or_else(|| {
         TextureError::CreateTextureError(format!(
-            "KTX2 format {:?} has no defined block copy size — likely a depth/multi-aspect format that doesn't belong in a source texture",
+            "KTX2 format {:?} has no defined block copy size, likely a depth/multi-aspect format that doesn't belong in a source texture",
             vk_format
         ))
     })?;
@@ -334,8 +334,8 @@ pub(crate) mod test_helpers {
             let kvd_byte_length: u32 = 0;
             let level_data_start = kvd_offset + kvd_byte_length as usize;
 
-            // Pack levels in spec order (level N-1 first on disk, level 0 last) — this
-            // matches what every well-formed KTX2 file we'd actually load looks like.
+            // Pack levels in spec order (level N-1 first on disk, level 0 last), the
+            // layout of every well-formed KTX2 file FragmentColor loads.
             // The reader returns levels in level-0-first order regardless.
             let mut level_offsets = Vec::with_capacity(level_count as usize);
             let mut cursor = level_data_start;
@@ -729,8 +729,8 @@ mod tests {
         });
     }
 
-    // Story: pre-baked mip chain in the file is honored as-is — three levels in,
-    // three levels out, and we never call our CPU resize path.
+    // Story: pre-baked mip chain in the file is honored as-is: three levels in,
+    // three levels out, and the CPU resize path never runs.
     #[test]
     fn honors_prebaked_mip_chain() {
         pollster::block_on(async move {

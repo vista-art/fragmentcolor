@@ -57,7 +57,7 @@ fn parse_slug(url: &str, base: &str) -> Option<String> {
     let trimmed_base = base.trim_end_matches('/');
     let rest = url.strip_prefix(trimmed_base)?.trim_start_matches('/');
     let stem = rest.strip_suffix(".wgsl")?;
-    // A valid slug is `category/name` — exactly one slash, both halves
+    // A valid slug is `category/name`: exactly one slash, both halves
     // ASCII-lowercase (digits / underscore allowed). Anything else (extra
     // path segments, query strings, mixed case, …) means the URL is *not*
     // a registry URL even if it shares the base prefix; fall through to

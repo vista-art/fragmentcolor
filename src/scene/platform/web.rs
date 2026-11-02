@@ -18,7 +18,7 @@ impl Model {
     #[lsp_doc("docs/api/scene/model/new.md")]
     pub fn new_js(mesh: &Mesh, material: &Material) -> Self {
         // Materials and Meshes are wrapped around Arc internally, so cloning
-        // here is an Arc::clone — cheap, share semantics. The JS caller keeps
+        // here is an Arc::clone: cheap, with share semantics. The JS caller keeps
         // their original handle live.
         Model::new(mesh.clone(), material.clone())
     }

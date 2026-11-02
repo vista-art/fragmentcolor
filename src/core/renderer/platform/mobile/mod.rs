@@ -62,7 +62,7 @@ impl Renderer {
     }
 
     /// Single mobile entry point for texture creation. Mirrors the canonical
-    /// Rust `Renderer::create_texture(impl Into<TextureInput>)` — uniffi
+    /// Rust `Renderer::create_texture(impl Into<TextureInput>)`. Uniffi
     /// can't marshal `impl Into`, so the mobile shim takes the input as a
     /// concrete enum + an optional `TextureOptions`. Swift / Kotlin
     /// extension files supply the natural overloads (e.g. `renderer.createTexture(bytes)`,
@@ -83,8 +83,8 @@ impl Renderer {
     }
 
     /// Allocate a storage-class texture, optionally pre-seeded with `data`.
-    /// Mirrors the canonical `Renderer::create_storage_texture(impl Into<TextureInput>)`
-    /// — uniffi can't marshal `impl Into`, so the mobile shim takes the
+    /// Mirrors the canonical `Renderer::create_storage_texture(impl Into<TextureInput>)`.
+    /// Uniffi can't marshal `impl Into`, so the mobile shim takes the
     /// fields directly and the body builds a `TextureInput` from them.
     /// `usage_bits = None` defaults to STORAGE | TEXTURE | COPY_SRC | COPY_DST.
     /// Both trailing arguments default to `None`, so Swift and Kotlin may leave them out.
@@ -113,15 +113,6 @@ impl Renderer {
         Ok(Arc::new(texture))
     }
 
-    /// Single mobile `render` entry. Mirrors the canonical Rust
-    /// `Renderer::render(&impl Renderable, &impl Target)` — uniffi can't
-    /// marshal `&impl Trait`, so the mobile shim takes the concrete enums
-    /// `RenderableHandle` (Shader / Pass / Mesh / Passes) and `TargetHandle`
-    /// (Window / Texture). Swift and Kotlin extension files supply natural
-    /// overloads (`renderer.render(shader, target)`,
-    /// `renderer.render(pass, target)`, etc.) that wrap the concrete value
-    /// into the matching enum variant invisibly, so callers never see the
-    /// mobile-only mirror types.
     #[uniffi::method(name = "load")]
     #[lsp_doc("docs/api/core/renderer/load.md")]
     pub async fn load_mobile(
@@ -141,6 +132,15 @@ impl Renderer {
         Ok(self.read_storage(&shader, &binding).await?)
     }
 
+    /// Single mobile `render` entry. Mirrors the canonical Rust
+    /// `Renderer::render(&impl Renderable, &impl Target)`. Uniffi can't
+    /// marshal `&impl Trait`, so the mobile shim takes the concrete enums
+    /// `RenderableHandle` (Shader / Pass / Mesh / Passes) and `TargetHandle`
+    /// (Window / Texture). Swift and Kotlin extension files supply natural
+    /// overloads (`renderer.render(shader, target)`,
+    /// `renderer.render(pass, target)`, etc.) that wrap the concrete value
+    /// into the matching enum variant invisibly, so callers never see the
+    /// mobile-only mirror types.
     #[uniffi::method(name = "render")]
     #[lsp_doc("docs/api/core/renderer/render.md")]
     pub fn render_mobile(

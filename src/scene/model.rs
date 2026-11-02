@@ -37,7 +37,7 @@ pub struct Model {
     // Arc-shared so the Pass can hold a *live* reference through
     // `Pass::add`; the renderer reads the current values at draw time.
     // Mutating `Model::translate`, `Model::set_visible`, etc., after
-    // `pass.add(&model)` is picked up on the next render — no re-add
+    // `pass.add(&model)` is picked up on the next render, with no re-add
     // needed. One lock covers transform + visibility so the renderer's
     // per-Model walk halves its lock acquisitions.
     pub(crate) state: Arc<RwLock<ModelState>>,
@@ -109,7 +109,7 @@ impl Model {
 
     /// Toggle the Model in or out of the next render. Hidden Models are
     /// skipped by the renderer in both the opaque-batched and
-    /// blend-sorted draw paths — no re-attach needed. Useful for
+    /// blend-sorted draw paths, with no re-attach needed. Useful for
     /// LOD switches, level transitions, or temporarily hiding helpers
     /// without rebuilding the Scene.
     #[lsp_doc("docs/api/scene/model/set_visible.md")]
@@ -260,7 +260,7 @@ mod tests {
     fn clone_shares_transform_live() {
         // Model::clone is a shallow Arc-share; mutating one handle's transform
         // is visible on the clone (and on any Pass that already holds a live
-        // entry — that's how batched instancing picks up updates between
+        // entry, which is how batched instancing picks up updates between
         // `Pass::add` and `Renderer::render`).
         let m1 = Model::new(pbr_triangle_mesh(), pbr_material());
         let m2 = m1.clone();
@@ -326,8 +326,8 @@ mod tests {
 
     #[test]
     fn pass_entry_shares_visibility_flag_with_model() {
-        // The Pass holds an Arc-clone of the Model's visibility flag — same
-        // share semantics as the transform — so toggling on the Model
+        // The Pass holds an Arc-clone of the Model's visibility flag, with the
+        // same share semantics as the transform, so toggling on the Model
         // shows up in the renderer's view of the entry immediately.
         let pass = crate::Pass::new("scene");
         let m = Model::new(pbr_triangle_mesh(), pbr_material());
@@ -347,7 +347,7 @@ mod tests {
         // visibility flag. We can't directly observe the queue (PassDraws
         // is private to the renderer module), but a hidden Model + a
         // visible Model on the same Pass should produce the same image as
-        // just the visible Model alone — and a fully-hidden Pass should
+        // just the visible Model alone, and a fully-hidden Pass should
         // produce the clear-color-only image.
         pollster::block_on(async move {
             let renderer = crate::Renderer::new();
@@ -369,7 +369,7 @@ mod tests {
             // should be the clear color's RGB (default black, [0, 0, 0]);
             // the triangle's purple [0.6, 0.2, 0.8] never lands in the
             // buffer. The alpha component depends on the clear color's
-            // default — we don't constrain it here.
+            // default, so the test doesn't constrain it.
             for px in image.as_chunks::<4>().0 {
                 assert_eq!(
                     [px[0], px[1], px[2]],

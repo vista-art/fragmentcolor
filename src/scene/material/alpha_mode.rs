@@ -1,4 +1,4 @@
-//! Material alpha mode — glTF 2.0 PBR-MR `alphaMode` semantics for the pipeline state.
+//! Material alpha mode: glTF 2.0 PBR-MR `alphaMode` semantics for the pipeline state.
 //!
 //! `AlphaMode` is a pipeline-state flag carried on `Material`. The renderer
 //! bakes it into the `RenderPipelineKey` so different modes for the same
@@ -12,7 +12,7 @@ use wasm_bindgen::prelude::*;
 
 /// How the renderer interprets the alpha channel of a Material's output.
 ///
-/// Mirrors the glTF 2.0 `alphaMode` field — `OPAQUE`, `MASK`, `BLEND` — with
+/// Mirrors the glTF 2.0 `alphaMode` field (`OPAQUE`, `MASK`, `BLEND`) with
 /// the same semantics:
 ///
 /// - `Opaque`: depth-test on, blending off. Alpha bits go to the framebuffer
@@ -24,7 +24,7 @@ use wasm_bindgen::prelude::*;
 /// - `Blend`: depth-test on but depth-write **off**, color target uses
 ///   standard `SrcAlpha / OneMinusSrcAlpha` over-blend. The renderer sorts
 ///   Models with this mode back-to-front by eye-space Z before drawing,
-///   using the Camera attached via `Pass::add(&camera)` — no caller-side
+///   using the Camera attached via `Pass::add(&camera)`, with no caller-side
 ///   sorting required. Sort granularity is per-Model (not per-fragment),
 ///   so self-intersecting translucent meshes can still show artifacts.
 #[cfg_attr(wasm, wasm_bindgen)]

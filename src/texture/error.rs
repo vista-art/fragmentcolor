@@ -32,7 +32,7 @@ pub enum TextureError {
     /// The provided buffer didn't match the declared shape: zero size, byte
     /// count too small for `bpp * width * height`, or similar. Distinct from
     /// [`TextureError::MalformedImageError`] (which means the bytes were
-    /// invalid as an image) — `InvalidInput` means the bytes were a valid
+    /// invalid as an image). `InvalidInput` means the bytes were a valid
     /// blob but didn't match what you said they were.
     #[error("Invalid texture input: {0}")]
     InvalidInput(String),

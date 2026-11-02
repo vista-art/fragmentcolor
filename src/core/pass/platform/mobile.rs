@@ -64,7 +64,7 @@ impl Pass {
             .map_err(|e: PassError| FragmentColorError::Render(e.to_string()))
     }
 
-    /// Unified `Pass.add` — branches on the runtime mobile handle. Adding
+    /// Unified `Pass.add`, which branches on the runtime mobile handle. Adding
     /// a new `SceneObject` Rust-side means adding one extra variant to
     /// [`SceneObjectHandle`](crate::SceneObjectHandle) and one arm here.
     /// Returns the pass, as Rust's `add` does, so calls chain.

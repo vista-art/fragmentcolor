@@ -29,11 +29,11 @@ pub(super) struct BlendDraw {
     /// lookups (keyed by the underlying pointer) stay valid.
     pub(super) mesh: Arc<MeshObject>,
     /// World matrix snapshot taken at queue-build time. Same value used to
-    /// compute `eye_z` — keeping them in sync per draw is what makes the
+    /// compute `eye_z`. Keeping them in sync per draw is what makes the
     /// "live transform" semantics work correctly across the blend phase.
     transform: glam::Mat4,
     /// Eye-space Z of the model origin: `(view * transform * vec4(0,0,0,1)).z`.
-    /// Sort comparator field — smaller is farther from the camera (the
+    /// Sort comparator field. Smaller is farther from the camera (the
     /// camera looks down -Z in right-handed view space), so we sort
     /// ascending and draw farthest-first.
     eye_z: f32,
@@ -276,7 +276,7 @@ impl RenderContext {
     /// Per-Model draw buffers gathered from a Pass, split by alpha mode.
     ///
     /// Opaque/Mask entries collapse to one batched instance buffer per
-    /// `(shader_ptr, mesh_ptr)` pair — the auto-instancing path. The
+    /// `(shader_ptr, mesh_ptr)` pair, the auto-instancing path. The
     /// renderer binds the buffer at vertex_buffer(1) and issues a single
     /// `draw_indexed(.., 0..count)`, which is the cheapest path for
     /// crowds of shared-material geometry.
@@ -288,8 +288,8 @@ impl RenderContext {
     /// The renderer sorts these by `eye_z` (descending = far→near)
     /// inside the blend phase. If the pass has no camera attached (no
     /// `pass.add(&camera)` call), `eye_z` defaults to 0.0 and the
-    /// resulting order is insertion-order — correct for a single
-    /// translucent object, best-effort for multiple.
+    /// resulting order is insertion order. That is correct for a single
+    /// translucent object and best-effort for multiple.
     fn build_pass_draws(&self, pass: &PassObject) -> Result<PassDraws, RendererError> {
         let entries = pass.model_entries.read();
         let mut out = PassDraws::default();
@@ -306,13 +306,12 @@ impl RenderContext {
             .as_ref()
             .map(|snap| glam::Mat4::from_cols_array_2d(&snap.view));
 
-        // Opaque grouping in stable insertion order: a glTF scene that
-        // depends on `pass.add(...)` ordering for layering (e.g. additive
-        // glow stacked behind a base mesh) was previously seeing random
-        // frame-to-frame ordering because `HashMap` iteration is
-        // non-deterministic. The linear-scan over a `Vec` is fine for
-        // typical pass sizes — most passes have a single-digit number of
-        // `(shader, mesh)` groups. The Vec lives on `self.scratch` so the
+        // Opaque grouping in stable insertion order, since a glTF scene
+        // can depend on `pass.add(...)` ordering for layering (e.g. additive
+        // glow stacked behind a base mesh) and `HashMap` iteration order
+        // changes from frame to frame. The linear scan over a `Vec` is fine
+        // for typical pass sizes, where most passes have a single-digit
+        // number of `(shader, mesh)` groups. The Vec lives on `self.scratch` so the
         // allocation amortizes across frames.
         let mut scratch = self.scratch.write();
         let opaque_groups = &mut scratch.opaque_groups;
@@ -406,7 +405,7 @@ impl RenderContext {
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
 
-        // Materialize one tiny instance buffer per blend draw — 64 bytes
+        // Materialize one tiny instance buffer per blend draw, 64 bytes
         // each. The per-draw payload is the column-major model matrix
         // already in `transform`, copied via a single bytemuck slice.
         for draw in out.blend_draws.iter_mut() {

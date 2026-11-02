@@ -1,4 +1,4 @@
-//! Camera — projection + view + cached eye position.
+//! Camera: projection + view + cached eye position.
 //!
 //! Wraps the `proj` + `view` matrix pair every 3D render needs into one
 //! object, plus the world-space eye position for shaders that consume it
@@ -67,7 +67,7 @@ pub enum CameraError {
 pub(crate) struct CameraObject {
     state: RwLock<CameraState>,
     /// Shaders that have absorbed this Camera. Held weakly so a dropped
-    /// shader doesn't keep the Camera-side handle alive — and so a Camera
+    /// shader doesn't keep the Camera-side handle alive, and a Camera
     /// passed to many Materials doesn't grow unbounded.
     attached: RwLock<Vec<Weak<ShaderObject>>>,
     /// Passes that have absorbed this Camera. Each entry's
@@ -80,11 +80,11 @@ pub(crate) struct CameraObject {
 
 /// Tag + rebuild parameters for the Camera's projection. `set_aspect`
 /// reads these to recompute the projection matrix in place when the
-/// caller hands a new aspect ratio — for `Perspective` it rebuilds from
+/// caller hands a new aspect ratio. For `Perspective` it rebuilds from
 /// `fovy_radians / near / far`; for `Orthographic` it keeps the current
 /// vertical extent and rescales the horizontal so `(right - left) /
 /// (top - bottom)` matches the new aspect, centered on the existing
-/// horizontal midpoint. Internal-only — the public surface uses
+/// horizontal midpoint. Internal only: the public surface uses
 /// `[[f32; 4]; 4]`.
 #[derive(Debug, Clone, Copy)]
 enum Projection {
@@ -882,7 +882,7 @@ struct Camera { view_proj: mat4x4<f16>, position: vec3<f16> };
 
     #[test]
     fn pass_add_before_model_still_reaches_the_new_shader() {
-        // Camera added before any models — the pass remembers it and applies
+        // Camera added before any models. The pass remembers it and applies
         // to each shader as `add_model` brings them in.
         let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0)
             .expect("camera")
@@ -904,7 +904,7 @@ struct Camera { view_proj: mat4x4<f16>, position: vec3<f16> };
     #[test]
     fn pass_add_stamps_camera_snapshot() {
         // The renderer reads `pass.camera_snapshot` directly when sorting
-        // translucent draws — going through `Shader::get("camera.position")`
+        // translucent draws. Going through `Shader::get("camera.position")`
         // would only work for shaders that happen to expose those uniforms
         // under canonical names. Camera::attach pins the snapshot on the
         // pass and Camera::look_at updates it.
@@ -977,7 +977,7 @@ struct Camera { view_proj: mat4x4<f16>, position: vec3<f16> };
             "expected [0][0] ≈ 0.5 for width-4 ortho, got {}",
             after[0][0]
         );
-        // The [1][1] term (vertical scale) stays at 1.0 — height unchanged.
+        // The [1][1] term (vertical scale) stays at 1.0, so the height is unchanged.
         assert!(
             (after[1][1] - 1.0).abs() < 1.0e-5,
             "vertical scale should be unchanged, got {}",

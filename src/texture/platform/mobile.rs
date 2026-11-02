@@ -97,7 +97,7 @@ impl Texture {
     }
 
     /// Return the texture size (w × h[× d]). Mirrors the canonical
-    /// `Texture::size()` — see [`crate::Size`].
+    /// `Texture::size()`. See [`crate::Size`].
     #[uniffi::method(name = "size")]
     #[lsp_doc("docs/api/texture/texture/size.md")]
     pub fn size_mobile(&self) -> Size {
@@ -164,7 +164,7 @@ impl Mipmap {
     /// Build a chain from raw bytes + format (+ optional size). If
     /// `size` is `None`, `bytes` is decoded as an image (PNG / JPEG / etc.);
     /// if `Some(size)`, `bytes` is treated as raw pixel data already laid
-    /// out for `format` at `size`. Pure CPU work — call from a Swift `Task`
+    /// out for `format` at `size`. Pure CPU work. Call it from a Swift `Task`
     /// or Kotlin coroutine on a background dispatcher, then hand the chain
     /// to `renderer.createTexture(chain:)` for the GPU upload.
     ///
