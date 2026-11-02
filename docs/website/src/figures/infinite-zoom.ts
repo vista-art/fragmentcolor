@@ -444,3 +444,18 @@ export const passes = {
     .concat(Array.from({ length: 3 }, (_, i) => `M288,${70 + (i + 1) * 27.5}h150`))
     .join(""),
 };
+
+// Step 5's zoom around the pointer, one doubling in: the pointer sits `at` pixels from the
+// center, and the center moves at * (1 - 2^(state.zoom - zoom)) toward it, as in explore.
+const AROUND = { center: [250, 165] as Point, size: [440, 260] as Point, at: [150, -70] as Point, doublings: 1 };
+const stay = 1 - 2 ** -AROUND.doublings;
+const aroundNext: Point = [AROUND.center[0] + AROUND.at[0] * stay, AROUND.center[1] + AROUND.at[1] * stay];
+const shrunk: Point = [AROUND.size[0] * 2 ** -AROUND.doublings, AROUND.size[1] * 2 ** -AROUND.doublings];
+
+export const around = {
+  before: { at: [AROUND.center[0] - AROUND.size[0] / 2, AROUND.center[1] - AROUND.size[1] / 2] as Point, size: AROUND.size },
+  after: { at: [aroundNext[0] - shrunk[0] / 2, aroundNext[1] - shrunk[1] / 2] as Point, size: shrunk },
+  center: AROUND.center,
+  next: aroundNext,
+  pointer: [AROUND.center[0] + AROUND.at[0], AROUND.center[1] + AROUND.at[1]] as Point,
+};

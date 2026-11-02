@@ -12,7 +12,7 @@ import Demo from "../../../components/Demo.astro";
 import Math from "../../../components/Math.astro";
 import Figure from "../../../components/Figure.astro";
 import { Arrow, Dot, Label, Line, Path, Rect, Ring } from "../../../components/figure";
-import { blocks, captures, ladder, orbits, palette, passes, perturbation, pixels, printout, series } from "../../../figures/infinite-zoom";
+import { around, blocks, captures, ladder, orbits, palette, passes, perturbation, pixels, printout, series } from "../../../figures/infinite-zoom";
 
 Have you ever wondered what imaginary numbers look like?
 
@@ -68,7 +68,7 @@ A complex number is a point in the plane: <Math tex="x + yi" /> is the point <Ma
 
 Coloring each point of the plane by how many steps its orbit takes to escape draws a coastline of bulbs, spirals and filaments, with small, slightly distorted copies of the whole set at every magnification.
 
-This tutorial builds a viewer for it in four steps. A single picture on the CPU comes first. Next, the same computation moves to the GPU, where rounding breaks the picture near `1e-6`. K. I. Martin's perturbation method then gets to `1e-35`, and a final step reaches `1e-1000` in real time. Those numbers measure the height of the view: at `1e-1000`, the canvas shows a strip of the plane <Math tex="10^{-1000}" /> units tall. Each step is a complete program in [`docs/tutorials/infinite-zoom`](https://github.com/vista-art/fragmentcolor/tree/main/docs/tutorials/infinite-zoom).
+This tutorial builds a viewer for it in five steps. A single picture on the CPU comes first. Next, the same computation moves to the GPU, where rounding breaks the picture near `1e-6`. K. I. Martin's perturbation method then gets to `1e-35`, a fourth step reaches `1e-1000` in real time, and the last one lets you zoom and pan anywhere down to that depth. Those numbers measure the height of the view: at `1e-1000`, the canvas shows a strip of the plane <Math tex="10^{-1000}" /> units tall. Each step is a complete program in [`docs/tutorials/infinite-zoom`](https://github.com/vista-art/fragmentcolor/tree/main/docs/tutorials/infinite-zoom).
 
 ## Step 1: one image on the CPU
 
@@ -397,6 +397,120 @@ At `1e-1000`, the spiral looks like the one at `1e-10`. That likeness is the rea
 </Figure>
 
 How close are these pictures to the truth? A slow `BigInt` computation of the same pixels matches the shader's counts to within a hundredth of an iteration at `1e-6`, `1e-45`, `1e-331` and `1e-999`. The only disagreements come from pixels whose count changes, sometimes by hundreds, when they move by a thousandth of a pixel; there, two different precisions rarely agree. Speed doesn't fade with depth either. A frame's cost follows the 130 or so steps each pixel runs after the skip, and a view at `1e-999` draws about as fast as one at `1e-3`.
+
+## Making it interactive
+
+So far the program picks the depth, and the pointer only sets the speed of the dive. Step 5 hands the view to you.
+
+A pinch zooms around the point between your fingers, and a drag moves the picture. With a mouse, hold ctrl or cmd and turn the wheel. On this page the plain wheel and a single finger still move the page, and a touch screen pans with two fingers. The Rust and Python programs zoom on the plain wheel too, since a window has nothing else to scroll.
+
+Whatever calls `frame`, this page or a native window, gathers those gestures between frames and passes them in after `pointer`, as `gesture` (Rust's `Zoom::frame` reads them from its own `Input`). `gesture.zoom` is in doublings, positive inward, and `gesture.pan` in canvas pixels, with `y` pointing down. Until the first gesture the view dives in and back out on its own at `SPEED`, and the pointer no longer steers it. The reference orbit also no longer arrives complete in `setup`. `grow` extends it for about `WORK` milliseconds of each frame, and `dive` never goes deeper than the orbit computed so far covers:
+
+<Snippet file="infinite-zoom/05-interactive/example.rs" region="dive" />
+
+`covers` asks whether a reference can serve a view: either its orbit is complete, or it runs past the series skip by `view.budget` plus 200 spare iterations. The first gesture sets `exploring`, and from then on `frame` calls `explore` instead of `dive`.
+
+In step 4 the view always sat on the target, whose orbit was the reference. Once you drag, or zoom around any point but the center, the view's center wanders off. It needs as many digits as the reference and becomes a pair of `BigInt` values with its own `bits` of precision. The shader learns how far the center sits from the reference, in pixels. That offset, `view.center`, is the only new uniform. It changes one line of the compute shader:
+
+```wgsl
+let d = ((vec2<f32>(id.xy) + 0.5 - half) * vec2<f32>(1.0, -1.0) + view.center) * view.fraction;
+```
+
+<Figure height={300} alt="A reference point c on the left, and a view rectangle to its right whose center is marked. An arrow labeled view.center runs from c to the view's center. A second arrow runs from the center to one pixel inside the view, labeled pixel." caption="Every pixel's offset from the reference is the view's offset, `view.center`, plus the pixel's own place in the view.">
+  <Rect at={[300, 50]} size={[320, 200]} tone="muted" />
+  <Label at={[612, 70]} anchor="end" tone="muted" small>view</Label>
+  <Dot at={[120, 205]} />
+  <Label at={[120, 230]} code>c</Label>
+  <Label at={[120, 255]} tone="muted" small>reference</Label>
+  <Dot at={[460, 150]} tone="accent" />
+  <Arrow from={[126, 202]} to={[454, 153]} label="view.center" code tone="accent" offset={[0, -6]} />
+  <Dot at={[560, 92]} tone="mark" />
+  <Arrow from={[464, 147]} to={[555, 95]} tone="mark" dashed />
+  <Label at={[572, 88]} anchor="start" tone="mark" small>pixel</Label>
+</Figure>
+
+### Zoom
+
+A zoom around the pointer keeps the point beneath it fixed on the screen. If `at` is the pointer's offset from the center, in pixels, a zoom from `state.zoom` to `zoom` doublings moves the center toward it by
+
+<Math block tex="\mathit{at} \cdot \mathit{stay}, \qquad \mathit{stay} = 1 - 2^{\,\mathit{state.zoom} - \mathit{zoom}}" />
+
+pixels at the old scale. One doubling in moves the center halfway to the pointer, and the view around it shrinks to half its width and height.
+
+<Figure height={330} alt="A large view rectangle with its center and the pointer marked, and a dashed rectangle half as wide and half as tall inside it. The pointer sits at the same relative place in both rectangles. An arrow carries the center halfway toward the pointer. On the right, a copy of the smaller rectangle, labeled the screen after, stands for the canvas after the zoom, with the pointer at the same place in it." caption="One doubling in. The dashed rectangle is the next screen: its center sits halfway to the pointer, and the pointer keeps its place in it.">
+  <Rect at={around.before.at} size={around.before.size} tone="muted" />
+  <Rect at={around.after.at} size={around.after.size} tone="accent" dashed />
+  <Line from={around.center} to={around.pointer} tone="muted" dashed />
+  <Arrow from={around.center} to={around.next} tone="accent" />
+  <Dot at={around.center} />
+  <Label at={[around.center[0] - 10, around.center[1] + 20]} anchor="end" small>center</Label>
+  <Dot at={around.next} tone="accent" />
+  <Dot at={around.pointer} tone="mark" />
+  <Label at={[around.pointer[0] + 12, around.pointer[1] - 14]} anchor="start" tone="mark" small>pointer</Label>
+  <Rect at={[490, around.after.at[1]]} size={around.after.size} tone="accent" />
+  <Dot at={[490 + around.pointer[0] - around.after.at[0], around.pointer[1]]} tone="mark" />
+  <Label at={[600, around.after.at[1] + around.after.size[1] + 22]} tone="muted" small>the screen after</Label>
+</Figure>
+
+<Snippet file="infinite-zoom/05-interactive/example.rs" region="zoom" />
+
+Two more rules guard the zoom. Whenever a pixel at the new zoom comes within 64 bits of the center's precision, the center gains 128 bits, which keeps its digits deeper than the pixels. A zoom in also waits while the reference can't serve the deeper view. `drift` is where the center will land, measured from the reference in pixels of the new scale. When the reference lacks the digits or sits more than two view heights from that point, `far` holds the zoom and asks for a new reference with the deeper digits; when its orbit is only too short, the zoom waits for it to grow. Zooming out never waits.
+
+### Pan
+
+A drag moves the picture under your hand. The center moves the other way, by the drag's length, converted from pixels to the center's **fixed point** form: as with the reference in step 3, each `BigInt` `n` stands for <Math tex="n / 2^{\mathit{bits}}" />.
+
+<Snippet file="infinite-zoom/05-interactive/example.rs" regions={["pan", "view"]} labels={["Drag", "Fixed point"]} />
+
+At this zoom a pixel is <Math tex="2^{\mathit{pixel}}" /> units wide. Turning pixels into the center's form means multiplying by <Math tex="2^{\mathit{pixel} + \mathit{bits}}" />, and with thousands of `bits` that factor passes the largest `f64`. `point_at` (`pointAt` in JavaScript) multiplies by about <Math tex="2^{40}" /> instead, rounds to an integer, and shifts the remaining bits in as zeros, which keeps each step within about a trillionth of a pixel. `offset` goes the other way: it aligns the center and a reference to the same precision, subtracts them, and turns the difference into pixels.
+
+### A reference that follows the view
+
+Perturbation works best near the reference. The series has to reach every pixel. A view far from the reference skips fewer iterations, and each of its pixels iterates longer. When the view drifts more than a quarter of its height from the reference, or comes within 120 bits of the reference's precision, the program starts a new reference where the view is heading. That is the point under the pointer during a zoom in, and the view's center otherwise.
+
+Building a reference near `1e-1000` takes tens of thousands of iterations on numbers a thousand digits long, far too many for one frame. `grow` builds it in the same slices, and the old reference keeps drawing until the new one covers the view:
+
+<Figure height={300} alt="Three panels. In the first, the view sits on reference c0, whose orbit bar is full. In the second, the view has moved right, away from c0; a new reference c1 starts at the view's center, with a short orbit bar, while c0 still draws. In the third, c1's bar reaches the mark it needs, c1 serves the view, and c0 is gray." caption="A drag carries the view away from its reference. A new one grows a little each frame where the view went, and takes over once its orbit covers the view.">
+  <Rect at={[12, 12]} size={[220, 276]} tone="muted" />
+  <Label at={[26, 36]} anchor="start" tone="muted" small>1. on the reference</Label>
+  <Rect at={[52, 70]} size={[140, 90]} tone="accent" />
+  <Dot at={[122, 115]} />
+  <Label at={[122, 140]} code small>c0</Label>
+  <Rect at={[40, 210]} size={[164, 14]} tone="ink" fill />
+  <Label at={[40, 244]} anchor="start" tone="muted" small>orbit of c0</Label>
+  <Rect at={[250, 12]} size={[220, 276]} tone="muted" />
+  <Label at={[264, 36]} anchor="start" tone="muted" small>2. the view moves on</Label>
+  <Dot at={[300, 115]} />
+  <Label at={[300, 140]} code small>c0</Label>
+  <Rect at={[332, 70]} size={[120, 90]} tone="accent" />
+  <Dot at={[392, 115]} tone="mark" />
+  <Label at={[392, 140]} code small tone="mark">c1</Label>
+  <Rect at={[278, 210]} size={[164, 14]} tone="mark" />
+  <Rect at={[278, 210]} size={[44, 14]} tone="mark" fill />
+  <Line from={[376, 204]} to={[376, 230]} tone="muted" />
+  <Label at={[278, 244]} anchor="start" tone="muted" small>orbit of c1, growing</Label>
+  <Rect at={[488, 12]} size={[220, 276]} tone="muted" />
+  <Label at={[502, 36]} anchor="start" tone="muted" small>3. c1 takes over</Label>
+  <Dot at={[536, 115]} tone="muted" />
+  <Label at={[536, 140]} code small tone="muted">c0</Label>
+  <Rect at={[568, 70]} size={[120, 90]} tone="accent" />
+  <Dot at={[628, 115]} />
+  <Label at={[628, 140]} code small>c1</Label>
+  <Rect at={[516, 210]} size={[164, 14]} tone="ink" />
+  <Rect at={[516, 210]} size={[112, 14]} tone="ink" fill />
+  <Line from={[614, 204]} to={[614, 230]} tone="muted" />
+  <Label at={[516, 244]} anchor="start" tone="muted" small>covers the view</Label>
+</Figure>
+
+<Snippet file="infinite-zoom/05-interactive/example.rs" region="follow" />
+
+A new reference can start in one of the set's black regions, and its orbit never escapes. Its derivative <Math tex="A_n" /> stops growing too, and without a way to tell, a reference there would run all `ORBIT` iterations before it could cover anything. Such an orbit settles on a cycle. `grow` borrows Brent's method to notice: it saves the orbit's point at iterations 1, 2, 4, 8 and so on, and marks the orbit done once a later point repeats the saved one and `A` keeps its size:
+
+<Snippet file="infinite-zoom/05-interactive/example.rs" region="grow" />
+
+When the view, the orbit's length and `view.budget` all match the last frame, the counts still hold. `frame` then runs only the render pass. Here is the whole program, the one the playground runs. Pinch to zoom, and drag to look around, with two fingers on a touch screen:
+
+<Demo file="infinite-zoom/05-interactive/example.rs" gestures />
 
 ## Where to go next
 

@@ -61,7 +61,9 @@ other three leave out.
 - **90. Infinite Mandelbrot zoom.** Written as `tutorials/infinite-zoom`, ending at the Mandelbrot
   demo: one CPU image, the loop in a fragment shader until `f32` rounding breaks it,
   K. I. Martin's perturbation with a `BigInt` reference orbit and rebasing, then
-  rescaled iterations, Martin's series and a compute pass down to `1e-1000`.
+  rescaled iterations, Martin's series and a compute pass down to `1e-1000`, and last
+  the playground's program: a pinch zooms around the pointer, a drag pans, and new
+  reference orbits grow where the view goes.
 
 ### Part 5: light and space
 

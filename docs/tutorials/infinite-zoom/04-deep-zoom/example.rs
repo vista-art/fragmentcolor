@@ -300,12 +300,12 @@ impl Zoom {
         let header = format!("const ORBIT: u32 = {ORBIT}u;\nconst PIXELS: u32 = {PIXELS}u;");
 
         let iterate = Shader::new([header.as_str(), ITERATE])?;
-        iterate.set("view.budget", 1000_u32)?;
+        iterate.set("view.budget", 183_u32)?;
 
         // `gradient/palette_iq` from the shader library supplies the palette that `PRESENT` calls.
         let present = Shader::new(["gradient/palette_iq", header.as_str(), LABEL, PRESENT])?;
-        present.set("look.density", 0.02_f32)?;
-        present.set("look.phase", 0.6_f32)?;
+        present.set("look.density", 0.023_f32)?;
+        present.set("look.phase", 0.332_f32)?;
         present.set("look.inside_color", [0.02_f32, 0.02, 0.05])?;
 
         // Compute the reference orbit once and send it to the GPU.
