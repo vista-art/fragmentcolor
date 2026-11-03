@@ -75,7 +75,7 @@ Items found while reviewing 0.12.6.
 - [ ] Extend the Apple split from `compute → compute` to `compute (storage write) → render (sampled read)` in one command buffer
 - [x] Render pipelines take the first `@vertex` and `@fragment` entry points, as vertex input reflection and compute do (0.12.6)
 - [x] `pass.set_viewport` takes effect: the pass draws inside the region, clipped to its target (0.12.6)
-- [ ] FC resolves override defaults with naga's `process_overrides` before the module reaches wgpu. Today naga's WGSL writer prints the placeholder 1 for a `@workgroup_size` that names an override, so the browser runs one thread per workgroup where native runs the default
+- [x] FC resolves override defaults with naga's `process_overrides` before the module reaches wgpu, where naga's WGSL writer printed the placeholder 1 for a `@workgroup_size` that names an override, so the browser ran one thread per workgroup where native ran the default (0.12.7)
 - [x] A mesh recounts its instances on every upload, so a mesh whose instance list shrinks stops drawing stale trailing instances (0.12.6)
 - [x] Python raises `FragmentColorError` for renderer and texture errors, as it does for shader errors (0.12.6)
 - [x] `create_target` returns `InitializationError::Error` when the surface reports no formats for the adapter, such as a second canvas on WebGL2 (0.12.6). The case gets its own `InitializationError` variant in 0.13.0, once the error enums are `#[non_exhaustive]`

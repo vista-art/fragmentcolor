@@ -739,6 +739,87 @@ fn browser_pipelines_ask_for_written_entry_names() {
     );
 }
 
+/// A compute shader whose workgroup size two overrides give, 8 by 4 at their defaults.
+const OVERRIDE_SIZES: &str = "
+override width: u32 = 8;
+override height: u32 = width / 2;
+@group(0) @binding(0) var<storage, read_write> lanes: array<u32, 32>;
+@compute @workgroup_size(width, height)
+fn cs_main(@builtin(local_invocation_index) index: u32) { lanes[index] = index + 1u; }
+";
+
+/// The WGSL the browser reads for `source`: the text as given,
+/// or what naga's writer prints for a module, as wgpu does there.
+fn written_text(source: &wgpu::ShaderSource<'_>) -> String {
+    match source {
+        wgpu::ShaderSource::Wgsl(text) => text.to_string(),
+        wgpu::ShaderSource::Naga(module) => {
+            let info = crate::core::validate_module(module, None).expect("valid module");
+            let flags = naga::back::wgsl::WriterFlags::empty();
+            naga::back::wgsl::write_string(module, &info, flags).expect("written WGSL")
+        }
+        _ => panic!("a pipeline source is WGSL or a naga module"),
+    }
+}
+
+/// The workgroup size of the compute entry point in `source`, as the browser reads it.
+fn written_size(source: &wgpu::ShaderSource<'_>) -> String {
+    let text = written_text(source);
+    let start = text.find("@workgroup_size(").expect("a workgroup size");
+    let end = start + text[start..].find(')').expect("a closing parenthesis");
+    text[start..=end].to_string()
+}
+
+// Story: every pipeline source carries the workgroup size the overrides' defaults give,
+// so the browser runs 8 by 4 threads where naga's writer printed a size of 1 for an override.
+// A module whose buffer layout the browser gets as WGSL text keeps the size there too.
+#[test]
+fn override_workgroup_sizes_reach_every_source() {
+    let plain = Shader::new(OVERRIDE_SIZES).expect("shader");
+    let laid_out = Shader::new(
+        "
+override width: u32 = 8;
+override height: u32 = width / 2;
+struct Lanes { first: u32, @align(16) rest: array<u32, 32> };
+@group(0) @binding(0) var<storage, read_write> lanes: Lanes;
+@compute @workgroup_size(width, height)
+fn cs_main(@builtin(local_invocation_index) index: u32) { lanes.rest[index] = index + 1u; }
+",
+    )
+    .expect("shader");
+
+    let native = pick_source(plain.object.module.clone(), false).expect("native source");
+    let web = pick_source(plain.object.module.clone(), true).expect("web source");
+    let layout = pick_source(laid_out.object.module.clone(), true).expect("web layout source");
+
+    let wgpu::ShaderSource::Naga(module) = &native.source else {
+        panic!("a native pipeline takes a naga module");
+    };
+    let entry = &module.entry_points[0];
+    assert_eq!(entry.workgroup_size, [8, 4, 1]);
+    assert!(entry.workgroup_size_overrides.is_none());
+    assert_eq!(written_size(&web.source), "@workgroup_size(8, 4, 1)");
+    assert!(matches!(layout.source, wgpu::ShaderSource::Wgsl(_)));
+    assert_eq!(written_size(&layout.source), "@workgroup_size(8, 4, 1)");
+}
+
+// Story: an override whose default reads another override reaches the browser resolved,
+// in a render shader too, so naga's WGSL writer, which panicked on such a default, writes it.
+#[test]
+fn derived_overrides_write_for_the_browser() {
+    let shader = fullscreen(
+        "override red: f32 = 0.25;
+override doubled: f32 = red * 2.0;
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(doubled, 0.0, 0.0, 1.0); }",
+    )
+    .expect("shader");
+
+    let web = pick_source(shader.object.module.clone(), true).expect("web source");
+
+    let text = written_text(&web.source);
+    assert!(text.contains("const doubled: f32 = 0.5f;"), "{text}");
+}
+
 // Story: a module naga's writer can't write for the browser is refused in one sentence,
 // with naga's reason in parentheses.
 #[test]

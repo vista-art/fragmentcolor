@@ -327,8 +327,9 @@ impl RenderContext {
 
     /// Refuses a shader module this device can't compile.
     /// GL layouts and measured light roots read the shader's own module,
-    /// before padding renames a struct. The validator and browser layouts read the module
-    /// the pipeline compiles, returned with its overrides at their defaults and its validation.
+    /// before padding renames a struct. The validator reads the module the pipeline compiles,
+    /// and the browser layouts read it with its overrides at their defaults, as `pick_source`
+    /// writes it. It comes back in that form, with its validation.
     fn check_module(
         &self,
         shader: &ShaderObject,
@@ -353,16 +354,19 @@ impl RenderContext {
             Ok(info) => info,
             Err(error) => return Ok(Err(self.refuse_invalid(&module, &error))),
         };
+        let constants = naga::back::PipelineConstants::default();
+        let (module, info) = match naga::back::pipeline_constants::process_overrides(
+            &module, &info, None, &constants,
+        ) {
+            Ok((resolved, info)) => (resolved.into_owned(), info.into_owned()),
+            Err(error) => return Ok(Err(refuse_module(&error))),
+        };
         if self.writes_wgsl.load(Ordering::Relaxed)
             && let Err(loss) = write_layouts(&module, &info)
         {
             return Ok(Err(refuse_layout(loss)));
         }
-        let constants = naga::back::PipelineConstants::default();
-        match naga::back::pipeline_constants::process_overrides(&module, &info, None, &constants) {
-            Ok((resolved, info)) => Ok(Ok((resolved.into_owned(), info.into_owned()))),
-            Err(error) => Ok(Err(refuse_module(&error))),
-        }
+        Ok(Ok((module, info)))
     }
 
     /// The refusal of `module`, which the device's validator refused with `error`:
