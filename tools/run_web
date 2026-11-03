@@ -10,6 +10,8 @@ set -euo pipefail
 #   REPL_PORT=5190 bash run_web repl   # custom Vite dev server port
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=shell/process.sh
+. "$ROOT_DIR/tools/shell/process.sh"
 PAGE="${1:-gallery}"
 
 # Utilities
@@ -63,7 +65,7 @@ if [ "$PAGE" = "gallery" ]; then
   SERVER_PID=$!
   cleanup() {
     if ps -p "$SERVER_PID" >/dev/null 2>&1; then
-      kill "$SERVER_PID" || true
+      stop_tree "$SERVER_PID"
     fi
   }
   trap cleanup EXIT
@@ -119,7 +121,7 @@ pnpm --dir "$REPL_DIR" dev -- --port "$REPL_PORT" --strictPort &
 SERVER_PID=$!
 cleanup() {
   if ps -p "$SERVER_PID" >/dev/null 2>&1; then
-    kill "$SERVER_PID" || true
+    stop_tree "$SERVER_PID"
   fi
 }
 trap cleanup EXIT
