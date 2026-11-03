@@ -805,6 +805,8 @@ def check_scalars_and_pairs():
         material.metallic(1e39)
     except InvalidInputError as e:
         assert str(e) == "Material.metallic: value must be a finite number that fits a 32-bit float, got 1e39", e
+    else:
+        raise AssertionError("Material.metallic(1e39) should raise InvalidInputError")
     assert material.shader().get("material.metallic") == 0.25
 
     assert ScreenRegion([1, 2], [32, 16]) == ScreenRegion((1, 2), (32, 16))
@@ -1342,6 +1344,9 @@ def check_vertex_values(renderer):
     instance_shader = Shader(INTEGER_ATTRIBUTES_SHADER)
     instance_shader.add_mesh(instanced)
     assert_green("instance numbers", instance_shader)
+
+    # Shader.from_vertex takes its vertex by keyword too, under the stub's name.
+    assert isinstance(Shader.from_vertex(vertex=Vertex([0.0, 0.0])), Shader)
 
     def rejects(label, mesh, needle):
         try:
