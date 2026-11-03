@@ -86,6 +86,15 @@ camera, whether or not its values break a glTF rule. That covers a `yfov`
 that isn't between 0 and π, a `znear` of 0 and a camera node scaled to
 zero. Load with `cameras(false)` to skip the file's cameras.
 
+A light that the `Light` constructors and setters refuse returns
+`SceneLoadError::Invalid`, which names the light and its node, whether or
+not its values break a glTF rule: an intensity, color or cone angle that
+reads as an infinity in an `f32`, such as `1e39`, or a light whose node is
+scaled to zero and so has no direction. Load with `lights(false)` to skip
+the file's lights. A mesh node whose transform reads as an infinity, such
+as a translation of `1e39`, returns the same error and names the node,
+since `Model::set_transform` refuses it.
+
 A perspective camera without `zfar` asks for an infinite projection, and
 the loader builds one, so nothing in front of the camera clips however far
 away.

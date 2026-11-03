@@ -26,7 +26,7 @@ mesh.add_vertices([
 let scene = Scene::new();
 scene.add(&Model::new(mesh, Material::pbr()))?;
 
-let key = Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]);
+let key = Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])?;
 scene.set_default_light(&key);
 # Ok(())
 # }

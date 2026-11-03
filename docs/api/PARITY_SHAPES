@@ -23,8 +23,8 @@ docs/api/core/shader/set_registry.md swift Shader.useRegistry: (text) -> self | 
 docs/api/geometry/mesh/add_vertex.md python Mesh.add_vertex: (PyIntoVertex) -> unit throws | rust (into Vertex) -> unit
 docs/api/geometry/mesh/add_vertices.md python Mesh.add_vertices: (list(PyIntoVertex)) -> unit throws | rust (list(into Vertex)) -> unit
 docs/api/geometry/mesh/from_vertices.md python Mesh.from_vertices: (list(PyIntoVertex)) -> self throws | rust (list(into Vertex)) -> self
-docs/api/scene/model/set_transform.md kotlin Model.setTransform: (floats) -> unit throws | rust (matrix) -> unit
-docs/api/scene/model/set_transform.md swift Model.setTransform: (floats) -> unit throws | rust (matrix) -> unit
+docs/api/scene/model/set_transform.md kotlin Model.setTransform: (floats) -> unit throws | rust (matrix) -> unit throws
+docs/api/scene/model/set_transform.md swift Model.setTransform: (floats) -> unit throws | rust (matrix) -> unit throws
 docs/api/texture/mipmap/build.md kotlin Mipmap.build: (bytes, TextureFormat, Size?) -> self throws | rust (into TextureInput) -> self throws
 docs/api/texture/mipmap/build.md python Mipmap.build: (PyTextureBytes, TextureFormat, PySize?) -> self throws | rust (into TextureInput) -> self throws
 docs/api/texture/mipmap/build.md swift Mipmap.build: (bytes, TextureFormat, Size?) -> self throws | rust (into TextureInput) -> self throws

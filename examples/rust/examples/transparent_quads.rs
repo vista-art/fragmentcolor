@@ -56,19 +56,19 @@ fn main() {
             .alpha_mode(AlphaMode::Blend);
 
         let red = Model::new(quad(), red_glass);
-        red.translate([0.0, 0.0, -1.0]);
+        red.translate([0.0, 0.0, -1.0]).expect("translate");
 
         let green = Model::new(quad(), green_glass);
-        green.translate([0.0, 0.0, 0.0]);
+        green.translate([0.0, 0.0, 0.0]).expect("translate");
 
         let blue = Model::new(quad(), blue_glass);
-        blue.translate([0.0, 0.0, 1.0]);
+        blue.translate([0.0, 0.0, 1.0]).expect("translate");
 
         let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0)
             .expect("camera")
             .look_at([0.0, 0.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
             .expect("camera");
-        let sun = Light::directional([0.2, -0.5, -1.0], [1.0, 1.0, 1.0]);
+        let sun = Light::directional([0.2, -0.5, -1.0], [1.0, 1.0, 1.0]).expect("light");
 
         let scene = Scene::new();
         // Add in wrong order on purpose — the renderer sorts them.

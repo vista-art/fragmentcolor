@@ -335,6 +335,28 @@ class Healthcheck : ExampleCase() {
             "Material.textureTransform: rotation" to {
                 material.textureTransform(TextureSlot.NORMAL, listOf(0f, 0f), listOf(1f, 1f), Float.NaN)
             },
+            "Light.setIntensity: value" to { Light.point(listOf(0f, 1f, 0f), listOf(1f, 1f, 1f)).setIntensity(Float.NaN) },
+            "Light.setIntensity: value" to { Light.point(listOf(0f, 1f, 0f), listOf(1f, 1f, 1f)).setIntensity(1e39) },
+            "Light.setConeAngles: inner_radians" to {
+                Light.spot(listOf(0f, 1f, 0f), listOf(0f, -1f, 0f), listOf(1f, 1f, 1f)).setConeAngles(Float.POSITIVE_INFINITY, 0.5f)
+            },
+            "Light.setConeAngles: outer_radians" to {
+                Light.spot(listOf(0f, 1f, 0f), listOf(0f, -1f, 0f), listOf(1f, 1f, 1f)).setConeAngles(0.1, Double.NaN)
+            },
+            "Model.rotate: radians" to { Model(Mesh(), material).rotate(floatArrayOf(0f, 1f, 0f), Float.NaN) },
+            "Model.rotate: radians" to { Model(Mesh(), material).rotate(listOf(0.0, 1.0, 0.0), 1e39) },
+            "Model.setTransform: item 0" to { Model(Mesh(), material).setTransform(List(16) { if (it == 0) Float.NaN else 0f }) },
+            "Model.setTransform: item 0" to { Model(Mesh(), material).setTransform(DoubleArray(16) { if (it == 0) 1e39 else 0.0 }) },
+            // An axis of length 0 has no direction, which Rust refuses with its own message.
+            "Model::rotate: axis has length 0" to { Model(Mesh(), material).rotate(floatArrayOf(0f, 0f, 0f), 1f) },
+            // A light direction of length 0 points nowhere, and finite moves that carry a
+            // transform past the f32 range are refused, each with Rust's message.
+            "Light::directional: direction has length 0" to { Light.directional(listOf(0f, 0f, 0f), listOf(1f, 1f, 1f)) },
+            "Model::translate would carry the transform past the f32 range" to {
+                val far = Model(Mesh(), material)
+                far.translate(floatArrayOf(3e38f, 0f, 0f))
+                far.translate(floatArrayOf(3e38f, 0f, 0f))
+            },
             "Vertex: position" to { Vertex(doubleArrayOf(1e39, 0.0, 0.0)) },
             "Vertex: position" to { Vertex(listOf(Float.NaN, 0f)) },
             "Vertex.pbr: position" to { Vertex.pbr(listOf(0.0, Double.POSITIVE_INFINITY, 0.0)) },
@@ -350,6 +372,15 @@ class Healthcheck : ExampleCase() {
             val error = assertFailsWith<FragmentColorException> { call() }
             assertTrue(error.message.orEmpty().contains(label), "$label threw ${error.message}")
         }
+        // A refused setter or rotate leaves the light and the transform as they were.
+        val dimmer = Light.point(listOf(0f, 1f, 0f), listOf(1f, 1f, 1f)).setIntensity(2.5f)
+        assertFailsWith<FragmentColorException> { dimmer.setIntensity(Double.POSITIVE_INFINITY) }
+        assertEquals(2.5f, dimmer.intensity(), "a refused setIntensity keeps the intensity")
+        val turned = Model(Mesh(), material)
+        turned.rotate(floatArrayOf(0f, 1f, 0f), 0.5f)
+        val before = turned.transform()
+        assertFailsWith<FragmentColorException> { turned.rotate(floatArrayOf(0f, 0f, 0f), 0.5f) }
+        assertEquals(before, turned.transform(), "a refused rotate keeps the transform")
         // A Double item prints the way the shared Rust message prints it.
         val shown = listOf(1e39 to "1e39", -1e39 to "-1e39", Double.NaN to "NaN", Double.POSITIVE_INFINITY to "inf")
         for ((value, text) in shown) {
@@ -466,6 +497,47 @@ class Healthcheck : ExampleCase() {
             .normalTexture(red, TextureFormat.RGBA8_UNORM)
             .occlusionTexture(red, options)
             .metallicRoughnessTexture("examples/assets/logo.png", TextureFormat.RGBA8_UNORM)
+        Unit
+    }
+
+    // A slot a custom shader declares as a number refuses a Texture and a source and keeps
+    // its value, a slot the shader doesn't declare is skipped, and a Texture takes no options.
+    @Test
+    fun materialTexturesRefuseWhatTheyCannotUse() = runBlocking {
+        val renderer = Renderer()
+        val red = byteArrayOf(0xff.toByte(), 0, 0, 0xff.toByte())
+        val texture = renderer.createTexture(red, Size(width = 1u, height = 1u, depth = null))
+        val numbered = Material.custom(
+            Shader(
+                """
+                @group(0) @binding(0) var<uniform> base_color_map: vec4<f32>;
+                @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+                  return vec4<f32>(f32(i), 0.0, 0.0, 1.0);
+                }
+                @fragment fn fs_main() -> @location(0) vec4<f32> { return base_color_map; }
+                """.trimIndent()
+            )
+        )
+        numbered.shader().set("base_color_map", listOf(0.25f, 0.5f, 0.75f, 1f))
+        val refusals: List<Pair<String, () -> Material>> = listOf(
+            "a Texture" to { numbered.baseColorTexture(texture) },
+            "bytes" to { numbered.baseColorTexture(red, listOf(1u, 1u)) },
+        )
+        for ((label, set) in refusals) {
+            val error = assertFailsWith<FragmentColorException>("baseColorTexture with $label on a number") { set() }
+            assertTrue(error.message.orEmpty().contains("base_color_map"), "baseColorTexture with $label threw ${error.message}")
+        }
+        assertEquals(UniformData.Vec4(listOf(0.25f, 0.5f, 0.75f, 1f)), numbered.shader().get("base_color_map"))
+        numbered.normalTexture(texture)
+        numbered.normalTexture(red, listOf(1u, 1u))
+        // An empty byte list holds no image, so the setter refuses it at the call.
+        val empty = assertFailsWith<FragmentColorException> { Material.pbr().baseColorTexture(ByteArray(0)) }
+        assertTrue(empty.message.orEmpty().contains("it got an empty byte list"), "an empty byte list threw ${empty.message}")
+        val options = TextureOptions(format = TextureFormat.RGBA8_UNORM)
+        val beside = assertFailsWith<FragmentColorException> {
+            Material.pbr().baseColorSource(MobileTextureInput.CloneOf(texture), options)
+        }
+        assertTrue(beside.message.orEmpty().contains("Material::base_color_texture"), "options beside a Texture threw ${beside.message}")
         Unit
     }
 

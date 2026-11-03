@@ -46,7 +46,9 @@ async fn render(size: u32, spot: Spot) -> Vec<u8> {
         .look_at([0.0, 0.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
         .expect("camera");
     let light = Light::spot([0.0, 0.0, 2.0], [0.0, 0.0, -1.0], [1.0, 1.0, 1.0])
+        .expect("light")
         .set_intensity(spot.intensity)
+        .expect("intensity")
         .set_cone_angles(spot.inner, spot.outer)
         .expect("cone angles");
     let pass = Pass::new("spot");

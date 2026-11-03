@@ -4,10 +4,12 @@ use lsp_doc::lsp_doc;
 use pyo3::prelude::*;
 use pyo3::types::PyString;
 
+use crate::bindings::numbers::read_floats;
 use crate::bindings::python::{PyChannels, PyFloat, PyUnsigned, read_numbers, read_unsigned};
 use crate::errors::InvalidInputError;
 use crate::scene::{
-    Camera, CameraError, Light, LightError, LightKind, Model, PassRef, Scene, SceneLoadError,
+    Camera, CameraError, Light, LightError, LightKind, Model, ModelError, PassRef, Scene,
+    SceneLoadError,
 };
 use crate::{Material, Mesh, Pass};
 
@@ -42,30 +44,26 @@ impl Model {
     #[pyo3(name = "set_transform")]
     #[lsp_doc("docs/api/scene/model/set_transform.md")]
     pub fn set_transform_py(&self, matrix: PyMatrix<'_>) -> PyResult<()> {
-        self.set_transform(matrix.read("Model.set_transform")?);
-        Ok(())
+        Ok(self.set_transform(matrix.read("Model.set_transform")?)?)
     }
 
     #[pyo3(name = "translate")]
     #[lsp_doc("docs/api/scene/model/translate.md")]
     pub fn translate_py(&self, offset: PyChannels<'_>) -> PyResult<()> {
-        self.translate(offset.read_array("Model.translate")?);
-        Ok(())
+        Ok(self.translate(offset.read_array("Model.translate")?)?)
     }
 
     #[pyo3(name = "rotate")]
     #[lsp_doc("docs/api/scene/model/rotate.md")]
     pub fn rotate_py(&self, axis: PyChannels<'_>, radians: PyFloat<'_>) -> PyResult<()> {
-        let radians = radians.read("Model.rotate: radians")?;
-        self.rotate(axis.read_array("Model.rotate: axis")?, radians);
-        Ok(())
+        let radians = radians.read_finite("Model.rotate: radians")?;
+        Ok(self.rotate(axis.read_array("Model.rotate: axis")?, radians)?)
     }
 
     #[pyo3(name = "scale")]
     #[lsp_doc("docs/api/scene/model/scale.md")]
     pub fn scale_py(&self, factor: PyChannels<'_>) -> PyResult<()> {
-        self.scale(factor.read_array("Model.scale")?);
-        Ok(())
+        Ok(self.scale(factor.read_array("Model.scale")?)?)
     }
 
     #[pyo3(name = "visible")]
@@ -166,8 +164,9 @@ pub enum PyMatrix<'py> {
 }
 
 impl PyMatrix<'_> {
-    /// The matrix's columns. A list of another length raises `InvalidInputError`
-    /// that names `label`, and an item that isn't a number raises `TypeError`.
+    /// The matrix's columns. A list of another length, or a number that isn't finite or
+    /// is past the `f32` range, raises `InvalidInputError` that names `label`, and an item
+    /// that isn't a number raises `TypeError`.
     pub(crate) fn read(&self, label: &str) -> PyResult<[[f32; 4]; 4]> {
         let PyMatrix::Numbers(value) = self;
         let items = value.extract::<Vec<Bound<'_, PyAny>>>()?;
@@ -184,9 +183,9 @@ impl PyMatrix<'_> {
         let mut matrix = [[0.0; 4]; 4];
         for (index, (column, slot)) in columns.iter().zip(matrix.iter_mut()).enumerate() {
             let label = format!("{label}: column {index}");
-            let numbers = read_numbers(column, &label)?;
-            *slot = match <[f64; 4]>::try_from(numbers.as_slice()) {
-                Ok(column) => column.map(|number| number as f32),
+            let numbers = read_floats(read_numbers(column, &label)?, &label)?;
+            *slot = match <[f32; 4]>::try_from(numbers.as_slice()) {
+                Ok(column) => column,
                 Err(_) => {
                     return Err(InvalidInputError::new_err(format!(
                         "{label} takes 4 numbers, got {}",
@@ -199,7 +198,6 @@ impl PyMatrix<'_> {
     }
 }
 
-/// A matrix of 16 numbers, column after column.
 /// The pass `Scene.add_to` names: its name, or its index.
 fn read_pass_ref(target: &Bound<'_, PyAny>) -> PyResult<PassRef> {
     match target.extract::<String>() {
@@ -227,11 +225,12 @@ fn add_object(scene: &Scene, target: PassRef, object: &Bound<'_, PyAny>) -> PyRe
     Ok(())
 }
 
+/// A matrix of 16 numbers, column after column.
 fn read_flat(value: &Bound<'_, PyAny>, label: &str) -> PyResult<[[f32; 4]; 4]> {
-    let numbers = read_numbers(value, label)?;
-    match <[f64; 16]>::try_from(numbers.as_slice()) {
+    let numbers = read_floats(read_numbers(value, label)?, label)?;
+    match <[f32; 16]>::try_from(numbers.as_slice()) {
         Ok(flat) => Ok(std::array::from_fn(|column| {
-            std::array::from_fn(|row| flat[column * 4 + row] as f32)
+            std::array::from_fn(|row| flat[column * 4 + row])
         })),
         Err(_) => Err(InvalidInputError::new_err(format!(
             "{label} takes 16 numbers or 4 columns of 4 numbers, got {} numbers",
@@ -242,8 +241,17 @@ fn read_flat(value: &Bound<'_, PyAny>, label: &str) -> PyResult<[[f32; 4]; 4]> {
 
 /// A light setter that doesn't fit the light raises `LightError`,
 /// a `FragmentColorError` that is also a `ValueError`.
+/// A number that isn't finite raises `InvalidInputError`.
 impl From<LightError> for PyErr {
     fn from(error: LightError) -> Self {
+        crate::errors::raise_error(&error)
+    }
+}
+
+/// A Model transform call's number that isn't finite, or an axis of length 0,
+/// raises `InvalidInputError`, as a number the binding refuses does.
+impl From<ModelError> for PyErr {
+    fn from(error: ModelError) -> Self {
         crate::errors::raise_error(&error)
     }
 }
@@ -294,7 +302,7 @@ impl Light {
         Ok(Light::directional(
             direction.read_array("Light.directional: direction")?,
             color.read_array("Light.directional: color")?,
-        ))
+        )?)
     }
 
     #[staticmethod]
@@ -304,7 +312,7 @@ impl Light {
         Ok(Light::point(
             position.read_array("Light.point: position")?,
             color.read_array("Light.point: color")?,
-        ))
+        )?)
     }
 
     #[staticmethod]
@@ -319,7 +327,7 @@ impl Light {
             position.read_array("Light.spot: position")?,
             direction.read_array("Light.spot: direction")?,
             color.read_array("Light.spot: color")?,
-        ))
+        )?)
     }
 
     #[pyo3(name = "kind")]
@@ -373,13 +381,13 @@ impl Light {
     #[pyo3(name = "set_color")]
     #[lsp_doc("docs/api/scene/light/set_color.md")]
     pub fn set_color_py(&self, color: PyChannels<'_>) -> PyResult<Self> {
-        Ok(self.set_color(color.read_array("Light.set_color")?))
+        Ok(self.set_color(color.read_array("Light.set_color")?)?)
     }
 
     #[pyo3(name = "set_intensity")]
     #[lsp_doc("docs/api/scene/light/set_intensity.md")]
     pub fn set_intensity_py(&self, value: PyFloat<'_>) -> PyResult<Self> {
-        Ok(self.set_intensity(value.read("Light.set_intensity: value")?))
+        Ok(self.set_intensity(value.read_finite("Light.set_intensity: value")?)?)
     }
 
     #[pyo3(name = "set_position")]
@@ -407,8 +415,8 @@ impl Light {
         inner_radians: PyFloat<'_>,
         outer_radians: PyFloat<'_>,
     ) -> Result<Self, PyErr> {
-        let inner = inner_radians.read("Light.set_cone_angles: inner_radians")?;
-        let outer = outer_radians.read("Light.set_cone_angles: outer_radians")?;
+        let inner = inner_radians.read_finite("Light.set_cone_angles: inner_radians")?;
+        let outer = outer_radians.read_finite("Light.set_cone_angles: outer_radians")?;
         Ok(self.set_cone_angles(inner, outer)?)
     }
 }
@@ -550,7 +558,7 @@ impl Scene {
         slf: PyRef<'py, Self>,
         color: PyChannels<'_>,
     ) -> PyResult<PyRef<'py, Self>> {
-        slf.ambient(color.read_array("Scene.ambient")?);
+        slf.ambient(color.read_array("Scene.ambient")?)?;
         Ok(slf)
     }
 

@@ -490,7 +490,9 @@ fn a_pbr_map_from_another_renderer_errors() {
             .create_texture((vec![255; 16], [2, 2]))
             .await
             .expect("a texture");
-        let material = Material::pbr().base_color_texture(&foreign);
+        let material = Material::pbr()
+            .base_color_texture(&foreign)
+            .expect("base color map");
         let pass = Pass::new("pbr");
         pass.add(&cover(material)).expect("add");
 

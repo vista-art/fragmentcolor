@@ -360,7 +360,11 @@ fn visit_node(
                 }
             };
             let model = Model::new(mesh, material);
-            model.set_transform(world.to_cols_array_2d());
+            model
+                .set_transform(world.to_cols_array_2d())
+                .map_err(|error| {
+                    SceneLoadError::Invalid(format!("placing glTF node {}: {error}", node.index()))
+                })?;
             scene.add(&model).map_err(|error| {
                 SceneLoadError::Invalid(format!("attaching glTF Model to Scene: {error}"))
             })?;
@@ -379,7 +383,7 @@ fn visit_node(
     if options.lights
         && let Some(gltf_light) = node.light()
     {
-        add_light(&gltf_light, world, scene)?;
+        add_light(&gltf_light, node.index(), world, scene)?;
     }
 
     Ok(world)
@@ -474,9 +478,11 @@ fn build_camera(gltf_camera: &gltf::Camera<'_>, world: Mat4) -> Result<Camera, S
 /// (point/spot) and the rotated `-Z` direction (directional/spot). The
 /// kind-specific setters (`set_range`, `set_cone_angles`) run only
 /// on the kinds that accept them, so a directional light gets only
-/// `set_intensity`.
+/// `set_intensity`. A light the `Light` calls refuse, such as one whose node
+/// has a scale of 0 and so no direction, is an error that names the light and the node.
 fn add_light(
     gltf_light: &gltf::khr_lights_punctual::Light<'_>,
+    node: usize,
     world: Mat4,
     scene: &Scene,
 ) -> Result<(), SceneLoadError> {
@@ -493,29 +499,28 @@ fn add_light(
     };
     let setter_err = |e: crate::scene::LightError| {
         SceneLoadError::Invalid(format!(
-            "configuring glTF light {}: {e}",
+            "configuring glTF light {} on node {node}: {e}",
             gltf_light.index()
         ))
     };
-
-    let light = match gltf_light.kind() {
-        gltf::khr_lights_punctual::Kind::Directional => {
-            Light::directional(direction, color).set_intensity(intensity)
-        }
-        gltf::khr_lights_punctual::Kind::Point => {
-            let l = Light::point(position, color).set_intensity(intensity);
-            l.set_range(range).map_err(setter_err)?
-        }
-        gltf::khr_lights_punctual::Kind::Spot {
-            inner_cone_angle,
-            outer_cone_angle,
-        } => {
-            let l = Light::spot(position, direction, color).set_intensity(intensity);
-            let l = l.set_range(range).map_err(setter_err)?;
-            l.set_cone_angles(inner_cone_angle, outer_cone_angle)
-                .map_err(setter_err)?
+    let build = || -> Result<Light, crate::scene::LightError> {
+        match gltf_light.kind() {
+            gltf::khr_lights_punctual::Kind::Directional => {
+                Light::directional(direction, color)?.set_intensity(intensity)
+            }
+            gltf::khr_lights_punctual::Kind::Point => Light::point(position, color)?
+                .set_intensity(intensity)?
+                .set_range(range),
+            gltf::khr_lights_punctual::Kind::Spot {
+                inner_cone_angle,
+                outer_cone_angle,
+            } => Light::spot(position, direction, color)?
+                .set_intensity(intensity)?
+                .set_range(range)?
+                .set_cone_angles(inner_cone_angle, outer_cone_angle),
         }
     };
+    let light = build().map_err(setter_err)?;
     scene.add(&light).map_err(attach_err)?;
     Ok(())
 }

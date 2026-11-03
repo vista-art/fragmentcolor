@@ -607,6 +607,26 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     named('Material.uvTransform: rotation', () => Material.pbr().uvTransform([0, 0], [1, 1], Infinity));
     named('Material.textureTransform: rotation',
       () => Material.pbr().textureTransform(occlusion, [0, 0], [1, 1], -Infinity));
+    // So does a light's intensity or cone angle, and a rotation angle,
+    // and a refused call leaves the light and the transform as they were.
+    const dimmer = Light.point([0, 1, 0], [1, 1, 1]).setIntensity(2.5);
+    named('Light.setIntensity: value', () => dimmer.setIntensity(NaN));
+    named('Light.setIntensity: value', () => dimmer.setIntensity(1e39));
+    if (dimmer.intensity() !== 2.5) fail(`a refused setIntensity changed the intensity to ${dimmer.intensity()}`);
+    const cone = Light.spot([0, 1, 0], [0, -1, 0], [1, 1, 1]);
+    named('Light.setConeAngles: inner_radians', () => cone.setConeAngles(Infinity, 0.5));
+    named('Light.setConeAngles: outer_radians', () => cone.setConeAngles(0.1, NaN));
+    const turned = Array.from(model.transform(), (column) => Array.from(column));
+    named('Model.rotate: radians', () => model.rotate([0, 1, 0], 1e39));
+    // An axis of length 0 has no direction, which Rust refuses with its own message.
+    named('Model::rotate: axis has length 0', () => model.rotate([0, 0, 0], 1));
+    // A light direction of length 0 points nowhere, and finite moves that carry a
+    // transform past the f32 range are refused, each with Rust's message.
+    named('Light::directional: direction has length 0', () => Light.directional([0, 0, 0], [1, 1, 1]));
+    const far = new Model(new Mesh(), Material.pbr());
+    far.translate([3e38, 0, 0]);
+    named('Model::translate would carry the transform past the f32 range', () => far.translate([3e38, 0, 0]));
+    same('a refused rotate', model.transform().map((column) => Array.from(column)).flat(), turned.flat());
     // A float vector is an array or a Float32Array, as a color is.
     named('Light.point: color', () => Light.point([0, 1, 0], new Float64Array([1, 1, 1])));
     // A vertex position and a Quad corner follow the same rule.
@@ -646,6 +666,10 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     named('Model.setTransform', () => model.setTransform(new Array(15).fill(0)));
     named('Model.setTransform', () => model.setTransform(identity.slice(0, 3)));
     named('Model.setTransform: column 1', () => model.setTransform([identity[0], [0, 1, 0], identity[2], identity[3]]));
+    // Each number of a matrix is a float vector item, so NaN, an infinity or 1e39 throws.
+    named('Model.setTransform: column 3: item 0', () => model.setTransform([identity[0], identity[1], identity[2], [1e39, 0, 0, 1]]));
+    named('Model.setTransform: item 0', () => model.setTransform(new Array(16).fill(NaN)));
+    named('Model.setTransform: item 15', () => model.setTransform(new Float32Array(16).fill(1).fill(Infinity, 15)));
     model.setTransform(new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]));
     model.setTransform(identity.map((column) => new Float32Array(column)));
     model.setTransform(identity);
@@ -697,6 +721,8 @@ await withModule('platforms.web.healthcheck.parity', async () => {
       ["Model.setVisible('yes')", () => model.setVisible('yes'), 'TypeError'],
       ["Camera.setAspect('wide')", () => camera.setAspect('wide'), 'TypeError'],
       ["Light.setIntensity('x')", () => Light.point([0, 1, 0], [1, 1, 1]).setIntensity('x'), 'TypeError'],
+      ['Light.setIntensity(NaN)', () => Light.point([0, 1, 0], [1, 1, 1]).setIntensity(NaN), 'InvalidInputError'],
+      ['Model.rotate([0, 0, 0], 1)', () => model.rotate([0, 0, 0], 1), 'InvalidInputError'],
       ["SamplerOptions.repeat_x = 'yes'", () => { new fc.SamplerOptions().repeat_x = 'yes'; }, 'TypeError'],
       ["new SamplerOptions('yes')", () => new fc.SamplerOptions('yes'), 'TypeError'],
       ['Mesh.addVertex with 4 parts', () => new Mesh().addVertex([[0, 0, 0], [0, 0], [1, 1, 1, 1], [0]]), 'TypeError'],
@@ -915,6 +941,40 @@ await withModule('platforms.web.healthcheck.parity', async () => {
       refusesBesideTexture(`Material.${name}`, () => material[name](fromImage, { sampler: { repeatX: true } }));
       throws(`Material.${name} with a fractional size`, () => material[name](new Uint8Array(redPixel), [1.5, 1]));
       throws(`Material.${name} with mipmaps: "yes"`, () => material[name](new Uint8Array(redPixel), { size: [1, 1], mipmaps: 'yes' }));
+    }
+    // A slot a custom shader declares as a number refuses a Texture and a source with a
+    // MaterialError and keeps its value, and a slot the shader doesn't declare is skipped.
+    const numbered = Material.custom(new Shader(`
+@group(0) @binding(0) var<uniform> base_color_map: vec4<f32>;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  return vec4<f32>(f32(i), 0.0, 0.0, 1.0);
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> { return base_color_map; }`));
+    numbered.shader().set('base_color_map', [0.25, 0.5, 0.75, 1]);
+    const onNumber = {
+      'a Texture': () => numbered.baseColorTexture(fromImage),
+      'bytes': () => numbered.baseColorTexture(new Uint8Array(redPixel), [1, 1]),
+    };
+    for (const [label, run] of Object.entries(onNumber)) {
+      try { run(); } catch (e) {
+        if (e.name !== 'MaterialError' || !e.message.includes('base_color_map')) {
+          fail(`Material.baseColorTexture with ${label} on a number threw ${e.name}: ${e.message}`);
+        }
+        continue;
+      }
+      fail(`Material.baseColorTexture with ${label} on a number should throw`);
+    }
+    same('a slot that refused a texture', numbered.shader().get('base_color_map'), [0.25, 0.5, 0.75, 1]);
+    numbered.normalTexture(fromImage);
+    numbered.normalTexture(new Uint8Array(redPixel), [1, 1]);
+    // An empty byte list holds no image, so the setter refuses it at the call.
+    try {
+      Material.pbr().baseColorTexture(new Uint8Array(0));
+      fail('Material.baseColorTexture with an empty byte list should throw');
+    } catch (e) {
+      if (e.name !== 'InvalidInputError' || !e.message.endsWith('it got an empty byte list')) {
+        fail(`Material.baseColorTexture with an empty byte list threw ${e.name}: ${e.message}`);
+      }
     }
 
     // Scene.load takes an ArrayBuffer or a view, and can skip the file's cameras and lights.

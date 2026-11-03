@@ -4,7 +4,7 @@ Bind a texture to the `base_color_map` slot. The default PBR shader samples it i
 
 Accepts any `Into<TextureInput>`, the inputs [`Renderer::create_texture`](https://fragmentcolor.org/api/core/renderer#create_texture) takes:
 
-- A pre-built [`&Texture`](https://fragmentcolor.org/api/texture/texture). The setter stores the texture's ID immediately and the GPU texture stays Arc-shared across every Material that points at it. Passing the same `&shared_texture` to N Materials produces one GPU upload and N shader-uniform references: the cheap way to reuse one texture map across a scene full of objects without paying for N texture allocations. The texture belongs to the `Renderer` that created it, and another `Renderer` refuses to draw it. It keeps the options it was created with, so JavaScript and Python refuse options beside it with an `InvalidInputError`.
+- A pre-built [`&Texture`](https://fragmentcolor.org/api/texture/texture). The setter stores the texture's ID immediately and the GPU texture stays Arc-shared across every Material that points at it. Passing the same `&shared_texture` to N Materials produces one GPU upload and N shader-uniform references: the cheap way to reuse one texture map across a scene full of objects without paying for N texture allocations. The texture belongs to the `Renderer` that created it, and another `Renderer` refuses to draw it. It keeps the options it was created with, and the setter refuses options beside it.
 - Encoded bytes, raw pixels with their size as `(bytes, [w, h])`, bytes with a format as `(bytes, format)`, bytes with every option as `(bytes, options)`, a path or a URL, alone or as `(path, format)` or `(path, options)`, or a [`Mipmap`](https://fragmentcolor.org/api/texture/mipmap), alone or as `(chain, options)`. The Material keeps this source as a map. Each `Renderer` that draws the Material uploads a copy of its own at [`Renderer::load`](https://fragmentcolor.org/api/core/renderer#load), or on native targets at its first [`Renderer::render`](https://fragmentcolor.org/api/core/renderer#render), and frees it when the `Renderer` or the Material drops. A map set again draws its old copy until the `Renderer` loads the new one.
 
 To share a map across Renderers, pass bytes, a path, a URL or a `Mipmap`.
@@ -38,16 +38,24 @@ draws in that one `Renderer`.
 
 ## Errors
 
-In Rust the setter can't fail at the call. The bindings read their arguments
-there and throw for one they can't use: a size that isn't 2 or 3 whole numbers,
-options of the wrong type or shape, options beside a `Texture`, and in Python a
-`size` that differs from a NumPy array's own. Python raises `TypeError` for an
-argument of the wrong type and `InvalidInputError` for the rest, JavaScript throws
-an `Error` of the same name, and Swift and Kotlin throw `FragmentColorError` and
-`FragmentColorException`.
+The setter checks its input and the slot at once, and a call it refuses
+leaves the slot as it was. Options beside a `Texture` return
+`MaterialError::Texture` with an `InvalidInput` texture error that names the
+call, and so does an input that holds no data: Rust's `TextureData::Empty`,
+or an empty byte list, path or URL in any language. A slot that a `Material::custom` shader declares as
+something other than a texture returns `MaterialError::Shader` with the
+shader's `TypeMismatch`. A slot the shader doesn't declare is skipped with a
+log warning, as the number setters skip a field, and the setter returns the
+Material.
 
-The setter checks the slot at once. A slot the shader doesn't declare as a
-texture, or an empty input, logs a warning and leaves the Material as it was.
+The bindings read their arguments before the setter runs and throw for one
+they can't use: a size that isn't 2 or 3 whole numbers, options of the wrong
+type or shape, options beside a `Texture`, and in Python a `size` that
+differs from a NumPy array's own. Python raises `TypeError` for an argument
+of the wrong type, `MaterialError` for a slot the shader declares as a
+number, and `InvalidInputError` for the rest. JavaScript throws an `Error`
+of the same name. Swift throws `FragmentColorError`, and each call needs
+`try`, while Kotlin throws `FragmentColorException`.
 
 A source that fails to upload (file not found, decode error, unsupported
 format) fails [`Renderer::load(&material).await`](https://fragmentcolor.org/api/core/renderer#load),
@@ -63,10 +71,11 @@ for `load`. On native, only a map set on another thread during a `render`
 meets this, for that frame.
 
 For deterministic error handling, pre-build the texture eagerly:
-`renderer.create_texture(path).await?` returns a `Texture` that can't
-fail at setter time, and `Material::base_color_texture(&texture)` takes
-an Arc-shared reference. The lazy path stays useful when the URL /
-path resolves at render time but the caller doesn't want to await yet.
+`renderer.create_texture(path).await?` returns a `Texture` that has already
+uploaded, so no `load` can fail on it later, and
+`Material::base_color_texture(&texture)` takes an Arc-shared reference. The
+lazy path stays useful when the URL / path resolves at render time but the
+caller doesn't want to await yet.
 
 ## Example: sharing one texture across many Materials
 
@@ -86,11 +95,11 @@ let albedo = renderer.create_texture((albedo_bytes, [2, 2])).await?;
 // Every Material that points at `albedo` reuses the same uploaded GPU
 // texture; passing the same handle into N Material instances costs one
 // upload and N shader-uniform references.
-let material = Material::pbr().base_color_texture(&albedo);
+let material = Material::pbr().base_color_texture(&albedo)?;
 
 // Raw pixels with their size upload when the scene loads.
 let tint: Vec<u8> = vec![255, 128, 0, 255];
-let tinted = Material::pbr().base_color_texture((tint, [1, 1]));
+let tinted = Material::pbr().base_color_texture((tint, [1, 1]))?;
 # let _ = (material, tinted);
 # Ok(())
 # }

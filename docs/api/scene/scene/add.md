@@ -53,7 +53,7 @@ let model = Model::new(mesh, Material::pbr());
 
 let camera = Camera::perspective(1.047, 1.0, 0.1, 100.0)?
     .look_at([0.0, 0.0, 3.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])?;
-let sun = Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]);
+let sun = Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])?;
 
 let scene = Scene::new();
 scene.add(&model)?;

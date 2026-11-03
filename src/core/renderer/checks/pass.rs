@@ -707,7 +707,9 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
 
     /// A pass that draws `material`, whose base color map is a map of raw bytes, and its shader.
     fn build_pass(material: Material) -> (Pass, Shader) {
-        let material = material.base_color_texture((vec![255; 16], [2, 2]));
+        let material = material
+            .base_color_texture((vec![255; 16], [2, 2]))
+            .expect("base color map");
         let shader = material.shader.clone();
         let pass = Pass::new("mapped");
         pass.add(&build_model(material)).expect("add");
@@ -835,7 +837,8 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
                 .expect("a texture");
             let other = Renderer::new();
             let other_frame = other.create_texture_target([8, 8]).await.expect("a target");
-            let (pass, shader) = build_pass(Material::pbr().normal_texture(&normal));
+            let (pass, shader) =
+                build_pass(Material::pbr().normal_texture(&normal).expect("normal map"));
 
             let refused = other.render(&pass, &other_frame);
             assert!(
@@ -919,7 +922,11 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
                 .expect("a texture");
             let other = Renderer::new();
             let frame = other.create_texture_target([8, 8]).await.expect("a target");
-            let (pass, shader) = build_pass(Material::pbr().base_color_texture(&old));
+            let (pass, shader) = build_pass(
+                Material::pbr()
+                    .base_color_texture(&old)
+                    .expect("base color map"),
+            );
 
             other.render(&pass, &frame).expect("the new map draws");
             check_drawn(&other, &shader);
@@ -936,7 +943,9 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
                 .create_texture((vec![128; 16], [2, 2]))
                 .await
                 .expect("a texture");
-            let material = Material::pbr().base_color_texture(&old);
+            let material = Material::pbr()
+                .base_color_texture(&old)
+                .expect("base color map");
             drop(old);
             drop(owner);
             let other = Renderer::new();
@@ -1135,7 +1144,9 @@ fn fs_main() -> @location(0) vec4<f32> {
                 options,
             };
             let shader = Shader::new(INTEGER_MAP).expect("a shader");
-            let material = Material::custom(shader).base_color_texture(input);
+            let material = Material::custom(shader)
+                .base_color_texture(input)
+                .expect("base color map");
 
             let refused = frame.context.render(material.shader(), &frame);
             assert!(

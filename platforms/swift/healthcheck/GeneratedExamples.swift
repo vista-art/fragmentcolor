@@ -335,7 +335,7 @@ final class GeneratedExamples: ExampleCase {
             ])
 
             // The material keeps the encoded image as a map.
-            let material = Material.pbr().baseColorTexture(image)
+            let material = try Material.pbr().baseColorTexture(image)
             let model = Model(mesh, material)
             let scene = Scene()
             try scene.add(model)
@@ -1164,7 +1164,7 @@ final class GeneratedExamples: ExampleCase {
         await example("docs/api/scene/light/set_intensity.md") {
             let torch = try Light.spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
 
-            torch.setIntensity(8.0)
+            try torch.setIntensity(8.0)
         }
     }
 
@@ -1240,7 +1240,7 @@ final class GeneratedExamples: ExampleCase {
             // Every Material that points at `albedo` reuses the same uploaded GPU
             // texture; passing the same handle into N Material instances costs one
             // upload and N shader-uniform references.
-            let material = Material.pbr().baseColorTexture(albedo)
+            let material = try Material.pbr().baseColorTexture(albedo)
 
             // Raw pixels with their size upload when the scene loads.
             let tint = [255, 128, 0, 255]
@@ -1715,7 +1715,7 @@ final class GeneratedExamples: ExampleCase {
             // Darken every loaded light to half intensity for a moody pass.
             for light in scene.lights() {
                 let current = light.intensity()
-                light.setIntensity(current * 0.5)
+                try light.setIntensity(current * 0.5)
             }
         }
     }

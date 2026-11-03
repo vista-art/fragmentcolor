@@ -74,7 +74,7 @@ mesh.add_vertices([
 ]);
 
 // The material keeps the encoded image as a map.
-let material = Material::pbr().base_color_texture(&image);
+let material = Material::pbr().base_color_texture(&image)?;
 let model = Model::new(mesh, material);
 let scene = Scene::new();
 scene.add(&model)?;

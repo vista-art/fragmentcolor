@@ -66,8 +66,8 @@ mesh.add_vertices([
 
 let mat = Material::pbr().base_color([0.3, 0.6, 1.0, 1.0])?;
 let model = Model::new(mesh, mat);
-model.translate([2.0, 0.0, 0.0]);
-model.scale([1.5, 1.5, 1.5]);
+model.translate([2.0, 0.0, 0.0])?;
+model.scale([1.5, 1.5, 1.5])?;
 
 # Ok(())
 # }

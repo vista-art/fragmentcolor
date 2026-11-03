@@ -39,13 +39,13 @@ fn main() {
 
         let model = Model::new(mesh, material);
         // Nudge it slightly to the right to show the per-Model transform path.
-        model.translate([0.1, 0.0, 0.0]);
+        model.translate([0.1, 0.0, 0.0]).expect("translate");
 
         let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0)
             .expect("camera")
             .look_at([0.0, 0.0, 2.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
             .expect("camera");
-        let sun = Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]);
+        let sun = Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]).expect("light");
 
         let scene = Scene::new();
         scene

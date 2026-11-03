@@ -427,8 +427,22 @@ lang="kotlin"
 Rotate the Model around `axis` (in local space) by `radians`. Post-multiplies
 the current transform by an axis-angle rotation, so a rotated-then-translated
 Model spins in place around its own origin rather than orbiting the world
-origin. The axis is normalized internally; a zero-length axis is rejected
-with a logged warning and no change.
+origin. The axis is normalized internally, so an axis of any length but 0
+turns the Model the same way.
+
+An axis item or an angle that is NaN or an infinity returns
+`ModelError::NotFinite`, which names the call and the item, such as
+`Model::rotate: radians must be finite, got NaN`. The other languages also
+refuse a number past the 32-bit float range, such as `1e39`, with a
+message like `Model.rotate: axis: item 1 must be a finite number that fits
+a 32-bit float, got 1e39`. An axis of length 0, such as `[0, 0, 0]`, has
+no direction to turn around and returns `ModelError::ZeroAxis` in every
+language. A rotation that would carry a number of the transform past the
+32-bit float range returns `ModelError::Overflow`. Either way the Model
+keeps its transform. JavaScript throws an
+`Error` named `InvalidInputError`, Python raises `InvalidInputError`,
+Swift throws `FragmentColorError` and Kotlin throws
+`FragmentColorException`.
 
 For pure world-space rotations (e.g. tumbling around a fixed pivot), compose
 the matrix yourself and call [set_transform](/api/scene/model#set_transform).
@@ -451,7 +465,7 @@ mesh.add_vertices([
 ]);
 
 let model = Model::new(mesh, Material::pbr());
-model.rotate([0.0, 1.0, 0.0], 1.571); // 90° around Y
+model.rotate([0.0, 1.0, 0.0], 1.571)?; // 90° around Y
 `}
 lang="rust"
 />
@@ -550,6 +564,19 @@ the cheap normal-transform path the default PBR shader uses, so a stretched
 Model will shade slightly off. For a correct non-uniform-scale normal, use
 `Material::custom` with a shader that ships the explicit cofactor matrix.
 
+A factor that is NaN or an infinity returns `ModelError::NotFinite`, which
+names the call and the item, and the Model keeps its size. The other
+languages also refuse a factor past the 32-bit float range, such as
+`1e39`. JavaScript throws an `Error` named `InvalidInputError`, Python
+raises `InvalidInputError`, Swift throws `FragmentColorError` and Kotlin
+throws `FragmentColorException`. A factor of 0 is a valid scale, which
+flattens the Model along that axis.
+
+A scale that would carry a number of the transform past the 32-bit float
+range, such as `[1e20, 1e20, 1e20]` twice, returns `ModelError::Overflow`,
+`Model::scale would carry the transform past the f32 range`, and the Model
+keeps its size. JavaScript and Python raise it as `InvalidInputError`, too.
+
 #### Example
 
 <Tabs>
@@ -568,7 +595,7 @@ mesh.add_vertices([
 ]);
 
 let model = Model::new(mesh, Material::pbr());
-model.scale([2.0, 2.0, 2.0]);
+model.scale([2.0, 2.0, 2.0])?;
 `}
 lang="rust"
 />
@@ -668,6 +695,16 @@ added to a Pass or Scene moves without being added again. To read the
 current transform, see
 [Model::transform](/api/scene/model#transform).
 
+A number that is NaN or an infinity returns `ModelError::NotFinite`, which
+names the call, the column and the item: `Model::set_transform: column 3:
+item 0 must be finite, got inf`. The Model keeps the transform it had. The
+other languages also refuse a number past the 32-bit float range, such as
+`1e39`, with a message like `Model.setTransform: column 3: item 0 must be a
+finite number that fits a 32-bit float, got 1e39`, or `item 12` for the 16
+numbers of a flat matrix. JavaScript throws an `Error` named
+`InvalidInputError`, Python raises `InvalidInputError`, Swift throws
+`FragmentColorError` and Kotlin throws `FragmentColorException`.
+
 #### Example
 
 <Tabs>
@@ -691,7 +728,7 @@ model.set_transform([
     [0.0, 2.0, 0.0, 0.0],
     [0.0, 0.0, 2.0, 0.0],
     [3.0, 0.0, 0.0, 1.0],
-]);
+])?;
 `}
 lang="rust"
 />
@@ -1057,6 +1094,20 @@ transform by a translation matrix, so the result is independent of the
 Model's current rotation. `translate([1, 0, 0])` always moves one unit
 along the world X axis.
 
+An item that is NaN or an infinity returns `ModelError::NotFinite`, which
+names the call and the item, and the Model stays where it was. The other
+languages also refuse an item past the 32-bit float range, such as `1e39`,
+with a message like `Model.translate: item 1 must be a finite number that
+fits a 32-bit float, got 1e39`. JavaScript throws an `Error` named
+`InvalidInputError`, Python raises `InvalidInputError`, Swift throws
+`FragmentColorError` and Kotlin throws `FragmentColorException`.
+
+A move of finite numbers that would carry a number of the transform past
+the 32-bit float range, such as two moves of `3e38` along one axis, returns
+`ModelError::Overflow`: `Model::translate would carry the transform past the f32
+range`. The Model keeps its transform, and JavaScript and Python raise it as
+`InvalidInputError`, too.
+
 #### Example
 
 <Tabs>
@@ -1075,7 +1126,7 @@ mesh.add_vertices([
 ]);
 
 let model = Model::new(mesh, Material::pbr());
-model.translate([5.0, 0.0, -2.0]);
+model.translate([5.0, 0.0, -2.0])?;
 `}
 lang="rust"
 />

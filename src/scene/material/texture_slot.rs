@@ -11,8 +11,9 @@ use pyo3::prelude::*;
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
-use super::{Material, MaterialError, check_finite};
+use super::{Material, MaterialError};
 use crate::core::UniformInput;
+use crate::scene::check_finite;
 
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(python, pyclass(eq, eq_int, from_py_object))]
@@ -285,7 +286,7 @@ mod tests {
         pass.add(&Model::new(mesh, material))
             .expect("add the model");
         // A black light takes the place of the placeholder light.
-        pass.add(&crate::Light::directional([0.0, -1.0, 0.0], [0.0; 3]))
+        pass.add(&crate::Light::directional([0.0, -1.0, 0.0], [0.0; 3]).expect("light"))
             .expect("add a black light");
         renderer.render(&pass, &target).expect("render");
         target.get_image().await.expect("read back")
@@ -464,7 +465,9 @@ struct Factors { uv: array<TextureUv, 2> }
             let shade = texture(&renderer, [WHITE, BLACK, WHITE, BLACK]).await;
             let material = Material::pbr()
                 .base_color_texture(&colors)
+                .expect("base color map")
                 .occlusion_texture(&shade)
+                .expect("occlusion map")
                 .texture_transform(TextureSlot::Occlusion, [0.5, 0.0], [1.0, 1.0], 0.0)
                 .expect("texture transform");
 
@@ -488,7 +491,9 @@ struct Factors { uv: array<TextureUv, 2> }
             let shade = texture(&renderer, [WHITE, BLACK, WHITE, BLACK]).await;
             let material = Material::pbr()
                 .base_color_texture(&colors)
+                .expect("base color map")
                 .occlusion_texture(&shade)
+                .expect("occlusion map")
                 .texture_uv(TextureSlot::Occlusion, 1)
                 .expect("set 1");
             let mesh = quad(|uv| [uv[0] * 0.25, uv[1]]);
@@ -515,6 +520,7 @@ struct Factors { uv: array<TextureUv, 2> }
             let colors = texture(&renderer, [RED, GREEN, BLUE, WHITE]).await;
             let material = Material::pbr()
                 .base_color_texture(&colors)
+                .expect("base color map")
                 .uv_transform([0.0, 1.0], [0.5, 0.5], std::f32::consts::FRAC_PI_2)
                 .expect("uv transform");
 

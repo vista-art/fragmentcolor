@@ -1,4 +1,6 @@
 //! `Model`: one mesh drawn with one material at a transform.
+//! The transform calls refuse a number that isn't finite and a rotation axis
+//! of length 0 with a `ModelError`, and a refused call leaves the transform as it was.
 
 use glam::{Mat4, Vec3};
 use lsp_doc::lsp_doc;
@@ -13,7 +15,35 @@ use wasm_bindgen::prelude::*;
 use crate::Mesh;
 use crate::core::ShaderObject;
 use crate::geometry::MeshObject;
-use crate::scene::{Material, SceneObject};
+use crate::scene::{Material, NotFinite, SceneObject, check_finite};
+
+/// Errors from the [`Model`] transform calls. A refused call leaves the transform as it was.
+#[derive(Debug, thiserror::Error)]
+pub enum ModelError {
+    /// A number that isn't finite, such as NaN or an infinity, which `label` names with its call.
+    #[error("{label} must be finite, got {value}")]
+    NotFinite { label: String, value: f32 },
+    /// A rotation axis of length 0, which points nowhere to turn around.
+    #[error("Model::rotate: axis has length 0, so it has no direction to turn around")]
+    ZeroAxis,
+    /// A move whose finite numbers would carry the transform past the `f32` range.
+    #[error("{call} would carry the transform past the f32 range")]
+    Overflow { call: &'static str },
+}
+
+impl From<NotFinite> for ModelError {
+    fn from(NotFinite { label, value }: NotFinite) -> Self {
+        ModelError::NotFinite { label, value }
+    }
+}
+
+/// Every variant is an invalid input, as the bindings raise a number they refuse at the call.
+#[cfg(any(python, wasm, test))]
+impl crate::errors::Classify for ModelError {
+    fn classify(&self) -> crate::errors::ErrorClass {
+        crate::errors::ErrorClass::InvalidInput
+    }
+}
 
 /// Per-Model live state read by the renderer's draw-queue build. Folded
 /// into one lock so the per-frame `build_pass_draws` walk takes a single
@@ -136,40 +166,72 @@ impl Model {
 
     /// Replace the model matrix wholesale, in column-major order.
     #[lsp_doc("docs/api/scene/model/set_transform.md")]
-    pub fn set_transform(&self, matrix: [[f32; 4]; 4]) {
+    pub fn set_transform(&self, matrix: [[f32; 4]; 4]) -> Result<(), ModelError> {
+        check_columns("Model::set_transform", &matrix)?;
         self.state.write().transform = Mat4::from_cols_array_2d(&matrix);
+        Ok(())
     }
 
     /// Pre-multiply by a world-space translation. Result: the model moves by
     /// `offset` in world coordinates.
     #[lsp_doc("docs/api/scene/model/translate.md")]
-    pub fn translate(&self, offset: [f32; 3]) {
-        let mut s = self.state.write();
-        s.transform = Mat4::from_translation(Vec3::from(offset)) * s.transform;
+    pub fn translate(&self, offset: [f32; 3]) -> Result<(), ModelError> {
+        check_finite("Model::translate", None, &offset)?;
+        let translation = Mat4::from_translation(Vec3::from(offset));
+        self.apply("Model::translate", |transform| translation * transform)
     }
 
     /// Post-multiply by a rotation around the given axis (in local space).
     /// Result: the model spins in place when it sits at the world origin and
     /// orbits its local-origin offset otherwise.
     #[lsp_doc("docs/api/scene/model/rotate.md")]
-    pub fn rotate(&self, axis: [f32; 3], radians: f32) {
-        let axis_vec = Vec3::from(axis);
-        let length = axis_vec.length();
-        if !length.is_finite() || length < 1.0e-6 {
-            log::warn!("Model::rotate ignored: axis is zero-length");
-            return;
-        }
-        let mut s = self.state.write();
-        s.transform *= Mat4::from_axis_angle(axis_vec / length, radians);
+    pub fn rotate(&self, axis: [f32; 3], radians: f32) -> Result<(), ModelError> {
+        let rotation = build_rotation(axis, radians)?;
+        self.apply("Model::rotate", |transform| transform * rotation)
     }
 
     /// Post-multiply by a per-axis scale (in local space). Result: the model
     /// grows or shrinks around its local origin without moving its origin.
     #[lsp_doc("docs/api/scene/model/scale.md")]
-    pub fn scale(&self, factor: [f32; 3]) {
-        let mut s = self.state.write();
-        s.transform *= Mat4::from_scale(Vec3::from(factor));
+    pub fn scale(&self, factor: [f32; 3]) -> Result<(), ModelError> {
+        check_finite("Model::scale", None, &factor)?;
+        let scale = Mat4::from_scale(Vec3::from(factor));
+        self.apply("Model::scale", |transform| transform * scale)
     }
+}
+
+impl Model {
+    /// Moves the transform by `step`, unless a number of the result leaves the `f32` range.
+    fn apply(&self, call: &'static str, step: impl FnOnce(Mat4) -> Mat4) -> Result<(), ModelError> {
+        let mut state = self.state.write();
+        let moved = step(state.transform);
+        if !moved.is_finite() {
+            return Err(ModelError::Overflow { call });
+        }
+        state.transform = moved;
+        Ok(())
+    }
+}
+
+/// Refuses a column of `matrix` with a number that isn't finite, naming `call`, the column and the item.
+fn check_columns(call: &str, matrix: &[[f32; 4]; 4]) -> Result<(), NotFinite> {
+    let finite = |column: &[f32; 4]| column.iter().all(|value| value.is_finite());
+    match matrix.iter().position(|column| !finite(column)) {
+        Some(index) => check_finite(call, Some(&format!("column {index}")), &matrix[index]),
+        None => Ok(()),
+    }
+}
+
+/// The rotation `Model::rotate` applies: `radians` around `axis`, made unit length.
+/// The axis is scaled by its largest item first, so a very short or very long axis
+/// keeps its direction, and only an axis of length 0 has none.
+fn build_rotation(axis: [f32; 3], radians: f32) -> Result<Mat4, ModelError> {
+    check_finite("Model::rotate", Some("axis"), &axis)?;
+    check_finite("Model::rotate", Some("radians"), &[radians])?;
+    let axis = Vec3::from(axis);
+    let direction = (axis / axis.abs().max_element()).try_normalize();
+    let direction = direction.ok_or(ModelError::ZeroAxis)?;
+    Ok(Mat4::from_axis_angle(direction, radians))
 }
 
 /// A single Model queued on a Pass: the Material's Shader, the Model's Mesh,
@@ -220,7 +282,7 @@ mod tests {
     #[test]
     fn translate_moves_in_world_space() {
         let model = Model::new(pbr_triangle_mesh(), pbr_material());
-        model.translate([5.0, 0.0, -2.0]);
+        model.translate([5.0, 0.0, -2.0]).expect("translate");
         let m = model.transform();
         assert_eq!(m[3], [5.0, 0.0, -2.0, 1.0]);
     }
@@ -228,8 +290,10 @@ mod tests {
     #[test]
     fn rotate_then_translate_translates_in_world_space() {
         let model = Model::new(pbr_triangle_mesh(), pbr_material());
-        model.rotate([0.0, 1.0, 0.0], std::f32::consts::FRAC_PI_2);
-        model.translate([1.0, 0.0, 0.0]);
+        model
+            .rotate([0.0, 1.0, 0.0], std::f32::consts::FRAC_PI_2)
+            .expect("rotate");
+        model.translate([1.0, 0.0, 0.0]).expect("translate");
         let m = model.transform();
         assert!((m[3][0] - 1.0).abs() < 1.0e-5, "got {m:?}");
         assert!((m[3][2]).abs() < 1.0e-5, "got {m:?}");
@@ -238,8 +302,8 @@ mod tests {
     #[test]
     fn scale_is_local_post_multiply() {
         let model = Model::new(pbr_triangle_mesh(), pbr_material());
-        model.translate([3.0, 0.0, 0.0]);
-        model.scale([2.0, 2.0, 2.0]);
+        model.translate([3.0, 0.0, 0.0]).expect("translate");
+        model.scale([2.0, 2.0, 2.0]).expect("scale");
         let m = model.transform();
         assert_eq!(m[3][0], 3.0);
         assert!((m[0][0] - 2.0).abs() < 1.0e-5);
@@ -247,13 +311,83 @@ mod tests {
         assert!((m[2][2] - 2.0).abs() < 1.0e-5);
     }
 
+    // Story: each transform call refuses NaN and an infinity, naming the call and the item,
+    // and rotate refuses an axis of length 0. A refused call leaves the transform as it was.
     #[test]
-    fn rotate_ignores_zero_axis() {
+    fn transform_calls_refuse_what_they_cannot_use() {
         let model = Model::new(pbr_triangle_mesh(), pbr_material());
+        model.translate([1.0, 2.0, 3.0]).expect("translate");
         let before = model.transform();
-        model.rotate([0.0, 0.0, 0.0], 1.57);
-        let after = model.transform();
-        assert_eq!(before, after, "zero axis must be ignored");
+        let mut matrix = before;
+        matrix[2][1] = f32::NAN;
+
+        let refusals = [
+            model.set_transform(matrix),
+            model.translate([0.0, f32::INFINITY, 0.0]),
+            model.rotate([0.0, f32::NAN, 0.0], 1.0),
+            model.rotate([0.0, 1.0, 0.0], f32::NEG_INFINITY),
+            model.rotate([0.0, -0.0, 0.0], 1.0),
+            model.scale([f32::NAN, 1.0, 1.0]),
+        ]
+        .map(|refused| refused.err().map(|error| error.to_string()));
+
+        let zero = "Model::rotate: axis has length 0, so it has no direction to turn around";
+        assert_eq!(
+            refusals.map(|message| message.unwrap_or_default()),
+            [
+                "Model::set_transform: column 2: item 1 must be finite, got NaN",
+                "Model::translate: item 1 must be finite, got inf",
+                "Model::rotate: axis: item 1 must be finite, got NaN",
+                "Model::rotate: radians must be finite, got -inf",
+                zero,
+                "Model::scale: item 0 must be finite, got NaN",
+            ]
+        );
+        assert_eq!(
+            model.transform(),
+            before,
+            "a refused call keeps the transform"
+        );
+    }
+
+    // Story: an axis keeps its direction however short or long it is, so only an axis
+    // of length 0 has none, and a very short or long one turns as the unit axis does.
+    // Story: finite moves whose product leaves the f32 range are refused,
+    // and the transform keeps the value it had before the move.
+    #[test]
+    fn moves_past_the_f32_range_are_refused() {
+        let model = Model::new(pbr_triangle_mesh(), pbr_material());
+        model.translate([3.0e38, 0.0, 0.0]).expect("first move");
+        model.scale([1.0e20; 3]).expect("first scale");
+        let before = model.transform();
+
+        let moved = model.translate([3.0e38, 0.0, 0.0]);
+        let scaled = model.scale([1.0e20; 3]);
+
+        let moved = moved.expect_err("a second move overflows").to_string();
+        assert_eq!(
+            moved,
+            "Model::translate would carry the transform past the f32 range"
+        );
+        assert!(matches!(
+            scaled,
+            Err(ModelError::Overflow {
+                call: "Model::scale"
+            })
+        ));
+        assert_eq!(model.transform(), before);
+    }
+
+    #[test]
+    fn rotate_takes_short_and_long_axes() {
+        let unit = Model::new(pbr_triangle_mesh(), pbr_material());
+        unit.rotate([0.0, 1.0, 0.0], 0.5).expect("unit axis");
+
+        for axis in [[0.0, 1.0e-30, 0.0], [0.0, 3.0e38, 0.0]] {
+            let model = Model::new(pbr_triangle_mesh(), pbr_material());
+            model.rotate(axis, 0.5).expect("a short or long axis");
+            assert_eq!(model.transform(), unit.transform(), "{axis:?}");
+        }
     }
 
     #[test]
@@ -264,7 +398,7 @@ mod tests {
         // `Pass::add` and `Renderer::render`).
         let m1 = Model::new(pbr_triangle_mesh(), pbr_material());
         let m2 = m1.clone();
-        m1.translate([7.0, 0.0, 0.0]);
+        m1.translate([7.0, 0.0, 0.0]).expect("translate");
         assert_eq!(m2.transform()[3], [7.0, 0.0, 0.0, 1.0]);
     }
 
@@ -308,7 +442,8 @@ mod tests {
             [0.0, 1.0, 0.0, 0.0],
             [0.0, 0.0, 1.0, 0.0],
             [9.0, 0.0, 0.0, 1.0],
-        ]);
+        ])
+        .expect("transform");
         let entries = pass.object.model_entries.read();
         let live = entries[0].state.read().transform.to_cols_array_2d();
         assert_eq!(live[3], [9.0, 0.0, 0.0, 1.0]);
@@ -519,7 +654,7 @@ mod tests {
     #[test]
     fn a_failed_join_changes_neither_pass_nor_shader() {
         let pass = crate::Pass::new("lit");
-        let light = crate::Light::point([0.0, 1.0, 0.0], [1.0, 1.0, 1.0]);
+        let light = crate::Light::point([0.0, 1.0, 0.0], [1.0, 1.0, 1.0]).expect("light");
         pass.add(&light).expect("add light");
         let material = Material::pbr();
         let shader = material.shader.object.clone();

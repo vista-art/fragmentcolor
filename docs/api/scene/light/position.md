@@ -13,8 +13,8 @@ to update it.
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Light;
 
-let lamp = Light::point([0.0, 2.5, 0.0], [1.0, 1.0, 1.0]);
-let sun = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
+let lamp = Light::point([0.0, 2.5, 0.0], [1.0, 1.0, 1.0])?;
+let sun = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])?;
 # assert_eq!(lamp.position(), Some([0.0, 2.5, 0.0]));
 # assert!(sun.position().is_none());
 # Ok(())

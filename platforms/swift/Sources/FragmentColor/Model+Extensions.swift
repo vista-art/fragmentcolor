@@ -35,7 +35,7 @@ extension Model {
     }
     @_disfavoredOverload
     public func setTransform(_ matrix: [Double]) throws {
-        try setTransform(matrix: matrix.map { Float($0) })
+        try setTransform(matrix: readFloats(matrix, "Model.setTransform"))
     }
 
     /// A 4×4 matrix as its four columns, as Rust's `[[f32; 4]; 4]` holds it.
@@ -64,7 +64,10 @@ extension Model {
     }
     @_disfavoredOverload
     public func rotate(_ axis: [Double], _ radians: Double) throws {
-        try rotate(axis: readFloats(axis, "Model.rotate: axis"), radians: Float(radians))
+        try rotate(
+            axis: readFloats(axis, "Model.rotate: axis"),
+            radians: readFinite(radians, "Model.rotate: radians")
+        )
     }
 
     public func scale(_ factor: [Float]) throws {

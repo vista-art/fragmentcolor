@@ -23,17 +23,27 @@ headlamps, theater lighting). The kind is set once at construction via
 The unified surface keeps the public API simple: one type, one
 [`Scene::add`](/api/scene/scene#add) method, one
 [`Pass::add`](/api/core/pass#add) method, and one
-binding per platform. Setters fall into two groups:
+binding per platform. Every setter returns `Result<Self, LightError>` for
+chaining, and they fall into two groups:
 
 - **Universal**: [`set_color`](/api/scene/light#set_color)
   and [`set_intensity`](/api/scene/light#set_intensity)
-  apply to every kind and return `Self` for chaining.
+  apply to every kind.
 - **Kind-specific**: [`set_position`](/api/scene/light#set_position),
   [`set_direction`](/api/scene/light#set_direction),
   [`set_range`](/api/scene/light#set_range), and
   [`set_cone_angles`](/api/scene/light#set_cone_angles)
-  return `Result<Self, LightError>`. Calling one on the wrong kind returns
-  `LightError::FieldNotApplicable { kind, field }`.
+  apply to the kinds that carry the field. Calling one on the wrong kind
+  returns `LightError::FieldNotApplicable { kind, field }`.
+
+The constructors and every setter but `set_range` refuse NaN and an
+infinity with `LightError::NotFinite`, which names the call and the item,
+and a refused setter leaves the light as it was. The other languages also
+refuse a number past the 32-bit float range there, such as `1e39`, before
+the call runs: an `InvalidInputError` in JavaScript and Python,
+`FragmentColorError` in Swift and `FragmentColorException` in Kotlin.
+`set_range` reads an infinity as an unlimited range and refuses NaN with
+`LightError::NegativeRange`.
 
 The matching getters use `Option<T>` for the kind-specific fields:
 [`position`](/api/scene/light#position),
@@ -143,6 +153,20 @@ A directional light carries no position. Calling
 [`set_cone_angles`](/api/scene/light#set_cone_angles)
 on a directional light returns `LightError::FieldNotApplicable`.
 
+An item of `direction` or `color` that is NaN or an infinity returns
+`LightError::NotFinite`, which names the call, the vector and the item:
+`Light::directional: direction: item 1 must be finite, got NaN`. The other
+languages also refuse an item past the 32-bit float range, such as `1e39`,
+with a message like `Light.directional: direction: item 1 must be a finite
+number that fits a 32-bit float, got 1e39`. JavaScript throws an `Error`
+named `InvalidInputError`, Python raises `InvalidInputError`, Swift throws
+`FragmentColorError` and Kotlin throws `FragmentColorException`.
+
+A `direction` of length 0, such as `[0, 0, 0]`, points the light nowhere
+and returns `LightError::ZeroDirection` in every language: `Light::directional:
+direction has length 0, so the light points nowhere`. JavaScript and
+Python raise it as `InvalidInputError`, too.
+
 #### Example
 
 <Tabs>
@@ -152,7 +176,7 @@ on a directional light returns `LightError::FieldNotApplicable`.
 code={`
 use fragmentcolor::Light;
 
-let sun = Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]);
+let sun = Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])?;
 `}
 lang="rust"
 />
@@ -233,6 +257,14 @@ A point light carries no direction or cone. Calling
 or [`set_cone_angles`](/api/scene/light#set_cone_angles)
 on a point light returns `LightError::FieldNotApplicable`.
 
+An item of `position` or `color` that is NaN or an infinity returns
+`LightError::NotFinite`, which names the call, the vector and the item,
+such as `Light::point: position: item 0 must be finite, got inf`. The other
+languages also refuse an item past the 32-bit float range, such as `1e39`,
+with the error a color item gets: an `InvalidInputError` in JavaScript and
+Python, `FragmentColorError` in Swift and `FragmentColorException` in
+Kotlin.
+
 A point light with a range lights only what lies within it, which lets the
 renderer skip it everywhere else. Without one, every fragment pays for it.
 
@@ -259,7 +291,7 @@ wall.set_indices([0, 1, 2, 0, 2, 3]);
 
 let camera = Camera::perspective(1.047, 1.0, 0.1, 100.0)?
     .look_at([0.0, 0.0, 4.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])?;
-let bulb = Light::point([0.0, 0.5, 1.0], [1.0, 0.95, 0.8]).set_intensity(15.0);
+let bulb = Light::point([0.0, 0.5, 1.0], [1.0, 0.95, 0.8])?.set_intensity(15.0)?;
 bulb.set_range(3.0)?;
 
 let pass = Pass::new("lamp");
@@ -421,7 +453,20 @@ for parallel-ray illumination see
 
 A spot light carries every kind-specific field, so every kind-specific
 setter (`set_position`, `set_direction`, `set_range`, `set_cone_angles`)
-succeeds with `Ok(self)`.
+applies to it.
+
+An item of `position`, `direction` or `color` that is NaN or an infinity
+returns `LightError::NotFinite`, which names the call, the vector and the
+item, such as `Light::spot: direction: item 2 must be finite, got NaN`.
+The other languages also refuse an item past the 32-bit float range, such
+as `1e39`. JavaScript throws an `Error` named `InvalidInputError`, Python
+raises `InvalidInputError`, Swift throws `FragmentColorError` and Kotlin
+throws `FragmentColorException`.
+
+A `direction` of length 0, such as `[0, 0, 0]`, points the light nowhere
+and returns `LightError::ZeroDirection` in every language: `Light::spot:
+direction has length 0, so the light points nowhere`. JavaScript and
+Python raise it as `InvalidInputError`, too.
 
 #### Example
 
@@ -432,8 +477,8 @@ succeeds with `Ok(self)`.
 code={`
 use fragmentcolor::Light;
 
-let torch = Light::spot([0.0, 1.8, 1.0], [0.0, -0.3, -1.0], [1.0, 0.9, 0.7])
-    .set_intensity(5.0)
+let torch = Light::spot([0.0, 1.8, 1.0], [0.0, -0.3, -1.0], [1.0, 0.9, 0.7])?
+    .set_intensity(5.0)?
     .set_cone_angles(0.15, 0.4)?;
 `}
 lang="rust"
@@ -513,9 +558,9 @@ glTF scene) to decide which kind-specific setters or getters to call.
 code={`
 use fragmentcolor::{Light, LightKind};
 
-let sun = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
-let bulb = Light::point([0.0, 2.5, 0.0], [1.0, 1.0, 1.0]);
-let torch = Light::spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
+let sun = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])?;
+let bulb = Light::point([0.0, 2.5, 0.0], [1.0, 1.0, 1.0])?;
+let torch = Light::spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0])?;
 `}
 lang="rust"
 />
@@ -601,7 +646,7 @@ multiplier is separate and multiplies the color uniformly in the shader.
 code={`
 use fragmentcolor::Light;
 
-let warm_lamp = Light::point([0.0, 2.0, 0.0], [1.0, 0.7, 0.4]);
+let warm_lamp = Light::point([0.0, 2.0, 0.0], [1.0, 0.7, 0.4])?;
 `}
 lang="rust"
 />
@@ -679,7 +724,7 @@ to update it.
 code={`
 use fragmentcolor::Light;
 
-let bright = Light::point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0]).set_intensity(5.0);
+let bright = Light::point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0])?.set_intensity(5.0)?;
 `}
 lang="rust"
 />
@@ -742,8 +787,17 @@ lang="kotlin"
 ### Light::set_color \{#set_color\}
 
 Update the linear-RGB color the light emits. Defined for every kind;
-returns `Self` for chaining. The new value propagates live to every
+returns `Ok(self)` for chaining. The new value propagates live to every
 shader the Light has already been wired into; no re-attach needed.
+
+A channel that is NaN or an infinity returns `LightError::NotFinite`,
+which names the call and the item, and the light keeps the color it had.
+The other languages also refuse a channel past the 32-bit float range,
+such as `1e39`, with a message like `Light.setColor: item 0 must be a
+finite number that fits a 32-bit float, got 1e39`. JavaScript throws an
+`Error` named `InvalidInputError`, Python raises `InvalidInputError`,
+Swift throws `FragmentColorError` and Kotlin throws
+`FragmentColorException`.
 
 #### Example
 
@@ -754,11 +808,11 @@ shader the Light has already been wired into; no re-attach needed.
 code={`
 use fragmentcolor::Light;
 
-let lamp = Light::point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0]);
+let lamp = Light::point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0])?;
 
 // Warm-tint the lamp later. Every Pass that absorbed \`lamp\` sees the
 // new color on the next render.
-lamp.set_color([1.0, 0.7, 0.4]);
+lamp.set_color([1.0, 0.7, 0.4])?;
 `}
 lang="rust"
 />
@@ -837,11 +891,19 @@ lang="kotlin"
 ### Light::set_intensity \{#set_intensity\}
 
 Update the scalar intensity multiplier. Defined for every kind; returns
-`Self` for chaining. The shader multiplies the
+`Ok(self)` for chaining. The shader multiplies the
 [`color`](/api/scene/light#color) by this value
 when accumulating, so doubling intensity doubles every channel uniformly.
 The new value propagates live to every shader the Light has already been
 wired into.
+
+NaN or an infinity returns `LightError::NotFinite`, which names the call,
+and the light keeps the intensity it had. The other languages also refuse
+a number past the 32-bit float range, such as `1e39`, with a message like
+`Light.setIntensity: value must be a finite number that fits a 32-bit
+float, got 1e39`. JavaScript throws an `Error` named `InvalidInputError`,
+Python raises `InvalidInputError`, Swift throws `FragmentColorError` and
+Kotlin throws `FragmentColorException`.
 
 #### Example
 
@@ -852,9 +914,9 @@ wired into.
 code={`
 use fragmentcolor::Light;
 
-let torch = Light::spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
+let torch = Light::spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0])?;
 
-torch.set_intensity(8.0);
+torch.set_intensity(8.0)?;
 `}
 lang="rust"
 />
@@ -896,7 +958,7 @@ import FragmentColor
 
 let torch = try Light.spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
 
-torch.setIntensity(8.0)
+try torch.setIntensity(8.0)
 `}
 lang="swift"
 />
@@ -940,8 +1002,8 @@ to update it.
 code={`
 use fragmentcolor::Light;
 
-let lamp = Light::point([0.0, 2.5, 0.0], [1.0, 1.0, 1.0]);
-let sun = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
+let lamp = Light::point([0.0, 2.5, 0.0], [1.0, 1.0, 1.0])?;
+let sun = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])?;
 `}
 lang="rust"
 />
@@ -1023,8 +1085,8 @@ to update it.
 code={`
 use fragmentcolor::Light;
 
-let sun = Light::directional([0.3, -1.0, -0.4], [1.0, 1.0, 1.0]);
-let lamp = Light::point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0]);
+let sun = Light::directional([0.3, -1.0, -0.4], [1.0, 1.0, 1.0])?;
+let lamp = Light::point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0])?;
 `}
 lang="rust"
 />
@@ -1107,8 +1169,8 @@ update it.
 code={`
 use fragmentcolor::Light;
 
-let lamp = Light::point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0]);
-let sun = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
+let lamp = Light::point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0])?;
+let sun = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])?;
 `}
 lang="rust"
 />
@@ -1192,9 +1254,9 @@ to update both at once.
 code={`
 use fragmentcolor::Light;
 
-let torch = Light::spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
+let torch = Light::spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0])?
     .set_cone_angles(0.15, 0.4)?;
-let lamp = Light::point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
+let lamp = Light::point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0])?;
 `}
 lang="rust"
 />
@@ -1279,9 +1341,9 @@ to update both at once.
 code={`
 use fragmentcolor::Light;
 
-let torch = Light::spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
+let torch = Light::spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0])?
     .set_cone_angles(0.15, 0.4)?;
-let sun = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
+let sun = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])?;
 `}
 lang="rust"
 />
@@ -1354,6 +1416,13 @@ returns `Err(LightError::FieldNotApplicable { kind: Directional, field:
 value propagates live to every shader the Light has already been wired
 into; no re-attach needed.
 
+An item that is NaN or an infinity returns `LightError::NotFinite`, which
+names the call and the item, on any kind, and the light stays where it
+was. The other languages also refuse an item past the 32-bit float range,
+such as `1e39`. JavaScript throws an `Error` named `InvalidInputError`,
+Python raises `InvalidInputError`, Swift throws `FragmentColorError` and
+Kotlin throws `FragmentColorException`.
+
 #### Example
 
 <Tabs>
@@ -1363,7 +1432,7 @@ into; no re-attach needed.
 code={`
 use fragmentcolor::Light;
 
-let lamp = Light::point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
+let lamp = Light::point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0])?;
 lamp.set_position([3.0, 1.5, -2.0])?;
 `}
 lang="rust"
@@ -1437,6 +1506,16 @@ returns `Err(LightError::FieldNotApplicable { kind: Point, field:
 new value propagates live to every shader the Light has already been
 wired into; no re-attach needed.
 
+An item that is NaN or an infinity returns `LightError::NotFinite`, which
+names the call and the item, on any kind, and the light keeps the
+direction it had. The other languages also refuse an item past the 32-bit
+float range, such as `1e39`. JavaScript throws an `Error` named
+`InvalidInputError`, Python raises `InvalidInputError`, Swift throws
+`FragmentColorError` and Kotlin throws `FragmentColorException`. A
+direction of length 0, such as `[0, 0, 0]`, points the light nowhere and
+returns `LightError::ZeroDirection`, which JavaScript and Python raise as
+`InvalidInputError` too, and the light keeps its direction.
+
 #### Example
 
 <Tabs>
@@ -1446,7 +1525,7 @@ wired into; no re-attach needed.
 code={`
 use fragmentcolor::Light;
 
-let sun = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
+let sun = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])?;
 sun.set_direction([0.3, -0.8, -0.5])?;
 `}
 lang="rust"
@@ -1534,7 +1613,7 @@ already been wired into.
 code={`
 use fragmentcolor::Light;
 
-let lamp = Light::point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0]);
+let lamp = Light::point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0])?;
 lamp.set_range(8.0)?;
 `}
 lang="rust"
@@ -1615,6 +1694,16 @@ soft 45° cone.
 The new values propagate live to every shader the Light has already
 been wired into; no re-attach needed.
 
+An angle that is NaN or an infinity returns `LightError::NotFinite`,
+which names the call and the angle, `Light::set_cone_angles: inner must be
+finite, got NaN`, on any kind, and the light keeps both angles it had. The
+other languages also refuse an angle past the 32-bit float range, such as
+`1e39`, with a message like `Light.setConeAngles: inner_radians must be a
+finite number that fits a 32-bit float, got 1e39`. JavaScript throws an
+`Error` named `InvalidInputError`, Python raises `InvalidInputError`,
+Swift throws `FragmentColorError` and Kotlin throws
+`FragmentColorException`.
+
 #### Example
 
 <Tabs>
@@ -1624,7 +1713,7 @@ been wired into; no re-attach needed.
 code={`
 use fragmentcolor::Light;
 
-let torch = Light::spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
+let torch = Light::spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0])?;
 torch.set_cone_angles(0.15, 0.4)?;
 `}
 lang="rust"

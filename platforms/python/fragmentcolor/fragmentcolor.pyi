@@ -227,7 +227,7 @@ class Renderer:
         """
         Create a [Texture](https://fragmentcolor.org/api/texture/texture) from bytes, a file path, a URL, a KTX2 container, or a pre-built [Mipmap](https://fragmentcolor.org/api/texture/mipmap).
 
-        When you pass a `size`, the bytes are treated as raw pixels in the chosen format. Without a size, the bytes (or the file/URL contents) are decoded as PNG, JPEG, BMP, HDR, etc. A size applies to bytes only: a path, a URL, a KTX2 file and a `Mipmap` carry their own, so a size with one is an `InvalidInput` error, raised before any file read or fetch.
+        When you pass a `size`, the bytes are treated as raw pixels in the chosen format. Without a size, the bytes (or the file/URL contents) are decoded as PNG, JPEG, BMP, HDR, etc. A size applies to bytes only: a path, a URL, a KTX2 file and a `Mipmap` carry their own, so a size with one is an `InvalidInput` error, raised before any file read or fetch. An empty byte list, path or URL holds nothing to read, and is an `InvalidInput` error too.
 
         A size with a side of zero, or one past the device's limits, is an error that reaches no GPU call, and so is an image larger than the device takes, which is checked from its header before the pixels decode: `TextureError::InvalidInput` inside `RendererError::TextureError` in Rust, a thrown `Error` named `InvalidInputError` in JavaScript, `InvalidInputError` (a `FragmentColorError`) in Python, `FragmentColorError` in Swift and `FragmentColorException` in Kotlin.
 
@@ -2562,6 +2562,15 @@ class Scene:
         that isn't between 0 and π, a `znear` of 0 and a camera node scaled to
         zero. Load with `cameras(false)` to skip the file's cameras.
 
+        A light that the `Light` constructors and setters refuse returns
+        `SceneLoadError::Invalid`, which names the light and its node, whether or
+        not its values break a glTF rule: an intensity, color or cone angle that
+        reads as an infinity in an `f32`, such as `1e39`, or a light whose node is
+        scaled to zero and so has no direction. Load with `lights(false)` to skip
+        the file's lights. A mesh node whose transform reads as an infinity, such
+        as a translation of `1e39`, returns the same error and names the node,
+        since `Model::set_transform` refuses it.
+
         A perspective camera without `zfar` asks for an infinite projection, and
         the loader builds one, so nothing in front of the camera clips however far
         away.
@@ -3108,7 +3117,15 @@ class Scene:
         color lands there, from a later `ambient` call or from `Shader::set`. A
         shader without `lights.ambient` takes nothing.
 
-        Returns a handle to the same Scene (Arc-shared) for chaining.
+        A channel that is NaN or an infinity returns `LightError::NotFinite`,
+        which names the call and the item, `Scene::ambient: item 1 must be finite,
+        got NaN`, and the scene and its shaders keep the color they had. The
+        other languages also refuse a channel past the 32-bit float range, such as
+        `1e39`. JavaScript throws an `Error` named `InvalidInputError`, Python
+        raises `InvalidInputError`, Swift throws `FragmentColorError` and Kotlin
+        throws `FragmentColorException`.
+
+        Returns `Ok` with a handle to the same Scene (Arc-shared) for chaining.
 
         Example:
 
@@ -3435,6 +3452,16 @@ class Model:
         current transform, see
         [Model::transform](https://fragmentcolor.org/api/scene/model#transform).
 
+        A number that is NaN or an infinity returns `ModelError::NotFinite`, which
+        names the call, the column and the item: `Model::set_transform: column 3:
+        item 0 must be finite, got inf`. The Model keeps the transform it had. The
+        other languages also refuse a number past the 32-bit float range, such as
+        `1e39`, with a message like `Model.setTransform: column 3: item 0 must be a
+        finite number that fits a 32-bit float, got 1e39`, or `item 12` for the 16
+        numbers of a flat matrix. JavaScript throws an `Error` named
+        `InvalidInputError`, Python raises `InvalidInputError`, Swift throws
+        `FragmentColorError` and Kotlin throws `FragmentColorException`.
+
         Example:
 
         ```python
@@ -3464,6 +3491,20 @@ class Model:
         Model's current rotation. `translate([1, 0, 0])` always moves one unit
         along the world X axis.
 
+        An item that is NaN or an infinity returns `ModelError::NotFinite`, which
+        names the call and the item, and the Model stays where it was. The other
+        languages also refuse an item past the 32-bit float range, such as `1e39`,
+        with a message like `Model.translate: item 1 must be a finite number that
+        fits a 32-bit float, got 1e39`. JavaScript throws an `Error` named
+        `InvalidInputError`, Python raises `InvalidInputError`, Swift throws
+        `FragmentColorError` and Kotlin throws `FragmentColorException`.
+
+        A move of finite numbers that would carry a number of the transform past
+        the 32-bit float range, such as two moves of `3e38` along one axis, returns
+        `ModelError::Overflow`: `Model::translate would carry the transform past the f32
+        range`. The Model keeps its transform, and JavaScript and Python raise it as
+        `InvalidInputError`, too.
+
         Example:
 
         ```python
@@ -3486,8 +3527,22 @@ class Model:
         Rotate the Model around `axis` (in local space) by `radians`. Post-multiplies
         the current transform by an axis-angle rotation, so a rotated-then-translated
         Model spins in place around its own origin rather than orbiting the world
-        origin. The axis is normalized internally; a zero-length axis is rejected
-        with a logged warning and no change.
+        origin. The axis is normalized internally, so an axis of any length but 0
+        turns the Model the same way.
+
+        An axis item or an angle that is NaN or an infinity returns
+        `ModelError::NotFinite`, which names the call and the item, such as
+        `Model::rotate: radians must be finite, got NaN`. The other languages also
+        refuse a number past the 32-bit float range, such as `1e39`, with a
+        message like `Model.rotate: axis: item 1 must be a finite number that fits
+        a 32-bit float, got 1e39`. An axis of length 0, such as `[0, 0, 0]`, has
+        no direction to turn around and returns `ModelError::ZeroAxis` in every
+        language. A rotation that would carry a number of the transform past the
+        32-bit float range returns `ModelError::Overflow`. Either way the Model
+        keeps its transform. JavaScript throws an
+        `Error` named `InvalidInputError`, Python raises `InvalidInputError`,
+        Swift throws `FragmentColorError` and Kotlin throws
+        `FragmentColorException`.
 
         For pure world-space rotations (e.g. tumbling around a fixed pivot), compose
         the matrix yourself and call [set_transform](https://fragmentcolor.org/api/scene/model#set_transform).
@@ -3519,6 +3574,19 @@ class Model:
         the cheap normal-transform path the default PBR shader uses, so a stretched
         Model will shade slightly off. For a correct non-uniform-scale normal, use
         `Material::custom` with a shader that ships the explicit cofactor matrix.
+
+        A factor that is NaN or an infinity returns `ModelError::NotFinite`, which
+        names the call and the item, and the Model keeps its size. The other
+        languages also refuse a factor past the 32-bit float range, such as
+        `1e39`. JavaScript throws an `Error` named `InvalidInputError`, Python
+        raises `InvalidInputError`, Swift throws `FragmentColorError` and Kotlin
+        throws `FragmentColorException`. A factor of 0 is a valid scale, which
+        flattens the Model along that axis.
+
+        A scale that would carry a number of the transform past the 32-bit float
+        range, such as `[1e20, 1e20, 1e20]` twice, returns `ModelError::Overflow`,
+        `Model::scale would carry the transform past the f32 range`, and the Model
+        keeps its size. JavaScript and Python raise it as `InvalidInputError`, too.
 
         Example:
 
@@ -3864,17 +3932,27 @@ class Light:
     The unified surface keeps the public API simple: one type, one
     [`Scene::add`](https://fragmentcolor.org/api/scene/scene#add) method, one
     [`Pass::add`](https://fragmentcolor.org/api/core/pass#add) method, and one
-    binding per platform. Setters fall into two groups:
+    binding per platform. Every setter returns `Result<Self, LightError>` for
+    chaining, and they fall into two groups:
 
     - **Universal**: [`set_color`](https://fragmentcolor.org/api/scene/light#set_color)
       and [`set_intensity`](https://fragmentcolor.org/api/scene/light#set_intensity)
-      apply to every kind and return `Self` for chaining.
+      apply to every kind.
     - **Kind-specific**: [`set_position`](https://fragmentcolor.org/api/scene/light#set_position),
       [`set_direction`](https://fragmentcolor.org/api/scene/light#set_direction),
       [`set_range`](https://fragmentcolor.org/api/scene/light#set_range), and
       [`set_cone_angles`](https://fragmentcolor.org/api/scene/light#set_cone_angles)
-      return `Result<Self, LightError>`. Calling one on the wrong kind returns
-      `LightError::FieldNotApplicable { kind, field }`.
+      apply to the kinds that carry the field. Calling one on the wrong kind
+      returns `LightError::FieldNotApplicable { kind, field }`.
+
+    The constructors and every setter but `set_range` refuse NaN and an
+    infinity with `LightError::NotFinite`, which names the call and the item,
+    and a refused setter leaves the light as it was. The other languages also
+    refuse a number past the 32-bit float range there, such as `1e39`, before
+    the call runs: an `InvalidInputError` in JavaScript and Python,
+    `FragmentColorError` in Swift and `FragmentColorException` in Kotlin.
+    `set_range` reads an infinity as an unlimited range and refuses NaN with
+    `LightError::NegativeRange`.
 
     The matching getters use `Option<T>` for the kind-specific fields:
     [`position`](https://fragmentcolor.org/api/scene/light#position),
@@ -3998,6 +4076,20 @@ class Light:
         [`set_cone_angles`](https://fragmentcolor.org/api/scene/light#set_cone_angles)
         on a directional light returns `LightError::FieldNotApplicable`.
 
+        An item of `direction` or `color` that is NaN or an infinity returns
+        `LightError::NotFinite`, which names the call, the vector and the item:
+        `Light::directional: direction: item 1 must be finite, got NaN`. The other
+        languages also refuse an item past the 32-bit float range, such as `1e39`,
+        with a message like `Light.directional: direction: item 1 must be a finite
+        number that fits a 32-bit float, got 1e39`. JavaScript throws an `Error`
+        named `InvalidInputError`, Python raises `InvalidInputError`, Swift throws
+        `FragmentColorError` and Kotlin throws `FragmentColorException`.
+
+        A `direction` of length 0, such as `[0, 0, 0]`, points the light nowhere
+        and returns `LightError::ZeroDirection` in every language: `Light::directional:
+        direction has length 0, so the light points nowhere`. JavaScript and
+        Python raise it as `InvalidInputError`, too.
+
         Example:
 
         ```python
@@ -4027,6 +4119,14 @@ class Light:
         [`set_direction`](https://fragmentcolor.org/api/scene/light#set_direction)
         or [`set_cone_angles`](https://fragmentcolor.org/api/scene/light#set_cone_angles)
         on a point light returns `LightError::FieldNotApplicable`.
+
+        An item of `position` or `color` that is NaN or an infinity returns
+        `LightError::NotFinite`, which names the call, the vector and the item,
+        such as `Light::point: position: item 0 must be finite, got inf`. The other
+        languages also refuse an item past the 32-bit float range, such as `1e39`,
+        with the error a color item gets: an `InvalidInputError` in JavaScript and
+        Python, `FragmentColorError` in Swift and `FragmentColorException` in
+        Kotlin.
 
         A point light with a range lights only what lies within it, which lets the
         renderer skip it everywhere else. Without one, every fragment pays for it.
@@ -4083,7 +4183,20 @@ class Light:
 
         A spot light carries every kind-specific field, so every kind-specific
         setter (`set_position`, `set_direction`, `set_range`, `set_cone_angles`)
-        succeeds with `Ok(self)`.
+        applies to it.
+
+        An item of `position`, `direction` or `color` that is NaN or an infinity
+        returns `LightError::NotFinite`, which names the call, the vector and the
+        item, such as `Light::spot: direction: item 2 must be finite, got NaN`.
+        The other languages also refuse an item past the 32-bit float range, such
+        as `1e39`. JavaScript throws an `Error` named `InvalidInputError`, Python
+        raises `InvalidInputError`, Swift throws `FragmentColorError` and Kotlin
+        throws `FragmentColorException`.
+
+        A `direction` of length 0, such as `[0, 0, 0]`, points the light nowhere
+        and returns `LightError::ZeroDirection` in every language: `Light::spot:
+        direction has length 0, so the light points nowhere`. JavaScript and
+        Python raise it as `InvalidInputError`, too.
 
         Example:
 
@@ -4244,8 +4357,17 @@ class Light:
     def set_color(self, color: npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat]) -> Light:
         """
         Update the linear-RGB color the light emits. Defined for every kind;
-        returns `Self` for chaining. The new value propagates live to every
+        returns `Ok(self)` for chaining. The new value propagates live to every
         shader the Light has already been wired into; no re-attach needed.
+
+        A channel that is NaN or an infinity returns `LightError::NotFinite`,
+        which names the call and the item, and the light keeps the color it had.
+        The other languages also refuse a channel past the 32-bit float range,
+        such as `1e39`, with a message like `Light.setColor: item 0 must be a
+        finite number that fits a 32-bit float, got 1e39`. JavaScript throws an
+        `Error` named `InvalidInputError`, Python raises `InvalidInputError`,
+        Swift throws `FragmentColorError` and Kotlin throws
+        `FragmentColorException`.
 
         Example:
 
@@ -4262,11 +4384,19 @@ class Light:
     def set_intensity(self, value: SupportsFloat) -> Light:
         """
         Update the scalar intensity multiplier. Defined for every kind; returns
-        `Self` for chaining. The shader multiplies the
+        `Ok(self)` for chaining. The shader multiplies the
         [`color`](https://fragmentcolor.org/api/scene/light#color) by this value
         when accumulating, so doubling intensity doubles every channel uniformly.
         The new value propagates live to every shader the Light has already been
         wired into.
+
+        NaN or an infinity returns `LightError::NotFinite`, which names the call,
+        and the light keeps the intensity it had. The other languages also refuse
+        a number past the 32-bit float range, such as `1e39`, with a message like
+        `Light.setIntensity: value must be a finite number that fits a 32-bit
+        float, got 1e39`. JavaScript throws an `Error` named `InvalidInputError`,
+        Python raises `InvalidInputError`, Swift throws `FragmentColorError` and
+        Kotlin throws `FragmentColorException`.
 
         Example:
 
@@ -4287,6 +4417,13 @@ class Light:
         value propagates live to every shader the Light has already been wired
         into; no re-attach needed.
 
+        An item that is NaN or an infinity returns `LightError::NotFinite`, which
+        names the call and the item, on any kind, and the light stays where it
+        was. The other languages also refuse an item past the 32-bit float range,
+        such as `1e39`. JavaScript throws an `Error` named `InvalidInputError`,
+        Python raises `InvalidInputError`, Swift throws `FragmentColorError` and
+        Kotlin throws `FragmentColorException`.
+
         Example:
 
         ```python
@@ -4304,6 +4441,16 @@ class Light:
         "set_direction" })` because point sources radiate omnidirectionally. The
         new value propagates live to every shader the Light has already been
         wired into; no re-attach needed.
+
+        An item that is NaN or an infinity returns `LightError::NotFinite`, which
+        names the call and the item, on any kind, and the light keeps the
+        direction it had. The other languages also refuse an item past the 32-bit
+        float range, such as `1e39`. JavaScript throws an `Error` named
+        `InvalidInputError`, Python raises `InvalidInputError`, Swift throws
+        `FragmentColorError` and Kotlin throws `FragmentColorException`. A
+        direction of length 0, such as `[0, 0, 0]`, points the light nowhere and
+        returns `LightError::ZeroDirection`, which JavaScript and Python raise as
+        `InvalidInputError` too, and the light keeps its direction.
 
         Example:
 
@@ -4352,6 +4499,16 @@ class Light:
 
         The new values propagate live to every shader the Light has already
         been wired into; no re-attach needed.
+
+        An angle that is NaN or an infinity returns `LightError::NotFinite`,
+        which names the call and the angle, `Light::set_cone_angles: inner must be
+        finite, got NaN`, on any kind, and the light keeps both angles it had. The
+        other languages also refuse an angle past the 32-bit float range, such as
+        `1e39`, with a message like `Light.setConeAngles: inner_radians must be a
+        finite number that fits a 32-bit float, got 1e39`. JavaScript throws an
+        `Error` named `InvalidInputError`, Python raises `InvalidInputError`,
+        Swift throws `FragmentColorError` and Kotlin throws
+        `FragmentColorException`.
 
         Example:
 
@@ -4589,8 +4746,9 @@ class Material:
         directly via `material.shader().set(...)`.
 
         A value your shader declares but can't hold, such as a number past ±65504
-        for an `f16` field, returns `MaterialError::Shader` with the shader's error,
-        and the call changes nothing, a whole `uv_transform` included. JavaScript
+        for an `f16` field or a texture for a slot it declares as a number, returns
+        `MaterialError::Shader` with the shader's error, and the call changes
+        nothing, a whole `uv_transform` included. JavaScript
         throws an `Error` named `MaterialError`, Python raises `MaterialError`, Swift
         throws `FragmentColorError` and Kotlin throws `FragmentColorException`.
 
@@ -5267,7 +5425,7 @@ class Material:
 
         Accepts any `Into<TextureInput>`, the inputs [`Renderer::create_texture`](https://fragmentcolor.org/api/core/renderer#create_texture) takes:
 
-        - A pre-built [`&Texture`](https://fragmentcolor.org/api/texture/texture). The setter stores the texture's ID immediately and the GPU texture stays Arc-shared across every Material that points at it. Passing the same `&shared_texture` to N Materials produces one GPU upload and N shader-uniform references: the cheap way to reuse one texture map across a scene full of objects without paying for N texture allocations. The texture belongs to the `Renderer` that created it, and another `Renderer` refuses to draw it. It keeps the options it was created with, so JavaScript and Python refuse options beside it with an `InvalidInputError`.
+        - A pre-built [`&Texture`](https://fragmentcolor.org/api/texture/texture). The setter stores the texture's ID immediately and the GPU texture stays Arc-shared across every Material that points at it. Passing the same `&shared_texture` to N Materials produces one GPU upload and N shader-uniform references: the cheap way to reuse one texture map across a scene full of objects without paying for N texture allocations. The texture belongs to the `Renderer` that created it, and another `Renderer` refuses to draw it. It keeps the options it was created with, and the setter refuses options beside it.
         - Encoded bytes, raw pixels with their size as `(bytes, [w, h])`, bytes with a format as `(bytes, format)`, bytes with every option as `(bytes, options)`, a path or a URL, alone or as `(path, format)` or `(path, options)`, or a [`Mipmap`](https://fragmentcolor.org/api/texture/mipmap), alone or as `(chain, options)`. The Material keeps this source as a map. Each `Renderer` that draws the Material uploads a copy of its own at [`Renderer::load`](https://fragmentcolor.org/api/core/renderer#load), or on native targets at its first [`Renderer::render`](https://fragmentcolor.org/api/core/renderer#render), and frees it when the `Renderer` or the Material drops. A map set again draws its old copy until the `Renderer` loads the new one.
 
         To share a map across Renderers, pass bytes, a path, a URL or a `Mipmap`.
@@ -5301,16 +5459,24 @@ class Material:
 
         ## Errors
 
-        In Rust the setter can't fail at the call. The bindings read their arguments
-        there and throw for one they can't use: a size that isn't 2 or 3 whole numbers,
-        options of the wrong type or shape, options beside a `Texture`, and in Python a
-        `size` that differs from a NumPy array's own. Python raises `TypeError` for an
-        argument of the wrong type and `InvalidInputError` for the rest, JavaScript throws
-        an `Error` of the same name, and Swift and Kotlin throw `FragmentColorError` and
-        `FragmentColorException`.
+        The setter checks its input and the slot at once, and a call it refuses
+        leaves the slot as it was. Options beside a `Texture` return
+        `MaterialError::Texture` with an `InvalidInput` texture error that names the
+        call, and so does an input that holds no data: Rust's `TextureData::Empty`,
+        or an empty byte list, path or URL in any language. A slot that a `Material::custom` shader declares as
+        something other than a texture returns `MaterialError::Shader` with the
+        shader's `TypeMismatch`. A slot the shader doesn't declare is skipped with a
+        log warning, as the number setters skip a field, and the setter returns the
+        Material.
 
-        The setter checks the slot at once. A slot the shader doesn't declare as a
-        texture, or an empty input, logs a warning and leaves the Material as it was.
+        The bindings read their arguments before the setter runs and throw for one
+        they can't use: a size that isn't 2 or 3 whole numbers, options of the wrong
+        type or shape, options beside a `Texture`, and in Python a `size` that
+        differs from a NumPy array's own. Python raises `TypeError` for an argument
+        of the wrong type, `MaterialError` for a slot the shader declares as a
+        number, and `InvalidInputError` for the rest. JavaScript throws an `Error`
+        of the same name. Swift throws `FragmentColorError`, and each call needs
+        `try`, while Kotlin throws `FragmentColorException`.
 
         A source that fails to upload (file not found, decode error, unsupported
         format) fails [`Renderer::load(&material).await`](https://fragmentcolor.org/api/core/renderer#load),
@@ -5326,10 +5492,11 @@ class Material:
         meets this, for that frame.
 
         For deterministic error handling, pre-build the texture eagerly:
-        `renderer.create_texture(path).await?` returns a `Texture` that can't
-        fail at setter time, and `Material::base_color_texture(&texture)` takes
-        an Arc-shared reference. The lazy path stays useful when the URL /
-        path resolves at render time but the caller doesn't want to await yet.
+        `renderer.create_texture(path).await?` returns a `Texture` that has already
+        uploaded, so no `load` can fail on it later, and
+        `Material::base_color_texture(&texture)` takes an Arc-shared reference. The
+        lazy path stays useful when the URL / path resolves at render time but the
+        caller doesn't want to await yet.
 
         Example:
 
@@ -5368,6 +5535,17 @@ class Material:
 
         Takes the inputs [`Material::base_color_texture`](https://fragmentcolor.org/api/scene/material#base_color_texture) takes, spelled as each language's `create_texture` spells them: a `Texture`, or encoded bytes, raw pixels with their size, bytes with a format or with every option, a path or a URL, alone or with a format or every option, or a `Mipmap`, alone or with options. The Material keeps a source as a map, and each `Renderer` uploads a copy of its own when it loads the scene. `base_color_texture` tells how a map loads, what it holds in memory and how it fails.
 
+        The setter refuses options beside a `Texture`, and an input that holds no
+        data, such as an empty byte list, with `MaterialError::Texture`. JavaScript throws it as an `Error`
+        named `InvalidInputError`, and Python raises `InvalidInputError`. A
+        `Material::custom` shader that declares `metallic_roughness_map` as
+        something other than a texture refuses the call with
+        `MaterialError::Shader`, which JavaScript and Python raise as
+        `MaterialError`. Swift throws `FragmentColorError` and Kotlin throws
+        `FragmentColorException`. A refused call leaves the slot as it was, and a
+        shader that doesn't declare `metallic_roughness_map` skips the call with a
+        log warning.
+
         Example:
 
         ```python
@@ -5398,6 +5576,16 @@ class Material:
 
         Takes the inputs [`Material::base_color_texture`](https://fragmentcolor.org/api/scene/material#base_color_texture) takes, spelled as each language's `create_texture` spells them: a `Texture`, or encoded bytes, raw pixels with their size, bytes with a format or with every option, a path or a URL, alone or with a format or every option, or a `Mipmap`, alone or with options. The Material keeps a source as a map, and each `Renderer` uploads a copy of its own when it loads the scene. `base_color_texture` tells how a map loads, what it holds in memory and how it fails.
 
+        The setter refuses options beside a `Texture`, and an input that holds no
+        data, such as an empty byte list, with `MaterialError::Texture`. JavaScript throws it as an `Error`
+        named `InvalidInputError`, and Python raises `InvalidInputError`. A
+        `Material::custom` shader that declares `normal_map` as something other than
+        a texture refuses the call with `MaterialError::Shader`, which JavaScript
+        and Python raise as `MaterialError`. Swift throws `FragmentColorError` and
+        Kotlin throws `FragmentColorException`. A refused call leaves the slot as it
+        was, and a shader that doesn't declare `normal_map` skips the call with a
+        log warning.
+
         Example:
 
         ```python
@@ -5424,6 +5612,16 @@ class Material:
         occlusion factor is `1.0` and no darkening is applied.
 
         Takes the inputs [`Material::base_color_texture`](https://fragmentcolor.org/api/scene/material#base_color_texture) takes, spelled as each language's `create_texture` spells them: a `Texture`, or encoded bytes, raw pixels with their size, bytes with a format or with every option, a path or a URL, alone or with a format or every option, or a `Mipmap`, alone or with options. The Material keeps a source as a map, and each `Renderer` uploads a copy of its own when it loads the scene. `base_color_texture` tells how a map loads, what it holds in memory and how it fails.
+
+        The setter refuses options beside a `Texture`, and an input that holds no
+        data, such as an empty byte list, with `MaterialError::Texture`. JavaScript throws it as an `Error`
+        named `InvalidInputError`, and Python raises `InvalidInputError`. A
+        `Material::custom` shader that declares `occlusion_map` as something other
+        than a texture refuses the call with `MaterialError::Shader`, which
+        JavaScript and Python raise as `MaterialError`. Swift throws
+        `FragmentColorError` and Kotlin throws `FragmentColorException`. A refused
+        call leaves the slot as it was, and a shader that doesn't declare
+        `occlusion_map` skips the call with a log warning.
 
         Example:
 
@@ -5452,6 +5650,16 @@ class Material:
         emission falls back to the `material.emissive` factor as-is.
 
         Takes the inputs [`Material::base_color_texture`](https://fragmentcolor.org/api/scene/material#base_color_texture) takes, spelled as each language's `create_texture` spells them: a `Texture`, or encoded bytes, raw pixels with their size, bytes with a format or with every option, a path or a URL, alone or with a format or every option, or a `Mipmap`, alone or with options. The Material keeps a source as a map, and each `Renderer` uploads a copy of its own when it loads the scene. `base_color_texture` tells how a map loads, what it holds in memory and how it fails.
+
+        The setter refuses options beside a `Texture`, and an input that holds no
+        data, such as an empty byte list, with `MaterialError::Texture`. JavaScript throws it as an `Error`
+        named `InvalidInputError`, and Python raises `InvalidInputError`. A
+        `Material::custom` shader that declares `emissive_map` as something other
+        than a texture refuses the call with `MaterialError::Shader`, which
+        JavaScript and Python raise as `MaterialError`. Swift throws
+        `FragmentColorError` and Kotlin throws `FragmentColorException`. A refused
+        call leaves the slot as it was, and a shader that doesn't declare
+        `emissive_map` skips the call with a log warning.
 
         Example:
 

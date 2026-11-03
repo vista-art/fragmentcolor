@@ -70,11 +70,11 @@ pub(super) fn build_material(
 
     let read = |texture: gltf::Texture<'_>| convert_image(&texture, images);
     if let Some(info) = pbr.base_color_texture() {
-        material.set_map(TextureSlot::BaseColor, read(info.texture())?);
+        material.set_map(TextureSlot::BaseColor, read(info.texture())?)?;
         apply_uv(&material, TextureSlot::BaseColor, read_info_uv(&info))?;
     }
     if let Some(info) = pbr.metallic_roughness_texture() {
-        material.set_map(TextureSlot::MetallicRoughness, read(info.texture())?);
+        material.set_map(TextureSlot::MetallicRoughness, read(info.texture())?)?;
         apply_uv(
             &material,
             TextureSlot::MetallicRoughness,
@@ -82,19 +82,19 @@ pub(super) fn build_material(
         )?;
     }
     if let Some(info) = gltf_material.normal_texture() {
-        material.set_map(TextureSlot::Normal, read(info.texture())?);
+        material.set_map(TextureSlot::Normal, read(info.texture())?)?;
         let extension = info.extension_value(TEXTURE_TRANSFORM);
         let uv = read_extension_uv(info.tex_coord(), extension)?;
         apply_uv(&material, TextureSlot::Normal, uv)?;
     }
     if let Some(info) = gltf_material.occlusion_texture() {
-        material.set_map(TextureSlot::Occlusion, read(info.texture())?);
+        material.set_map(TextureSlot::Occlusion, read(info.texture())?)?;
         let extension = info.extension_value(TEXTURE_TRANSFORM);
         let uv = read_extension_uv(info.tex_coord(), extension)?;
         apply_uv(&material, TextureSlot::Occlusion, uv)?;
     }
     if let Some(info) = gltf_material.emissive_texture() {
-        material.set_map(TextureSlot::Emissive, read(info.texture())?);
+        material.set_map(TextureSlot::Emissive, read(info.texture())?)?;
         apply_uv(&material, TextureSlot::Emissive, read_info_uv(&info))?;
     }
 

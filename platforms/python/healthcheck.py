@@ -794,13 +794,51 @@ def check_scalars_and_pairs():
         Material.pbr().metallic(True)
     except TypeError as e:
         assert str(e) == "Material.metallic: value must be a number, got bool", e
-    # A Material factor or a UV rotation refuses NaN, an infinity and a number past
-    # the f32 range, as a color item does, and the material keeps its value.
+    # A Material factor, a UV rotation, a light's intensity or cone angle and a rotation
+    # angle refuse NaN, an infinity and a number past the f32 range, as a color item does,
+    # and the object keeps its value.
     material = Material.pbr().metallic(0.25)
+    finite = ("Model.rotate", "Light.set_intensity", "Light.set_cone_angles")
     for name, call in scalars.items():
-        if name.startswith("Material."):
+        if name.startswith("Material.") or name in finite:
             for bad in (float("nan"), float("inf"), 1e39):
                 raises_invalid(f"{name}({bad})", lambda: call(bad))
+    light.set_intensity(2.5)
+    try:
+        light.set_intensity(1e39)
+    except InvalidInputError as e:
+        assert str(e) == "Light.set_intensity: value must be a finite number that fits a 32-bit float, got 1e39", e
+    else:
+        raise AssertionError("Light.set_intensity(1e39) should raise InvalidInputError")
+    assert light.intensity() == 2.5
+    # An axis of length 0 has no direction to turn around: Rust refuses it, and Python
+    # raises its message as an InvalidInputError, with the transform as it was.
+    turned = model.transform()
+    try:
+        model.rotate([0, 0, 0], 0.5)
+    except InvalidInputError as e:
+        assert str(e) == "Model::rotate: axis has length 0, so it has no direction to turn around", e
+    else:
+        raise AssertionError("Model.rotate with a zero axis should raise InvalidInputError")
+    assert model.transform() == turned
+    # A light direction of length 0 points nowhere, and finite moves that carry a transform
+    # past the f32 range are refused, each with Rust's message, as an InvalidInputError.
+    try:
+        Light.directional([0, 0, 0], [1, 1, 1])
+    except InvalidInputError as e:
+        assert str(e) == "Light::directional: direction has length 0, so the light points nowhere", e
+    else:
+        raise AssertionError("Light.directional with a zero direction should raise InvalidInputError")
+    far = Model(Mesh(), Material.pbr())
+    far.translate([3e38, 0, 0])
+    placed = far.transform()
+    try:
+        far.translate([3e38, 0, 0])
+    except InvalidInputError as e:
+        assert str(e) == "Model::translate would carry the transform past the f32 range", e
+    else:
+        raise AssertionError("a translate past the f32 range should raise InvalidInputError")
+    assert far.transform() == placed
     try:
         material.metallic(1e39)
     except InvalidInputError as e:
@@ -941,8 +979,16 @@ def check_vectors():
     model.set_transform(tuple(np.arange(16.0)))
     assert model.transform()[1][0] == 4.0, "a flat matrix fills column after column"
     for label, matrix in (("15 numbers", [0.0] * 15), ("3 columns", identity[:3]),
-                          ("a column of 3", identity[:3] + [[0.0, 0.0, 1.0]]), ("10**400", [10**400] + [0.0] * 15)):
+                          ("a column of 3", identity[:3] + [[0.0, 0.0, 1.0]]), ("10**400", [10**400] + [0.0] * 15),
+                          ("NaN", [float("nan")] + [0.0] * 15), ("1e39", identity[:3] + [[1e39, 0.0, 0.0, 1.0]]),
+                          ("an infinity", np.full((4, 4), np.inf, dtype=np.float32))):
         raises_invalid(f"Model.set_transform with {label}", lambda: model.set_transform(matrix))
+    try:
+        model.set_transform(identity[:3] + [[1e39, 0.0, 0.0, 1.0]])
+    except InvalidInputError as e:
+        expected = "Model.set_transform: column 3: item 0 must be a finite number that fits a 32-bit float, got 1e39"
+        assert str(e) == expected, e
+    assert model.transform()[1][0] == 4.0, "a refused matrix keeps the transform"
     for label, matrix in (("a string", ["1"] + [0.0] * 15), ("a bool", [True] + [0.0] * 15), ("bytes", bytes(16))):
         raises_type(f"Model.set_transform with {label}", lambda: model.set_transform(matrix))
 
@@ -1161,7 +1207,39 @@ def check_material_textures(renderer):
     raises_invalid("create_texture with a format beside a Texture",
                    lambda: renderer.create_texture(albedo, format=TextureFormat.Rgba8Unorm))
     assert renderer.create_texture(albedo).size() == albedo.size()
+
+    # A slot a custom shader declares as a number refuses a Texture and a source with
+    # MaterialError and keeps its value, and a slot the shader doesn't declare is skipped.
+    numbered = Material.custom(Shader(NUMBERED_SHADER))
+    numbered.shader().set("base_color_map", [0.25, 0.5, 0.75, 1.0])
+    for label, call in (("a Texture", lambda: numbered.base_color_texture(albedo)),
+                        ("bytes", lambda: numbered.base_color_texture(red, size=[1, 1]))):
+        try:
+            call()
+        except MaterialError as e:
+            assert "base_color_map" in str(e), e
+        else:
+            raise AssertionError(f"Material.base_color_texture with {label} on a number should raise MaterialError")
+    assert list(numbered.shader().get("base_color_map")) == [0.25, 0.5, 0.75, 1.0]
+    assert isinstance(numbered.normal_texture(albedo), Material)
+    assert isinstance(numbered.normal_texture(red, size=[1, 1]), Material)
+    # An empty byte list holds no image, so the setter refuses it at the call.
+    try:
+        Material.pbr().base_color_texture(b"")
+    except InvalidInputError as e:
+        assert str(e).endswith("a texture source needs data, and it got an empty byte list"), e
+    else:
+        raise AssertionError("Material.base_color_texture(b'') should raise InvalidInputError")
     print("The Material texture setters take create_texture's keywords, and each keyword reaches the upload")
+
+
+NUMBERED_SHADER = """
+@group(0) @binding(0) var<uniform> base_color_map: vec4<f32>;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  return vec4f(f32(i), 0., 0., 1.);
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> { return base_color_map; }
+"""
 
 
 MAPPED_SHADER = """

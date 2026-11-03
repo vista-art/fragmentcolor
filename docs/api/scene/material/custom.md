@@ -8,8 +8,9 @@ declare with a log warning and returns the Material, so set custom uniforms
 directly via `material.shader().set(...)`.
 
 A value your shader declares but can't hold, such as a number past ±65504
-for an `f16` field, returns `MaterialError::Shader` with the shader's error,
-and the call changes nothing, a whole `uv_transform` included. JavaScript
+for an `f16` field or a texture for a slot it declares as a number, returns
+`MaterialError::Shader` with the shader's error, and the call changes
+nothing, a whole `uv_transform` included. JavaScript
 throws an `Error` named `MaterialError`, Python raises `MaterialError`, Swift
 throws `FragmentColorError` and Kotlin throws `FragmentColorException`.
 

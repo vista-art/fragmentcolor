@@ -85,6 +85,7 @@ throw_by_class!(
     crate::bindings::numbers::VectorError,
     crate::MaterialError,
     crate::scene::LightError,
+    crate::scene::ModelError,
     crate::scene::CameraError,
     crate::scene::SceneLoadError,
 );

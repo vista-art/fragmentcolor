@@ -4,6 +4,8 @@
 //! kind-specific setters (`set_position`, `set_direction`, `set_range`,
 //! `set_cone_angles`) return a typed [`LightError::FieldNotApplicable`] when
 //! called on the wrong kind, and the matching getters return `None`.
+//! Every constructor and setter returns [`LightError::NotFinite`] for NaN or
+//! an infinity, and a refused setter leaves the light as it was.
 //!
 //! A Light holds Arc-shared state. Each shader that declares the light roots
 //! keeps a weak list of the lights that reach it, and the renderer packs their
@@ -24,7 +26,7 @@ use wasm_bindgen::prelude::*;
 
 use crate::Shader;
 use crate::core::share_light;
-use crate::scene::SceneObject;
+use crate::scene::{NotFinite, SceneObject, check_finite};
 
 /// Discriminant for the three light kinds. Wire-compatible with the WGSL
 /// `Light.kind` field in `src/scene/material/light.wgsl`: directional=0, point=1, spot=2.
@@ -39,8 +41,8 @@ pub enum LightKind {
     Spot = 2,
 }
 
-/// Errors returned by kind-specific [`Light`] setters when the field does
-/// not apply to the constructed kind.
+/// Errors from [`Light`] constructors and setters: a field that doesn't
+/// apply to the light's kind, a negative range, or a number that isn't finite.
 #[derive(Debug, thiserror::Error)]
 pub enum LightError {
     #[error("Light::{field} does not apply to a {kind:?} light")]
@@ -50,6 +52,18 @@ pub enum LightError {
     },
     #[error("Light::set_range expects a non-negative number, got {0}")]
     NegativeRange(f32),
+    /// A number that isn't finite, such as NaN or an infinity, which `label` names with its call.
+    #[error("{label} must be finite, got {value}")]
+    NotFinite { label: String, value: f32 },
+    /// A direction of length 0, given to the call it names, which points the light nowhere.
+    #[error("{0}: direction has length 0, so the light points nowhere")]
+    ZeroDirection(String),
+}
+
+impl From<NotFinite> for LightError {
+    fn from(NotFinite { label, value }: NotFinite) -> Self {
+        LightError::NotFinite { label, value }
+    }
 }
 
 /// Moves on every change to the lights a shader packs:
@@ -184,7 +198,7 @@ impl LightObject {
             inner_cone_cos: state.inner_cone_angle.cos(),
             position: state.position.to_array(),
             outer_cone_cos: state.outer_cone_angle.cos(),
-            direction: state.direction.to_array(),
+            direction: aim(state.direction).to_array(),
             color: state.color.to_array(),
         }
     }
@@ -210,15 +224,33 @@ impl LightObject {
         Ok(())
     }
 
-    /// Moves a point or spot light to `position`.
-    fn set_position(&self, position: Vec3) -> Result<(), LightError> {
+    /// Tints the light `color`, refusing a channel that isn't finite first.
+    fn set_color(&self, color: [f32; 3]) -> Result<(), LightError> {
+        check_finite("Light::set_color", None, &color)?;
+        self.update(|state| state.color = Vec3::from(color));
+        Ok(())
+    }
+
+    /// Scales the light's color by `value`, refusing one that isn't finite first.
+    fn set_intensity(&self, value: f32) -> Result<(), LightError> {
+        check_finite("Light::set_intensity", Some("value"), &[value])?;
+        self.update(|state| state.intensity = value);
+        Ok(())
+    }
+
+    /// Moves a point or spot light to `position`, refusing an item that isn't finite first.
+    fn set_position(&self, position: [f32; 3]) -> Result<(), LightError> {
+        check_finite("Light::set_position", None, &position)?;
         let kinds = [LightKind::Point, LightKind::Spot];
+        let position = Vec3::from(position);
         self.update_kinds(&kinds, "set_position", |state| state.position = position)
     }
 
-    /// Points a directional or spot light along `direction`.
-    fn set_direction(&self, direction: Vec3) -> Result<(), LightError> {
+    /// Points a directional or spot light along `direction`, once `check_direction` takes it.
+    fn set_direction(&self, direction: [f32; 3]) -> Result<(), LightError> {
+        check_direction("Light::set_direction", None, direction)?;
         let kinds = [LightKind::Directional, LightKind::Spot];
+        let direction = Vec3::from(direction);
         self.update_kinds(&kinds, "set_direction", |state| state.direction = direction)
     }
 
@@ -231,8 +263,10 @@ impl LightObject {
         self.update_kinds(&kinds, "set_range", |state| state.range = range)
     }
 
-    /// Sets a spot light's cone half-angles.
+    /// Sets a spot light's cone half-angles, refusing one that isn't finite first.
     fn set_cone_angles(&self, inner: f32, outer: f32) -> Result<(), LightError> {
+        check_finite("Light::set_cone_angles", Some("inner"), &[inner])?;
+        check_finite("Light::set_cone_angles", Some("outer"), &[outer])?;
         self.update_kinds(&[LightKind::Spot], "set_cone_angles", |state| {
             state.inner_cone_angle = inner;
             state.outer_cone_angle = outer;
@@ -273,45 +307,31 @@ impl Light {
     /// Fit for sun / sky / fill, or anything where every shaded surface
     /// receives light from the same world-space direction.
     #[lsp_doc("docs/api/scene/light/directional.md")]
-    pub fn directional(direction: [f32; 3], color: [f32; 3]) -> Self {
-        Self {
-            object: LightObject::new(LightState::defaults(
-                LightKind::Directional,
-                Vec3::from(direction),
-                Vec3::ZERO,
-                Vec3::from(color),
-            )),
-        }
+    pub fn directional(direction: [f32; 3], color: [f32; 3]) -> Result<Self, LightError> {
+        let parts = LightParts::check("Light::directional", None, Some(direction), color)?;
+        Ok(Self::create(LightKind::Directional, parts))
     }
 
     /// Build a point light, which radiates from `position` with inverse-square
     /// distance falloff. `set_range` caps the influence radius (default 0 =
     /// unlimited, matching glTF `KHR_lights_punctual`).
     #[lsp_doc("docs/api/scene/light/point.md")]
-    pub fn point(position: [f32; 3], color: [f32; 3]) -> Self {
-        Self {
-            object: LightObject::new(LightState::defaults(
-                LightKind::Point,
-                Vec3::new(0.0, -1.0, 0.0),
-                Vec3::from(position),
-                Vec3::from(color),
-            )),
-        }
+    pub fn point(position: [f32; 3], color: [f32; 3]) -> Result<Self, LightError> {
+        let parts = LightParts::check("Light::point", Some(position), None, color)?;
+        Ok(Self::create(LightKind::Point, parts))
     }
 
     /// Build a spot light: a point light constrained to a cone. `position`
     /// is the apex, `direction` is the cone axis, cone half-angles default
     /// to `(0, π/4)` (full center, 45° outer); tune via `set_cone_angles`.
     #[lsp_doc("docs/api/scene/light/spot.md")]
-    pub fn spot(position: [f32; 3], direction: [f32; 3], color: [f32; 3]) -> Self {
-        Self {
-            object: LightObject::new(LightState::defaults(
-                LightKind::Spot,
-                Vec3::from(direction),
-                Vec3::from(position),
-                Vec3::from(color),
-            )),
-        }
+    pub fn spot(
+        position: [f32; 3],
+        direction: [f32; 3],
+        color: [f32; 3],
+    ) -> Result<Self, LightError> {
+        let parts = LightParts::check("Light::spot", Some(position), Some(direction), color)?;
+        Ok(Self::create(LightKind::Spot, parts))
     }
 
     /// Read which kind this Light was constructed as.
@@ -343,17 +363,17 @@ impl Light {
     /// Update the linear-RGB color. Every shader the Light reaches draws
     /// with it at the next render. Defined for every kind.
     #[lsp_doc("docs/api/scene/light/set_color.md")]
-    pub fn set_color(&self, color: [f32; 3]) -> Self {
-        self.object.update(|state| state.color = Vec3::from(color));
-        self.clone()
+    pub fn set_color(&self, color: [f32; 3]) -> Result<Self, LightError> {
+        self.object.set_color(color)?;
+        Ok(self.clone())
     }
 
     /// Update the scalar intensity multiplier. Every shader the Light
     /// reaches draws with it at the next render. Defined for every kind.
     #[lsp_doc("docs/api/scene/light/set_intensity.md")]
-    pub fn set_intensity(&self, value: f32) -> Self {
-        self.object.update(|state| state.intensity = value);
-        self.clone()
+    pub fn set_intensity(&self, value: f32) -> Result<Self, LightError> {
+        self.object.set_intensity(value)?;
+        Ok(self.clone())
     }
 
     // ------------------------------------------------------------------
@@ -417,14 +437,14 @@ impl Light {
     /// Update the world-space position. Errors on a directional light.
     #[lsp_doc("docs/api/scene/light/set_position.md")]
     pub fn set_position(&self, position: [f32; 3]) -> Result<Self, LightError> {
-        self.object.set_position(Vec3::from(position))?;
+        self.object.set_position(position)?;
         Ok(self.clone())
     }
 
     /// Update the world-space direction. Errors on a point light.
     #[lsp_doc("docs/api/scene/light/set_direction.md")]
     pub fn set_direction(&self, direction: [f32; 3]) -> Result<Self, LightError> {
-        self.object.set_direction(Vec3::from(direction))?;
+        self.object.set_direction(direction)?;
         Ok(self.clone())
     }
 
@@ -441,6 +461,78 @@ impl Light {
     pub fn set_cone_angles(&self, inner: f32, outer: f32) -> Result<Self, LightError> {
         self.object.set_cone_angles(inner, outer)?;
         Ok(self.clone())
+    }
+}
+
+impl Light {
+    /// A light of `kind` from `parts`, which a constructor has checked.
+    fn create(kind: LightKind, parts: LightParts) -> Self {
+        let LightParts {
+            position,
+            direction,
+            color,
+        } = parts;
+        let state = LightState::defaults(kind, direction, position, color);
+        Self {
+            object: LightObject::new(state),
+        }
+    }
+
+    /// The light a Scene adds when it has none: white, from above and in front.
+    /// Its constants are finite, so it skips the checks.
+    pub(crate) fn create_stock() -> Self {
+        let parts = LightParts {
+            position: Vec3::ZERO,
+            direction: Vec3::new(0.0, -0.3, -1.0),
+            color: Vec3::ONE,
+        };
+        Self::create(LightKind::Directional, parts)
+    }
+}
+
+/// Refuses a direction with an item that isn't finite, or of length 0, naming `call` and `item`.
+fn check_direction(call: &str, item: Option<&str>, direction: [f32; 3]) -> Result<(), LightError> {
+    check_finite(call, item, &direction)?;
+    match direction == [0.0; 3] {
+        true => Err(LightError::ZeroDirection(call.to_string())),
+        false => Ok(()),
+    }
+}
+
+/// `direction` scaled so its largest item is 1 or -1. A shader's `normalize` takes
+/// that without the underflow a tiny vector such as `[1e-30, 0, 0]` meets there.
+fn aim(direction: Vec3) -> Vec3 {
+    direction / direction.abs().max_element()
+}
+
+/// The vectors a light starts from. A directional light sits at the origin
+/// and a point light points straight down, though neither reads that field.
+struct LightParts {
+    position: Vec3,
+    direction: Vec3,
+    color: Vec3,
+}
+
+impl LightParts {
+    /// The parts `call` took, each item checked to be finite, in the order the call takes them.
+    fn check(
+        call: &str,
+        position: Option<[f32; 3]>,
+        direction: Option<[f32; 3]>,
+        color: [f32; 3],
+    ) -> Result<Self, LightError> {
+        if let Some(position) = position {
+            check_finite(call, Some("position"), &position)?;
+        }
+        if let Some(direction) = direction {
+            check_direction(call, Some("direction"), direction)?;
+        }
+        check_finite(call, Some("color"), &color)?;
+        Ok(Self {
+            position: position.map_or(Vec3::ZERO, Vec3::from),
+            direction: direction.map_or(Vec3::NEG_Y, Vec3::from),
+            color: Vec3::from(color),
+        })
     }
 }
 
@@ -475,10 +567,18 @@ impl SceneObject for Light {
     }
 }
 
+/// A number that isn't finite is an invalid input, which the bindings refuse at the call.
+/// The other variants are the light's own refusals.
 #[cfg(any(python, wasm, test))]
 impl crate::errors::Classify for LightError {
     fn classify(&self) -> crate::errors::ErrorClass {
-        crate::errors::ErrorClass::Light
+        use crate::errors::ErrorClass;
+        match self {
+            LightError::NotFinite { .. } | LightError::ZeroDirection(_) => ErrorClass::InvalidInput,
+            LightError::FieldNotApplicable { .. } | LightError::NegativeRange(_) => {
+                ErrorClass::Light
+            }
+        }
     }
 }
 
@@ -515,7 +615,7 @@ mod tests {
             *handle.borrow_mut() = Some(thread);
         });
 
-        let lamp = Light::point([0.0, 1.0, 0.0], [1.0; 3]);
+        let lamp = Light::point([0.0, 1.0, 0.0], [1.0; 3]).expect("light");
         pass.add(&lamp).expect("add the light");
         if let Some(thread) = joiner.borrow_mut().take() {
             thread.join().expect("the model thread");
@@ -530,9 +630,9 @@ mod tests {
 
     #[test]
     fn constructors_report_their_kind() {
-        let d = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
-        let p = Light::point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
-        let s = Light::spot([0.0, 5.0, 0.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
+        let d = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]).expect("light");
+        let p = Light::point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0]).expect("light");
+        let s = Light::spot([0.0, 5.0, 0.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0]).expect("light");
         assert_eq!(d.kind(), LightKind::Directional);
         assert_eq!(p.kind(), LightKind::Point);
         assert_eq!(s.kind(), LightKind::Spot);
@@ -541,11 +641,15 @@ mod tests {
     #[test]
     fn universal_setters_round_trip_for_every_kind() {
         for light in [
-            Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]),
-            Light::point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0]),
-            Light::spot([0.0, 5.0, 0.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0]),
+            Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]).expect("light"),
+            Light::point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0]).expect("light"),
+            Light::spot([0.0, 5.0, 0.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0]).expect("light"),
         ] {
-            light.set_color([0.2, 0.4, 0.6]).set_intensity(2.5);
+            light
+                .set_color([0.2, 0.4, 0.6])
+                .expect("color")
+                .set_intensity(2.5)
+                .expect("intensity");
             assert_eq!(light.color(), [0.2, 0.4, 0.6]);
             assert!((light.intensity() - 2.5).abs() < 1.0e-6);
         }
@@ -553,7 +657,7 @@ mod tests {
 
     #[test]
     fn kind_specific_setters_err_on_wrong_kind() {
-        let directional = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
+        let directional = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]).expect("light");
         assert!(matches!(
             directional.set_position([1.0, 0.0, 0.0]),
             Err(LightError::FieldNotApplicable {
@@ -576,7 +680,7 @@ mod tests {
             }),
         ));
 
-        let point = Light::point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
+        let point = Light::point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0]).expect("light");
         assert!(matches!(
             point.set_direction([0.0, -1.0, 0.0]),
             Err(LightError::FieldNotApplicable {
@@ -599,9 +703,38 @@ mod tests {
         ));
     }
 
+    // Story: a direction of length 0 points the light nowhere, so the constructors and
+    // `set_direction` refuse it, and a spot light keeps the direction it had.
+    #[test]
+    fn a_direction_of_length_zero_is_refused() {
+        let directional = Light::directional([0.0; 3], [1.0; 3]);
+        let spot = Light::spot([0.0; 3], [0.0, -1.0, 0.0], [1.0; 3]).expect("spot");
+
+        let turned = spot.set_direction([0.0, -0.0, 0.0]);
+
+        let message = directional.expect_err("zero direction").to_string();
+        assert_eq!(
+            message,
+            "Light::directional: direction has length 0, so the light points nowhere"
+        );
+        assert!(matches!(turned, Err(LightError::ZeroDirection(_))));
+        assert_eq!(spot.direction(), Some([0.0, -1.0, 0.0]));
+    }
+
+    // Story: a tiny direction keeps its aim on the GPU, where a shader's `normalize`
+    // of the raw vector would underflow to NaN.
+    #[test]
+    fn a_tiny_direction_packs_finite() {
+        let light = Light::directional([1.0e-30, 0.0, 0.0], [1.0; 3]).expect("light");
+
+        let packed = light.object.to_gpu().direction;
+
+        assert_eq!(packed, [1.0, 0.0, 0.0]);
+    }
+
     #[test]
     fn set_range_refuses_nan() {
-        let point = Light::point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
+        let point = Light::point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0]).expect("light");
         assert!(matches!(
             point.set_range(f32::NAN),
             Err(LightError::NegativeRange(_))
@@ -609,9 +742,63 @@ mod tests {
         assert_eq!(point.range(), Some(0.0), "the old range stays");
     }
 
+    // Story: every constructor and setter refuses NaN and an infinity with an error that
+    // names the call and the item, and a refused setter leaves the light as it was.
+    #[test]
+    fn numbers_that_are_not_finite_are_refused() {
+        let built = [
+            Light::directional([0.0, f32::NAN, 0.0], [1.0; 3]).err(),
+            Light::point([0.0; 3], [1.0, f32::INFINITY, 1.0]).err(),
+            Light::spot([0.0; 3], [0.0, 0.0, f32::NEG_INFINITY], [1.0; 3]).err(),
+        ]
+        .map(|error| error.map(|error| error.to_string()).unwrap_or_default());
+        let spot = Light::spot([0.0, 2.0, 0.0], [0.0, -1.0, 0.0], [0.5; 3])
+            .expect("spot")
+            .set_intensity(2.0)
+            .expect("intensity")
+            .set_cone_angles(0.1, 0.5)
+            .expect("cones");
+        let before = spot.object.to_gpu();
+
+        let refused = [
+            spot.set_color([f32::NAN, 0.0, 0.0]).err(),
+            spot.set_intensity(f32::INFINITY).err(),
+            spot.set_position([0.0, 0.0, f32::NAN]).err(),
+            spot.set_direction([f32::NEG_INFINITY, 0.0, 0.0]).err(),
+            spot.set_cone_angles(f32::NAN, 0.5).err(),
+            spot.set_cone_angles(0.1, f32::INFINITY).err(),
+        ]
+        .map(|error| error.map(|error| error.to_string()).unwrap_or_default());
+
+        assert_eq!(
+            built,
+            [
+                "Light::directional: direction: item 1 must be finite, got NaN",
+                "Light::point: color: item 1 must be finite, got inf",
+                "Light::spot: direction: item 2 must be finite, got -inf",
+            ]
+        );
+        assert_eq!(
+            refused,
+            [
+                "Light::set_color: item 0 must be finite, got NaN",
+                "Light::set_intensity: value must be finite, got inf",
+                "Light::set_position: item 2 must be finite, got NaN",
+                "Light::set_direction: item 0 must be finite, got -inf",
+                "Light::set_cone_angles: inner must be finite, got NaN",
+                "Light::set_cone_angles: outer must be finite, got inf",
+            ]
+        );
+        assert_eq!(
+            spot.object.to_gpu(),
+            before,
+            "a refused setter keeps the light"
+        );
+    }
+
     #[test]
     fn kind_specific_setters_ok_and_round_trip_on_right_kind() {
-        let point = Light::point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
+        let point = Light::point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0]).expect("light");
         point
             .set_position([3.0, 1.5, -2.0])
             .expect("position on point");
@@ -622,7 +809,7 @@ mod tests {
         assert!(point.inner_cone_angle().is_none());
         assert!(point.outer_cone_angle().is_none());
 
-        let spot = Light::spot([0.0, 0.0, 0.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
+        let spot = Light::spot([0.0, 0.0, 0.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0]).expect("light");
         spot.set_position([0.0, 2.0, 0.0])
             .expect("position on spot");
         spot.set_direction([0.0, 0.0, -1.0])
@@ -644,9 +831,13 @@ mod tests {
     fn lights_reach_the_shader_across_kinds() {
         // Three kinds in one pass, through the polymorphic `Pass::add`. The
         // shader packs each in attach order with its `kind` discriminant.
-        let sun = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
-        let lamp = Light::point([2.0, 1.0, 0.0], [1.0, 0.5, 0.5]).set_intensity(3.0);
+        let sun = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]).expect("light");
+        let lamp = Light::point([2.0, 1.0, 0.0], [1.0, 0.5, 0.5])
+            .expect("light")
+            .set_intensity(3.0)
+            .expect("intensity");
         let torch = Light::spot([0.0, 3.0, 0.0], [0.0, -1.0, 0.0], [1.0, 1.0, 0.8])
+            .expect("light")
             .set_cone_angles(0.2, 0.6)
             .expect("spot cones");
         let material = Material::pbr();
@@ -671,7 +862,7 @@ mod tests {
         assert_eq!(kinds, [0, 1, 2]);
 
         // A setter reaches the shader with no further `add`.
-        sun.set_color([0.5, 0.25, 0.125]);
+        sun.set_color([0.5, 0.25, 0.125]).expect("color");
         let color = material.shader().object.collect_lights()[0].color;
         assert_eq!(color, [0.5, 0.25, 0.125]);
     }
@@ -680,7 +871,7 @@ mod tests {
     fn replay_keeps_one_entry_per_light() {
         // A shader joining the pass replays every light on it. A light the
         // shader already holds keeps its one entry.
-        let light = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
+        let light = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]).expect("light");
         let material = Material::pbr();
         let model = crate::scene::Model::new(pbr_triangle_mesh(), material.clone());
         let pass = crate::Pass::new("scene");
@@ -705,8 +896,8 @@ mod tests {
         pass_a.add(&model_a).expect("model_a attaches");
         pass_b.add(&model_b).expect("model_b attaches");
 
-        let sun = Light::directional([0.0, -1.0, 0.0], [1.0; 3]);
-        let lamp = Light::point([0.0, 1.0, 0.0], [1.0; 3]);
+        let sun = Light::directional([0.0, -1.0, 0.0], [1.0; 3]).expect("light");
+        let lamp = Light::point([0.0, 1.0, 0.0], [1.0; 3]).expect("light");
         pass_a.add(&sun).expect("sun on pass_a");
         pass_b.add(&lamp).expect("lamp on pass_b");
 
@@ -729,7 +920,7 @@ mod tests {
             material.clone(),
         ))
         .expect("model");
-        pass.add(&Light::point([0.0, 1.0, 0.0], [1.0; 3]))
+        pass.add(&Light::point([0.0, 1.0, 0.0], [1.0; 3]).expect("light"))
             .expect("light");
         assert_eq!(material.shader().object.collect_lights()[0].kind, 1);
 
@@ -742,7 +933,7 @@ mod tests {
             ))
             .expect("model");
         scene
-            .add(&Light::point([0.0, 1.0, 0.0], [1.0; 3]))
+            .add(&Light::point([0.0, 1.0, 0.0], [1.0; 3]).expect("light"))
             .expect("light");
         assert_eq!(scene_material.shader().object.collect_lights()[0].kind, 1);
 
@@ -768,7 +959,7 @@ mod tests {
             .expect("model");
         for index in 0..4 {
             first
-                .add(&Light::point([index as f32, 0.0, 0.0], [1.0; 3]))
+                .add(&Light::point([index as f32, 0.0, 0.0], [1.0; 3]).expect("light"))
                 .expect("under the cap");
         }
         drop(first);
@@ -781,10 +972,10 @@ mod tests {
             .expect("model");
         for index in 0..4 {
             second
-                .add(&Light::point([index as f32, 1.0, 0.0], [1.0; 3]))
+                .add(&Light::point([index as f32, 1.0, 0.0], [1.0; 3]).expect("light"))
                 .expect("the dropped lights leave room");
         }
-        let fifth = second.add(&Light::point([0.0, 2.0, 0.0], [1.0; 3]));
+        let fifth = second.add(&Light::point([0.0, 2.0, 0.0], [1.0; 3]).expect("light"));
         assert!(matches!(
             fifth,
             Err(crate::PassError::LightCapReached { cap: 4 })

@@ -154,11 +154,12 @@ mod tests {
     #[test]
     fn errors_take_the_python_class() {
         use crate::ColorError;
+        use crate::MaterialError;
         use crate::PassError;
         use crate::ScreenRegionError;
         use crate::ShaderError;
         use crate::SurfaceError;
-        use crate::scene::{LightError, SceneLoadError};
+        use crate::scene::{LightError, ModelError, SceneLoadError};
         use crate::texture::TextureError;
         use crate::{InitializationError, RendererError};
         let text = |value: &str| value.to_string();
@@ -251,6 +252,21 @@ mod tests {
                 "SceneLoadError",
             ),
             (Box::new(LightError::NegativeRange(-1.0)), "LightError"),
+            (
+                Box::new(LightError::NotFinite {
+                    label: text("Light::set_intensity: value"),
+                    value: f32::NAN,
+                }),
+                "InvalidInputError",
+            ),
+            (Box::new(ModelError::ZeroAxis), "InvalidInputError"),
+            (Box::new(MaterialError::UvSet(2)), "MaterialError"),
+            (
+                Box::new(MaterialError::Texture(TextureError::InvalidInput(text(
+                    "x",
+                )))),
+                "InvalidInputError",
+            ),
             (Box::new(FragmentColorError::Renderer(limit)), "LimitError"),
         ];
 

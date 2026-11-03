@@ -976,7 +976,7 @@ public protocol LightProtocol: AnyObject, Sendable {
     
     func setDirection(direction: [Float]) throws  -> Light
     
-    func setIntensity(value: Float)  -> Light
+    func setIntensity(value: Float) throws  -> Light
     
     func setPosition(position: [Float]) throws  -> Light
     
@@ -1170,8 +1170,8 @@ open func setDirection(direction: [Float])throws  -> Light  {
 })
 }
     
-open func setIntensity(value: Float) -> Light  {
-    return try!  FfiConverterTypeLight_lift(try! rustCall() {
+open func setIntensity(value: Float)throws  -> Light  {
+    return try  FfiConverterTypeLight_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
         uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_light_setintensity(
             self.uniffiCloneHandle(),
@@ -1262,9 +1262,9 @@ public protocol MaterialProtocol: AnyObject, Sendable {
      * The texture input form of `baseColorTexture`, uploaded when the scene loads.
      * Swift and Kotlin reach it through the `baseColorTexture` overloads, which match `createTexture`.
      */
-    func baseColorSource(input: MobileTextureInput, options: TextureOptions?)  -> Material
+    func baseColorSource(input: MobileTextureInput, options: TextureOptions?) throws  -> Material
     
-    func baseColorTexture(texture: Texture)  -> Material
+    func baseColorTexture(texture: Texture) throws  -> Material
     
     func doubleSided(value: Bool)  -> Material
     
@@ -1274,9 +1274,9 @@ public protocol MaterialProtocol: AnyObject, Sendable {
      * The texture input form of `emissiveTexture`, uploaded when the scene loads.
      * Swift and Kotlin reach it through the `emissiveTexture` overloads, which match `createTexture`.
      */
-    func emissiveSource(input: MobileTextureInput, options: TextureOptions?)  -> Material
+    func emissiveSource(input: MobileTextureInput, options: TextureOptions?) throws  -> Material
     
-    func emissiveTexture(texture: Texture)  -> Material
+    func emissiveTexture(texture: Texture) throws  -> Material
     
     func metallic(value: Float) throws  -> Material
     
@@ -1284,9 +1284,9 @@ public protocol MaterialProtocol: AnyObject, Sendable {
      * The texture input form of `metallicRoughnessTexture`, uploaded when the scene loads.
      * Swift and Kotlin reach it through the `metallicRoughnessTexture` overloads, which match `createTexture`.
      */
-    func metallicRoughnessSource(input: MobileTextureInput, options: TextureOptions?)  -> Material
+    func metallicRoughnessSource(input: MobileTextureInput, options: TextureOptions?) throws  -> Material
     
-    func metallicRoughnessTexture(texture: Texture)  -> Material
+    func metallicRoughnessTexture(texture: Texture) throws  -> Material
     
     func normalScale(value: Float) throws  -> Material
     
@@ -1294,19 +1294,19 @@ public protocol MaterialProtocol: AnyObject, Sendable {
      * The texture input form of `normalTexture`, uploaded when the scene loads.
      * Swift and Kotlin reach it through the `normalTexture` overloads, which match `createTexture`.
      */
-    func normalSource(input: MobileTextureInput, options: TextureOptions?)  -> Material
+    func normalSource(input: MobileTextureInput, options: TextureOptions?) throws  -> Material
     
-    func normalTexture(texture: Texture)  -> Material
+    func normalTexture(texture: Texture) throws  -> Material
     
     /**
      * The texture input form of `occlusionTexture`, uploaded when the scene loads.
      * Swift and Kotlin reach it through the `occlusionTexture` overloads, which match `createTexture`.
      */
-    func occlusionSource(input: MobileTextureInput, options: TextureOptions?)  -> Material
+    func occlusionSource(input: MobileTextureInput, options: TextureOptions?) throws  -> Material
     
     func occlusionStrength(value: Float) throws  -> Material
     
-    func occlusionTexture(texture: Texture)  -> Material
+    func occlusionTexture(texture: Texture) throws  -> Material
     
     func roughness(value: Float) throws  -> Material
     
@@ -1423,8 +1423,8 @@ open func baseColor(color: [Float])throws  -> Material  {
      * The texture input form of `baseColorTexture`, uploaded when the scene loads.
      * Swift and Kotlin reach it through the `baseColorTexture` overloads, which match `createTexture`.
      */
-open func baseColorSource(input: MobileTextureInput, options: TextureOptions? = nil) -> Material  {
-    return try!  FfiConverterTypeMaterial_lift(try! rustCall() {
+open func baseColorSource(input: MobileTextureInput, options: TextureOptions? = nil)throws  -> Material  {
+    return try  FfiConverterTypeMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
         uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_material_basecolorsource(
             self.uniffiCloneHandle(),
@@ -1434,8 +1434,8 @@ open func baseColorSource(input: MobileTextureInput, options: TextureOptions? = 
 })
 }
     
-open func baseColorTexture(texture: Texture) -> Material  {
-    return try!  FfiConverterTypeMaterial_lift(try! rustCall() {
+open func baseColorTexture(texture: Texture)throws  -> Material  {
+    return try  FfiConverterTypeMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
         uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_material_basecolortexture(
             self.uniffiCloneHandle(),
@@ -1468,8 +1468,8 @@ open func emissive(factor: [Float])throws  -> Material  {
      * The texture input form of `emissiveTexture`, uploaded when the scene loads.
      * Swift and Kotlin reach it through the `emissiveTexture` overloads, which match `createTexture`.
      */
-open func emissiveSource(input: MobileTextureInput, options: TextureOptions? = nil) -> Material  {
-    return try!  FfiConverterTypeMaterial_lift(try! rustCall() {
+open func emissiveSource(input: MobileTextureInput, options: TextureOptions? = nil)throws  -> Material  {
+    return try  FfiConverterTypeMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
         uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_material_emissivesource(
             self.uniffiCloneHandle(),
@@ -1479,8 +1479,8 @@ open func emissiveSource(input: MobileTextureInput, options: TextureOptions? = n
 })
 }
     
-open func emissiveTexture(texture: Texture) -> Material  {
-    return try!  FfiConverterTypeMaterial_lift(try! rustCall() {
+open func emissiveTexture(texture: Texture)throws  -> Material  {
+    return try  FfiConverterTypeMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
         uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_material_emissivetexture(
             self.uniffiCloneHandle(),
@@ -1503,8 +1503,8 @@ open func metallic(value: Float)throws  -> Material  {
      * The texture input form of `metallicRoughnessTexture`, uploaded when the scene loads.
      * Swift and Kotlin reach it through the `metallicRoughnessTexture` overloads, which match `createTexture`.
      */
-open func metallicRoughnessSource(input: MobileTextureInput, options: TextureOptions? = nil) -> Material  {
-    return try!  FfiConverterTypeMaterial_lift(try! rustCall() {
+open func metallicRoughnessSource(input: MobileTextureInput, options: TextureOptions? = nil)throws  -> Material  {
+    return try  FfiConverterTypeMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
         uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_material_metallicroughnesssource(
             self.uniffiCloneHandle(),
@@ -1514,8 +1514,8 @@ open func metallicRoughnessSource(input: MobileTextureInput, options: TextureOpt
 })
 }
     
-open func metallicRoughnessTexture(texture: Texture) -> Material  {
-    return try!  FfiConverterTypeMaterial_lift(try! rustCall() {
+open func metallicRoughnessTexture(texture: Texture)throws  -> Material  {
+    return try  FfiConverterTypeMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
         uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_material_metallicroughnesstexture(
             self.uniffiCloneHandle(),
@@ -1538,8 +1538,8 @@ open func normalScale(value: Float)throws  -> Material  {
      * The texture input form of `normalTexture`, uploaded when the scene loads.
      * Swift and Kotlin reach it through the `normalTexture` overloads, which match `createTexture`.
      */
-open func normalSource(input: MobileTextureInput, options: TextureOptions? = nil) -> Material  {
-    return try!  FfiConverterTypeMaterial_lift(try! rustCall() {
+open func normalSource(input: MobileTextureInput, options: TextureOptions? = nil)throws  -> Material  {
+    return try  FfiConverterTypeMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
         uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_material_normalsource(
             self.uniffiCloneHandle(),
@@ -1549,8 +1549,8 @@ open func normalSource(input: MobileTextureInput, options: TextureOptions? = nil
 })
 }
     
-open func normalTexture(texture: Texture) -> Material  {
-    return try!  FfiConverterTypeMaterial_lift(try! rustCall() {
+open func normalTexture(texture: Texture)throws  -> Material  {
+    return try  FfiConverterTypeMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
         uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_material_normaltexture(
             self.uniffiCloneHandle(),
@@ -1563,8 +1563,8 @@ open func normalTexture(texture: Texture) -> Material  {
      * The texture input form of `occlusionTexture`, uploaded when the scene loads.
      * Swift and Kotlin reach it through the `occlusionTexture` overloads, which match `createTexture`.
      */
-open func occlusionSource(input: MobileTextureInput, options: TextureOptions? = nil) -> Material  {
-    return try!  FfiConverterTypeMaterial_lift(try! rustCall() {
+open func occlusionSource(input: MobileTextureInput, options: TextureOptions? = nil)throws  -> Material  {
+    return try  FfiConverterTypeMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
         uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_material_occlusionsource(
             self.uniffiCloneHandle(),
@@ -1584,8 +1584,8 @@ open func occlusionStrength(value: Float)throws  -> Material  {
 })
 }
     
-open func occlusionTexture(texture: Texture) -> Material  {
-    return try!  FfiConverterTypeMaterial_lift(try! rustCall() {
+open func occlusionTexture(texture: Texture)throws  -> Material  {
+    return try  FfiConverterTypeMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
         uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_material_occlusiontexture(
             self.uniffiCloneHandle(),
@@ -9651,7 +9651,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_light_setdirection() != 31454) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_light_setintensity() != 10170) {
+    if (uniffi_fragmentcolor_checksum_method_light_setintensity() != 44321) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_light_setposition() != 46497) {
@@ -9669,10 +9669,10 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_material_basecolor() != 39350) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_material_basecolorsource() != 58412) {
+    if (uniffi_fragmentcolor_checksum_method_material_basecolorsource() != 39073) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_material_basecolortexture() != 49707) {
+    if (uniffi_fragmentcolor_checksum_method_material_basecolortexture() != 36312) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_material_doublesided() != 4795) {
@@ -9681,37 +9681,37 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_material_emissive() != 16987) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_material_emissivesource() != 10575) {
+    if (uniffi_fragmentcolor_checksum_method_material_emissivesource() != 50402) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_material_emissivetexture() != 48836) {
+    if (uniffi_fragmentcolor_checksum_method_material_emissivetexture() != 53906) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_material_metallic() != 48955) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_material_metallicroughnesssource() != 31966) {
+    if (uniffi_fragmentcolor_checksum_method_material_metallicroughnesssource() != 64755) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_material_metallicroughnesstexture() != 61346) {
+    if (uniffi_fragmentcolor_checksum_method_material_metallicroughnesstexture() != 12836) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_material_normalscale() != 29790) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_material_normalsource() != 59588) {
+    if (uniffi_fragmentcolor_checksum_method_material_normalsource() != 51447) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_material_normaltexture() != 64640) {
+    if (uniffi_fragmentcolor_checksum_method_material_normaltexture() != 22765) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_material_occlusionsource() != 35827) {
+    if (uniffi_fragmentcolor_checksum_method_material_occlusionsource() != 25558) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_material_occlusionstrength() != 40961) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_material_occlusiontexture() != 16407) {
+    if (uniffi_fragmentcolor_checksum_method_material_occlusiontexture() != 22112) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_material_roughness() != 58115) {

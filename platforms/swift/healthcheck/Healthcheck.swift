@@ -463,6 +463,28 @@ final class Healthcheck: ExampleCase {
             ("Material.alphaCutoff: value", { _ = try material.alphaCutoff(1e39 as Double) }),
             ("Material.uvTransform: rotation", { _ = try material.uvTransform([0, 0] as [Double], [1, 1], Double.infinity) }),
             ("Material.textureTransform: rotation", { _ = try material.textureTransform(.normal, [0, 0], [1, 1], Float.nan) }),
+            ("Light.setIntensity: value", { _ = try Light.point([0, 1, 0], [1, 1, 1]).setIntensity(Float.nan) }),
+            ("Light.setIntensity: value", { _ = try Light.point([0, 1, 0], [1, 1, 1]).setIntensity(1e39 as Double) }),
+            ("Light.setConeAngles: inner_radians", {
+                _ = try Light.spot([0, 1, 0], [0, -1, 0], [1, 1, 1]).setConeAngles(Float.infinity, 0.5)
+            }),
+            ("Light.setConeAngles: outer_radians", {
+                _ = try Light.spot([0, 1, 0], [0, -1, 0], [1, 1, 1]).setConeAngles(0.1 as Double, Double.nan)
+            }),
+            ("Model.rotate: radians", { try Model(Mesh(), material).rotate([0, 1, 0], Float.nan) }),
+            ("Model.rotate: radians", { try Model(Mesh(), material).rotate([0, 1, 0] as [Double], 1e39) }),
+            ("Model.setTransform: item 0", { try Model(Mesh(), material).setTransform([Float.nan] + [Float](repeating: 0, count: 15)) }),
+            ("Model.setTransform: item 0", { try Model(Mesh(), material).setTransform([1e39] + [Double](repeating: 0, count: 15)) }),
+            // An axis of length 0 has no direction, which Rust refuses with its own message.
+            ("Model::rotate: axis has length 0", { try Model(Mesh(), material).rotate([0, 0, 0] as [Float], 1) }),
+            // A light direction of length 0 points nowhere, and finite moves that carry a
+            // transform past the f32 range are refused, each with Rust's message.
+            ("Light::directional: direction has length 0", { _ = try Light.directional([0, 0, 0] as [Float], [1, 1, 1]) }),
+            ("Model::translate would carry the transform past the f32 range", {
+                let far = Model(Mesh(), material)
+                try far.translate([3e38, 0, 0] as [Float])
+                try far.translate([3e38, 0, 0] as [Float])
+            }),
             ("Vertex: position", { _ = try Vertex([1e39, 0, 0] as [Double]) }),
             ("Vertex: position", { _ = try Vertex([Float.nan, 0]) }),
             ("Vertex.pbr: position", { _ = try Vertex.pbr([0, Double.infinity, 0]) }),
@@ -484,6 +506,15 @@ final class Healthcheck: ExampleCase {
                 }
             }
         }
+        // A refused setter or rotate leaves the light and the transform as they were.
+        let dimmer = try Light.point([0, 1, 0], [1, 1, 1]).setIntensity(2.5)
+        _ = try? dimmer.setIntensity(Double.infinity)
+        try assertEqual(dimmer.intensity(), 2.5, "a refused setIntensity keeps the intensity")
+        let turned = Model(Mesh(), material)
+        try turned.rotate([0, 1, 0], 0.5)
+        let before = turned.transform()
+        try? turned.rotate([0, 0, 0] as [Float], 0.5)
+        try assertEqual(turned.transform(), before, "a refused rotate keeps the transform")
         // A [Double] item prints the way the shared Rust message prints it.
         let shown: [(Double, String)] = [(1e39, "1e39"), (-1e39, "-1e39"), (.nan, "NaN"), (.infinity, "inf")]
         for (value, text) in shown {
@@ -551,13 +582,13 @@ final class Healthcheck: ExampleCase {
         let forms: [(String, (Material) throws -> Material)] = [
             ("[UInt8] and [w, h]", { try $0.emissiveTexture(red, [1, 1]) }),
             ("[Int] and [w, h]", { try $0.emissiveTexture([255, 0, 0, 255] as [Int], [1, 1]) }),
-            ("Data and a Size", { $0.emissiveTexture(Data(red), one) }),
-            ("[UInt8] and a Size", { $0.emissiveTexture(red, one) }),
+            ("Data and a Size", { try $0.emissiveTexture(Data(red), one) }),
+            ("[UInt8] and a Size", { try $0.emissiveTexture(red, one) }),
             ("[Int] and a Size", { try $0.emissiveTexture([255, 0, 0, 255] as [Int], one) }),
-            ("[UInt8] with R8Unorm options", { $0.emissiveTexture([255] as [UInt8], options) }),
+            ("[UInt8] with R8Unorm options", { try $0.emissiveTexture([255] as [UInt8], options) }),
             ("[Int] with R8Unorm options", { try $0.emissiveTexture([255] as [Int], options) }),
             ("a size and usage", { try $0.emissiveTexture(Data(red), [1, 1], usage: .COPY_SRC) }),
-            ("a Mipmap with options", { $0.emissiveTexture(chain, TextureOptions(format: .rgba, usage: TextureUsage.COPY_SRC.bits)) }),
+            ("a Mipmap with options", { try $0.emissiveTexture(chain, TextureOptions(format: .rgba, usage: TextureUsage.COPY_SRC.bits)) }),
         ]
         for (label, form) in forms {
             let pixel = try await glow(form)
@@ -587,11 +618,11 @@ final class Healthcheck: ExampleCase {
         // options that reach it, from bytes and from a Mipmap.
         let outside = TextureOptions(size: one, format: .rgba, usage: 32)
         let refused: [(String, (Material) throws -> Material)] = [
-            ("baseColorTexture", { $0.baseColorTexture(red, outside) }),
+            ("baseColorTexture", { try $0.baseColorTexture(red, outside) }),
             ("metallicRoughnessTexture", { try $0.metallicRoughnessTexture([255, 0, 0, 255] as [Int], outside) }),
-            ("normalTexture", { $0.normalTexture(Data(red), outside) }),
-            ("occlusionTexture", { $0.occlusionTexture(red, outside) }),
-            ("emissiveTexture", { $0.emissiveTexture(chain, TextureOptions(format: .rgba, usage: 32)) }),
+            ("normalTexture", { try $0.normalTexture(Data(red), outside) }),
+            ("occlusionTexture", { try $0.occlusionTexture(red, outside) }),
+            ("emissiveTexture", { try $0.emissiveTexture(chain, TextureOptions(format: .rgba, usage: 32)) }),
         ]
         for (name, setter) in refused {
             do {
@@ -603,10 +634,60 @@ final class Healthcheck: ExampleCase {
         try assertEqual(byte.size(), one, "createTexture([Int], options)")
         _ = try await renderer.createTexture(red, one)
         _ = try await renderer.createTexture(chain, TextureOptions(format: .rgba, usage: TextureUsage.COPY_SRC.bits))
-        Material.pbr()
+        try Material.pbr()
             .normalTexture(Data(red), .rgba8Unorm)
             .occlusionTexture(Data(red), options)
             .metallicRoughnessTexture("examples/assets/logo.png", .rgba8Unorm)
+    }
+
+    // A slot a custom shader declares as a number refuses a Texture and a source and keeps
+    // its value, a slot the shader doesn't declare is skipped, and a Texture takes no options.
+    func testMaterialTexturesRefuseWhatTheyCannotUse() async throws {
+        let renderer = Renderer()
+        let red: [UInt8] = [255, 0, 0, 255]
+        let texture = try await renderer.createTexture(red, Size(width: 1, height: 1, depth: nil))
+        let numbered = Material.custom(try Shader(source: """
+            @group(0) @binding(0) var<uniform> base_color_map: vec4<f32>;
+            @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+              return vec4<f32>(f32(i), 0.0, 0.0, 1.0);
+            }
+            @fragment fn fs_main() -> @location(0) vec4<f32> { return base_color_map; }
+        """))
+        try numbered.shader().set("base_color_map", [0.25, 0.5, 0.75, 1.0])
+        let refusals: [(String, () throws -> Material)] = [
+            ("a Texture", { try numbered.baseColorTexture(texture) }),
+            ("bytes", { try numbered.baseColorTexture(red, [1, 1]) }),
+        ]
+        for (label, set) in refusals {
+            do {
+                _ = try set()
+                throw HealthcheckError.assertion("baseColorTexture with \(label) on a number should throw")
+            } catch let error as FragmentColorError {
+                guard "\(error)".contains("base_color_map") else {
+                    throw HealthcheckError.assertion("baseColorTexture with \(label) threw \(error)")
+                }
+            }
+        }
+        try assertEqual(numbered.shader().get("base_color_map"), .vec4([0.25, 0.5, 0.75, 1]), "a slot that refused a texture")
+        try numbered.normalTexture(texture)
+        try numbered.normalTexture(red, [1, 1])
+        // An empty byte list holds no image, so the setter refuses it at the call.
+        do {
+            _ = try Material.pbr().baseColorTexture(Data())
+            throw HealthcheckError.assertion("baseColorTexture with an empty byte list should throw")
+        } catch let error as FragmentColorError {
+            guard "\(error)".contains("it got an empty byte list") else {
+                throw HealthcheckError.assertion("an empty byte list threw \(error)")
+            }
+        }
+        do {
+            _ = try Material.pbr().baseColorSource(input: .cloneOf(texture), options: TextureOptions(format: .rgba8Unorm))
+            throw HealthcheckError.assertion("baseColorSource with options beside a Texture should throw")
+        } catch let FragmentColorError.Render(message) {
+            guard message.contains("Material::base_color_texture") else {
+                throw HealthcheckError.assertion("options beside a Texture threw \(message)")
+            }
+        }
     }
 
     // A transform reads back as four columns of four, and a nested matrix

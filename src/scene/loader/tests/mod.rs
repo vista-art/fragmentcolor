@@ -115,7 +115,7 @@ fn load_names_the_light_at_fault() {
         );
     assert_invalid(
         build_camera_light_glb(&json),
-        "glTF light 1: Light::set_range",
+        "glTF light 1 on node 2: Light::set_range",
     );
 }
 
@@ -124,7 +124,42 @@ fn load_refuses_a_negative_light_range() {
     let json = CAMERA_LIGHT_JSON.replace(DIRECTIONAL_LIGHT, r#"{"type":"point","range":-5.0}"#);
     assert_invalid(
         build_camera_light_glb(&json),
-        "glTF light 0: Light::set_range expects a non-negative number, got -5",
+        "glTF light 0 on node 2: Light::set_range expects a non-negative number, got -5",
+    );
+}
+
+// Story: a light whose intensity reads as an infinity in an f32, and a light whose node
+// has a scale of 0 and so no direction, fail the load naming the light and the node.
+#[test]
+fn load_refuses_a_light_with_a_number_that_is_not_finite() {
+    let bright = CAMERA_LIGHT_JSON.replace(r#""intensity":2.0"#, r#""intensity":1e39"#);
+    let flat = CAMERA_LIGHT_JSON.replace(
+        r#"{"extensions":{"KHR_lights_punctual":{"light":0}}}"#,
+        r#"{"extensions":{"KHR_lights_punctual":{"light":0}},"scale":[0.0,0.0,0.0]}"#,
+    );
+
+    assert_invalid(
+        build_camera_light_glb(&bright),
+        "configuring glTF light 0 on node 2: Light::set_intensity: value must be finite, got inf",
+    );
+    assert_invalid(
+        build_camera_light_glb(&flat),
+        "configuring glTF light 0 on node 2: Light::directional: direction: item 0 must be finite, got NaN",
+    );
+}
+
+// Story: a mesh node whose transform reads as an infinity in an f32 fails the load
+// naming the node, where the model drew nowhere.
+#[test]
+fn load_refuses_a_model_transform_that_is_not_finite() {
+    let far = patch_triangle(&[(
+        r#"{"mesh":0}"#,
+        r#"{"mesh":0,"translation":[1e39,0.0,0.0]}"#,
+    )]);
+
+    assert_invalid(
+        build_triangle_glb(&far),
+        "placing glTF node 0: Model::set_transform: column 3: item 0 must be finite, got inf",
     );
 }
 

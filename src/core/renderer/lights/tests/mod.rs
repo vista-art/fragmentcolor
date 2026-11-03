@@ -228,7 +228,10 @@ fn lit_pass(name: &str, camera: Option<&Camera>, lights: &[Light]) -> Pass {
 
 /// A point light at `position` with `range`.
 fn bulb(position: [f32; 3], color: [f32; 3], intensity: f32, range: f32) -> Light {
-    let light = Light::point(position, color).set_intensity(intensity);
+    let light = Light::point(position, color)
+        .expect("light")
+        .set_intensity(intensity)
+        .expect("intensity");
     light.set_range(range).expect("range");
     light
 }
@@ -253,18 +256,30 @@ fn seeded_lights(seeds: &mut Seeds) -> Vec<Light> {
         let direction = [seeds.between(-0.5, 0.5), -1.0, seeds.between(-0.5, 0.5)];
         let outer = seeds.between(0.1, 1.2);
         let light = Light::spot(place(seeds), direction, seeds.color())
+            .expect("light")
             .set_intensity(seeds.between(0.2, 1.0))
+            .expect("intensity")
             .set_cone_angles(outer * seeds.next(), outer)
             .expect("cones");
         light.set_range(seeds.between(1.0, 5.0)).expect("range");
         lights.push(light);
     }
     for _ in 0..16 {
-        lights.push(Light::point(place(seeds), seeds.color()).set_intensity(0.01));
+        lights.push(
+            Light::point(place(seeds), seeds.color())
+                .expect("light")
+                .set_intensity(0.01)
+                .expect("intensity"),
+        );
     }
     for _ in 0..8 {
         let direction = [seeds.between(-1.0, 1.0), -1.0, seeds.between(-1.0, 1.0)];
-        lights.push(Light::directional(direction, seeds.color()).set_intensity(0.02));
+        lights.push(
+            Light::directional(direction, seeds.color())
+                .expect("light")
+                .set_intensity(0.02)
+                .expect("intensity"),
+        );
     }
     lights
 }
@@ -616,7 +631,10 @@ fn a_light_along_the_view_ray_shades_every_pixel() {
         for row in 0..SIDE {
             for column in 0..SIDE {
                 let toward = [pixel(column) * reach, -pixel(row) * reach, -5.0];
-                let light = Light::directional(toward, [1.0; 3]).set_intensity(0.002);
+                let light = Light::directional(toward, [1.0; 3])
+                    .expect("light")
+                    .set_intensity(0.002)
+                    .expect("intensity");
                 pass.add(&light).expect("light");
             }
         }
@@ -668,7 +686,7 @@ fn a_small_storage_limit_promotes_lights() {
         // One light past the cap the limit sets fails the render, before any binning.
         let cap = LightPath::Clustered { limit }.cap();
         while lights.len() <= cap as usize {
-            lights.push(Light::point([0.0, 1.0, 0.0], [0.0; 3]));
+            lights.push(Light::point([0.0, 1.0, 0.0], [0.0; 3]).expect("light"));
         }
         let (renderer, target, context) = open(Mode::Limit(limit), 96).await;
         match renderer.render(&build(&lights), &target) {
@@ -712,7 +730,7 @@ fn still_renders_dispatch_once() {
         }
         assert_eq!(dispatches(&context), 1, "three still renders");
         let before = uploads(&context);
-        lights[0].set_color([0.1, 0.2, 0.3]);
+        lights[0].set_color([0.1, 0.2, 0.3]).expect("color");
         renderer.render(&pass, &target).expect("render");
         assert_eq!(
             dispatches(&context),
@@ -748,7 +766,7 @@ fn still_renders_dispatch_once() {
 
         // Lights without a range never bin.
         let suns: Vec<Light> = (0..4)
-            .map(|index| Light::directional([index as f32, -1.0, 0.0], [0.3; 3]))
+            .map(|index| Light::directional([index as f32, -1.0, 0.0], [0.3; 3]).expect("light"))
             .collect();
         let sunny = lit_pass("directional only", Some(&camera), &suns);
         let (renderer, target, context) = open(Mode::Clustered, 32).await;
@@ -867,7 +885,7 @@ fn the_uniform_path_caps_lights_at_its_block() {
     pollster::block_on(async {
         // Lights added before the context exists fail at render.
         let suns: Vec<Light> = (0..5)
-            .map(|_| Light::directional([0.0, -1.0, 0.0], [0.2; 3]))
+            .map(|_| Light::directional([0.0, -1.0, 0.0], [0.2; 3]).expect("light"))
             .collect();
         let early = lit_pass("before the context", Some(&camera()), &suns);
         let (renderer, target, _) = open(Mode::Uniform(4), 32).await;
@@ -882,7 +900,7 @@ fn the_uniform_path_caps_lights_at_its_block() {
             let light = bulb([index as f32 * 2.0 - 3.0, 1.0, 0.0], [0.5; 3], 3.0, 6.0);
             pass.add(&light).expect("under the cap");
         }
-        let fifth = pass.add(&Light::directional([0.0, -1.0, 0.0], [1.0; 3]));
+        let fifth = pass.add(&Light::directional([0.0, -1.0, 0.0], [1.0; 3]).expect("light"));
         assert!(
             matches!(fifth, Err(PassError::LightCapReached { cap: 4 })),
             "{fifth:?}"
@@ -898,13 +916,13 @@ fn the_uniform_path_caps_lights_at_its_block() {
             held.add(&model).expect("model");
         }
         for index in 0..2 {
-            held.add(&Light::point([index as f32, 1.0, 0.0], [1.0; 3]))
+            held.add(&Light::point([index as f32, 1.0, 0.0], [1.0; 3]).expect("light"))
                 .expect("light");
         }
         let three = Pass::new("holds three");
         for index in 0..3 {
             three
-                .add(&Light::point([index as f32, 2.0, 0.0], [1.0; 3]))
+                .add(&Light::point([index as f32, 2.0, 0.0], [1.0; 3]).expect("light"))
                 .expect("light");
         }
         let [joining, _] = floor_and_wall(&material);
@@ -925,10 +943,10 @@ fn the_uniform_path_caps_lights_at_its_block() {
         let small = Pass::from_shader("two lights", older.shader());
         for index in 0..2 {
             small
-                .add(&Light::point([index as f32, 0.0, 0.0], [1.0; 3]))
+                .add(&Light::point([index as f32, 0.0, 0.0], [1.0; 3]).expect("light"))
                 .expect("under the array length");
         }
-        let third = small.add(&Light::point([2.0, 0.0, 0.0], [1.0; 3]));
+        let third = small.add(&Light::point([2.0, 0.0, 0.0], [1.0; 3]).expect("light"));
         assert!(
             matches!(third, Err(PassError::LightCapReached { cap: 2 })),
             "{third:?}"
@@ -968,8 +986,8 @@ struct Lights { count: u32, global_count: u32, promoted_count: u32, ambient: vec
 @group(0) @binding(1) var<storage, read> lights: Lights;",
         ];
         let lights = [
-            Light::point([0.0, 0.0, 0.0], [0.2, 0.4, 0.0]),
-            Light::point([1.0, 0.0, 0.0], [0.0, 0.0, 0.6]),
+            Light::point([0.0, 0.0, 0.0], [0.2, 0.4, 0.0]).expect("light"),
+            Light::point([1.0, 0.0, 0.0], [0.0, 0.0, 0.6]).expect("light"),
         ];
         for declaration in declarations {
             for mode in [Mode::Clustered, Mode::Uniform(8)] {
@@ -1003,7 +1021,7 @@ fn the_older_light_array_reads_lights_in_attach_order() {
     pollster::block_on(async {
         // A bounded light added first stays at index 0, ahead of a light without a range.
         let lamp = bulb([0.0, 0.0, 0.0], [0.4, 0.0, 0.0], 1.0, 5.0);
-        let sun = Light::directional([0.0, -1.0, 0.0], [0.0, 0.0, 0.8]);
+        let sun = Light::directional([0.0, -1.0, 0.0], [0.0, 0.0, 0.8]).expect("light");
         for mode in [Mode::Clustered, Mode::Uniform(8)] {
             let build = || {
                 let shader = fullscreen(
@@ -1065,7 +1083,7 @@ fn a_set_without_light_grid_never_bins() {
 #[test]
 fn a_shader_added_later_takes_the_pass_lights() {
     pollster::block_on(async {
-        let lamp = Light::point([0.0, 0.0, 0.0], [0.2, 0.4, 0.0]);
+        let lamp = Light::point([0.0, 0.0, 0.0], [0.2, 0.4, 0.0]).expect("light");
         let build = || {
             let pass = Pass::new("lights first");
             pass.add(&lamp).expect("light");
@@ -1083,7 +1101,7 @@ fn a_shader_added_later_takes_the_pass_lights() {
         // A shader that can't take the pass's lights fails to join, and nothing changes.
         let pass = Pass::new("three lights");
         for index in 0..3 {
-            pass.add(&Light::point([index as f32, 0.0, 0.0], [1.0; 3]))
+            pass.add(&Light::point([index as f32, 0.0, 0.0], [1.0; 3]).expect("light"))
                 .expect("light");
         }
         let small = fullscreen(

@@ -160,7 +160,7 @@ impl Material {
         options: Option<JsValue>,
     ) -> Result<Self, WebError> {
         let source = read_texture_input(input, options.as_ref(), "Material.baseColorTexture")?;
-        Ok(self.base_color_texture(source))
+        Ok(self.base_color_texture(source)?)
     }
 
     #[wasm_bindgen(js_name = "metallicRoughnessTexture")]
@@ -172,7 +172,7 @@ impl Material {
     ) -> Result<Self, WebError> {
         let source =
             read_texture_input(input, options.as_ref(), "Material.metallicRoughnessTexture")?;
-        Ok(self.metallic_roughness_texture(source))
+        Ok(self.metallic_roughness_texture(source)?)
     }
 
     #[wasm_bindgen(js_name = "normalTexture")]
@@ -183,7 +183,7 @@ impl Material {
         options: Option<JsValue>,
     ) -> Result<Self, WebError> {
         let source = read_texture_input(input, options.as_ref(), "Material.normalTexture")?;
-        Ok(self.normal_texture(source))
+        Ok(self.normal_texture(source)?)
     }
 
     #[wasm_bindgen(js_name = "occlusionTexture")]
@@ -194,7 +194,7 @@ impl Material {
         options: Option<JsValue>,
     ) -> Result<Self, WebError> {
         let source = read_texture_input(input, options.as_ref(), "Material.occlusionTexture")?;
-        Ok(self.occlusion_texture(source))
+        Ok(self.occlusion_texture(source)?)
     }
 
     #[wasm_bindgen(js_name = "emissiveTexture")]
@@ -205,7 +205,7 @@ impl Material {
         options: Option<JsValue>,
     ) -> Result<Self, WebError> {
         let source = read_texture_input(input, options.as_ref(), "Material.emissiveTexture")?;
-        Ok(self.emissive_texture(source))
+        Ok(self.emissive_texture(source)?)
     }
 }
 

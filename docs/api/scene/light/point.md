@@ -19,6 +19,14 @@ A point light carries no direction or cone. Calling
 or [`set_cone_angles`](https://fragmentcolor.org/api/scene/light#set_cone_angles)
 on a point light returns `LightError::FieldNotApplicable`.
 
+An item of `position` or `color` that is NaN or an infinity returns
+`LightError::NotFinite`, which names the call, the vector and the item,
+such as `Light::point: position: item 0 must be finite, got inf`. The other
+languages also refuse an item past the 32-bit float range, such as `1e39`,
+with the error a color item gets: an `InvalidInputError` in JavaScript and
+Python, `FragmentColorError` in Swift and `FragmentColorException` in
+Kotlin.
+
 A point light with a range lights only what lies within it, which lets the
 renderer skip it everywhere else. Without one, every fragment pays for it.
 
@@ -42,7 +50,7 @@ wall.set_indices([0, 1, 2, 0, 2, 3]);
 
 let camera = Camera::perspective(1.047, 1.0, 0.1, 100.0)?
     .look_at([0.0, 0.0, 4.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])?;
-let bulb = Light::point([0.0, 0.5, 1.0], [1.0, 0.95, 0.8]).set_intensity(15.0);
+let bulb = Light::point([0.0, 0.5, 1.0], [1.0, 0.95, 0.8])?.set_intensity(15.0)?;
 bulb.set_range(3.0)?;
 
 let pass = Pass::new("lamp");

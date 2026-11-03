@@ -14,8 +14,9 @@
 //! The number setters return a `MaterialError` for a number that isn't finite and
 //! for a value the shader can't hold, and a refused call changes nothing: `write`
 //! checks every value of a call against the shader before the first one lands.
-//! A key the shader doesn't declare is skipped with a warning, so a custom shader
-//! takes the factors it declares. The texture setters warn and keep the slot.
+//! The texture setters return one for an input that makes no texture and for a slot
+//! the shader declares as something else, and leave the slot as it was. A key the shader
+//! doesn't declare is skipped with a warning, so a custom shader takes the fields it declares.
 //!
 //! Per-Model transform is *not* a Material uniform. It rides on a Pass-
 //! owned per-instance vertex-attribute buffer that the renderer builds from
@@ -33,8 +34,9 @@ use pyo3::prelude::*;
 use wasm_bindgen::prelude::*;
 
 use crate::core::UniformInput;
+use crate::scene::check_finite;
 use crate::texture::{TextureData, TextureMeta, TextureSource};
-use crate::{Shader, TextureInput, UniformData};
+use crate::{Shader, ShaderError, Texture, TextureInput, UniformData};
 
 mod alpha_mode;
 pub use alpha_mode::AlphaMode;
@@ -184,8 +186,8 @@ impl Material {
     //
     // Every setter takes `&self` and returns `Self` (an Arc-cloned handle
     // to the same Material), the same shape Light and Camera use, so it
-    // chains and stays callable on a borrowed Material. A number setter
-    // returns it in a `Result`, refusing a number that isn't finite.
+    // chains and stays callable on a borrowed Material. A number or texture
+    // setter returns it in a `Result`, refusing a value the material can't use.
 
     #[lsp_doc("docs/api/scene/material/base_color.md")]
     pub fn base_color(&self, color: [f32; 4]) -> Result<Self, MaterialError> {
@@ -280,27 +282,36 @@ impl Material {
     // picks the slot's format only when the caller left the default; pass a format to override.
 
     #[lsp_doc("docs/api/scene/material/base_color_texture.md")]
-    pub fn base_color_texture(&self, source: impl Into<crate::TextureInput>) -> Self {
+    pub fn base_color_texture(
+        &self,
+        source: impl Into<TextureInput>,
+    ) -> Result<Self, MaterialError> {
         self.set_texture(TextureSlot::BaseColor, source.into())
     }
 
     #[lsp_doc("docs/api/scene/material/metallic_roughness_texture.md")]
-    pub fn metallic_roughness_texture(&self, source: impl Into<crate::TextureInput>) -> Self {
+    pub fn metallic_roughness_texture(
+        &self,
+        source: impl Into<TextureInput>,
+    ) -> Result<Self, MaterialError> {
         self.set_texture(TextureSlot::MetallicRoughness, source.into())
     }
 
     #[lsp_doc("docs/api/scene/material/normal_texture.md")]
-    pub fn normal_texture(&self, source: impl Into<crate::TextureInput>) -> Self {
+    pub fn normal_texture(&self, source: impl Into<TextureInput>) -> Result<Self, MaterialError> {
         self.set_texture(TextureSlot::Normal, source.into())
     }
 
     #[lsp_doc("docs/api/scene/material/occlusion_texture.md")]
-    pub fn occlusion_texture(&self, source: impl Into<crate::TextureInput>) -> Self {
+    pub fn occlusion_texture(
+        &self,
+        source: impl Into<TextureInput>,
+    ) -> Result<Self, MaterialError> {
         self.set_texture(TextureSlot::Occlusion, source.into())
     }
 
     #[lsp_doc("docs/api/scene/material/emissive_texture.md")]
-    pub fn emissive_texture(&self, source: impl Into<crate::TextureInput>) -> Self {
+    pub fn emissive_texture(&self, source: impl Into<TextureInput>) -> Result<Self, MaterialError> {
         self.set_texture(TextureSlot::Emissive, source.into())
     }
 }
@@ -345,78 +356,62 @@ impl Material {
     }
 }
 
-/// Refuses a number of `values` that isn't finite, naming `call`, then `item`,
-/// then the item's index when `values` holds more than one number.
-pub(crate) fn check_finite(
-    call: &str,
-    item: Option<&str>,
-    values: &[f32],
-) -> Result<(), MaterialError> {
-    let found = values
-        .iter()
-        .enumerate()
-        .find(|(_, value)| !value.is_finite());
-    let Some((index, &value)) = found else {
-        return Ok(());
-    };
-    let mut label = call.to_string();
-    if let Some(item) = item {
-        label = format!("{label}: {item}");
-    }
-    if values.len() > 1 {
-        label = format!("{label}: item {index}");
-    }
-    Err(MaterialError::NotFinite { label, value })
-}
-
 /// Logs a key the Material's shader doesn't declare, which a setter skips.
-fn warn_skip(key: &str, error: &crate::ShaderError) {
+fn warn_skip(key: &str, error: &ShaderError) {
     log::warn!("Material setter '{key}' did not apply: {error}");
 }
 
+/// A write to `key`, where a key the shader doesn't declare is skipped with a warning.
+fn skip_missing(key: &str, written: Result<(), ShaderError>) -> Result<(), MaterialError> {
+    match written {
+        Err(error) if error.is_missing() => {
+            warn_skip(key, &error);
+            Ok(())
+        }
+        written => Ok(written?),
+    }
+}
+
 impl Material {
-    /// Sets `slot` from `input`. A `Texture` binds as it is, and any other source becomes
-    /// a map. An input the slot can't take warns and leaves the slot as it was.
-    fn set_texture(&self, slot: TextureSlot, input: TextureInput) -> Self {
-        let key = slot.pick_key();
-        if let Err(error) = input.check_options(slot.name_setter()) {
-            warn_texture(key, error);
-            return self.clone();
-        }
-        if let TextureData::CloneOf(texture) = &input.data {
-            let meta = TextureMeta::from(*texture.id());
-            if let Err(error) = self.shader.object.set(key, UniformData::Texture(meta)) {
-                warn_texture(key, error);
+    /// Sets `slot` from `input`. A `Texture` binds as it is, and any other source becomes a map.
+    /// An input the slot can't take returns an error and leaves the slot as it was.
+    fn set_texture(&self, slot: TextureSlot, input: TextureInput) -> Result<Self, MaterialError> {
+        let call = slot.name_setter();
+        input.check_options(call)?;
+        match &input.data {
+            TextureData::CloneOf(texture) => self.bind_texture(slot, texture)?,
+            _ => {
+                let source = TextureSource::try_from(input).map_err(|error| error.name(call))?;
+                self.set_map(slot, source)?;
             }
-            return self.clone();
         }
-        match TextureSource::try_from(input) {
-            Ok(source) => self.set_map(slot, source),
-            Err(error) => warn_texture(key, error),
-        }
-        self.clone()
+        Ok(self.clone())
+    }
+
+    /// Binds `texture` to `slot` as it is, so the slot holds its id and no map.
+    fn bind_texture(&self, slot: TextureSlot, texture: &Texture) -> Result<(), MaterialError> {
+        let key = slot.pick_key();
+        let meta = TextureMeta::from(*texture.id());
+        skip_missing(key, self.shader.object.set(key, UniformData::Texture(meta)))
     }
 
     /// Sets `slot` to a map of `source`, which takes the slot's format as a hint when it picked none.
     /// A Mipmap or KTX2 container whose bytes don't read in it, such as a float one, keeps its own.
-    pub(crate) fn set_map(&self, slot: TextureSlot, mut source: TextureSource) {
+    pub(crate) fn set_map(
+        &self,
+        slot: TextureSlot,
+        mut source: TextureSource,
+    ) -> Result<(), MaterialError> {
         source.take_hint(slot.pick_format());
         let key = slot.pick_key();
-        if let Err(error) = self.shader.object.set_map(key, source) {
-            warn_texture(key, error);
-        }
+        skip_missing(key, self.shader.object.set_map(key, source))
     }
-}
-
-/// Logs a texture setter's input that the Material's `key` couldn't take.
-fn warn_texture(key: &str, error: impl std::fmt::Display) {
-    log::warn!("Material texture '{key}' did not apply: {error}");
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::texture::SourceData;
+    use crate::texture::{SourceData, TextureError};
     use crate::{Mesh, Vertex};
     use crate::{Pass, Renderer, Target};
 
@@ -634,12 +629,14 @@ struct Factors { roughness: f16, metallic: f32 }
             let mat = Material::pbr()
                 .base_color([1.0, 1.0, 1.0, 1.0])
                 .expect("base color")
-                .base_color_texture(&tex);
+                .base_color_texture(&tex)
+                .expect("base color map");
 
             mat.shader()
                 .set("camera.position", [0.0_f32, 0.0, 1.0])
                 .ok();
-            let light = crate::Light::directional([0.0, 0.0, -1.0], [1.0, 1.0, 1.0]);
+            let light =
+                crate::Light::directional([0.0, 0.0, -1.0], [1.0, 1.0, 1.0]).expect("light");
 
             let mesh = Mesh::new();
             for (pos, uv) in [
@@ -732,7 +729,9 @@ struct Factors { roughness: f16, metallic: f32 }
                 255, 0, 0, 255,    0, 255, 0, 255,
                   0, 0, 255, 255,  255, 255, 255, 255,
             ];
-            let mat = Material::pbr().base_color_texture((pixels, [2u32, 2u32]));
+            let mat = Material::pbr()
+                .base_color_texture((pixels, [2u32, 2u32]))
+                .expect("base color map");
 
             let id = read_map(&mat, "base_color_map");
             assert!(
@@ -774,7 +773,9 @@ struct Factors { roughness: f16, metallic: f32 }
             let normal: Vec<u8> = [128u8, 128, 255, 255].repeat(4);
             let mat = Material::pbr()
                 .base_color_texture("tests/assets/missing.png")
-                .normal_texture((normal, [2u32, 2u32]));
+                .expect("base color map")
+                .normal_texture((normal, [2u32, 2u32]))
+                .expect("normal map");
             let model = crate::scene::Model::new(pbr_triangle_mesh(), mat.clone());
             let pass = Pass::new("partial-upload");
             pass.add(&model).expect("add_model");
@@ -796,8 +797,8 @@ struct Factors { roughness: f16, metallic: f32 }
         });
     }
 
-    // Story: a map the shader doesn't declare warns at the setter and makes no map,
-    // so the render draws the maps the shader declares.
+    // Story: a slot the shader doesn't declare is skipped with a warning, for a source and
+    // a `Texture` alike, and makes no map, so the render draws the maps the shader declares.
     #[test]
     fn an_undeclared_map_warns_at_the_setter() {
         pollster::block_on(async move {
@@ -806,11 +807,20 @@ struct Factors { roughness: f16, metallic: f32 }
                 .create_texture_target([8u32, 8u32])
                 .await
                 .expect("texture target");
+            let texture = renderer
+                .create_texture(paint([0, 255, 0, 255]))
+                .await
+                .expect("a texture");
             let pixel: Vec<u8> = [255u8, 0, 0, 255].repeat(4);
-            let mat = build_mapped()
-                .normal_texture((pixel.clone(), [2u32, 2u32]))
-                .base_color_texture((pixel, [2u32, 2u32]));
+            let mat = build_mapped();
 
+            let mapped = mat.normal_texture((pixel.clone(), [2u32, 2u32]));
+            let bound = mat.occlusion_texture(&texture);
+            mat.base_color_texture((pixel, [2u32, 2u32]))
+                .expect("base color map");
+
+            assert!(mapped.is_ok(), "{mapped:?}");
+            assert!(bound.is_ok(), "{bound:?}");
             assert!(
                 !mat.shader.object.has_map("normal_map"),
                 "an undeclared map"
@@ -833,9 +843,13 @@ struct Factors { roughness: f16, metallic: f32 }
                 .await
                 .expect("texture target");
             let pixels: Vec<u8> = [255u8, 0, 0, 255].repeat(4);
-            let mat = Material::pbr().base_color_texture("tests/assets/missing.png");
+            let mat = Material::pbr()
+                .base_color_texture("tests/assets/missing.png")
+                .expect("base color map");
             let id = read_map(&mat, "base_color_map");
-            let mat = mat.base_color_texture((pixels, [2u32, 2u32]));
+            let mat = mat
+                .base_color_texture((pixels, [2u32, 2u32]))
+                .expect("base color map");
             {
                 let maps = mat.shader.object.maps.read();
                 assert_eq!(maps.len(), 1, "one map for the key");
@@ -869,10 +883,12 @@ struct Factors { roughness: f16, metallic: f32 }
                 .create_texture(paint([0, 255, 0, 255]))
                 .await
                 .expect("a texture");
-            let mat = build_mapped().base_color_texture("tests/assets/missing.png");
+            let mat = build_mapped()
+                .base_color_texture("tests/assets/missing.png")
+                .expect("base color map");
             let late = mat.clone();
             crate::testing::race_hooks::once("map uploaded", move || {
-                late.base_color_texture(&texture);
+                late.base_color_texture(&texture).expect("base color map");
             });
 
             let loaded = renderer.load(mat.shader()).await;
@@ -902,10 +918,13 @@ struct Factors { roughness: f16, metallic: f32 }
                 .create_texture_target([8, 8])
                 .await
                 .expect("a target");
-            let mat = build_mapped().base_color_texture(paint([255, 0, 0, 255]));
+            let mat = build_mapped()
+                .base_color_texture(paint([255, 0, 0, 255]))
+                .expect("base color map");
             let late = mat.clone();
             crate::testing::race_hooks::once("map uploaded", move || {
-                late.base_color_texture(paint([0, 0, 255, 255]));
+                late.base_color_texture(paint([0, 0, 255, 255]))
+                    .expect("base color map");
             });
 
             first.load(mat.shader()).await.expect("the load");
@@ -922,7 +941,7 @@ struct Factors { roughness: f16, metallic: f32 }
     }
 
     // Story: a `Texture` keeps the options it was created with, so the setter refuses
-    // options beside one with a warning, and the slot keeps the texture it held.
+    // options beside one with an error that names the call, and the slot keeps its texture.
     #[test]
     fn a_texture_with_options_leaves_the_slot() {
         pollster::block_on(async move {
@@ -935,16 +954,123 @@ struct Factors { roughness: f16, metallic: f32 }
                 .create_texture(paint([0, 0, 255, 255]))
                 .await
                 .expect("a texture");
-
             let mat = Material::pbr()
                 .base_color_texture(&first)
-                .base_color_texture((&second, crate::TextureFormat::Rgba8Unorm));
+                .expect("base color map");
 
+            let refused = mat.base_color_texture((&second, crate::TextureFormat::Rgba8Unorm));
+
+            let error = refused.expect_err("options beside a Texture");
+            assert!(
+                matches!(error, MaterialError::Texture(TextureError::InvalidInput(_))),
+                "{error:?}"
+            );
+            assert_eq!(
+                error.to_string(),
+                "Invalid texture input: Material::base_color_texture: a Texture keeps the options it was created with, so it takes none"
+            );
             let slot = mat.shader.object.get_uniform_data("base_color_map");
             assert!(
                 matches!(&slot, Ok(UniformData::Texture(meta)) if meta.id == *first.id()),
                 "{slot:?}"
             );
+        });
+    }
+
+    // Story: an empty byte list, path or URL holds no image, so the setter refuses it
+    // at the call, where it failed the next load, and the slot keeps its map.
+    #[test]
+    fn an_empty_source_leaves_the_slot() {
+        let mat = Material::pbr()
+            .base_color_texture(paint([255, 0, 0, 255]))
+            .expect("base color map");
+        let id = read_map(&mat, "base_color_map");
+        let empties = [
+            (TextureData::Bytes(Vec::new()), "byte list"),
+            (TextureData::Ktx2Bytes(Vec::new()), "byte list"),
+            (TextureData::Path("".into()), "path"),
+            (TextureData::Url(String::new()), "URL"),
+        ];
+
+        for (input, form) in empties {
+            let error = mat.base_color_texture(input).expect_err("an empty source");
+
+            let expected = format!(
+                "Invalid texture input: Material::base_color_texture: a texture source needs data, and it got an empty {form}"
+            );
+            assert_eq!(error.to_string(), expected);
+            assert_eq!(read_map(&mat, "base_color_map"), id, "{form}");
+        }
+    }
+
+    // Story: an input that holds no data makes no map, so the setter returns an error
+    // that names the call, and the slot keeps the map it held.
+    #[test]
+    fn an_input_with_no_data_leaves_the_slot() {
+        let mat = Material::pbr()
+            .base_color_texture(paint([255, 0, 0, 255]))
+            .expect("base color map");
+        let id = read_map(&mat, "base_color_map");
+
+        let refused = mat.base_color_texture(TextureData::Empty);
+
+        let error = refused.expect_err("an input with no data");
+        assert!(
+            matches!(error, MaterialError::Texture(TextureError::InvalidInput(_))),
+            "{error:?}"
+        );
+        assert_eq!(
+            error.to_string(),
+            "Invalid texture input: Material::base_color_texture: a texture source needs data: bytes, a path, a URL or a Mipmap"
+        );
+        assert_eq!(read_map(&mat, "base_color_map"), id);
+        let maps = mat.shader.object.maps.read();
+        let kept = matches!(&*maps[0].source.data, SourceData::Bytes(_));
+        assert!(kept, "{:?}", maps[0].source);
+    }
+
+    /// A Material whose custom shader declares `base_color_map` as a color.
+    fn build_numbered() -> Material {
+        let shader = crate::Shader::new(
+            r#"
+@group(0) @binding(0) var<uniform> base_color_map: vec4<f32>;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  return vec4<f32>(f32(i), 0.0, 0.0, 1.0);
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> { return base_color_map; }
+"#,
+        )
+        .expect("shader");
+        Material::custom(shader)
+    }
+
+    // Story: a custom shader that declares a slot as a number refuses a `Texture` and a source
+    // there with the shader's error, and the slot keeps its value and makes no map.
+    #[test]
+    fn a_slot_declared_as_a_number_refuses_textures() {
+        pollster::block_on(async move {
+            let renderer = Renderer::new();
+            let texture = renderer
+                .create_texture(paint([255, 0, 0, 255]))
+                .await
+                .expect("a texture");
+            let mat = build_numbered();
+            let color = [0.25_f32, 0.5, 0.75, 1.0];
+            mat.shader().set("base_color_map", color).expect("a color");
+
+            let bound = mat.base_color_texture(&texture);
+            let mapped = mat.base_color_texture(paint([0, 255, 0, 255]));
+
+            for refused in [bound, mapped] {
+                let error = refused.expect_err("a texture on a number");
+                assert!(
+                    matches!(error, MaterialError::Shader(ShaderError::TypeMismatch(_))),
+                    "{error:?}"
+                );
+            }
+            let kept: [f32; 4] = mat.shader().get("base_color_map").expect("read");
+            assert_eq!(kept, color);
+            assert!(!mat.shader.object.has_map("base_color_map"), "a map");
         });
     }
 
@@ -993,7 +1119,9 @@ struct Factors { roughness: f16, metallic: f32 }
             ];
 
             for (input, expected) in cases {
-                let mat = build_mapped().base_color_texture(input);
+                let mat = build_mapped()
+                    .base_color_texture(input)
+                    .expect("base color map");
                 renderer
                     .load(mat.shader())
                     .await
@@ -1020,7 +1148,9 @@ struct Factors { roughness: f16, metallic: f32 }
                 .await
                 .expect("texture");
 
-            let mat = Material::pbr().base_color_texture(&tex);
+            let mat = Material::pbr()
+                .base_color_texture(&tex)
+                .expect("base color map");
             assert!(
                 mat.shader.object.maps.read().is_empty(),
                 "a Texture made a map"
@@ -1056,7 +1186,11 @@ struct Factors { roughness: f16, metallic: f32 }
             // 4 Materials, all reading `&shared`. Each Material's
             // `base_color_map` uniform stores the same texture ID.
             let mats: Vec<Material> = (0..4)
-                .map(|_| Material::pbr().base_color_texture(&shared))
+                .map(|_| {
+                    Material::pbr()
+                        .base_color_texture(&shared)
+                        .expect("base color map")
+                })
                 .collect();
 
             for mat in &mats {

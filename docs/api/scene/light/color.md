@@ -13,7 +13,7 @@ multiplier is separate and multiplies the color uniformly in the shader.
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Light;
 
-let warm_lamp = Light::point([0.0, 2.0, 0.0], [1.0, 0.7, 0.4]);
+let warm_lamp = Light::point([0.0, 2.0, 0.0], [1.0, 0.7, 0.4])?;
 # assert_eq!(warm_lamp.color(), [1.0, 0.7, 0.4]);
 # Ok(())
 # }

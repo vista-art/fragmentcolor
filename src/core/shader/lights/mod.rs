@@ -265,7 +265,7 @@ mod tests {
     #[test]
     fn the_light_summary_holds_for_one_epoch() {
         let shader = crate::Material::pbr().shader().object.clone();
-        let lamp = Light::point([0.0, 0.0, 0.0], [1.0; 3]);
+        let lamp = Light::point([0.0, 0.0, 0.0], [1.0; 3]).expect("light");
         let push = || {
             let entry = (lamp.object.id, Arc::downgrade(&lamp.object));
             shader.lights.write().list.push(entry);

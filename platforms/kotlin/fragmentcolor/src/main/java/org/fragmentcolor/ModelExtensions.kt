@@ -12,11 +12,11 @@ fun Model.setTransform(matrix: FloatArray) {
 
 @JvmName("setTransformDoubles")
 fun Model.setTransform(matrix: List<Double>) {
-    setTransform(matrix.map { it.toFloat() })
+    setTransform(readFloats(matrix, "Model.setTransform"))
 }
 
 fun Model.setTransform(matrix: DoubleArray) {
-    setTransform(matrix.map { it.toFloat() })
+    setTransform(readFloats(matrix, "Model.setTransform"))
 }
 
 /**
@@ -66,11 +66,11 @@ fun Model.rotate(axis: FloatArray, radians: Float) {
 
 @JvmName("rotateDoubles")
 fun Model.rotate(axis: List<Double>, radians: Double) {
-    rotate(readFloats(axis, "Model.rotate: axis"), radians.toFloat())
+    rotate(readFloats(axis, "Model.rotate: axis"), readFinite(radians, "Model.rotate: radians"))
 }
 
 fun Model.rotate(axis: DoubleArray, radians: Double) {
-    rotate(readFloats(axis, "Model.rotate: axis"), radians.toFloat())
+    rotate(readFloats(axis, "Model.rotate: axis"), readFinite(radians, "Model.rotate: radians"))
 }
 
 fun Model.scale(factor: FloatArray) {
