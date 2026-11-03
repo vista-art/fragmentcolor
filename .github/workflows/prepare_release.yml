@@ -93,22 +93,43 @@ jobs:
             echo "draft=$DRAFT"
           } >> "$GITHUB_OUTPUT"
 
+      # A whole entry can pass GitHub's limit of 125,000 characters. The notes keep
+      # its opening, its Highlights and its upgrade section, then link to the rest.
+      # A rerun keeps the draft's notes and skips this step.
       - name: Extract release notes from CHANGELOG.md
+        if: steps.vars.outputs.draft != '1'
         env:
           VERSION: ${{ steps.vars.outputs.version }}
+          TAG: ${{ steps.vars.outputs.tag }}
         run: |
           set -euo pipefail
+          NOTES="$RUNNER_TEMP/notes.md"
           awk -v v="$VERSION" '
             /^## / {
               if (found) exit
-              if (index($0, "## " v ":") == 1 || $0 == "## " v) { found = 1; sub(/^## /, "## v") }
+              if (index($0, "## " v ":") == 1 || $0 == "## " v) {
+                found = 1; keep = 1
+                sub(/^## /, "## v"); print; next
+              }
             }
-            found { print }
-          ' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
-          if [ ! -s "$RUNNER_TEMP/notes.md" ]; then
+            !found { next }
+            /^### / { keep = ($0 == "### Highlights" || index($0, "### Upgrading") == 1) }
+            # Blank lines wait for the next kept line. None trail the notes.
+            keep && /^$/ { blank++; next }
+            keep { for (; blank > 0; blank--) print ""; print }
+          ' CHANGELOG.md > "$NOTES"
+          if [ ! -s "$NOTES" ]; then
             echo "::error::CHANGELOG.md has no '## $VERSION' entry."
             exit 1
           fi
+          if ! grep -qxF '### Highlights' "$NOTES"; then
+            echo "::warning::The $VERSION entry in CHANGELOG.md has no '### Highlights' list, and the release notes go without one."
+          fi
+          # GitHub's anchor for a plain ASCII heading: lower case, everything but letters,
+          # digits, spaces, hyphens and underscores dropped, and spaces as hyphens.
+          ANCHOR=$(head -n1 "$NOTES" | sed 's/^## v//' | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9 _-]//g; s/ /-/g')
+          printf '\nThe [full CHANGELOG entry](%s/%s/blob/%s/CHANGELOG.md#%s) lists every change.\n' \
+            "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$TAG" "$ANCHOR" >> "$NOTES"
 
       - name: Setup Rust (with iOS targets)
         uses: dtolnay/rust-toolchain@stable
@@ -178,11 +199,16 @@ jobs:
             gh release edit "$TAG" --target "$SHA"
             gh release upload "$TAG" "$ASSET" --clobber
           else
-            gh release create "$TAG" "$ASSET" \
-              --draft \
-              --target "$SHA" \
-              --title "FragmentColor $TAG" \
-              --notes-file "$RUNNER_TEMP/notes.md" \
-              --generate-notes
+            ARGS=(--draft --target "$SHA" --title "FragmentColor $TAG"
+              --notes-file "$RUNNER_TEMP/notes.md" --generate-notes)
+            # Each tag sits one commit off main, where GitHub can't trace the previous
+            # release. The list of changes starts at the latest published release.
+            START=$(gh release view --json tagName --jq .tagName 2>/dev/null || true)
+            if [ -n "$START" ]; then
+              ARGS+=(--notes-start-tag "$START")
+            else
+              echo "::warning::No published release was found, and GitHub picks where the list of changes starts."
+            fi
+            gh release create "$TAG" "$ASSET" "${ARGS[@]}"
           fi
           echo "Draft $TAG targets $SHA. Review and publish it to create the tag."
