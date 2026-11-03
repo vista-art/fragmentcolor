@@ -13,7 +13,9 @@ A patch release that checks shaders, meshes, textures and passes against the dev
 - An invalid number is an error that names the call and the item: NaN, an infinity, a float past the `f32` range, a fraction where a whole number belongs, or a negative size. These were clamped, zeroed or dropped.
 - Rust imports every type from the crate root, as `fragmentcolor::ShaderError`, and builds one type from another with `From`, `TryFrom` and `str::parse`, such as `ScreenRegion::try_from((x, y, w, h))` and `"#ff8000".parse::<Color>()`.
 - A region of two pairs is an origin and a size in every language.
-- `TextureFormat` values from `Depth32Float` on are 3 higher, which moves the numbers JavaScript stores, Python's `int()` and Kotlin's `ordinal`.
+- `TextureFormat` values from `Depth32Float` on are 3 higher, which moves the numbers JavaScript stores, Python's `int()`, Kotlin's `ordinal` and a Rust `as` cast, and a `match` over every format needs arms for the three new ones.
+- In Rust and Python, a list of passes runs the passes each one requires, as the other languages do, and a pass listed twice runs once.
+- `TextureInputMobile` is `MobileTextureInput` in Swift and Kotlin, and Python's `Shader.from_vertex` takes its argument as `vertex`.
 - PBR scenes on 8-bit targets draw brighter, since `Material::pbr` encodes them as sRGB, and a pass that draws models gets a depth buffer.
 - A `TextureId` alone doesn't keep its texture. The renderer frees a texture when its last handle, uniform and pass target drop.
 
