@@ -8,7 +8,7 @@ A patch release that checks shaders, meshes, textures and passes against the dev
 
 0.12.7 changes code in every language. Cargo's `0.12`, npm's `^0.12.6`, pip's `~=0.12.6` and SwiftPM's `.upToNextMinor(from: "0.12.6")` all pick it up, so pin `0.12.6` exactly until your code follows these groups of changes, which the last section lists one by one:
 
-- Calls that can fail say so. `render`, `resize`, `add_shader`, `set_clear_color`, `Shader::from_mesh`, the `Camera` constructors and the `Material` setters, among others, return a `Result` in Rust, throw in JavaScript and Kotlin, raise in Python and need `try` in Swift. `render` returns what the GPU rejects instead of success.
+- Calls that can fail say so. `render`, `resize`, `add_shader`, `set_clear_color`, `Shader::from_mesh`, the `Camera` and `Light` constructors, `Scene::ambient`, the `Model` transform calls and every `Material` setter, among others, return a `Result` in Rust, throw in JavaScript and Kotlin, raise in Python and need `try` in Swift. `render` returns what the GPU rejects instead of success.
 - Errors have classes. Python raises a subclass of `FragmentColorError`, such as `InvalidInputError` or `DeviceError`, and a JavaScript error's `name` is that class. The Rust error enums gain variants, so a `match` that lists every variant needs new arms.
 - An invalid number is an error that names the call and the item: NaN, an infinity, a float past the `f32` range, a fraction where a whole number belongs, or a negative size. These were clamped, zeroed or dropped.
 - Rust imports every type from the crate root, as `fragmentcolor::ShaderError`, and builds one type from another with `From`, `TryFrom` and `str::parse`, such as `ScreenRegion::try_from((x, y, w, h))` and `"#ff8000".parse::<Color>()`.
