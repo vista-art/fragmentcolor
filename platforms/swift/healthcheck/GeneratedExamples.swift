@@ -335,7 +335,7 @@ final class GeneratedExamples: ExampleCase {
             ])
 
             // The material keeps the encoded image as a map.
-            let material = Material.pbr().baseColorTexture(image)
+            let material = try Material.pbr().baseColorTexture(image)
             let model = Model(mesh, material)
             let scene = Scene()
             try scene.add(model)
@@ -1240,7 +1240,7 @@ final class GeneratedExamples: ExampleCase {
             // Every Material that points at `albedo` reuses the same uploaded GPU
             // texture; passing the same handle into N Material instances costs one
             // upload and N shader-uniform references.
-            let material = Material.pbr().baseColorTexture(albedo)
+            let material = try Material.pbr().baseColorTexture(albedo)
 
             // Raw pixels with their size upload when the scene loads.
             let tint = [255, 128, 0, 255]

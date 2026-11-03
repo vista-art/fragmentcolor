@@ -4746,8 +4746,9 @@ class Material:
         directly via `material.shader().set(...)`.
 
         A value your shader declares but can't hold, such as a number past ±65504
-        for an `f16` field, returns `MaterialError::Shader` with the shader's error,
-        and the call changes nothing, a whole `uv_transform` included. JavaScript
+        for an `f16` field or a texture for a slot it declares as a number, returns
+        `MaterialError::Shader` with the shader's error, and the call changes
+        nothing, a whole `uv_transform` included. JavaScript
         throws an `Error` named `MaterialError`, Python raises `MaterialError`, Swift
         throws `FragmentColorError` and Kotlin throws `FragmentColorException`.
 
@@ -5424,7 +5425,7 @@ class Material:
 
         Accepts any `Into<TextureInput>`, the inputs [`Renderer::create_texture`](https://fragmentcolor.org/api/core/renderer#create_texture) takes:
 
-        - A pre-built [`&Texture`](https://fragmentcolor.org/api/texture/texture). The setter stores the texture's ID immediately and the GPU texture stays Arc-shared across every Material that points at it. Passing the same `&shared_texture` to N Materials produces one GPU upload and N shader-uniform references: the cheap way to reuse one texture map across a scene full of objects without paying for N texture allocations. The texture belongs to the `Renderer` that created it, and another `Renderer` refuses to draw it. It keeps the options it was created with, so JavaScript and Python refuse options beside it with an `InvalidInputError`.
+        - A pre-built [`&Texture`](https://fragmentcolor.org/api/texture/texture). The setter stores the texture's ID immediately and the GPU texture stays Arc-shared across every Material that points at it. Passing the same `&shared_texture` to N Materials produces one GPU upload and N shader-uniform references: the cheap way to reuse one texture map across a scene full of objects without paying for N texture allocations. The texture belongs to the `Renderer` that created it, and another `Renderer` refuses to draw it. It keeps the options it was created with, and the setter refuses options beside it.
         - Encoded bytes, raw pixels with their size as `(bytes, [w, h])`, bytes with a format as `(bytes, format)`, bytes with every option as `(bytes, options)`, a path or a URL, alone or as `(path, format)` or `(path, options)`, or a [`Mipmap`](https://fragmentcolor.org/api/texture/mipmap), alone or as `(chain, options)`. The Material keeps this source as a map. Each `Renderer` that draws the Material uploads a copy of its own at [`Renderer::load`](https://fragmentcolor.org/api/core/renderer#load), or on native targets at its first [`Renderer::render`](https://fragmentcolor.org/api/core/renderer#render), and frees it when the `Renderer` or the Material drops. A map set again draws its old copy until the `Renderer` loads the new one.
 
         To share a map across Renderers, pass bytes, a path, a URL or a `Mipmap`.
@@ -5458,16 +5459,24 @@ class Material:
 
         ## Errors
 
-        In Rust the setter can't fail at the call. The bindings read their arguments
-        there and throw for one they can't use: a size that isn't 2 or 3 whole numbers,
-        options of the wrong type or shape, options beside a `Texture`, and in Python a
-        `size` that differs from a NumPy array's own. Python raises `TypeError` for an
-        argument of the wrong type and `InvalidInputError` for the rest, JavaScript throws
-        an `Error` of the same name, and Swift and Kotlin throw `FragmentColorError` and
-        `FragmentColorException`.
+        The setter checks its input and the slot at once, and a call it refuses
+        leaves the slot as it was. Options beside a `Texture` return
+        `MaterialError::Texture` with an `InvalidInput` texture error that names the
+        call, and so does an input that holds no data, such as Rust's
+        `TextureData::Empty`. A slot that a `Material::custom` shader declares as
+        something other than a texture returns `MaterialError::Shader` with the
+        shader's `TypeMismatch`. A slot the shader doesn't declare is skipped with a
+        log warning, as the number setters skip a field, and the setter returns the
+        Material.
 
-        The setter checks the slot at once. A slot the shader doesn't declare as a
-        texture, or an empty input, logs a warning and leaves the Material as it was.
+        The bindings read their arguments before the setter runs and throw for one
+        they can't use: a size that isn't 2 or 3 whole numbers, options of the wrong
+        type or shape, options beside a `Texture`, and in Python a `size` that
+        differs from a NumPy array's own. Python raises `TypeError` for an argument
+        of the wrong type, `MaterialError` for a slot the shader declares as a
+        number, and `InvalidInputError` for the rest. JavaScript throws an `Error`
+        of the same name. Swift throws `FragmentColorError`, and each call needs
+        `try`, while Kotlin throws `FragmentColorException`.
 
         A source that fails to upload (file not found, decode error, unsupported
         format) fails [`Renderer::load(&material).await`](https://fragmentcolor.org/api/core/renderer#load),
@@ -5483,10 +5492,11 @@ class Material:
         meets this, for that frame.
 
         For deterministic error handling, pre-build the texture eagerly:
-        `renderer.create_texture(path).await?` returns a `Texture` that can't
-        fail at setter time, and `Material::base_color_texture(&texture)` takes
-        an Arc-shared reference. The lazy path stays useful when the URL /
-        path resolves at render time but the caller doesn't want to await yet.
+        `renderer.create_texture(path).await?` returns a `Texture` that has already
+        uploaded, so no `load` can fail on it later, and
+        `Material::base_color_texture(&texture)` takes an Arc-shared reference. The
+        lazy path stays useful when the URL / path resolves at render time but the
+        caller doesn't want to await yet.
 
         Example:
 
@@ -5525,6 +5535,17 @@ class Material:
 
         Takes the inputs [`Material::base_color_texture`](https://fragmentcolor.org/api/scene/material#base_color_texture) takes, spelled as each language's `create_texture` spells them: a `Texture`, or encoded bytes, raw pixels with their size, bytes with a format or with every option, a path or a URL, alone or with a format or every option, or a `Mipmap`, alone or with options. The Material keeps a source as a map, and each `Renderer` uploads a copy of its own when it loads the scene. `base_color_texture` tells how a map loads, what it holds in memory and how it fails.
 
+        The setter refuses options beside a `Texture`, and an input that holds no
+        data, with `MaterialError::Texture`. JavaScript throws it as an `Error`
+        named `InvalidInputError`, and Python raises `InvalidInputError`. A
+        `Material::custom` shader that declares `metallic_roughness_map` as
+        something other than a texture refuses the call with
+        `MaterialError::Shader`, which JavaScript and Python raise as
+        `MaterialError`. Swift throws `FragmentColorError` and Kotlin throws
+        `FragmentColorException`. A refused call leaves the slot as it was, and a
+        shader that doesn't declare `metallic_roughness_map` skips the call with a
+        log warning.
+
         Example:
 
         ```python
@@ -5555,6 +5576,16 @@ class Material:
 
         Takes the inputs [`Material::base_color_texture`](https://fragmentcolor.org/api/scene/material#base_color_texture) takes, spelled as each language's `create_texture` spells them: a `Texture`, or encoded bytes, raw pixels with their size, bytes with a format or with every option, a path or a URL, alone or with a format or every option, or a `Mipmap`, alone or with options. The Material keeps a source as a map, and each `Renderer` uploads a copy of its own when it loads the scene. `base_color_texture` tells how a map loads, what it holds in memory and how it fails.
 
+        The setter refuses options beside a `Texture`, and an input that holds no
+        data, with `MaterialError::Texture`. JavaScript throws it as an `Error`
+        named `InvalidInputError`, and Python raises `InvalidInputError`. A
+        `Material::custom` shader that declares `normal_map` as something other than
+        a texture refuses the call with `MaterialError::Shader`, which JavaScript
+        and Python raise as `MaterialError`. Swift throws `FragmentColorError` and
+        Kotlin throws `FragmentColorException`. A refused call leaves the slot as it
+        was, and a shader that doesn't declare `normal_map` skips the call with a
+        log warning.
+
         Example:
 
         ```python
@@ -5581,6 +5612,16 @@ class Material:
         occlusion factor is `1.0` and no darkening is applied.
 
         Takes the inputs [`Material::base_color_texture`](https://fragmentcolor.org/api/scene/material#base_color_texture) takes, spelled as each language's `create_texture` spells them: a `Texture`, or encoded bytes, raw pixels with their size, bytes with a format or with every option, a path or a URL, alone or with a format or every option, or a `Mipmap`, alone or with options. The Material keeps a source as a map, and each `Renderer` uploads a copy of its own when it loads the scene. `base_color_texture` tells how a map loads, what it holds in memory and how it fails.
+
+        The setter refuses options beside a `Texture`, and an input that holds no
+        data, with `MaterialError::Texture`. JavaScript throws it as an `Error`
+        named `InvalidInputError`, and Python raises `InvalidInputError`. A
+        `Material::custom` shader that declares `occlusion_map` as something other
+        than a texture refuses the call with `MaterialError::Shader`, which
+        JavaScript and Python raise as `MaterialError`. Swift throws
+        `FragmentColorError` and Kotlin throws `FragmentColorException`. A refused
+        call leaves the slot as it was, and a shader that doesn't declare
+        `occlusion_map` skips the call with a log warning.
 
         Example:
 
@@ -5609,6 +5650,16 @@ class Material:
         emission falls back to the `material.emissive` factor as-is.
 
         Takes the inputs [`Material::base_color_texture`](https://fragmentcolor.org/api/scene/material#base_color_texture) takes, spelled as each language's `create_texture` spells them: a `Texture`, or encoded bytes, raw pixels with their size, bytes with a format or with every option, a path or a URL, alone or with a format or every option, or a `Mipmap`, alone or with options. The Material keeps a source as a map, and each `Renderer` uploads a copy of its own when it loads the scene. `base_color_texture` tells how a map loads, what it holds in memory and how it fails.
+
+        The setter refuses options beside a `Texture`, and an input that holds no
+        data, with `MaterialError::Texture`. JavaScript throws it as an `Error`
+        named `InvalidInputError`, and Python raises `InvalidInputError`. A
+        `Material::custom` shader that declares `emissive_map` as something other
+        than a texture refuses the call with `MaterialError::Shader`, which
+        JavaScript and Python raise as `MaterialError`. Swift throws
+        `FragmentColorError` and Kotlin throws `FragmentColorException`. A refused
+        call leaves the slot as it was, and a shader that doesn't declare
+        `emissive_map` skips the call with a log warning.
 
         Example:
 
