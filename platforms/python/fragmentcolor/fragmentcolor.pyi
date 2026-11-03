@@ -3092,6 +3092,11 @@ class Scene:
         afterwards: the value is stashed on the Scene and re-stamped onto
         shaders that join later via `Scene::add`.
 
+        A shader whose `lights.ambient` can't hold the color, such as an `f16`
+        ambient and a channel past ±65504, keeps the color it had, and
+        `Renderer::render` returns the shader's `ShaderError::TypeMismatch` until a
+        later `ambient` call fits. A shader without `lights.ambient` takes nothing.
+
         Returns a handle to the same Scene (Arc-shared) for chaining.
 
         Example:
@@ -3624,6 +3629,12 @@ class Camera:
     `CameraError` in JavaScript, raise `CameraError` (a `FragmentColorError` and a `ValueError`)
     in Python, throw `FragmentColorError` in Swift and throw
     `FragmentColorException` in Kotlin.
+
+    A shader whose `camera.view_proj` or `camera.position` can't hold the
+    Camera's value, such as an `f16` position past ±65504, keeps the value it
+    had, and `Renderer::render` returns the shader's `ShaderError::TypeMismatch`
+    until the Camera moves to a value the field holds. A shader that declares
+    neither key takes nothing from the Camera, with no error.
 
     The Camera is the user's domain, not the Material's: a Material is "what the
     surface looks like under any light from any viewpoint", a Camera is "which
