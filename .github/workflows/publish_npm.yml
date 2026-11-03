@@ -44,7 +44,7 @@ jobs:
         id: get_version
         run: |
           VERSION=$(node -e "console.log(JSON.parse(require('fs').readFileSync('platforms/web/pkg/package.json','utf8')).version)")
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Check if version already published
         id: check_published
@@ -52,9 +52,9 @@ jobs:
           VERSION: ${{ steps.get_version.outputs.version }}
         run: |
           if npm view fragmentcolor@"$VERSION" version > /dev/null 2>&1; then
-            echo "published=true" >> $GITHUB_OUTPUT
+            echo "published=true" >> "$GITHUB_OUTPUT"
           else
-            echo "published=false" >> $GITHUB_OUTPUT
+            echo "published=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Upload built package as artifact (for inspection)

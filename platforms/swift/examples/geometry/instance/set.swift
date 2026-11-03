@@ -10,10 +10,14 @@ let shader = try Shader("""
 """)
 
 let mesh = Mesh()
-try mesh.addVertex([0.0, 0.0])
+try mesh.addVertices([
+    [-0.5, -0.5],
+    [0.5, -0.5],
+    [0.0, 0.5],
+])
 
 let instance = try Instance().set("offset", [0.5, 0.0]).set("layer", 2)
-try mesh.addInstance(instance)
+mesh.addInstance(instance)
 
 // offset uploads as a vec2<f32> and layer as the u32 2.
 try shader.addMesh(mesh)

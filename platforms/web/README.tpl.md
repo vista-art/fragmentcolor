@@ -23,19 +23,16 @@ yarn add fragmentcolor
 import init, { Renderer, Shader, Pass } from "fragmentcolor";
 
 async function start() {
-  // Initializes the WASM module
+  // Loads the WebAssembly module
   await init();
 
-  // Initializes a renderer and a target compatible with the given canvas
+  // A renderer and a target that draws into the canvas
   const canvas = document.getElementById("my-canvas");
   const renderer = new Renderer();
   const target = await renderer.createTarget(canvas);
 
-  // You can pass the shader as a source string, a registry slug, or an
-  // https URL pointing at a .wgsl file.
-  const circle = await Shader.fetch("./path/to/circle.wgsl");
-  const triangle = await Shader.fetch("https://fragmentcolor.org/shaders/sdf2d/circle.wgsl");
-  const shader = new Shader(`
+  // A shader from WGSL source. Its uniforms are ready to set by name.
+  const background = new Shader(`
     struct VertexOutput {
         @builtin(position) coords: vec4<f32>,
     }
@@ -47,17 +44,10 @@ async function start() {
     @group(0) @binding(0)
     var<uniform> my_struct: MyStruct;
 
-    @group(0) @binding(1)
-    var<uniform> my_vec2: vec2<f32>;
-
     @vertex
-    fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput {
-        const vertices = array(
-            vec2( -1., -1.),
-            vec2(  3., -1.),
-            vec2( -1.,  3.)
-        );
-        return VertexOutput(vec4<f32>(vertices[in_vertex_index], 0.0, 1.0));
+    fn vs_main(@builtin(vertex_index) index: u32) -> VertexOutput {
+        let vertices = array(vec2(-1., -1.), vec2(3., -1.), vec2(-1., 3.));
+        return VertexOutput(vec4<f32>(vertices[index], 0.0, 1.0));
     }
 
     @fragment
@@ -65,32 +55,49 @@ async function start() {
         return vec4<f32>(my_struct.my_field, 1.0);
     }
   `);
-
-  // The library binds and updates the uniforms automatically
-  shader.set("my_struct.my_field", [0.1, 0.8, 0.9]);
-  shader.set("my_vec2", [1.0, 1.0]);
+  background.set("my_struct.my_field", [0.1, 0.8, 0.9]);
 
   // One shader is all you need to render
-  renderer.render(circle, target);
+  renderer.render(background, target);
 
-  // But you can also combine multiple shaders in a render Pass
-  const rpass = new Pass("single pass");
-  rpass.addShader(circle);
-  rpass.addShader(triangle);
-  rpass.addShader(shader);
-  renderer.render(rpass, target);
+  // Library functions join your own source, which calls them.
+  // On the web, Shader.fetch loads them from fragmentcolor.org.
+  const circle = await Shader.fetch([
+    "sdf2d/circle",
+    `
+    @group(0) @binding(0)
+    var<uniform> center: vec2<f32>;
 
-  // Finally, you can render an array of passes in order. No extra type needed.
-  const passes = [rpass, new Pass("GUI pass")];
-  renderer.render(passes, target);
+    @vertex
+    fn vs_main(@builtin(vertex_index) index: u32) -> @builtin(position) vec4<f32> {
+        let vertices = array(vec2(-1., -1.), vec2(3., -1.), vec2(-1., 3.));
+        return vec4<f32>(vertices[index], 0.0, 1.0);
+    }
 
-  // To animate, simply update the uniforms in a loop
-  function animate() {
-    circle.set("position", [0.0, 0.0]);
+    @fragment
+    fn fs_main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+        if circle(pos.xy - center, 100.0) > 0.0 {
+            discard;
+        }
+        return vec4<f32>(1.0, 0.4, 0.2, 1.0);
+    }
+    `,
+  ]);
+
+  // Passes render in order, and the second one keeps what the first drew.
+  const circlePass = Pass.fromShader("circle", circle);
+  circlePass.loadPrevious();
+  const passes = [Pass.fromShader("background", background), circlePass];
+
+  // To animate, update the uniforms and render again on each frame
+  function animate(time) {
+    const size = target.size();
+    const x = size.width / 2 + Math.cos(time / 1000) * 100;
+    circle.set("center", [x, size.height / 2]);
     renderer.render(passes, target);
     requestAnimationFrame(animate);
   }
-  animate();
+  requestAnimationFrame(animate);
 }
 
 start();
@@ -103,7 +110,7 @@ start();
 ./fc build_web        # add --debug for a debug build
 
 # Run JS demos (Vite dev server) and open browser
-./fc run_web repl     # or: ./fc run_web multipass | ./fc run_web headless
+./fc run_web repl     # or: ./fc run_web gallery | ./fc run_web visual
 
 # Manual alternative
 pnpm --dir examples/javascript install

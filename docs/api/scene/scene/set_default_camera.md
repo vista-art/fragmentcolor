@@ -18,14 +18,16 @@ the camera you pass.
 use fragmentcolor::{Camera, Material, Mesh, Model, Scene, Vertex};
 
 let mesh = Mesh::new();
-mesh.add_vertex(
+mesh.add_vertices([
     Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]),
-);
+    Vertex::pbr([-0.5, -0.5, 0.0]).set(Vertex::UV0, [0.0, 0.0]),
+    Vertex::pbr([0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]),
+]);
 let scene = Scene::new();
 scene.add(&Model::new(mesh, Material::pbr()))?;
 
-let camera = Camera::perspective(1.047, 16.0 / 9.0, 0.1, 100.0)
-    .look_at([0.0, 1.5, 4.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+let camera = Camera::perspective(1.047, 16.0 / 9.0, 0.1, 100.0)?
+    .look_at([0.0, 1.5, 4.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])?;
 scene.set_default_camera(&camera);
 # Ok(())
 # }

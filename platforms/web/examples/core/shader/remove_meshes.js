@@ -15,9 +15,9 @@ const shader = new Shader(`
 `);
 
 const m1 = new Mesh();
-m1.addVertex([0.0, 0.0]);
+m1.addVertices([ [-0.5, -0.5], [0.0, -0.5], [-0.5, 0.0], ]);
 const m2 = new Mesh();
-m2.addVertex([0.5, 0.0]);
+m2.addVertices([ [0.0, 0.0], [0.5, 0.0], [0.0, 0.5], ]);
 
 shader.addMesh(m1);
 shader.addMesh(m2);

@@ -13,3 +13,7 @@ albedo = renderer.create_texture(albedo_bytes, size=[2, 2])
 # texture; passing the same handle into N Material instances costs one
 # upload and N shader-uniform references.
 material = Material.pbr().base_color_texture(albedo)
+
+# Raw pixels with their size upload when the scene loads.
+tint = [255, 128, 0, 255]
+tinted = Material.pbr().base_color_texture(tint, size=[1, 1])

@@ -33,7 +33,9 @@ fn pbr_shade(
   let h = normalize(ll + vv);
   let ndh = max(dot(nn, h), 0.0);
   let ndv = max(dot(nn, vv), 0.0);
-  let vdh = max(dot(vv, h), 0.0);
+  // Rounding can put the dot past 1 when the light lies along the view ray,
+  // and Fresnel's pow is NaN for the negative base that leaves.
+  let vdh = clamp(dot(vv, h), 0.0, 1.0);
 
   // F0: 0.04 for dielectrics (water/plastic/etc.), base_color for metals.
   let f0 = mix(vec3<f32>(0.04), base_color, metallic);

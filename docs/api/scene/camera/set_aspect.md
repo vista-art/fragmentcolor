@@ -11,6 +11,9 @@ Typical use: window-resize handler. On `WindowEvent::Resized`, call
 renders without distortion.
 
 Returns a handle to the same Camera (Arc-shared backing) for chaining.
+An aspect of 0, NaN or infinity returns `Err(CameraError::Aspect)` and
+leaves the projection as it was. A minimized window reports a width or
+height of 0, so skip the call until the window has an area again.
 
 Behavior by projection kind:
 
@@ -28,10 +31,10 @@ Behavior by projection kind:
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Camera;
 
-let camera = Camera::perspective(1.047, 1.0, 0.1, 100.0);
+let camera = Camera::perspective(1.047, 1.0, 0.1, 100.0)?;
 
 // Window resize: 1920×1080 → wide-screen aspect.
-camera.set_aspect(1920.0 / 1080.0);
+camera.set_aspect(1920.0 / 1080.0)?;
 # Ok(())
 # }
 ```

@@ -28,7 +28,7 @@ Build with [Mipmap::build(input)](/api/texture/mipmap#build); the input shapes m
 
 Then hand the chain to `Renderer::create_texture(chain)` for the upload. The cross-language bindings expose `build(bytes, format, size?)` with `size` optional.
 
-Supported formats: `Rgba8Unorm`, `Rgba8UnormSrgb`, `Bgra8Unorm`, `R8Unorm`, `Rg8Unorm`, `R16Unorm`, `Rg16Unorm`, `Rgba16Unorm`, and the `Rgba`, `Bgra`, `L8` and `Lab` aliases. Anything else returns `TextureError::UnsupportedMipmapFormat`.
+Supported formats: `Rgba8Unorm`, `Rgba8UnormSrgb`, `Bgra8Unorm`, `R8Unorm`, `Rg8Unorm`, `R16Unorm`, `Rg16Unorm`, `Rgba16Unorm`, `Rgba16Float`, `Rgba32Float`, and the `Rgba`, `Bgra`, `L8` and `Lab` aliases. Anything else returns `TextureError::UnsupportedMipmapFormat`.
 
 ## Per-language shapes
 
@@ -46,8 +46,6 @@ Supported formats: `Rgba8Unorm`, `Rgba8UnormSrgb`, `Bgra8Unorm`, `R8Unorm`, `Rg8
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-let png = std::fs::read("examples/assets/logo.png")?;
 use fragmentcolor::{Mipmap, Renderer, TextureFormat};
 
 // Imagine \`png\` came off your asset loader on a worker thread.
@@ -58,12 +56,8 @@ let chain = Mipmap::build((png.as_slice(), TextureFormat::Rgba8UnormSrgb))?;
 // Back on the renderer thread, the upload is just a GPU write.
 let renderer = Renderer::new();
 let texture = renderer.create_texture(chain).await?;
-_ = texture.size();
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-2, 13-16}"
+lang="rust"
 />
 
 </TabItem>
@@ -163,12 +157,14 @@ Build a mip chain on the calling thread, then hand it to [Renderer::create_textu
 
 `build(input)` takes the same input shapes as `Renderer::create_texture` and `Renderer::create_storage_texture`, so you write the call the same way regardless of which entry point you target. Whether `build` decodes the bytes depends on whether you pass a `size`:
 
-- **Encoded path, `size` absent.** The bytes get decoded as PNG / JPEG / BMP / HDR / etc., and the chain inherits the image's dimensions. Use this when you have an encoded blob from disk, the network, or a decoder that emits encoded data.
-- **Raw path, `size` present.** The bytes are treated as already laid out for `format` at `size`. Use this when your decoder already produced pixel-format-matching bytes (typical for tile-cache pipelines that fold mip generation into the same step that produced the tile).
+- **Encoded path, `size` absent.** The bytes get decoded as PNG / JPEG / BMP / HDR / etc., and the chain inherits the image's dimensions. The format comes from the bytes, as in `create_texture`, so a file name without an extension works. Use this when you have an encoded blob from disk, the network, or a decoder that emits encoded data.
+- **Raw path, `size` present.** The bytes are treated as already laid out for `format` at `size`, one layer deep and exactly that long. A file path takes its size from the file, so a path with a size is an `InvalidInput` error. Use this when your decoder already produced pixel-format-matching bytes (typical for tile-cache pipelines that fold mip generation into the same step that produced the tile).
 
 `build` runs synchronously and accepts only sync-friendly inputs: bytes or a file path. URL inputs (which need an async fetch), KTX2 inputs (already pre-baked), an existing chain, an existing texture, and empty inputs all return `TextureError::InvalidInput` with a message pointing at the right entry point.
 
-Supported formats: `Rgba8Unorm`, `Rgba8UnormSrgb`, `Bgra8Unorm`, `R8Unorm`, `Rg8Unorm`, `R16Unorm`, `Rg16Unorm`, `Rgba16Unorm`, and the `Rgba`, `Bgra`, `L8` and `Lab` aliases. Anything else returns `TextureError::UnsupportedMipmapFormat`. Decode failures surface as `MalformedImageError`; size and byte-count mismatches as `InvalidInput`.
+A decoded image built for `Bgra8Unorm` or `Bgra` stores blue first, as `create_texture` does, and raw bytes keep their order.
+
+Supported formats: `Rgba8Unorm`, `Rgba8UnormSrgb`, `Bgra8Unorm`, `R8Unorm`, `Rg8Unorm`, `R16Unorm`, `Rg16Unorm`, `Rgba16Unorm`, `Rgba16Float`, `Rgba32Float`, and the `Rgba`, `Bgra`, `L8` and `Lab` aliases. Anything else returns `TextureError::UnsupportedMipmapFormat`. Decode failures surface as `MalformedImageError`; size and byte-count mismatches as `InvalidInput`.
 
 #### Per-language shapes
 
@@ -183,9 +179,6 @@ Supported formats: `Rgba8Unorm`, `Rgba8UnormSrgb`, `Bgra8Unorm`, `R8Unorm`, `Rg8
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-let encoded_png_bytes = std::fs::read("examples/assets/logo.png")?;
-let raw_rgba = vec![200; 8 * 8 * 4];
 use fragmentcolor::{Mipmap, Renderer, TextureFormat};
 
 // Encoded path: bytes plus the format you want the chain to live in.
@@ -198,13 +191,8 @@ let chain_raw = Mipmap::build((raw_rgba.as_slice(), TextureFormat::Rgba8UnormSrg
 // Either chain uploads the same way.
 let renderer = Renderer::new();
 let texture = renderer.create_texture(chain).await?;
-_ = texture.size();
-_ = chain_raw.count();
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-3, 16-20}"
+lang="rust"
 />
 
 </TabItem>
@@ -318,15 +306,12 @@ Return the texture format the chain was built for: the `format` you passed to `b
 <TabItem label="Rust">
 <Code
 code={`
-let pixels: Vec<u8> = vec![200; 4 * 4 * 4];
 use fragmentcolor::{Mipmap, TextureFormat};
 
 let chain = Mipmap::build((pixels.as_slice(), TextureFormat::Rgba8UnormSrgb, [4, 4]))?;
 let format = chain.format();
-let _format = format;
-Ok::<(), Box<dyn std::error::Error>>(())
 `}
-lang="rust" meta="collapse={1-1, 6-7}"
+lang="rust"
 />
 
 </TabItem>
@@ -395,7 +380,7 @@ lang="kotlin" meta="collapse={2-2}"
 
 ### Mipmap::size \{#size\}
 
-Return the base level (level 0) dimensions as `(width, height)`. Useful when you want to know what you're about to upload without keeping a separate copy of the source dimensions around. The chain has `1 + floor(log2(max(width, height)))` levels, each one half the previous size down to 1x1.
+Return the base level (level 0) dimensions as a [Size](/api/texture/texture#size) with no depth, in every language. Useful when you want to know what you're about to upload without keeping a separate copy of the source dimensions around. The chain has `1 + floor(log2(max(width, height)))` levels, each one half the previous size down to 1x1.
 
 #### Example
 
@@ -406,19 +391,12 @@ Return the base level (level 0) dimensions as `(width, height)`. Useful when you
 code={`
 use fragmentcolor::{Mipmap, TextureFormat};
 
-let pixels: Vec<u8> = vec![0; 16 * 16 * 4];
-let chain = Mipmap::build((
-    pixels.as_slice(),
-    TextureFormat::Rgba8UnormSrgb,
-    [16, 16],
-))?;
-let (width, height) = chain.size();
-assert_eq!(width, 16);
-assert_eq!(height, 16);
-let _size = (width, height);
-Ok::<(), Box<dyn std::error::Error>>(())
+let chain = Mipmap::build((pixels.as_slice(), TextureFormat::Rgba8UnormSrgb, [16, 16]))?;
+let size = chain.size();
+let width = size.width;
+let height = size.height;
 `}
-lang="rust" meta="collapse={10-13}"
+lang="rust"
 />
 
 </TabItem>
@@ -426,15 +404,15 @@ lang="rust" meta="collapse={10-13}"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { TextureFormat, Mipmap } from "fragmentcolor";
-
+import { Mipmap, TextureFormat } from "fragmentcolor";
 const pixels = new Uint8Array(16 * 16 * 4);
+
 const chain = Mipmap.build(pixels, TextureFormat.Rgba8UnormSrgb, [16, 16]);
-const sz = chain.size();
-const width = sz.width;
-const height = sz.height;
+const size = chain.size();
+const width = size.width;
+const height = size.height;
 `}
-lang="js"
+lang="js" meta="collapse={2-2}"
 />
 
 </TabItem>
@@ -442,14 +420,15 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import TextureFormat, Mipmap
+from fragmentcolor import Mipmap, TextureFormat
+pixels = bytes(16 * 16 * 4)
 
-pixels = [0] * (16 * 16 * 4)
-chain = Mipmap.build(pixels, TextureFormat.Rgba8UnormSrgb, [16, 16])
-(width, height) = chain.size()
-_ = (width, height)
+chain = Mipmap.build(pixels, TextureFormat.Rgba8UnormSrgb, size=[16, 16])
+size = chain.size()
+width = size.width
+height = size.height
 `}
-lang="python"
+lang="python" meta="collapse={2-2}"
 />
 
 </TabItem>
@@ -459,19 +438,14 @@ lang="python"
 code={`
 import FragmentColor
 import Foundation
-
 let pixels = Data(repeating: 0, count: 16 * 16 * 4)
-let chain = try Mipmap.build(
-    bytes: pixels,
-    format: .rgba8UnormSrgb,
-    size: Size(width: 16, height: 16, depth: nil)
-)
-let sz = chain.size()
-let width = sz.width
-let height = sz.height
-let _ = (width, height)
+
+let chain = try Mipmap.build(pixels, TextureFormat.rgba8UnormSrgb, [16, 16])
+let size = chain.size()
+let width = size.width
+let height = size.height
 `}
-lang="swift"
+lang="swift" meta="collapse={2-3}"
 />
 
 </TabItem>
@@ -480,12 +454,14 @@ lang="swift"
 <Code
 code={`
 import org.fragmentcolor.*
-
 val pixels = ByteArray(16 * 16 * 4)
+
 val chain = Mipmap.build(pixels, TextureFormat.RGBA8_UNORM_SRGB, listOf(16u, 16u))
-val (width, height) = chain.size()
+val size = chain.size()
+val width = size.width
+val height = size.height
 `}
-lang="kotlin"
+lang="kotlin" meta="collapse={2-2}"
 />
 
 </TabItem>
@@ -497,7 +473,7 @@ lang="kotlin"
 
 ### Mipmap::levels \{#levels\}
 
-Return the tightly-packed bytes for each mip level, level 0 first. Each level holds `bytes_per_pixel(format) * max(1, base_w >> level) * max(1, base_h >> level)` bytes. Reach for this when you want to inspect a level, dump the chain to disk, or feed the bytes into a tool that isn't FragmentColor. When you upload via `Renderer::create_texture(chain)`, the renderer reads the bytes directly and you don't need to touch them yourself.
+Return the tightly-packed bytes for each mip level, level 0 first. Each level holds the format's bytes per pixel times `max(1, base_w >> level) * max(1, base_h >> level)` bytes. Reach for this when you want to inspect a level, dump the chain to disk, or feed the bytes into a tool that isn't FragmentColor. When you upload via `Renderer::create_texture(chain)`, the renderer reads the bytes directly and you don't need to touch them yourself.
 
 #### Example
 
@@ -506,16 +482,12 @@ Return the tightly-packed bytes for each mip level, level 0 first. Each level ho
 <TabItem label="Rust">
 <Code
 code={`
-let pixels: Vec<u8> = vec![0; 8 * 8 * 4];
 use fragmentcolor::{Mipmap, TextureFormat};
 
 let chain = Mipmap::build((pixels.as_slice(), TextureFormat::Rgba8UnormSrgb, [8, 8]))?;
 let level_zero_bytes = &chain.levels()[0];
-assert_eq!(level_zero_bytes.len(), 8 * 8 * 4);
-let _level_zero_bytes = level_zero_bytes;
-Ok::<(), Box<dyn std::error::Error>>(())
 `}
-lang="rust" meta="collapse={1-1, 6-8}"
+lang="rust"
 />
 
 </TabItem>
@@ -593,16 +565,12 @@ Return the bytes of one mip level, with level 0 the full-size image. An index pa
 <TabItem label="Rust">
 <Code
 code={`
-let pixels: Vec<u8> = vec![0; 8 * 8 * 4];
 use fragmentcolor::{Mipmap, TextureFormat};
 
 let chain = Mipmap::build((pixels.as_slice(), TextureFormat::Rgba8UnormSrgb, [8, 8]))?;
 let level_zero_bytes = chain.level(0)?;
-assert_eq!(level_zero_bytes.len(), 8 * 8 * 4);
-assert!(chain.level(9).is_err());
-Ok::<(), Box<dyn std::error::Error>>(())
 `}
-lang="rust" meta="collapse={1-1, 6-8}"
+lang="rust"
 />
 
 </TabItem>
@@ -680,16 +648,12 @@ Return how many mip levels the chain holds (always at least 1). For a base size 
 <TabItem label="Rust">
 <Code
 code={`
-let pixels: Vec<u8> = vec![0; 8 * 8 * 4];
 use fragmentcolor::{Mipmap, TextureFormat};
 
 let chain = Mipmap::build((pixels.as_slice(), TextureFormat::Rgba8UnormSrgb, [8, 8]))?;
 let count = chain.count();
-assert_eq!(count, 4); // 8, 4, 2, 1
-let _count = count;
-Ok::<(), Box<dyn std::error::Error>>(())
 `}
-lang="rust" meta="collapse={1-1, 6-8}"
+lang="rust"
 />
 
 </TabItem>

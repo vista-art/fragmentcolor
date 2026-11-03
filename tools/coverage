@@ -6,4 +6,4 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 # Exclude platform- and feature-specific glue and winit window target from coverage.
 # We exercise targets via TextureTarget headlessly in CI.
-cargo llvm-cov --workspace --all-features --ignore-filename-regex '(.*/platform/.*|.*/features/.*|.*/target/window\.rs)' --summary-only
+cargo llvm-cov --workspace --all-features --ignore-filename-regex '(.*/platform/.*|.*/features/.*|.*/targets/window_target\.rs)' --summary-only

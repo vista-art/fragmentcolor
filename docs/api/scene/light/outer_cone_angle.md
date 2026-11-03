@@ -16,9 +16,9 @@ to update both at once.
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Light;
 
-let torch = Light::spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
+let torch = Light::spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0])?
     .set_cone_angles(0.15, 0.4)?;
-let sun = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
+let sun = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])?;
 # assert!((torch.outer_cone_angle().unwrap() - 0.4).abs() < 1.0e-6);
 # assert!(sun.outer_cone_angle().is_none());
 # Ok(())

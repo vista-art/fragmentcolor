@@ -117,3 +117,7 @@ path = "../../docs/tutorials/infinite-zoom/03-perturbation/example.rs"
 [[example]]
 name = "tutorial_infinite_zoom_deep_zoom"
 path = "../../docs/tutorials/infinite-zoom/04-deep-zoom/example.rs"
+
+[[example]]
+name = "tutorial_infinite_zoom_interactive"
+path = "../../docs/tutorials/infinite-zoom/05-interactive/example.rs"

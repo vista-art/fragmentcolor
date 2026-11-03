@@ -8,7 +8,7 @@ the fields that differ.
 ## Example
 
 ```rust
-use fragmentcolor::mesh::Vertex;
+use fragmentcolor::Vertex;
 let v = Vertex::new([0.0, 0.0]);
 let inst = v.create_instance();
 # _ = inst;

@@ -23,7 +23,9 @@ fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return color; }
 "#;
 
 fn on_resize(app: &App, new_size: &PhysicalSize<u32>) {
-    app.resize([new_size.width, new_size.height]);
+    if let Err(error) = app.resize([new_size.width, new_size.height]) {
+        eprintln!("resize failed: {error}");
+    }
 }
 
 fn draw(app: &App) {

@@ -8,13 +8,16 @@
 import { loadProgram } from "./program.js";
 import { describeControls, renderControls, sliderRange } from "./controls.js";
 import { LANGUAGES, generateCode, parseLibrary, replaceLibrary } from "./codegen.js";
-import { HARNESS } from "./harness.js";
+import { harness } from "./harness.js";
 import { LibraryPicker } from "./picker.js";
 import { loadFragmentColor, supports } from "../runtime.js";
+import { Gestures } from "../gestures.js";
 
 const BUILD_DELAY = 250;
 const SCRUB_DELAY = 40;
 const DPR_CAP = 2;
+// Clean frames in a row that forgive a program's earlier failed frames.
+const CLEAN_FRAMES = 60;
 
 let runtime;
 let instances = 0;
@@ -48,11 +51,13 @@ export function detectBackend() {
   return gpuCheck;
 }
 
-// FragmentColor 0.12.5 logs shader errors and returns a default shader; later
-// releases throw them and log only the GPU errors no error scope caught.
-// Capturing console.error covers both, and from 0.12.6 it keeps only GPU
-// errors, so a stray error elsewhere on the page can't fail a build.
-const isBuildError = supports("0.12.6") ? (text) => text.includes("==== GPU error") : () => true;
+// FragmentColor 0.12.5 logs shader errors and returns a default shader, and
+// later releases throw them. Capturing console.error covers both. From 0.12.6
+// it keeps only GPU errors, so a stray error elsewhere on the page can't fail a
+// build: 0.12.6 logs each under a "==== GPU error" banner, and 0.12.7 logs the
+// ones its error scopes catch as "Device error (kind) in 'label': ...".
+const GPU_ERROR = /==== GPU error|Device error \([^)]*\) in '/;
+const isBuildError = supports("0.12.6") ? (text) => GPU_ERROR.test(text) : () => true;
 
 async function capturing(run) {
   const errors = [];
@@ -163,13 +168,16 @@ export class Playground {
       reset: root.querySelector(".fcp-reset"),
       copy: root.querySelector(".fcp-copy"),
       fullscreen: root.querySelector(".fcp-fullscreen"),
+      stick: root.querySelector(".fcp-stick"),
+      keyHint: root.querySelector(".fcp-key-hint"),
     };
     this.edits = new Map();
     this.overrides = new Map();
     this.pointer = null;
     // Wheel, drag and pinch since the last frame, for demos with `gestures: true`.
-    this.gesture = { zoom: 0, pan: [0, 0] };
-    this.touches = new Map();
+    this.gestures = null;
+    // Keys held while the canvas has focus, and the touch stick, for demos with `keys: true`.
+    this.keys = { down: new Set(), stick: [0, 0] };
     this.program = null;
     this.pending = null;
     this.buildToken = 0;
@@ -223,8 +231,9 @@ export class Playground {
     this.controls = [];
     renderControls(this.ui.controls, [], () => {});
     this.root.dataset.active = demo.id;
-    // A demo that takes gestures keeps touches on the canvas from scrolling the page.
-    this.canvas.style.touchAction = demo.gestures ? "none" : "";
+    // A demo that takes gestures keeps the wheel and touches on the canvas from scrolling the page.
+    this.gestures.enabled = Boolean(demo.gestures);
+    this.takeKeys(Boolean(demo.keys));
     this.loadTabs(this.edits.get(demo.id) ?? this.original(demo));
     this.showError(null);
 
@@ -277,8 +286,8 @@ export class Playground {
     }
     tabs.push({ id: "js", label: "main.js", kind: "js", state: this.editorState(js, "js", true) });
     // Reading index.js counts as reading JavaScript, so the next demo opens on main.js.
-    const harness = this.editorState(HARNESS, "js", false);
-    tabs.push({ id: "index.js", label: "index.js", kind: "js", language: "js", readonly: true, state: harness });
+    const index = this.editorState(harness(this.demo), "js", false);
+    tabs.push({ id: "index.js", label: "index.js", kind: "js", language: "js", readonly: true, state: index });
     for (const lang of LANGUAGES.filter((l) => l.id !== "js")) {
       const { id, label, file } = lang;
       tabs.push({ id, label, file, kind: id, generated: true, readonly: true, state: null });
@@ -724,10 +733,12 @@ export class Playground {
   draw(program, now) {
     const size = [this.canvas.width, this.canvas.height];
     const pointer = this.pointer ?? [size[0] / 2, size[1] / 2];
-    const gesture = this.gesture;
-    this.gesture = { zoom: 0, pan: [0, 0] };
+    const { pointer: pinch, ...gesture } = this.gestures.take();
+    // A pinch zooms around the point between the fingers, so that point becomes the pointer.
+    if (pinch) this.pointer = pinch;
+    const keys = { down: new Set(this.keys.down), stick: [...this.keys.stick] };
     const time = (now - program.epoch) / 1000;
-    program.module.frame(program.state, this.renderer, this.target, time, size, pointer, gesture);
+    program.module.frame(program.state, this.renderer, this.target, time, size, pinch ?? pointer, gesture, keys);
   }
 
   tick(now) {
@@ -738,12 +749,18 @@ export class Playground {
     this.resize();
     try {
       this.draw(program, now);
-      program.misses = 0;
+      // Only a run of clean frames forgives earlier misses,
+      // so an error that throws every other frame still adds up.
+      program.clean = (program.clean ?? 0) + 1;
+      if (program.clean >= CLEAN_FRAMES) program.misses = 0;
     } catch (err) {
       // A frame that throws after its build hands the canvas back to the build
-      // before it. With none to go back to, it takes three misses in a row.
+      // before it. With none to go back to, it takes three misses, unless the GPU
+      // refused the program's work: a DeviceError comes back every frame.
+      program.clean = 0;
       program.misses = (program.misses ?? 0) + 1;
-      if (!program.previous && program.misses < 3) return;
+      const refused = err?.name === "DeviceError";
+      if (!refused && !program.previous && program.misses < 3) return;
       program.failed = true;
       this.program = program.previous;
       this.showError(err, this.program ? "Back to the last version that drew." : "Drawing stopped.");
@@ -760,60 +777,77 @@ export class Playground {
     this.target?.resize([w, h]);
   }
 
-  // Turns the wheel, a drag and a two-finger pinch over the canvas into the
-  // gesture frame receives: zoom in doublings (positive zooms in) and pan in
-  // canvas pixels. Only a demo with `gestures: true` takes them; for the rest
-  // the wheel scrolls the page as usual.
-  wireGestures() {
-    const { canvas } = this;
-    const scale = () => canvas.width / Math.max(canvas.getBoundingClientRect().width, 1);
-    const spread = () => {
-      const [a, b] = [...this.touches.values()];
-      return Math.hypot(a[0] - b[0], a[1] - b[1]);
-    };
-    const middle = () => {
-      const points = [...this.touches.values()];
-      return points.reduce(([x, y], [px, py]) => [x + px / points.length, y + py / points.length], [0, 0]);
-    };
-    this.on(
-      canvas,
-      "wheel",
-      (e) => {
-        if (!this.demo?.gestures) return;
-        e.preventDefault();
-        const lines = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? canvas.clientHeight : 1;
-        // A trackpad pinch arrives as a wheel with ctrlKey and small deltas.
-        this.gesture.zoom -= (e.deltaY * lines) / (e.ctrlKey ? 100 : 400);
-      },
-      { passive: false },
-    );
-    this.on(canvas, "pointerdown", (e) => {
-      if (!this.demo?.gestures || (e.pointerType === "mouse" && e.button !== 0)) return;
-      canvas.setPointerCapture(e.pointerId);
-      this.touches.set(e.pointerId, [e.clientX, e.clientY]);
+  // Lets the canvas take focus and shows the touch stick when the demo takes
+  // keys. Any other demo leaves the keyboard and the touches to the page.
+  takeKeys(on) {
+    const { canvas, ui } = this;
+    if (on) canvas.tabIndex = 0;
+    else canvas.removeAttribute("tabindex");
+    if (!on && document.activeElement === canvas) canvas.blur();
+    if (ui.stick) ui.stick.hidden = !on;
+    if (ui.keyHint) ui.keyHint.hidden = !on;
+    this.keys.down.clear();
+    this.releaseStick();
+  }
+
+  releaseStick() {
+    this.keys.stick = [0, 0];
+    this.stickPointer = null;
+    const knob = this.ui.stick?.firstElementChild;
+    if (knob) knob.style.transform = "";
+  }
+
+  // Turns the keyboard and the touch stick into the keys frame receives: the
+  // KeyboardEvent.code of every key held down, and the stick as [x, y] from
+  // -1 to 1 with y up. Keys count only while the canvas has focus, which a
+  // click or Tab gives it. Shortcuts with a modifier, Tab and Escape stay
+  // with the browser and the site, and only the keys that would scroll the
+  // page skip their default.
+  wireKeys() {
+    const { canvas, ui } = this;
+    const scrolling = new Set(["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "PageUp", "PageDown", "Home", "End"]);
+    this.on(canvas, "pointerdown", () => {
+      if (this.demo?.keys) canvas.focus({ preventScroll: true });
     });
-    this.on(canvas, "pointermove", (e) => {
-      const last = this.touches.get(e.pointerId);
-      if (!last) return;
-      const before = this.touches.size === 2 ? { spread: spread(), middle: middle() } : null;
-      this.touches.set(e.pointerId, [e.clientX, e.clientY]);
-      const ratio = scale();
-      if (before) {
-        // A pinch zooms around the point between the two fingers.
-        const now = middle();
-        const rect = canvas.getBoundingClientRect();
-        this.pointer = [(now[0] - rect.left) * ratio, (now[1] - rect.top) * ratio];
-        this.gesture.zoom += Math.log2(Math.max(spread(), 1) / Math.max(before.spread, 1));
-        this.gesture.pan[0] += (now[0] - before.middle[0]) * ratio;
-        this.gesture.pan[1] += (now[1] - before.middle[1]) * ratio;
-      } else if (this.touches.size === 1) {
-        this.gesture.pan[0] += (e.clientX - last[0]) * ratio;
-        this.gesture.pan[1] += (e.clientY - last[1]) * ratio;
-      }
+    this.on(canvas, "keydown", (e) => {
+      if (!this.demo?.keys || e.code === "Tab") return;
+      if (e.code === "Escape") return canvas.blur();
+      // macOS sends no keyup for a key released while Cmd is down, so a modifier lifts every key.
+      if (e.metaKey || e.ctrlKey || e.altKey) return this.keys.down.clear();
+      this.keys.down.add(e.code);
+      if (scrolling.has(e.code)) e.preventDefault();
     });
-    const release = (e) => this.touches.delete(e.pointerId);
-    this.on(canvas, "pointerup", release);
-    this.on(canvas, "pointercancel", release);
+    this.on(canvas, "keyup", (e) => this.keys.down.delete(e.code));
+    this.on(canvas, "blur", () => this.keys.down.clear());
+
+    const stick = ui.stick;
+    if (!stick) return;
+    const knob = stick.firstElementChild;
+    const push = (e) => {
+      const rect = stick.getBoundingClientRect();
+      const radius = rect.width / 2;
+      let x = (e.clientX - rect.left - radius) / radius;
+      let y = (rect.top + radius - e.clientY) / radius;
+      const length = Math.hypot(x, y);
+      if (length > 1) [x, y] = [x / length, y / length];
+      this.keys.stick = [x, y];
+      knob.style.transform = `translate(${x * radius * 0.6}px, ${-y * radius * 0.6}px)`;
+    };
+    this.on(stick, "pointerdown", (e) => {
+      e.preventDefault();
+      stick.setPointerCapture(e.pointerId);
+      this.stickPointer = e.pointerId;
+      push(e);
+    });
+    this.on(stick, "pointermove", (e) => {
+      if (e.pointerId === this.stickPointer) push(e);
+    });
+    const release = (e) => {
+      if (e.pointerId === this.stickPointer) this.releaseStick();
+    };
+    this.on(stick, "pointerup", release);
+    this.on(stick, "pointercancel", release);
+    this.on(stick, "lostpointercapture", release);
   }
 
   wire() {
@@ -827,7 +861,9 @@ export class Playground {
     };
     this.on(canvas, "pointermove", track);
     this.on(canvas, "pointerdown", track);
-    this.wireGestures();
+    this.gestures = new Gestures(canvas);
+    this.cleanups.push(() => this.gestures.detach());
+    this.wireKeys();
     this.cleanups.push(this.cm.watchSiteTheme(() => this.applyTheme()));
 
     this.on(ui.add, "click", () => this.picker.open(parseLibrary(this.text("js")) ?? []));

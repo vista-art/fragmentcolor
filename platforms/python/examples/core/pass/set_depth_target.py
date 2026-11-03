@@ -10,7 +10,6 @@ mesh = Mesh()
 mesh.add_vertex([0.0, 0.0, 0.0])
 mesh.add_vertex([1.0, 0.0, 0.0])
 mesh.add_vertex([0.0, 1.0, 0.0])
-mesh.add_vertex([1.0, 1.0, 0.0])
 shader = Shader.from_mesh(mesh)
 rpass = Pass.from_shader("meshes", shader)
 

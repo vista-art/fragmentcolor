@@ -42,10 +42,8 @@ mod convert {
     /// `new Type(...)` constructor form), so internal match sites group
     /// them together via `Lang::Js | Lang::Swift | Lang::Kotlin =>` arms.
     /// The bulk-text post-processors in `scripts/{swift,kotlin}.rs` then
-    /// finish the job — backticks → `"""`, `null` → `nil`, throwing-init
-    /// `try!` insertion, etc. Folding those post-processors into per-line
-    /// match arms here is the next refactor; this enum is honest about
-    /// the four supported targets in the meantime.
+    /// finish the job: backticks → `"""`, `null` → `nil`, throwing-init
+    /// `try!` insertion, etc.
     #[derive(Copy, Clone, Debug, PartialEq, Eq)]
     enum Lang {
         Js,
@@ -80,7 +78,7 @@ mod convert {
     /// `for (const <ident> of <expr>) {`. The per-line emitter passes the
     /// Rust header through untouched; left as-is it is a JS SyntaxError
     /// (`Unexpected identifier 'camera'`). Only single-identifier binders are
-    /// rewritten — anything with a destructuring pattern or a missing brace on
+    /// rewritten. Anything with a destructuring pattern or a missing brace on
     /// the same line is left alone, so unrelated lines (including hand-written
     /// `for (let i = 0; …)` overrides) pass through unchanged.
     fn rewrite_for_in_to_for_of_js(src: &str) -> String {
@@ -183,11 +181,14 @@ mod convert {
     /// Two-phase pipeline: the per-line emitter (`convert(_, Lang::Swift, _)`)
     /// produces a JS-shaped intermediate (Swift shares JS's control flow),
     /// then `swift::finalize` finishes the syntactic swaps that don't
-    /// fit a per-line model — backtick template literals → `"""`,
+    /// fit a per-line model: backtick template literals → `"""`,
     /// `null` → `nil`, `try` insertion for throwing inits, etc.
-    pub fn to_swift(items: &[(String, bool)]) -> String {
+    ///
+    /// `setup` holds the Swift lines the example runs first, such as a hidden
+    /// block's `let image = try Data(...)`, whose locals the `try` insertion reads.
+    pub fn to_swift(items: &[(String, bool)], setup: &[String]) -> String {
         let ir = convert(items, Lang::Swift, /*aggressive_js_flatten=*/ false);
-        super::swift::finalize(&ir)
+        super::swift::finalize(&ir, setup)
     }
 
     /// Transpile a Rust example into idiomatic Kotlin.
@@ -237,7 +238,7 @@ mod convert {
             // identifier char is part of the identifier, not a literal.
             let prev_is_ident = i > 0 && is_ident_char(chars[i - 1]) && !chars[i - 1].is_ascii_digit();
             if !prev_is_ident && chars[i].is_ascii_digit() {
-                // Scan the numeric token — digits, underscores, hex prefix,
+                // Scan the numeric token: digits, underscores, hex prefix,
                 // and at most one decimal point. Hex (`0x...`) consumes
                 // hex digits.
                 let start = i;
@@ -418,8 +419,8 @@ mod convert {
         }
         let mut raw_hashes: Option<usize> = None;
         // Whether the line we just buffered ended inside a `//` line
-        // comment. If so, the next line MUST be appended with a newline
-        // — collapsing to a space would slurp the next code into the
+        // comment. If so, the next line MUST be appended with a newline,
+        // since collapsing to a space would slurp the next code into the
         // comment.
         let mut prev_had_line_comment = false;
         for line in lines {
@@ -549,7 +550,7 @@ mod convert {
     // already suffix-stripped to `[0; 256]` by the pre-pass) into a
     // valid per-language form. Walks bracket-and-paren balanced so
     // nested expressions don't trip the pattern.
-    //   JS: `Array(N).fill(expr)` — picked up + idiomatized further by
+    //   JS: `Array(N).fill(expr)`, picked up + idiomatized further by
     //       `swift::finalize` / `kotlin::finalize`.
     //   Py: `[expr] * N`.
     fn convert_rust_array_repeat(line: &str, lang: Lang) -> String {
@@ -694,7 +695,7 @@ mod convert {
     // `f((a, b, c))` becomes `f(a, b, c)`. Rust uses tuples to dispatch
     // through `From<(A, B, ...)>` impls; JS exposes the same shapes as
     // plain positional args. Only fires when the entire argument list of
-    // the call is a single parenthesized tuple — `f([a, b])`, `f((a))`
+    // the call is a single parenthesized tuple. `f([a, b])`, `f((a))`
     // (parens around one expr, not a tuple), and `f(x, (a, b))` are left
     // alone.
     fn flatten_tuple_call_args_js(line: &str) -> String {
@@ -888,7 +889,7 @@ mod convert {
         let mut i = 0usize;
         // Track string-literal state so a `.snake_case` substring inside a
         // string (e.g. the uniform key `"material.alpha_cutoff"` or a WGSL
-        // shader body in a backtick template) is never camelized — only
+        // shader body in a backtick template) is never camelized. Only
         // actual method names after a `.` are.
         let mut in_string: Option<char> = None;
         while i < chars.len() {
@@ -932,10 +933,10 @@ mod convert {
         // Replace patterns like Type::method( -> Type.method(.
         //
         // Iterate by `chars()` rather than `as_bytes()` so multi-byte UTF-8
-        // sequences (em-dashes, smart quotes, etc.) survive intact. The old
-        // byte-loop pushed each raw byte as a `char`, which split the 3-byte
-        // U+2014 (—) into U+00E2 + U+0080 + U+0094 — visible as the
-        // mojibake "â" + 2 invisible controls in py/swift/kotlin output.
+        // sequences (em dashes, smart quotes, etc.) survive intact. Pushing
+        // each raw byte as a `char` would split the 3-byte U+2014 into
+        // U+00E2 + U+0080 + U+0094, which shows up as the mojibake "â" + 2
+        // invisible controls in py/swift/kotlin output.
         let chars: Vec<char> = line.chars().collect();
         let mut out = String::with_capacity(line.len());
         let mut i = 0usize;
@@ -1016,7 +1017,7 @@ mod convert {
         // Handle `.await?` and bare `.await`:
         //   JS:  `expr.await(?)` → `await expr` (with the `?` separately
         //        triggering Rust error-propagation cleanup below).
-        //   Py:  drop `.await` entirely — Python wrappers are sync.
+        //   Py:  drop `.await` entirely, since Python wrappers are sync.
         //
         // The Swift / Kotlin paths consume the JS output as IR and then
         // adjust: `swift::finalize` rewrites `await expr` → `try await expr`,
@@ -1210,11 +1211,6 @@ mod convert {
             // 2) ScreenRegion.new((x, y), (w, h)) -> array arguments in JS
             rhs = region_tuples_to_arrays(&rhs, lang);
         }
-        // Python: convert `.size()` calls on RHS into `.size` property
-        if let Lang::Py = lang {
-            rhs = replace_py_size_calls(&rhs);
-        }
-
         // Var rename for Python reserved keyword "pass"
         let var_out: &str = match lang {
             Lang::Py if var == "pass" => {
@@ -1328,10 +1324,10 @@ mod convert {
 
     // Detect and convert a multi-line Rust raw string assignment into a
     // single emitted line. Two shapes are recognized:
-    //   - `let var = Type::new(r#"..."#)` — constructor call (JS: `new Type`,
+    //   - `let var = Type::new(r#"..."#)`: constructor call (JS: `new Type`,
     //     Py: bare `Type`).
-    //   - `let var = r#"..."#`             — bare string assignment (no
-    //     constructor — emit the literal directly).
+    //   - `let var = r#"..."#`: bare string assignment (no
+    //     constructor, so the literal is emitted directly).
     // Returns (mapped_text, next_index) when a block is consumed, or None
     // if the line is not a let-with-raw-string at all.
     fn try_handle_raw_string_new(
@@ -1538,7 +1534,7 @@ mod convert {
             }
         }
         // Pre-pass: strip Rust idioms with no JS / Python / Swift / Kotlin
-        // analog. These transformations are language-agnostic — they
+        // analog. These transformations are language-agnostic. They
         // make the line "look like" idiomatic non-Rust code so the
         // downstream branches don't have to special-case Rust integer
         // literal suffixes (`0u8`, `64u32`) or unary deref (`*var.id()`).
@@ -1546,8 +1542,8 @@ mod convert {
             *line = strip_rust_numeric_suffixes(line);
             *line = strip_rust_deref_star(line);
             // Rust slice-cast no-ops (`bytes.as_slice()`, `vec.as_ref()`,
-            // `s.to_vec()`) have no JS / Python / Swift / Kotlin analog —
-            // the receiver already has the right shape.
+            // `s.to_vec()`) have no JS / Python / Swift / Kotlin analog,
+            // since the receiver already has the right shape.
             *line = strip_rust_coercion_calls(line);
             // `vec![...]` → `[...]`. Strip BEFORE the array-repeat pass
             // so `vec![0; N]` → `[0; N]` → `Array(N).fill(0)`. Otherwise
@@ -1578,7 +1574,7 @@ mod convert {
         // line is the continuation of a chain (`expr\n  .method()\n  .await?;`).
         // The downstream line-by-line transforms can't see across lines,
         // so we collapse the chain into one logical line first. Skip this
-        // for lines inside Rust raw strings (`r#"..."#`) — those contain
+        // for lines inside Rust raw strings (`r#"..."#`), since those contain
         // arbitrary content (typically WGSL) that must not be merged.
         src = reassemble_chain_lines(src);
         // Enforce no visible into()
@@ -1714,10 +1710,8 @@ mod convert {
             // 5) Await / remove error '?' artifacts
             line = transform_await(&line, lang);
 
-            // 6) Python size property + comment conversion
+            // 6) Python comment conversion
             if let Lang::Py = lang {
-                // Robustly convert `.size()` (with optional whitespace) into `.size`
-                line = replace_py_size_calls(&line);
                 // Convert JS-style '//' comments to Python '#', skipping '//'
                 // inside string and char literals (URLs etc).
                 if let Some(idx) = find_comment_marker(&line) {
@@ -2008,48 +2002,6 @@ mod convert {
                 continue;
             }
             out.push(bytes[i]);
-            i += 1;
-        }
-        out
-    }
-
-    // Replace `.size()` (allowing whitespace as `.size ( )`) with `.size` in Python output
-    fn replace_py_size_calls(line: &str) -> String {
-        let chars: Vec<char> = line.chars().collect();
-        let mut out = String::with_capacity(line.len());
-        let mut i = 0usize;
-        while i < chars.len() {
-            if chars[i] == '.' {
-                // optionally skip whitespace after '.'
-                let mut j = i + 1;
-                while j < chars.len() && chars[j].is_whitespace() {
-                    j += 1;
-                }
-                // match 'size'
-                let name = ['s', 'i', 'z', 'e'];
-                if j + name.len() <= chars.len() && chars[j..j + name.len()] == name {
-                    let mut k = j + name.len();
-                    // skip whitespace before '('
-                    while k < chars.len() && chars[k].is_whitespace() {
-                        k += 1;
-                    }
-                    if k < chars.len() && chars[k] == '(' {
-                        k += 1;
-                        // skip whitespace inside parens
-                        while k < chars.len() && chars[k].is_whitespace() {
-                            k += 1;
-                        }
-                        if k < chars.len() && chars[k] == ')' {
-                            // success: write ".size" and skip to after ')'
-                            out.push('.');
-                            out.push_str("size");
-                            i = k + 1;
-                            continue;
-                        }
-                    }
-                }
-            }
-            out.push(chars[i]);
             i += 1;
         }
         out

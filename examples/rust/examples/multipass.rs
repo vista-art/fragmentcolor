@@ -32,7 +32,9 @@ fn random_circle(rng: &mut Rng, size: Size, alpha: f32) -> Shader {
 }
 
 fn on_resize(app: &App, new_size: &PhysicalSize<u32>) {
-    app.resize([new_size.width, new_size.height]);
+    if let Err(error) = app.resize([new_size.width, new_size.height]) {
+        eprintln!("resize failed: {error}");
+    }
 }
 
 fn draw(app: &App) {
@@ -52,8 +54,8 @@ async fn setup(app: &App, windows: Vec<Arc<Window>>) -> SetupResult {
     };
     let opaque_pass = {
         let p = Pass::new("Opaque Pass");
-        p.add_shader(&triangle);
-        p.set_clear_color([0.0, 0.0, 0.0, 1.0]);
+        p.add_shader(&triangle)?;
+        p.set_clear_color([0.0, 0.0, 0.0, 1.0])?;
         p
     };
     let transparent_pass = Pass::new("Transparent Pass");
@@ -67,11 +69,11 @@ async fn setup(app: &App, windows: Vec<Arc<Window>>) -> SetupResult {
     };
     for _ in 0..10 {
         let circle = random_circle(&mut rng, size, 1.0);
-        opaque_pass.add_shader(&circle);
+        opaque_pass.add_shader(&circle)?;
     }
     for _ in 0..20 {
         let circle = random_circle(&mut rng, size, 0.2);
-        transparent_pass.add_shader(&circle);
+        transparent_pass.add_shader(&circle)?;
     }
 
     let passes: Vec<Pass> = vec![opaque_pass, transparent_pass];

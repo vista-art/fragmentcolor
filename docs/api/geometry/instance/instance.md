@@ -19,10 +19,14 @@ Build an `Instance` when the per-instance data doesn't come from a vertex.
 ## Example
 
 ```rust
-use fragmentcolor::mesh::{Instance, Mesh};
+use fragmentcolor::{Instance, Mesh};
 
 let mesh = Mesh::new();
-mesh.add_vertex([0.0, 0.0]);
+mesh.add_vertices([
+    [-0.5, -0.5],
+    [0.5, -0.5],
+    [0.0, 0.5],
+]);
 
 let instance = Instance::new().set("offset", [0.5, 0.0]);
 mesh.add_instance(instance);

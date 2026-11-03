@@ -146,7 +146,7 @@ async fn setup(renderer: &Renderer) -> Result<State, FragmentColorError> {
 
     let particle_pass = Pass::from_shader("particles", &particles);
     particle_pass.set_target(&scene)?;
-    particle_pass.set_clear_color([0.04, 0.05, 0.08, 1.0]);
+    particle_pass.set_clear_color([0.04, 0.05, 0.08, 1.0])?;
 
     let output = Pass::from_shader("postfx", &postfx);
     output.require(&particle_pass)?;

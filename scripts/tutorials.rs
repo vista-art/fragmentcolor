@@ -8,15 +8,15 @@ mod tutorials {
     //! canonical JS source: they get used both for snippet display and as the
     //! runtime module that `<Demo>` imports. Auto-transpiled JS would be subtly
     //! different from a human-written port (no `await Shader.fetch`, no per-step
-    //! ergonomic shifts) — easier to maintain by hand at this scale.
+    //! ergonomic shifts). A hand-written port is easier to maintain at this scale.
     //!
     //! An `example.py`, `example.swift` or `example.kt` next to `example.rs`
     //! replaces that language's transpiled tab the same way. A shader region
     //! in a port must match the Rust one, or the build prints a warning.
     //!
     //! Output:
-    //! - `docs/website/src/generated/tutorials.ts` — manifest module
-    //! - `docs/website/src/tutorials/<rel>/example.js` — copies for Vite to bundle
+    //! - `docs/website/src/generated/tutorials.ts`: manifest module
+    //! - `docs/website/src/tutorials/<rel>/example.js`: copies for Vite to bundle
     //!
     //! Vite import.meta.glob in Demo.astro picks up the example.js copies.
 
@@ -70,8 +70,8 @@ mod tutorials {
 
     /// Walks the tutorials tree. `tut_root` is `<workspace>/docs/tutorials/`; `dir` is the current
     /// directory being scanned (starts at `tut_root`, recurses into subdirs). Manifest keys are
-    /// relative to `tut_root` (e.g. `01-hello-triangle/04-postfx-pass/example.rs`) — short and
-    /// stable across workspace reloacations.
+    /// relative to `tut_root` (e.g. `01-hello-triangle/04-postfx-pass/example.rs`), short and
+    /// stable across workspace relocations.
     fn walk_tutorials(
         tut_root: &Path,
         dir: &Path,
@@ -109,7 +109,7 @@ mod tutorials {
         entry.full.rust = Some(rust_text.clone());
         let full_items = lines_as_items(&rust_text);
         entry.full.py = Some(super::convert::to_py(&full_items));
-        entry.full.swift = Some(super::convert::to_swift(&full_items));
+        entry.full.swift = Some(super::convert::to_swift(&full_items, &[]));
         entry.full.kotlin = Some(super::convert::to_kotlin(&full_items));
 
         let rust_regions = extract_regions(&rust_text);
@@ -118,7 +118,7 @@ mod tutorials {
             slice.rust = Some(body.clone());
             let items = lines_as_items(body);
             slice.py = Some(super::convert::to_py(&items));
-            slice.swift = Some(super::convert::to_swift(&items));
+            slice.swift = Some(super::convert::to_swift(&items, &[]));
             slice.kotlin = Some(super::convert::to_kotlin(&items));
         }
 

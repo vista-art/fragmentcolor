@@ -1,11 +1,10 @@
-from fragmentcolor import Material, Renderer
+from fragmentcolor import Material
 
-renderer = Renderer()
+# Raw pixels with their size upload when the scene loads.
 ao_bytes = [
     220, 0, 0, 255,
-    180,   0, 0, 255,
-    200,   0, 0, 255,
-    160,   0, 0, 255,
+    180, 0, 0, 255,
+    200, 0, 0, 255,
+    160, 0, 0, 255,
 ]
-ao = renderer.create_texture(ao_bytes, size=[2, 2])
-mat = Material.pbr().occlusion_texture(ao)
+mat = Material.pbr().occlusion_texture(ao_bytes, size=[2, 2])

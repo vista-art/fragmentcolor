@@ -9,13 +9,21 @@ Maps to the `material.metallic` uniform. Default is `0.0` (dielectric);
 out-of-the-box surface reads as a clean dielectric rather than dark gunmetal
 under the factor-driven defaults.
 
+NaN or an infinity returns `MaterialError::NotFinite`, which names the
+call, and the material keeps the value it had. The other languages also
+refuse a number past the 32-bit float range, such as `1e39`, with a
+message like `Material.metallic: value must be a finite number that fits a
+32-bit float, got 1e39`. JavaScript throws an `Error` named
+`InvalidInputError`, Python raises `InvalidInputError`, Swift throws
+`FragmentColorError` and Kotlin throws `FragmentColorException`.
+
 ## Example
 
 ```rust
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Material;
 
-let chrome = Material::pbr().metallic(1.0).roughness(0.05);
+let chrome = Material::pbr().metallic(1.0)?.roughness(0.05)?;
 # let _chrome = chrome;
 # Ok(())
 # }

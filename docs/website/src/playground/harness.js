@@ -1,8 +1,89 @@
 // The read-only index.js tab: the page code that runs main.js. It follows what
 // host.js does each build and each frame, without the playground's own editor,
-// controls, and error box. Every demo, the compute ones included, runs on it.
+// controls, and error box. Every demo, the compute ones included, runs on it,
+// and a demo with `keys: true` also gets the keyboard and the touch stick.
 
-export const HARNESS = /* js */ `// Runs main.js the way the playground does. In a Vite project, keep this file next
+export function harness(demo) {
+  const [before, after] = HARNESS.split(TICK);
+  return demo?.keys ? before + KEYS + TICK.replace(GESTURE_CALL, KEYS_CALL) + after : HARNESS;
+}
+
+const GESTURE_CALL = "pointer ?? [size[0] / 2, size[1] / 2], input);";
+const KEYS_CALL = "pointer ?? [size[0] / 2, size[1] / 2], input, held());";
+const TICK = `const start = performance.now();
+requestAnimationFrame(function tick(now) {
+  requestAnimationFrame(tick);
+  if (fit(canvas)) target.resize([canvas.width, canvas.height]);
+  const size = [canvas.width, canvas.height];
+  const time = (now - start) / 1000;
+  const input = gesture;
+  gesture = { zoom: 0, pan: [0, 0] };
+  frame(state, renderer, target, time, size, ${GESTURE_CALL}
+});
+`;
+
+// Keys held while the canvas has focus, and a stick for touch screens.
+const KEYS = /* js */ `// Every key held down while the canvas has focus, by KeyboardEvent.code, and
+// the touch stick as [x, y] from -1 to 1 with y up. A click or Tab gives the
+// canvas focus. Shortcuts with a modifier, Tab and Escape stay with the page.
+const down = new Set();
+let stick = [0, 0];
+const held = () => ({ down: new Set(down), stick: [...stick] });
+const scrolling = new Set(["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "PageUp", "PageDown", "Home", "End"]);
+canvas.tabIndex = 0;
+canvas.addEventListener("pointerdown", () => canvas.focus({ preventScroll: true }));
+canvas.addEventListener("keydown", (event) => {
+  if (event.code === "Tab") return;
+  if (event.code === "Escape") return canvas.blur();
+  // macOS sends no keyup for a key released while Cmd is down, so a modifier lifts every key.
+  if (event.metaKey || event.ctrlKey || event.altKey) return down.clear();
+  down.add(event.code);
+  if (scrolling.has(event.code)) event.preventDefault();
+});
+canvas.addEventListener("keyup", (event) => down.delete(event.code));
+canvas.addEventListener("blur", () => down.clear());
+
+// The stick shows on touch screens, over the canvas's lower left corner.
+if (matchMedia("(any-pointer: coarse)").matches) {
+  const base = document.createElement("div");
+  const knob = document.createElement("div");
+  base.style.cssText =
+    "position: fixed; left: 16px; bottom: 16px; width: 112px; height: 112px; display: grid; place-items: center; " +
+    "border-radius: 50%; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.28); touch-action: none";
+  knob.style.cssText = "width: 44px; height: 44px; border-radius: 50%; background: rgba(255, 255, 255, 0.45); pointer-events: none";
+  base.append(knob);
+  document.body.append(base);
+  let finger = null;
+  const push = (event) => {
+    const rect = base.getBoundingClientRect();
+    const radius = rect.width / 2;
+    let x = (event.clientX - rect.left - radius) / radius;
+    let y = (rect.top + radius - event.clientY) / radius;
+    const length = Math.hypot(x, y);
+    if (length > 1) [x, y] = [x / length, y / length];
+    stick = [x, y];
+    knob.style.transform = \`translate(\${x * radius * 0.6}px, \${-y * radius * 0.6}px)\`;
+  };
+  const release = (event) => {
+    if (event.pointerId !== finger) return;
+    finger = null;
+    stick = [0, 0];
+    knob.style.transform = "";
+  };
+  base.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    base.setPointerCapture(event.pointerId);
+    finger = event.pointerId;
+    push(event);
+  });
+  base.addEventListener("pointermove", (event) => event.pointerId === finger && push(event));
+  base.addEventListener("pointerup", release);
+  base.addEventListener("pointercancel", release);
+}
+
+`;
+
+const HARNESS = /* js */ `// Runs main.js the way the playground does. In a Vite project, keep this file next
 // to main.js and the .wgsl files, with an index.html that loads it and holds a
 // canvas sized by CSS:
 //

@@ -1,0 +1,44 @@
+name: Lint
+
+# Every pull request lints, whatever it changes: linting needs no build, so it
+# stays cheap. The healthchecks and Rust builds keep their paths filters.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      # The release's own download script, pinned to the version the workflows were checked with.
+      - name: Install actionlint
+        id: actionlint
+        run: bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash) 1.7.12
+
+      # actionlint runs shellcheck, which the runner image ships, on every run: block.
+      - name: Workflows
+        run: ${{ steps.actionlint.outputs.executable }} -color
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: rustfmt
+          cache: false
+
+      - name: Format
+        run: cargo fmt --all --check --message-format human

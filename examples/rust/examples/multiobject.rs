@@ -8,7 +8,9 @@ const TRIANGLE_SOURCE: &str = include_str!("shaders/hello_triangle.wgsl");
 const CIRCLE_SOURCE: &str = include_str!("shaders/circle.wgsl");
 
 fn on_resize(app: &App, new_size: &PhysicalSize<u32>) {
-    app.resize([new_size.width, new_size.height]);
+    if let Err(error) = app.resize([new_size.width, new_size.height]) {
+        eprintln!("resize failed: {error}");
+    }
 }
 
 fn draw(app: &App) {
@@ -51,7 +53,7 @@ async fn setup(app: &App, windows: Vec<Arc<Window>>) -> SetupResult {
         s
     };
     let pass = Pass::new("Multi Object Pass");
-    pass.add_shader(&triangle);
+    pass.add_shader(&triangle)?;
 
     // seed circles with a nominal size
     let mut rng = Rng::new();
@@ -62,7 +64,7 @@ async fn setup(app: &App, windows: Vec<Arc<Window>>) -> SetupResult {
     };
     for _ in 0..50 {
         let circle = random_circle(&mut rng, size, 1.0);
-        pass.add_shader(&circle);
+        pass.add_shader(&circle)?;
     }
 
     app.add("pass.main", pass);

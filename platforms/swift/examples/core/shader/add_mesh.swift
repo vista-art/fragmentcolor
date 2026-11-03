@@ -9,12 +9,15 @@ let shader = try Shader("""
 """)
 
 let mesh = Mesh()
-try mesh.addVertex([0.0, 0.0, 0.0])
+try mesh.addVertices([
+    [-0.5, -0.5, 0.0],
+    [0.5, -0.5, 0.0],
+    [0.0, 0.5, 0.0],
+])
 
 // Attach mesh to this shader (errors if incompatible)
 try shader.addMesh(mesh)
 
 // Renderer will draw the mesh when rendering this pass.
-// Each Shader represents a RenderPipeline or ComputePipeline
-// in the GPU. Adding multiple meshes to it will draw all meshes
-// and all its instances in the same Pipeline.
+// Meshes that lay out their vertices alike draw with one
+// RenderPipeline, and each other layout gets one of its own.

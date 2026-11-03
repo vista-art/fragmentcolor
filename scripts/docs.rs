@@ -4,10 +4,9 @@ mod docs {
     //! Both the validator and the website exporter need to ask the same
     //! questions of `docs/api/`:
     //!   - "where does the directory for object `X` live?"
-    //!   - "list every documented object — what's its dir, what category is it in?"
+    //!   - "list every documented object: what's its dir, what category is it in?"
     //!
-    //! Until this module landed, each consumer carried its own near-identical
-    //! recursive walk. The helpers below are the single source of truth.
+    //! The helpers below answer both, and are the single source of truth.
 
     use std::path::{Path, PathBuf};
 
@@ -86,7 +85,7 @@ mod docs {
         }
     }
 
-    /// Recursively enumerate every "object directory" under `docs_root` —
+    /// Recursively enumerate every "object directory" under `docs_root`:
     /// a directory whose name matches an inner `<name>.md` file. The walker
     /// does not descend into an object dir once found.
     ///

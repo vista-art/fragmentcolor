@@ -1,4 +1,4 @@
-//! Scene — top-level container for [`Model`](crate::Model),
+//! Scene: the top-level container for [`Model`](crate::Model),
 //! [`Camera`](crate::Camera), [`Light`](crate::Light) (directional / point
 //! / spot, all one type), and any user-defined
 //! [`SceneObject`](crate::scene::SceneObject). Owns one or more
@@ -6,7 +6,7 @@
 //! [`Renderable`](crate::Renderable), so the whole scene goes to the
 //! [`Renderer`](crate::Renderer) in a single call.
 //!
-//! `Scene::new()` is sync — no `Renderer` argument, no async, nothing to
+//! `Scene::new()` is sync, with no `Renderer` argument and nothing to
 //! await. The first time a SceneObject is added the Scene allocates a
 //! default Pass to hold it; the first time the Scene is rendered the
 //! underlying GPU resources initialize on demand. Same lazy-init pattern
@@ -18,7 +18,7 @@
 //! `Scene::add` targets is an ordinary member of the vec, and the CRUD
 //! surface (`add_pass`, `remove_pass`, `get_pass`, `list_passes`,
 //! `set_passes`) lets the caller read, append, reorder, or replace the
-//! whole graph — the same composability every layer below `Scene` already
+//! whole graph, with the same composability every layer below `Scene`
 //! has.
 //!
 //! When the user has added Models but no Camera or Light, the Scene injects
@@ -30,7 +30,7 @@
 //! values with `set_default_camera` / `set_default_light`.
 
 use lsp_doc::lsp_doc;
-use parking_lot::RwLock;
+use parking_lot::{Mutex, ReentrantMutex, RwLock};
 use std::sync::Arc;
 
 #[cfg(python)]
@@ -38,7 +38,8 @@ use pyo3::prelude::*;
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
-use crate::scene::{Camera, Light, SceneObject};
+use crate::core::expand_list;
+use crate::scene::{Camera, Light, LightError, SceneObject, check_finite, push_uniform};
 use crate::{Pass, PassError, PassObject, Renderable};
 
 #[cfg_attr(wasm, wasm_bindgen)]
@@ -57,15 +58,27 @@ pub(crate) struct SceneState {
     /// `Renderable for Scene` iterates it in order. Empty until the first
     /// `add` / `add_pass`, so a fresh Scene allocates no GPU bookkeeping.
     pub(crate) passes: RwLock<Vec<Pass>>,
-    /// Handle to the default Pass inside `passes` — the one `Scene::add`
-    /// routes objects into (Models / Cameras / Lights). It's an ordinary
-    /// member of `passes`, not privileged in render order; this handle just
-    /// records which member is the current `add` target. Created lazily on
-    /// the first `add` and appended to `passes` at that point, so it keeps
-    /// its insertion-order position relative to any `add_pass` calls. `None`
-    /// until then, and cleared again if the caller removes it from the graph
-    /// via `remove_pass` / `set_passes`.
+    /// The default Pass that `Scene::add` routes objects into.
+    ///
+    /// An ordinary member of `passes`, with no special place in render order.
+    /// It's created on the first `add` and joins `passes` where the graph ended when
+    /// that add began, so it keeps its place among `add_pass` calls, the attach's included.
+    /// A `set_passes` or `remove_pass` from that attach moves it or takes it out, as later.
+    /// `None` until then, and `None` again once `remove_pass` or `set_passes` takes it out.
     pub(crate) default_pass: RwLock<Option<Pass>>,
+    /// Lets one add or default injection run at a time.
+    ///
+    /// Held by `add`, `add_to` and the camera and light a render injects. A new default
+    /// pass joins the graph when its first add returns, and only if an add on it succeeded,
+    /// that one or one from its attach. No add from another thread and no injection lands
+    /// on it before, and no injection lands beside an add that brings a camera or a light.
+    /// Reentrant, for a `SceneObject` whose attach adds to the same Scene, which then sees
+    /// the `pending` pass where it will join. Taken before `passes` and `default_pass`.
+    pub(crate) defaults: ReentrantMutex<()>,
+    /// The default pass while its first add runs, and the place it will join.
+    /// Only the thread holding `defaults` sees it, and every edit of the graph keeps
+    /// its place in step. Taken after `passes` and released before `default_pass`.
+    pub(crate) pending: Mutex<Option<PendingPass>>,
     /// Sticky once-set flags so the default-Camera / default-Light injection
     /// at `passes()` time only fires once and only when the user hasn't
     /// supplied their own.
@@ -88,8 +101,8 @@ pub(crate) struct SceneState {
     /// Typed handles to every SceneObject the user (or the loader) added.
     /// Each handle is an Arc-shared `Clone` of the original, so mutating
     /// one of these from `scene.cameras()[i].look_at(...)` propagates to
-    /// every shader the Camera was wired into — same live-handle semantics
-    /// the `Pass::add` path already gives.
+    /// every shader the Camera was wired into, with the same live-handle
+    /// semantics the `Pass::add` path gives.
     pub(crate) models: RwLock<Vec<crate::scene::Model>>,
     pub(crate) cameras: RwLock<Vec<Camera>>,
     pub(crate) lights: RwLock<Vec<Light>>,
@@ -97,11 +110,35 @@ pub(crate) struct SceneState {
 
 crate::impl_fc_kind!(Scene, "Scene");
 
+/// A default pass that hasn't joined the graph, while its first add runs.
+#[derive(Debug)]
+pub(crate) struct PendingPass {
+    pass: Pass,
+    /// Where the pass joins `passes`. It starts at the graph's length when the first add
+    /// began, and `add_pass`, `remove_pass` and `set_passes` keep it beside its neighbors.
+    index: usize,
+    /// Whether an add from inside the first one landed on the pass.
+    landed: bool,
+}
+
+/// Ends a scene's first add on every way out, an attach that panics included.
+/// It clears the pending pass and publishes it once an add on it succeeded.
+struct FirstAdd<'scene> {
+    scene: &'scene Scene,
+    added: bool,
+}
+
+impl Drop for FirstAdd<'_> {
+    fn drop(&mut self) {
+        self.scene.finish_first(self.added);
+    }
+}
+
 /// Which Pass in a [`Scene`]'s graph a [`Scene::add_to`] call targets:
 /// a position (index) or a pass name. Built from a `usize` or a `&str` /
 /// `String` via `Into`, so callers write `scene.add_to(0, &model)` or
 /// `scene.add_to("geometry", &model)` without naming this type. Transport
-/// plumbing — there's no separate doc page for it.
+/// plumbing with no separate doc page.
 #[derive(Debug, Clone)]
 pub enum PassRef {
     Index(usize),
@@ -146,6 +183,8 @@ impl Scene {
             inner: Arc::new(SceneState {
                 passes: RwLock::new(Vec::new()),
                 default_pass: RwLock::new(None),
+                defaults: ReentrantMutex::new(()),
+                pending: Mutex::new(None),
                 has_camera: RwLock::new(false),
                 has_light: RwLock::new(false),
                 inject_camera: RwLock::new(true),
@@ -162,9 +201,63 @@ impl Scene {
 
     #[lsp_doc("docs/api/scene/scene/add.md")]
     pub fn add<O: SceneObject + 'static>(&self, object: &O) -> Result<&Self, PassError> {
-        let pass = self.ensure_default_pass();
-        self.record_add(&pass, object)?;
+        self.add_default(object)?;
         Ok(self)
+    }
+
+    /// Adds `object` to the default pass, or to the one the first add is building
+    /// when the attach of that add's object adds to the Scene. A scene without one
+    /// builds it.
+    fn add_default<O: SceneObject + 'static>(&self, object: &O) -> Result<(), PassError> {
+        let _defaults = self.inner.defaults.lock();
+        if let Some(pass) = self.find_default_pass() {
+            return self.record_add(&pass, object);
+        }
+        let pending = self
+            .inner
+            .pending
+            .lock()
+            .as_ref()
+            .map(|state| state.pass.clone());
+        match pending {
+            Some(pass) => self.add_nested(&pass, object),
+            None => self.add_first(object),
+        }
+    }
+
+    /// Adds `object` from inside the first add, to the pass that add is building.
+    fn add_nested<O: SceneObject + 'static>(
+        &self,
+        pass: &Pass,
+        object: &O,
+    ) -> Result<(), PassError> {
+        self.record_add(pass, object)?;
+        if let Some(state) = self.inner.pending.lock().as_mut() {
+            state.landed = true;
+        }
+        Ok(())
+    }
+
+    /// Builds the default pass for `object`. The pass joins the graph once an add on it
+    /// succeeded, this one or one from inside it, so a refusal of a first add that
+    /// added nothing else leaves the Scene as it was, and so does a panic in its attach.
+    fn add_first<O: SceneObject + 'static>(&self, object: &O) -> Result<(), PassError> {
+        let pass = Pass::new("Scene Default Pass");
+        let passes = self.inner.passes.read();
+        *self.inner.pending.lock() = Some(PendingPass {
+            pass: pass.clone(),
+            index: passes.len(),
+            landed: false,
+        });
+        drop(passes);
+        let mut first = FirstAdd {
+            scene: self,
+            added: false,
+        };
+        // No guard on `pending` stays held here, since the attach may add again.
+        let added = self.record_add(&pass, object);
+        first.added = added.is_ok();
+        added
     }
 
     #[lsp_doc("docs/api/scene/scene/add_to.md")]
@@ -173,9 +266,28 @@ impl Scene {
         target: impl Into<PassRef>,
         object: &O,
     ) -> Result<&Self, PassError> {
+        let _defaults = self.inner.defaults.lock();
         let pass = self.resolve_pass(target.into())?;
-        self.record_add(&pass, object)?;
+        self.add_resolved(&pass, object)?;
         Ok(self)
+    }
+
+    /// Adds `object` to the pass an `add_to` resolved. An add to the default pass
+    /// that a first add is building counts as one that landed on it.
+    fn add_resolved<O: SceneObject + 'static>(
+        &self,
+        pass: &Pass,
+        object: &O,
+    ) -> Result<(), PassError> {
+        let pending = self.inner.pending.lock();
+        let building = pending
+            .as_ref()
+            .is_some_and(|state| Arc::ptr_eq(&state.pass.object, &pass.object));
+        drop(pending);
+        match building {
+            true => self.add_nested(pass, object),
+            false => self.record_add(pass, object),
+        }
     }
 
     /// Attach `object` to `pass` and run the Scene-level bookkeeping shared
@@ -189,7 +301,9 @@ impl Scene {
         object: &O,
     ) -> Result<(), PassError> {
         pass.add(object)?;
-        // TypeId equality is exact — wrapping a Camera in a user newtype
+        #[cfg(test)]
+        crate::testing::race_hooks::run("scene add");
+        // TypeId equality is exact: wrapping a Camera in a user newtype
         // counts as "user-supplied" and skips the typed lane (it still rides
         // the pass as a `SceneObject`); custom types just wouldn't show up in
         // the typed-getter slot, which matches what the user asked for by
@@ -207,11 +321,11 @@ impl Scene {
         // Re-stamp the stashed ambient onto whatever shaders just joined
         // so callers can `scene.ambient(...)` before any models are added
         // and still see the value carry through. Empty / no-shaders adds
-        // (Camera, Light) skip the write silently — the next Model add
-        // will pick it up.
+        // (Camera, Light) skip the write silently, and the next Model add
+        // picks it up.
         if let Some(amb) = *self.inner.ambient.read() {
             for shader in pass.object.shaders.read().iter() {
-                let _ = shader.set("lights.ambient", amb);
+                push_uniform(shader, "lights.ambient", &amb);
             }
         }
         Ok(())
@@ -236,7 +350,7 @@ impl Scene {
     /// Snapshot of every [`Model`](crate::Model) added to this Scene via
     /// [`Scene::add`] (including Models the loader created from glTF
     /// `mesh` nodes). Each entry is an Arc-shared clone of the original
-    /// handle — mutating a returned `Model` (`set_visible`, `translate`,
+    /// handle. Mutating a returned `Model` (`set_visible`, `translate`,
     /// …) propagates live to every shader the Model was wired into, with
     /// no re-attach needed.
     #[lsp_doc("docs/api/scene/scene/models.md")]
@@ -247,7 +361,7 @@ impl Scene {
     /// Snapshot of every [`Camera`](crate::Camera) added to this Scene via
     /// [`Scene::add`] (including Cameras the loader created from glTF
     /// `camera` nodes, unless you skipped them via the loader's camera
-    /// filter). Each entry is an Arc-shared clone — `camera.look_at(...)`
+    /// filter). Each entry is an Arc-shared clone, so `camera.look_at(...)`
     /// on a returned handle drives every shader the Camera is wired into.
     #[lsp_doc("docs/api/scene/scene/cameras.md")]
     pub fn cameras(&self) -> Vec<Camera> {
@@ -257,52 +371,80 @@ impl Scene {
     /// Snapshot of every [`Light`](crate::Light) added to this Scene via
     /// [`Scene::add`] (including Lights the loader created from glTF
     /// `KHR_lights_punctual` nodes, unless you skipped them via the loader's
-    /// light filter). Each entry is an Arc-shared clone — `light.set_color(...)`
-    /// on a returned handle drives every shader the Light occupies a slot in.
+    /// light filter). Each entry is an Arc-shared clone, so `light.set_color(...)`
+    /// on a returned handle reaches every shader the Light lights.
     #[lsp_doc("docs/api/scene/scene/lights.md")]
     pub fn lights(&self) -> Vec<Light> {
         self.inner.lights.read().clone()
     }
 
     #[lsp_doc("docs/api/scene/scene/ambient.md")]
-    pub fn ambient(&self, color: [f32; 3]) -> &Self {
+    pub fn ambient(&self, color: [f32; 3]) -> Result<&Self, LightError> {
+        check_finite("Scene::ambient", None, &color)?;
+        self.stamp_ambient(color);
+        Ok(self)
+    }
+
+    /// Keeps `color` for the shaders that join later and writes it on every shader the scene holds.
+    fn stamp_ambient(&self, color: [f32; 3]) {
         *self.inner.ambient.write() = Some(color);
-        // Stamp onto every shader currently in the scene. Future Models
-        // added via `Scene::add` pick the value up from the stash.
         for pass in self.inner.passes.read().iter() {
             for shader in pass.object.shaders.read().iter() {
-                let _ = shader.set("lights.ambient", color);
+                push_uniform(shader, "lights.ambient", &color);
             }
         }
-        self
     }
 
     #[lsp_doc("docs/api/scene/scene/add_pass.md")]
     pub fn add_pass(&self, pass: &Pass) -> &Self {
-        self.inner.passes.write().push(pass.clone());
+        self.append_pass(pass);
         self
+    }
+
+    /// Appends `pass` to the graph. The default pass a first add is building
+    /// moves to the end instead, so it never joins twice.
+    fn append_pass(&self, pass: &Pass) {
+        let mut passes = self.inner.passes.write();
+        let mut pending = self.inner.pending.lock();
+        match pending.as_mut() {
+            Some(state) if Arc::ptr_eq(&state.pass.object, &pass.object) => {
+                state.index = passes.len();
+            }
+            _ => passes.push(pass.clone()),
+        }
     }
 
     #[lsp_doc("docs/api/scene/scene/remove_pass.md")]
     pub fn remove_pass(&self, pass: &Pass) -> bool {
-        // Lock order: `passes` first, `default_pass` second (see
-        // `ensure_default_pass`).
+        self.delete_pass(pass)
+    }
+
+    /// Takes `pass` out of the graph and says whether it was there. The default pass a
+    /// first add is building leaves too, and the add forgets it, as it forgets a default
+    /// pass the graph lost. Lock order: `passes`, then `pending`, then `default_pass`.
+    fn delete_pass(&self, pass: &Pass) -> bool {
+        let same = |held: &Pass| Arc::ptr_eq(&held.object, &pass.object);
         let mut passes = self.inner.passes.write();
-        let Some(idx) = passes
-            .iter()
-            .position(|p| Arc::ptr_eq(&p.object, &pass.object))
-        else {
+        let mut pending = self.inner.pending.lock();
+        if pending.as_ref().is_some_and(|state| same(&state.pass)) {
+            *pending = None;
+            return true;
+        }
+        let Some(index) = passes.iter().position(same) else {
             return false;
         };
-        passes.remove(idx);
+        passes.remove(index);
+        if let Some(state) = pending.as_mut()
+            && index < state.index
+        {
+            state.index -= 1;
+        }
+        drop(pending);
         // Forget the default-pass handle if it pointed at the pass we just removed,
         // so the next `add` rebuilds one instead of attaching to a Pass the
         // graph no longer renders.
         let mut slot = self.inner.default_pass.write();
-        let was_default_pass = slot
-            .as_ref()
-            .is_some_and(|default_pass| Arc::ptr_eq(&default_pass.object, &pass.object));
-        if was_default_pass {
+        if slot.as_ref().is_some_and(same) {
             *slot = None;
         }
         true
@@ -310,29 +452,47 @@ impl Scene {
 
     #[lsp_doc("docs/api/scene/scene/get_pass.md")]
     pub fn get_pass(&self, index: usize) -> Option<Pass> {
-        self.inner.passes.read().get(index).cloned()
+        self.view_passes().get(index).cloned()
     }
 
     #[lsp_doc("docs/api/scene/scene/find_pass.md")]
     pub fn find_pass(&self, name: &str) -> Option<Pass> {
-        self.inner
-            .passes
-            .read()
-            .iter()
+        self.view_passes()
+            .into_iter()
             .find(|pass| pass.object.name.as_ref() == name)
-            .cloned()
     }
 
     #[lsp_doc("docs/api/scene/scene/list_passes.md")]
     pub fn list_passes(&self) -> Vec<Pass> {
-        self.inner.passes.read().clone()
+        self.view_passes()
     }
 
     #[lsp_doc("docs/api/scene/scene/set_passes.md")]
     pub fn set_passes(&self, passes: Vec<Pass>) {
-        // Lock order: `passes` first, `default_pass` second (see
-        // `ensure_default_pass`).
+        self.replace_passes(passes);
+    }
+
+    /// Replaces the graph with `passes`. The default pass a first add is building
+    /// takes the place the list gives it, and the thread running that add forgets it
+    /// when the list leaves it out. Another thread can't see it, so its list puts the
+    /// pass at the end, as if the add came after. Lock order: `passes`, `pending`, `default_pass`.
+    fn replace_passes(&self, mut passes: Vec<Pass>) {
         let mut current = self.inner.passes.write();
+        let mut pending = self.inner.pending.lock();
+        if let Some(state) = pending.as_mut() {
+            let found = passes
+                .iter()
+                .position(|pass| Arc::ptr_eq(&pass.object, &state.pass.object));
+            match found {
+                Some(index) => {
+                    passes.remove(index);
+                    state.index = index;
+                }
+                None if self.inner.defaults.is_owned_by_current_thread() => *pending = None,
+                None => state.index = passes.len(),
+            }
+        }
+        drop(pending);
         *current = passes;
         // Drop the default-pass handle if the replacement no longer contains it.
         let mut slot = self.inner.default_pass.write();
@@ -381,36 +541,57 @@ impl Scene {
         self
     }
 
-    /// Lazily build the default Pass on first `add` and append it to the
-    /// pass graph. The Pass is named so it shows up identifiably in graphics
-    /// debuggers (RenderDoc, Xcode GPU frame capture). If the caller dropped
-    /// a previously-built default Pass from the graph (via `remove_pass` /
-    /// `set_passes`), a fresh one is appended at the current end.
+    /// The default pass, while the graph still holds it. A default pass the caller
+    /// dropped from the graph (via `remove_pass` / `set_passes`) gives way to a new
+    /// one, appended at the current end.
     ///
-    /// Lock order: `passes` is taken first, `default_pass` second — the same
-    /// order [`Scene::remove_pass`] and [`Scene::set_passes`] use, so the
-    /// three can't deadlock against each other under concurrent mutation.
-    fn ensure_default_pass(&self) -> Pass {
+    /// Lock order: `passes` is taken first, `default_pass` second, the same
+    /// order [`Scene::remove_pass`] and [`Scene::set_passes`] use.
+    fn find_default_pass(&self) -> Option<Pass> {
+        let passes = self.inner.passes.read();
+        let existing = self.inner.default_pass.read().clone()?;
+        let held = passes
+            .iter()
+            .any(|pass| Arc::ptr_eq(&pass.object, &existing.object));
+        held.then_some(existing)
+    }
+
+    /// Ends a first add. Its pass joins the graph as the default pass at the place kept
+    /// for it, once an add on it succeeded, unless the attach took it out of the graph.
+    /// The Pass is named "Scene Default Pass", so it shows up in graphics debuggers.
+    fn finish_first(&self, added: bool) {
         let mut passes = self.inner.passes.write();
-        // Reuse the existing default Pass only if it's still in the graph.
-        let existing = self.inner.default_pass.read().clone();
-        if let Some(p) = existing
-            && passes.iter().any(|x| Arc::ptr_eq(&x.object, &p.object))
-        {
-            return p;
+        let pending = self.inner.pending.lock().take();
+        let Some(state) = pending else {
+            return;
+        };
+        if !added && !state.landed {
+            return;
         }
-        let pass = Pass::new("Scene Default Pass");
-        passes.push(pass.clone());
-        *self.inner.default_pass.write() = Some(pass.clone());
-        pass
+        let index = state.index.min(passes.len());
+        passes.insert(index, state.pass.clone());
+        *self.inner.default_pass.write() = Some(state.pass);
+    }
+
+    /// The graph as the caller sees it. The thread running a first add also sees
+    /// the default pass it is building, at the place the pass will join.
+    fn view_passes(&self) -> Vec<Pass> {
+        let passes = self.inner.passes.read();
+        let mut view = passes.clone();
+        if self.inner.defaults.is_owned_by_current_thread()
+            && let Some(state) = self.inner.pending.lock().as_ref()
+        {
+            view.insert(state.index.min(view.len()), state.pass.clone());
+        }
+        view
     }
 
     /// Inject default Camera / Light into the default Pass when injection is
-    /// enabled and the user hasn't supplied their own. Idempotent — the
+    /// enabled and the user hasn't supplied their own. Idempotent: the
     /// sticky `has_camera` / `has_light` flags flip on first injection, so
     /// subsequent `passes()` calls are no-ops on this front. Defaults are
     /// also stashed into the Scene's typed lanes so `scene.cameras()` /
-    /// `scene.lights()` surface them — anyone fishing the default camera
+    /// `scene.lights()` surface them. Anyone fishing the default camera
     /// back out to drive it per frame should hit the getter and find it
     /// there. With no default Pass (a pure `add_pass` composition) there's
     /// nothing to attach to, so injection is skipped.
@@ -420,6 +601,10 @@ impl Scene {
         if !needs_camera && !needs_light {
             return;
         }
+        // Checked again under the lock, since an add may have supplied one meanwhile.
+        let _defaults = self.inner.defaults.lock();
+        let needs_camera = *self.inner.inject_camera.read() && !*self.inner.has_camera.read();
+        let needs_light = *self.inner.inject_light.read() && !*self.inner.has_light.read();
         let Some(pass) = self.inner.default_pass.read().clone() else {
             return;
         };
@@ -431,14 +616,13 @@ impl Scene {
             // offscreen test targets and for someone trying the API for the
             // first time; users with a non-square target supply their own
             // Camera.
-            let camera = self.inner.default_camera.read().clone().unwrap_or_else(|| {
-                Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0).look_at(
-                    [0.0, 0.0, 5.0],
-                    [0.0, 0.0, 0.0],
-                    [0.0, 1.0, 0.0],
-                )
-            });
-            // Camera::attach always succeeds — discard the never-error result.
+            let camera = self
+                .inner
+                .default_camera
+                .read()
+                .clone()
+                .unwrap_or_else(Camera::create_stock);
+            // Camera::attach always succeeds, so discard the never-error result.
             let _ = pass.add(&camera);
             self.inner.cameras.write().push(camera);
             *self.inner.has_camera.write() = true;
@@ -456,7 +640,7 @@ impl Scene {
                 .default_light
                 .read()
                 .clone()
-                .unwrap_or_else(|| Light::directional([0.0, -0.3, -1.0], [1.0, 1.0, 1.0]));
+                .unwrap_or_else(Light::create_stock);
             let _ = pass.add(&light);
             self.inner.lights.write().push(light);
             *self.inner.has_light.write() = true;
@@ -467,11 +651,14 @@ impl Scene {
 impl Renderable for Scene {
     fn passes(&self) -> Arc<[Arc<PassObject>]> {
         self.ensure_render_defaults();
-        let mut all: Vec<Arc<PassObject>> = Vec::new();
-        for pass in self.inner.passes.read().iter() {
-            all.extend(pass.passes().iter().cloned());
-        }
-        all.into()
+        self.peek_passes()
+    }
+
+    /// The scene's passes, without adding the default camera and light it draws with.
+    /// Each pass comes once, after the passes it requires, as in a list of passes.
+    fn peek_passes(&self) -> Arc<[Arc<PassObject>]> {
+        let passes = self.inner.passes.read();
+        expand_list(passes.iter().map(|pass| &pass.object))
     }
 
     fn roots(&self) -> Arc<[Arc<PassObject>]> {
@@ -488,7 +675,7 @@ impl Renderable for Scene {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mesh::Vertex;
+    use crate::Vertex;
     use crate::{Material, Mesh, Model, Renderer, Target};
 
     fn pbr_triangle_mesh() -> Mesh {
@@ -506,12 +693,12 @@ mod tests {
     #[test]
     fn new_starts_empty() {
         let scene = Scene::new();
-        // No passes exist until something gets added — stays cheap when the
+        // No passes exist until something gets added. That stays cheap when the
         // user wires up the scene from a config and only later attaches
         // anything.
         assert!(scene.inner.passes.read().is_empty());
         assert!(scene.inner.default_pass.read().is_none());
-        // Nothing rendered, no defaults injected — passes() on an empty scene
+        // Nothing rendered, no defaults injected: passes() on an empty scene
         // returns an empty list.
         assert!(scene.passes().is_empty());
     }
@@ -523,6 +710,26 @@ mod tests {
         scene.add(&model).expect("add");
         assert!(scene.inner.default_pass.read().is_some());
         assert_eq!(scene.inner.passes.read().len(), 1);
+    }
+
+    // Story: a scene lists each pass once, after the passes it requires,
+    // so a member that another member requires runs once.
+    #[test]
+    fn passes_list_a_required_member_once() {
+        let scene = Scene::new();
+        let first = Pass::new("first");
+        let second = Pass::new("second");
+        second.require(&first).expect("second requires first");
+        scene.add_pass(&first);
+        scene.add_pass(&second);
+
+        let names = |passes: Arc<[Arc<PassObject>]>| -> Vec<String> {
+            passes.iter().map(|pass| pass.name.to_string()).collect()
+        };
+
+        assert_eq!(names(scene.peek_passes()), ["first", "second"]);
+        assert_eq!(names(scene.passes()), ["first", "second"]);
+        assert_eq!(names(scene.roots()), ["first", "second"]);
     }
 
     #[test]
@@ -537,7 +744,7 @@ mod tests {
     #[test]
     fn passes_render_in_insertion_order() {
         let scene = Scene::new();
-        // add_pass first, then a Model — the default Pass is appended after
+        // add_pass first, then a Model. The default Pass is appended after
         // the backdrop, so the render order follows insertion order.
         let backdrop = Pass::new("backdrop");
         scene.add_pass(&backdrop);
@@ -583,7 +790,7 @@ mod tests {
         let model = Model::new(pbr_triangle_mesh(), material.clone());
         scene.add(&model).expect("add");
 
-        // Trigger the default-fallback path — `passes()` is what the renderer
+        // Trigger the default-fallback path. `passes()` is what the renderer
         // calls.
         let _ = scene.passes();
 
@@ -594,12 +801,10 @@ mod tests {
             .get("camera.position")
             .expect("camera.position");
         assert_eq!(pos, [0.0, 0.0, 5.0]);
-        let light_color: [f32; 3] = material
-            .shader()
-            .get("lights.lights[0].color")
-            .expect("lights.lights[0].color");
-        assert_eq!(light_color, [1.0, 1.0, 1.0]);
-        // Sticky flags now true — second pass through is a no-op.
+        let lights = material.shader().object.collect_lights();
+        assert_eq!(lights[0].color, [1.0, 1.0, 1.0]);
+        assert_eq!(lights[0].direction, [0.0, -0.3, -1.0], "the stock light");
+        // Sticky flags are true, so a second pass through is a no-op.
         assert!(*scene.inner.has_camera.read());
         assert!(*scene.inner.has_light.read());
     }
@@ -612,11 +817,10 @@ mod tests {
         scene.add(&model).expect("add");
         // User-supplied camera at [3, 0, 0]. After this `add`, has_camera is
         // sticky-true and the default-Camera at [0, 0, 5] should never appear.
-        let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0).look_at(
-            [3.0, 0.0, 0.0],
-            [0.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0],
-        );
+        let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0)
+            .expect("camera")
+            .look_at([3.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+            .expect("camera");
         scene.add(&camera).expect("camera");
 
         let _ = scene.passes();
@@ -630,12 +834,13 @@ mod tests {
         let material = Material::pbr();
         let model = Model::new(pbr_triangle_mesh(), material.clone());
         scene.add(&model).expect("add");
-        let light = Light::directional([0.0, -1.0, 0.0], [0.5, 0.0, 0.0]);
+        let light = Light::directional([0.0, -1.0, 0.0], [0.5, 0.0, 0.0]).expect("light");
         scene.add(&light).expect("light");
 
         let _ = scene.passes();
-        let color: [f32; 3] = material.shader().get("lights.lights[0].color").unwrap();
-        assert_eq!(color, [0.5, 0.0, 0.0]);
+        let lights = material.shader().object.collect_lights();
+        assert_eq!(lights.len(), 1);
+        assert_eq!(lights[0].color, [0.5, 0.0, 0.0]);
     }
 
     #[test]
@@ -656,12 +861,11 @@ mod tests {
         // the three getters return Arc-shared clones of what was added.
         let scene = Scene::new();
         let model = Model::new(pbr_triangle_mesh(), Material::pbr());
-        let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0).look_at(
-            [1.0, 2.0, 3.0],
-            [0.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0],
-        );
-        let light = Light::directional([0.0, -1.0, 0.0], [1.0, 0.95, 0.9]);
+        let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0)
+            .expect("camera")
+            .look_at([1.0, 2.0, 3.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+            .expect("camera");
+        let light = Light::directional([0.0, -1.0, 0.0], [1.0, 0.95, 0.9]).expect("light");
 
         scene.add(&model).expect("model");
         scene.add(&camera).expect("camera");
@@ -673,7 +877,9 @@ mod tests {
         // Live-handle check: mutating the returned Camera propagates to
         // the Model's shader, same as mutating the original handle would.
         let cam_back = scene.cameras().into_iter().next().unwrap();
-        cam_back.look_at([9.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+        cam_back
+            .look_at([9.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+            .expect("camera");
         let p: [f32; 3] = model
             .material()
             .shader()
@@ -685,7 +891,7 @@ mod tests {
     #[test]
     fn typed_getters_capture_defaults_after_render() {
         // The default-injection path bypasses `Scene::add` and goes
-        // straight to `pass.add(...)` — the typed lanes must still pick
+        // straight to `pass.add(...)`. The typed lanes must still pick
         // those up so consumers can grab the default camera/light back.
         let scene = Scene::new();
         let model = Model::new(pbr_triangle_mesh(), Material::pbr());
@@ -695,9 +901,11 @@ mod tests {
         let _ = scene.passes();
         assert_eq!(scene.cameras().len(), 1, "default camera surfaces");
         assert_eq!(scene.lights().len(), 1, "default light surfaces");
-        // Defaults are real handles — drive the default camera per frame:
+        // Defaults are real handles. Drive the default camera per frame:
         let default_camera = scene.cameras().into_iter().next().unwrap();
-        default_camera.look_at([7.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+        default_camera
+            .look_at([7.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+            .expect("camera");
         let p: [f32; 3] = model.material().shader().get("camera.position").unwrap();
         assert_eq!(p, [7.0, 0.0, 0.0]);
     }
@@ -707,13 +915,77 @@ mod tests {
         // Order matters for callers iterating "the second camera" or
         // pairing models with their loader-order glTF nodes.
         let scene = Scene::new();
-        let first = Light::directional([0.0, -1.0, 0.0], [1.0, 0.0, 0.0]);
-        let second = Light::point([0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+        let first = Light::directional([0.0, -1.0, 0.0], [1.0, 0.0, 0.0]).expect("light");
+        let second = Light::point([0.0, 0.0, 0.0], [0.0, 1.0, 0.0]).expect("light");
         scene.add(&first).expect("first");
         scene.add(&second).expect("second");
         let lights = scene.lights();
         assert_eq!(lights[0].color(), [1.0, 0.0, 0.0]);
         assert_eq!(lights[1].color(), [0.0, 1.0, 0.0]);
+    }
+
+    // Story: an ambient color past the range of a shader's f16 ambient stays as that
+    // shader's refusal, which a later ambient that fits clears. A shader without the
+    // key refuses nothing.
+    #[test]
+    fn an_ambient_a_shader_cannot_hold_stays_refused() {
+        let half = crate::Shader::new(
+            "enable f16;
+struct Lights { ambient: vec3<f16> }
+@group(0) @binding(0) var<uniform> lights: Lights;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  return vec4<f32>(f32(i), 0.0, 0.0, 1.0);
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> {
+  return vec4<f32>(vec3<f32>(lights.ambient), 1.0);
+}",
+        )
+        .expect("shader");
+        let plain = crate::Shader::new(
+            "
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  return vec4<f32>(f32(i), 0.0, 0.0, 1.0);
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }",
+        )
+        .expect("shader");
+        let pass = Pass::new("ambient");
+        pass.add_shader(&half).expect("shader");
+        pass.add_shader(&plain).expect("shader");
+        let scene = Scene::new();
+        scene.add_pass(&pass);
+
+        scene.ambient([70000.0, 0.0, 0.0]).expect("ambient");
+        let refused = half.object.check_pushes();
+        let quiet = plain.object.check_pushes();
+        scene.ambient([0.5, 0.5, 0.5]).expect("ambient");
+        let fitted = half.object.check_pushes();
+
+        let message = refused.expect_err("past the f16 range").to_string();
+        let expected = "lights.ambient: expected vec3<f16>, got 70000";
+        assert!(message.contains(expected), "{message}");
+        assert!(quiet.is_ok(), "{quiet:?}");
+        assert!(fitted.is_ok(), "{fitted:?}");
+    }
+
+    // Story: an ambient channel that isn't finite is refused, naming the item,
+    // and the scene and its shaders keep the color they had.
+    #[test]
+    fn ambient_refuses_a_channel_that_is_not_finite() {
+        let material = Material::pbr();
+        let scene = Scene::new();
+        scene
+            .add(&Model::new(pbr_triangle_mesh(), material.clone()))
+            .expect("model");
+        scene.ambient([0.5, 0.25, 0.125]).expect("ambient");
+
+        let refused = scene.ambient([0.0, f32::NAN, 0.0]).map(drop);
+
+        let message = refused.expect_err("NaN").to_string();
+        assert_eq!(message, "Scene::ambient: item 1 must be finite, got NaN");
+        let ambient: [f32; 3] = material.shader().get("lights.ambient").expect("read");
+        assert_eq!(ambient, [0.5, 0.25, 0.125]);
+        assert_eq!(*scene.inner.ambient.read(), Some([0.5, 0.25, 0.125]));
     }
 
     #[test]
@@ -729,12 +1001,14 @@ mod tests {
                 .expect("texture target");
             let model = Model::new(
                 pbr_triangle_mesh(),
-                Material::pbr().base_color([0.6, 0.2, 0.8, 1.0]),
+                Material::pbr()
+                    .base_color([0.6, 0.2, 0.8, 1.0])
+                    .expect("base color"),
             );
             let scene = Scene::new();
             scene.add(&model).expect("add model");
             renderer.render(&scene, &target).expect("render scene");
-            let image = target.get_image().await;
+            let image = target.get_image().await.expect("read back");
             assert_eq!(image.len(), 64 * 64 * 4);
         });
     }
@@ -804,6 +1078,487 @@ mod tests {
         assert!(scene.add_to("nope", &model).is_err(), "unknown name errors");
         // A failed add_to records nothing.
         assert!(scene.models().is_empty());
+    }
+
+    // Story: a refused first add of a Model leaves no default pass, so the
+    // scene keeps the passes it had and a later add makes a new default pass.
+    #[test]
+    fn refused_first_add_leaves_no_default_pass() {
+        let scene = Scene::new();
+        let backdrop = Pass::new("backdrop");
+        scene.add_pass(&backdrop);
+        let bare = crate::Mesh::new();
+        bare.add_vertices([[0.0, 0.5, 0.0], [-0.5, -0.5, 0.0], [0.5, -0.5, 0.0]]);
+
+        let refused = scene.add(&crate::Model::new(bare, crate::Material::pbr()));
+        let passes = scene.list_passes().len();
+        let default_pass = scene.inner.default_pass.read().is_some();
+        scene
+            .add(&crate::Camera::create_stock())
+            .expect("add a camera");
+
+        assert!(refused.is_err(), "the bare mesh has no normals");
+        assert_eq!(passes, 1, "only the backdrop stays");
+        assert!(!default_pass, "no default pass is left");
+        assert_eq!(scene.list_passes().len(), 2, "a later add makes one");
+    }
+
+    /// A scene object whose attach lets another thread add `light` to `scene`,
+    /// waits a while for that add, then refuses.
+    #[derive(Debug)]
+    struct Racing {
+        scene: Scene,
+        light: Light,
+        adder: parking_lot::Mutex<Option<std::thread::JoinHandle<()>>>,
+    }
+
+    impl SceneObject for Racing {
+        fn attach(&self, _pass: &Pass) -> Result<(), PassError> {
+            let (scene, light) = (self.scene.clone(), self.light.clone());
+            let (sender, receiver) = std::sync::mpsc::channel();
+            let adder = std::thread::spawn(move || {
+                scene.add(&light).expect("add the light");
+                let _ = sender.send(());
+            });
+            let _ = receiver.recv_timeout(std::time::Duration::from_millis(200));
+            *self.adder.lock() = Some(adder);
+            Err(PassError::NoShader)
+        }
+    }
+
+    // Story: an add from another thread that comes during a refused first add
+    // lands on a default pass the graph holds, so the light lights the scene.
+    #[test]
+    fn an_add_during_a_refused_first_add_stays_in_the_graph() {
+        let scene = Scene::new();
+        let light = Light::directional([0.0, -1.0, 0.0], [1.0; 3]).expect("light");
+        let racing = Racing {
+            scene: scene.clone(),
+            light: light.clone(),
+            adder: parking_lot::Mutex::new(None),
+        };
+
+        let refused = scene.add(&racing);
+        if let Some(adder) = racing.adder.lock().take() {
+            adder.join().expect("the adder thread");
+        }
+
+        let held = scene.list_passes().iter().any(|pass| {
+            let lights = pass.object.lights.read();
+            lights.iter().any(|kept| kept.object.id == light.object.id)
+        });
+        assert!(refused.is_err());
+        assert_eq!(scene.lights().len(), 1);
+        assert!(held, "a pass in the graph holds the light");
+    }
+
+    /// A scene object whose attach adds `child` to `scene`, then refuses when `refuse` is set.
+    #[derive(Debug)]
+    struct Nesting {
+        scene: Scene,
+        child: Model,
+        refuse: bool,
+    }
+
+    impl SceneObject for Nesting {
+        fn attach(&self, _pass: &Pass) -> Result<(), PassError> {
+            self.scene.add(&self.child)?;
+            match self.refuse {
+                true => Err(PassError::NoShader),
+                false => Ok(()),
+            }
+        }
+    }
+
+    // Story: an add from a scene object's attach, on the scene's first add, lands on
+    // the default pass that add builds, so the child gets the default camera.
+    #[test]
+    fn an_add_from_an_attach_lands_on_the_new_default_pass() {
+        let scene = Scene::new();
+        let material = Material::pbr();
+        let nesting = Nesting {
+            scene: scene.clone(),
+            child: Model::new(pbr_triangle_mesh(), material.clone()),
+            refuse: false,
+        };
+
+        scene.add(&nesting).expect("add");
+        let _ = scene.passes();
+
+        let passes = scene.list_passes();
+        let default_pass = scene.inner.default_pass.read().clone();
+        let position: [f32; 3] = material
+            .shader()
+            .get("camera.position")
+            .expect("camera.position");
+        assert_eq!(passes.len(), 1, "one default pass");
+        assert!(default_pass.is_some_and(|pass| Arc::ptr_eq(&pass.object, &passes[0].object)));
+        assert_eq!(
+            position,
+            [0.0, 0.0, 5.0],
+            "the child has the default camera"
+        );
+    }
+
+    // Story: a first add refused after its attach added a child keeps
+    // the pass that holds the child, which the scene lists among its models.
+    #[test]
+    fn a_refused_first_add_keeps_what_its_attach_added() {
+        let scene = Scene::new();
+        let material = Material::pbr();
+        let nesting = Nesting {
+            scene: scene.clone(),
+            child: Model::new(pbr_triangle_mesh(), material.clone()),
+            refuse: true,
+        };
+
+        let refused = scene.add(&nesting);
+
+        let passes = scene.list_passes();
+        let held = passes.iter().any(|pass| {
+            let shaders = pass.object.shaders.read();
+            shaders
+                .iter()
+                .any(|shader| Arc::ptr_eq(shader, &material.shader().object))
+        });
+        assert!(refused.is_err());
+        assert_eq!(passes.len(), 1);
+        assert!(held, "the pass in the graph holds the child");
+        assert_eq!(scene.models().len(), 1);
+    }
+
+    /// A scene object whose attach panics.
+    #[derive(Debug)]
+    struct Panicking;
+
+    impl SceneObject for Panicking {
+        fn attach(&self, _pass: &Pass) -> Result<(), PassError> {
+            panic!("the attach panics");
+        }
+    }
+
+    // Story: a first add whose attach panics leaves no pass half built,
+    // so the next add builds a default pass the scene draws.
+    #[test]
+    fn a_panicking_first_add_leaves_the_next_add_a_pass() {
+        let scene = Scene::new();
+        let added = std::panic::AssertUnwindSafe(|| scene.add(&Panicking).map(drop));
+
+        let panicked = std::panic::catch_unwind(added);
+        scene
+            .add(&Model::new(pbr_triangle_mesh(), Material::pbr()))
+            .expect("add");
+
+        let passes = scene.list_passes();
+        let default_pass = scene.inner.default_pass.read().clone();
+        assert!(panicked.is_err());
+        assert_eq!(passes.len(), 1, "a default pass");
+        assert!(default_pass.is_some_and(|pass| Arc::ptr_eq(&pass.object, &passes[0].object)));
+    }
+
+    /// A scene object whose attach adds `overlay` as a pass and `child` to `target`,
+    /// then notes whether `get_pass(0)` and `find_pass` both name the default pass.
+    #[derive(Debug)]
+    struct Arranging {
+        scene: Scene,
+        overlay: Pass,
+        child: Model,
+        target: PassRef,
+        refuse: bool,
+        seen: parking_lot::Mutex<bool>,
+    }
+
+    impl SceneObject for Arranging {
+        fn attach(&self, _pass: &Pass) -> Result<(), PassError> {
+            self.scene.add_pass(&self.overlay);
+            self.scene.add_to(self.target.clone(), &self.child)?;
+            let named = self.scene.find_pass("Scene Default Pass");
+            let first = self.scene.get_pass(0);
+            let same = named.zip(first);
+            *self.seen.lock() =
+                same.is_some_and(|(named, first)| Arc::ptr_eq(&named.object, &first.object));
+            match self.refuse {
+                true => Err(PassError::NoShader),
+                false => Ok(()),
+            }
+        }
+    }
+
+    /// `Arranging` with a child model on `material`.
+    fn arranging(scene: &Scene, material: &Material, target: PassRef, refuse: bool) -> Arranging {
+        Arranging {
+            scene: scene.clone(),
+            overlay: Pass::new("overlay"),
+            child: Model::new(pbr_triangle_mesh(), material.clone()),
+            target,
+            refuse,
+            seen: parking_lot::Mutex::new(false),
+        }
+    }
+
+    // Story: the attach of a scene's first add sees the default pass where it will
+    // join, so its add_to finds the pass and its add_pass lands after it.
+    #[test]
+    fn an_attach_sees_the_default_pass_its_first_add_builds() {
+        let scene = Scene::new();
+        let material = Material::pbr();
+        let target = PassRef::from("Scene Default Pass");
+        let arranging = arranging(&scene, &material, target, false);
+
+        scene.add(&arranging).expect("add");
+
+        let passes = scene.list_passes();
+        let names: Vec<&str> = passes
+            .iter()
+            .map(|pass| pass.object.name.as_ref())
+            .collect();
+        let holds = passes[0]
+            .object
+            .shaders
+            .read()
+            .iter()
+            .any(|shader| Arc::ptr_eq(shader, &material.shader().object));
+        assert_eq!(names, ["Scene Default Pass", "overlay"]);
+        assert!(*arranging.seen.lock(), "get_pass(0) and find_pass name it");
+        assert!(holds, "the child is on the default pass");
+    }
+
+    // Story: an add_to by index from the attach of a refused first add
+    // lands on the default pass, which the scene then keeps.
+    #[test]
+    fn a_refused_first_add_keeps_what_its_attach_added_to_it() {
+        let scene = Scene::new();
+        let material = Material::pbr();
+        let arranging = arranging(&scene, &material, PassRef::from(0usize), true);
+
+        let refused = scene.add(&arranging);
+
+        let passes = scene.list_passes();
+        let names: Vec<&str> = passes
+            .iter()
+            .map(|pass| pass.object.name.as_ref())
+            .collect();
+        assert!(refused.is_err());
+        assert_eq!(names, ["Scene Default Pass", "overlay"]);
+        assert_eq!(scene.models().len(), 1, "the child");
+    }
+
+    /// What a `Scripted` object's attach does with its scene.
+    type Script = Box<dyn Fn(&Scene) -> Result<(), PassError> + Send + Sync>;
+
+    /// A scene object whose attach runs a script on the scene it holds.
+    struct Scripted {
+        scene: Scene,
+        script: Script,
+    }
+
+    impl std::fmt::Debug for Scripted {
+        fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            formatter.write_str("Scripted")
+        }
+    }
+
+    impl SceneObject for Scripted {
+        fn attach(&self, _pass: &Pass) -> Result<(), PassError> {
+            (self.script)(&self.scene)
+        }
+    }
+
+    fn scripted(
+        scene: &Scene,
+        script: impl Fn(&Scene) -> Result<(), PassError> + Send + Sync + 'static,
+    ) -> Scripted {
+        Scripted {
+            scene: scene.clone(),
+            script: Box::new(script),
+        }
+    }
+
+    /// The names of the scene's passes, in order.
+    fn names(scene: &Scene) -> Vec<String> {
+        let passes = scene.list_passes();
+        passes
+            .iter()
+            .map(|pass| pass.object.name.to_string())
+            .collect()
+    }
+
+    // Story: an attach that adds a pass and removes one before the default pass
+    // keeps the default pass ahead of the pass it added, as a later add would.
+    #[test]
+    fn the_pending_pass_keeps_its_place_when_an_earlier_pass_leaves() {
+        let scene = Scene::new();
+        let backdrop = Pass::new("backdrop");
+        scene.add_pass(&backdrop);
+        let hud = Pass::new("hud");
+        let object = scripted(&scene, move |scene| {
+            scene.add_pass(&hud);
+            scene.remove_pass(&backdrop);
+            Ok(())
+        });
+
+        scene.add(&object).expect("add");
+
+        assert_eq!(names(&scene), ["Scene Default Pass", "hud"]);
+    }
+
+    // Story: a list_passes and set_passes round trip from the attach
+    // keeps the default pass once, where the list put it.
+    #[test]
+    fn a_reordered_graph_holds_the_pending_pass_once() {
+        let scene = Scene::new();
+        let (sky, hud) = (Pass::new("sky"), Pass::new("hud"));
+        let object = scripted(&scene, move |scene| {
+            scene.add_pass(&hud);
+            let mut passes = scene.list_passes();
+            passes.insert(0, sky.clone());
+            scene.set_passes(passes);
+            Ok(())
+        });
+
+        scene.add(&object).expect("add");
+
+        let passes = scene.list_passes();
+        let default_pass = scene.inner.default_pass.read().clone();
+        assert_eq!(names(&scene), ["sky", "Scene Default Pass", "hud"]);
+        assert!(default_pass.is_some_and(|pass| Arc::ptr_eq(&pass.object, &passes[1].object)));
+    }
+
+    // Story: an attach that removes the default pass its first add builds gets true,
+    // and the pass stays out of the graph, so the next add builds another.
+    #[test]
+    fn an_attach_can_remove_the_pending_pass() {
+        let scene = Scene::new();
+        let removed = Arc::new(parking_lot::Mutex::new(None));
+        let seen = removed.clone();
+        let object = scripted(&scene, move |scene| {
+            let found = scene.find_pass("Scene Default Pass");
+            *seen.lock() = found.map(|pass| scene.remove_pass(&pass));
+            Ok(())
+        });
+
+        scene.add(&object).expect("add");
+        let left = names(&scene);
+        let forgotten = scene.inner.default_pass.read().is_none();
+        scene
+            .add(&Model::new(pbr_triangle_mesh(), Material::pbr()))
+            .expect("add a model");
+
+        assert_eq!(*removed.lock(), Some(true), "remove_pass found it");
+        assert!(left.is_empty(), "no pass left in {left:?}");
+        assert!(forgotten, "no default pass");
+        assert_eq!(
+            names(&scene),
+            ["Scene Default Pass"],
+            "the next add builds one"
+        );
+    }
+
+    // Story: a set_passes from the attach that leaves the default pass out keeps it out.
+    #[test]
+    fn a_graph_set_without_the_pending_pass_leaves_it_out() {
+        let scene = Scene::new();
+        let hud = Pass::new("hud");
+        let object = scripted(&scene, move |scene| {
+            scene.set_passes(vec![hud.clone()]);
+            Ok(())
+        });
+
+        scene.add(&object).expect("add");
+
+        assert_eq!(names(&scene), ["hud"]);
+        assert!(scene.inner.default_pass.read().is_none());
+    }
+
+    // Story: a set_passes on another thread during a first add puts the
+    // default pass at the end of the new graph, as if the add came after it.
+    #[test]
+    fn a_graph_set_on_another_thread_puts_the_pending_pass_last() {
+        let scene = Scene::new();
+        scene.add_pass(&Pass::new("bg")).add_pass(&Pass::new("fx"));
+        let other = scene.clone();
+        crate::testing::race_hooks::once("scene add", move || {
+            let names = ["sky", "hud", "post"];
+            let replace = std::thread::spawn(move || {
+                other.set_passes(names.map(Pass::new).to_vec());
+            });
+            replace.join().expect("the other thread");
+        });
+
+        scene
+            .add(&Model::new(pbr_triangle_mesh(), Material::pbr()))
+            .expect("add");
+
+        assert_eq!(names(&scene), ["sky", "hud", "post", "Scene Default Pass"]);
+    }
+
+    // Story: a first add whose attach panics after an add from it landed keeps the
+    // pass that holds the child, so the scene draws the model it lists.
+    #[test]
+    fn a_panicking_first_add_keeps_what_its_attach_added() {
+        let scene = Scene::new();
+        let material = Material::pbr();
+        let child = Model::new(pbr_triangle_mesh(), material.clone());
+        let object = scripted(&scene, move |scene| {
+            scene.add(&child)?;
+            panic!("the attach panics after its add");
+        });
+
+        let added = std::panic::AssertUnwindSafe(|| scene.add(&object).map(drop));
+        let panicked = std::panic::catch_unwind(added);
+
+        let passes = scene.list_passes();
+        let holds = passes.iter().any(|pass| {
+            let shaders = pass.object.shaders.read();
+            shaders
+                .iter()
+                .any(|shader| Arc::ptr_eq(shader, &material.shader().object))
+        });
+        assert!(panicked.is_err());
+        assert_eq!(passes.len(), 1, "the pass the child landed on");
+        assert!(holds, "it holds the child");
+        assert_eq!(scene.models().len(), 1);
+    }
+
+    // Story: an add_to of a camera and a first render on another thread take
+    // turns, so the scene draws with the user's camera and no stock one beside it.
+    #[test]
+    fn a_render_during_an_add_to_injects_no_second_camera() {
+        let scene = Scene::new();
+        let material = Material::pbr();
+        scene
+            .add(&Model::new(pbr_triangle_mesh(), material.clone()))
+            .expect("add");
+        let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0)
+            .expect("camera")
+            .look_at([3.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+            .expect("camera");
+        let racing = scene.clone();
+        let renderer = Arc::new(parking_lot::Mutex::new(None));
+        let slot = renderer.clone();
+        // A render on another thread starts after the camera attached and before
+        // the scene records it, and gets a while to inject its own.
+        crate::testing::race_hooks::once("scene add", move || {
+            let (sender, receiver) = std::sync::mpsc::channel();
+            let thread = std::thread::spawn(move || {
+                let _ = racing.passes();
+                let _ = sender.send(());
+            });
+            let _ = receiver.recv_timeout(std::time::Duration::from_millis(200));
+            *slot.lock() = Some(thread);
+        });
+
+        scene.add_to("Scene Default Pass", &camera).expect("add_to");
+        if let Some(thread) = renderer.lock().take() {
+            thread.join().expect("the render thread");
+        }
+
+        let position: [f32; 3] = material
+            .shader()
+            .get("camera.position")
+            .expect("camera.position");
+        assert_eq!(scene.cameras().len(), 1, "no stock camera");
+        assert_eq!(position, [3.0, 0.0, 0.0], "the user's camera");
     }
 
     #[test]
@@ -946,11 +1701,10 @@ mod tests {
         let model = Model::new(pbr_triangle_mesh(), material.clone());
         scene.add(&model).expect("add");
 
-        let custom = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0).look_at(
-            [4.0, 0.0, 0.0],
-            [0.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0],
-        );
+        let custom = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0)
+            .expect("camera")
+            .look_at([4.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+            .expect("camera");
         scene.set_default_camera(&custom);
 
         let _ = scene.passes();
@@ -968,14 +1722,11 @@ mod tests {
         let model = Model::new(pbr_triangle_mesh(), material.clone());
         scene.add(&model).expect("add");
 
-        let custom = Light::directional([0.0, -1.0, 0.0], [0.2, 0.4, 0.6]);
+        let custom = Light::directional([0.0, -1.0, 0.0], [0.2, 0.4, 0.6]).expect("light");
         scene.set_default_light(&custom);
 
         let _ = scene.passes();
-        let color: [f32; 3] = material
-            .shader()
-            .get("lights.lights[0].color")
-            .expect("light color");
+        let color = material.shader().object.collect_lights()[0].color;
         assert_eq!(color, [0.2, 0.4, 0.6], "the override light was injected");
     }
 
@@ -989,11 +1740,10 @@ mod tests {
         scene.add(&model).expect("add");
 
         scene.no_default_camera();
-        let custom = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0).look_at(
-            [0.0, 6.0, 0.0],
-            [0.0, 0.0, 0.0],
-            [0.0, 0.0, -1.0],
-        );
+        let custom = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0)
+            .expect("camera")
+            .look_at([0.0, 6.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, -1.0])
+            .expect("camera");
         scene.set_default_camera(&custom);
 
         let _ = scene.passes();

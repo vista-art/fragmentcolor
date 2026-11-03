@@ -3,6 +3,10 @@ const canvas = document.createElement("canvas");
 
 const renderer = new Renderer();
 const target = await renderer.createTarget(canvas);
-renderer.render(Shader.default(), target);
+const shader = Shader.default();
+renderer.render(shader, target);
 
-const image = await target.getImage();
+// The same frame, drawn where it can be read back.
+const offscreen = await renderer.createTextureTarget([800, 600]);
+renderer.render(shader, offscreen);
+const image = await offscreen.getImage();

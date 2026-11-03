@@ -29,9 +29,16 @@ class ExampleCase: XCTestCase {
         setenv("FC_GPU_ERROR_LOG", gpuErrors.path, 1)
     }
 
+    /// A test or example slower than this prints how long it took, so a stall shows where it happened.
+    static let slow: TimeInterval = 5
+
+    /// When this test's `setUp` began.
+    private var began = Date()
+
     /// Each example starts from the default registry, as each Rust doctest runs in a process of its own.
     override func setUp() {
         super.setUp()
+        began = Date()
         Shader.setRegistry("https://fragmentcolor.org/shaders/")
         _ = takeGpuErrors()
     }
@@ -41,7 +48,16 @@ class ExampleCase: XCTestCase {
         if let errors = takeGpuErrors() {
             XCTFail("GPU error: \(errors)")
         }
+        report("\(name) from setUp to tearDown", since: began)
         super.tearDown()
+    }
+
+    /// Prints how long `step` took since `start` when it took longer than `slow`.
+    func report(_ step: String, since start: Date) {
+        let took = Date().timeIntervalSince(start)
+        if took > Self.slow {
+            print("[slow] \(step) took \(String(format: "%.1f", took)) s")
+        }
     }
 
     /// Runs one example and fails the test with its `docs/api` page when it throws or raises a GPU error.
@@ -51,11 +67,13 @@ class ExampleCase: XCTestCase {
         line: UInt = #line,
         _ body: () async throws -> Void
     ) async {
+        let start = Date()
         do {
             try await body()
         } catch {
             XCTFail("\(page): \(error)", file: file, line: line)
         }
+        report("\(page) body", since: start)
         if let errors = takeGpuErrors() {
             XCTFail("\(page): GPU error: \(errors)", file: file, line: line)
         }

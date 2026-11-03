@@ -5,10 +5,9 @@ handle that aliases the offscreen render target's storage. Useful for
 multi-pass pipelines: render into the `TextureTarget`, then bind the
 returned `Texture` as a shader uniform on the next pass to read it back.
 
-The first call registers the underlying texture object with the renderer
-and caches the resulting `TextureId`; subsequent calls return a fresh
-`Texture` handle pointing at the same registered id (no duplicate
-registration). The returned handle is `Clone`; pass it around freely.
+Every call returns a handle to the target's own texture, under one
+`TextureId`. The handle follows `TextureTarget::resize`, and resizing the
+handle resizes the target. It is `Clone`; pass it around freely.
 
 ## Example
 

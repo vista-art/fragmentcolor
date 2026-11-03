@@ -81,7 +81,7 @@ healthcheck file needs: a canvas, a file's bytes, a guard. They sit in
 a hidden Rust block comment tagged with the language:
 
 ```
-# let canvas = fragmentcolor::headless_window([800, 600]);
+# let canvas = fragmentcolor::HeadlessWindow::new([800, 600]);
 # /*[js]
 # const canvas = document.createElement("canvas");
 # */
@@ -100,10 +100,11 @@ Hidden lines, Rust's and every block, belong at the **start and end**
 of the codefence only, never interleaved with the visible body. A
 block before the first visible line lands right after the imports of
 that language's example, and a block after the last visible line lands
-at its end. Every tab shows its hidden lines collapsed, the way the
-Rust tab shows Rust's. The build fails on a block between visible
-lines, on an unknown tag, on a block with no closing `# */`, and on a
-line inside a block that holds `/*` or `*/`. Rust nests block comments,
+at its end. The website's Rust tab leaves Rust's hidden lines out, as
+rustdoc does, and every other tab shows its hidden lines collapsed.
+The build fails on a block between visible lines, on an unknown tag,
+on a block with no closing `# */`, and on a line inside a block that
+holds `/*` or `*/`. Rust nests block comments,
 so either one would move the end of the block and swallow the rest of
 the doctest.
 
@@ -160,10 +161,8 @@ headings of one page that would get the same id.
 
 ## See also
 
-- Project-root `AGENTS.md` — the broader contributor guide.
-- `scripts/convert.rs`, `scripts/kotlin.rs`, `scripts/swift.rs` — the
+- Project-root `AGENTS.md`: the broader contributor guide.
+- `scripts/convert.rs`, `scripts/kotlin.rs`, `scripts/swift.rs`: the
   transpilers that consume what gets written here.
-- `scripts/example.rs` — splits a codefence into Rust's lines and each
+- `scripts/example.rs`: splits a codefence into Rust's lines and each
   language's hidden blocks.
-- `~/.claude/projects/.../memory/transpiler_v2_design.md` — design notes
-  for the next-generation per-language harness scheme.

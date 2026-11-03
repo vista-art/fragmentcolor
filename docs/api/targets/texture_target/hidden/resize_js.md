@@ -1,7 +1,7 @@
 # TextureTarget::resize_js
 
 Web-specific marshaling for [`TextureTarget::resize`](https://fragmentcolor.org/api/targets/texturetarget#resize)
-that accepts a JS-side `Size` shape and returns a `JsError`.
+that accepts a JS-side `Size` shape and throws an `Error` named after its class.
 
 Hidden from the public website. The canonical
 [`resize`](https://fragmentcolor.org/api/targets/texturetarget#resize) page

@@ -1,6 +1,6 @@
 use std::env;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 /// A single violation found during source scanning.
 /// kind describes the category (e.g., "panic!", "unwrap", "expect").
@@ -27,29 +27,7 @@ fn enforce_no_panic_policy() -> Result<(), String> {
         Err(_) => PathBuf::from("."),
     };
 
-    let scan_roots = [manifest_dir.join("src")];
-
-    let mut findings: Vec<(PathBuf, Vec<Offense>)> = Vec::new();
-    for root in scan_roots.iter() {
-        if !root.exists() {
-            continue;
-        }
-        walk_rust_files(root, &mut |path| {
-            let path_string = path.to_string_lossy();
-            if path_string.contains("/tests/") || path_string.contains("/benches/") {
-                return;
-            }
-            if path.file_name().and_then(|name| name.to_str()) == Some("build.rs") {
-                return;
-            }
-            if let Some(offenses) = analyze_source_file(path)
-                && !offenses.is_empty()
-            {
-                findings.push((path.to_path_buf(), offenses));
-            }
-        });
-    }
-
+    let findings = find_panics(&manifest_dir.join("src"));
     if findings.is_empty() {
         return Ok(());
     }
@@ -70,6 +48,35 @@ fn enforce_no_panic_policy() -> Result<(), String> {
         "panic-prone usage found in library source files; replace with Result-based errors (thiserror) or justify with expect(\"SAFETY: ...\")"
             .to_string(),
     )
+}
+
+/// The library sources under `root` that use a panic-prone call, each with its offenses.
+fn find_panics(root: &Path) -> Vec<(PathBuf, Vec<Offense>)> {
+    let mut findings = Vec::new();
+    walk_rust_files(root, &mut |path| {
+        if is_test_source(root, path) {
+            return;
+        }
+        if let Some(offenses) = analyze_source_file(path)
+            && !offenses.is_empty()
+        {
+            findings.push((path.to_path_buf(), offenses));
+        }
+    });
+    findings
+}
+
+/// Whether `path`, a file under `root`, holds tests, benches or a build script.
+/// It reads the path's components below `root`, so a `tests` folder counts
+/// with either separator on Windows, and a folder above `root` never does.
+fn is_test_source(root: &Path, path: &Path) -> bool {
+    let relative = path.strip_prefix(root).unwrap_or(path);
+    let in_folder = relative.parent().is_some_and(|parent| {
+        parent.components().any(|component| {
+            matches!(component, Component::Normal(name) if name == "tests" || name == "benches")
+        })
+    });
+    in_folder || path.file_name().is_some_and(|name| name == "build.rs")
 }
 
 /// Recursively visit all .rs files under the given directory and invoke the callback.

@@ -10,6 +10,8 @@ The `region` argument accepts:
 - `{"x": ..., "y": ..., "z"?: ..., "width": ..., "height": ..., "depth"?: ..., "bytes_per_row"?: ..., "rows_per_image"?: ...}`
 - `{"min_x": ..., "min_y": ..., "max_x": ..., "max_y": ..., "min_z"?: ..., "max_z"?: ..., "bytes_per_row"?: ..., "rows_per_image"?: ...}`
 
+The origin keys `x`, `y`, `min_x` and `min_y` default to 0, and a missing depth or `max_z` makes the region one layer deep. A dict without its `width` and `height`, or its `max_x` and `max_y`, with a max at or below its min, or with keys from both forms, raises `InvalidInputError`, and so does a width, height or depth of 0 in any form. A missing region, `None`, writes the whole texture.
+
 ## Example
 
 ```python

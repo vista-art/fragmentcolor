@@ -39,7 +39,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Passes
         let pass_shadow = {
             let p = Pass::from_shader("shadow", &shadow);
-            p.set_clear_color([0.0, 0.0, 0.0, 0.0]); // transparent background
+            p.set_clear_color([0.0, 0.0, 0.0, 0.0])?; // transparent background
             p
         };
         let pass_main = {
@@ -54,7 +54,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         renderer.render(&passes, &target)?;
 
         // Quick check
-        let image = target.get_image().await;
+        let image = target.get_image().await?;
         assert_eq!(image.len(), (size[0] * size[1] * 4) as usize);
         Ok(())
     })

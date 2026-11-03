@@ -12,17 +12,27 @@ headlamps, theater lighting). The kind is set once at construction via
 The unified surface keeps the public API simple: one type, one
 [`Scene::add`](https://fragmentcolor.org/api/scene/scene#add) method, one
 [`Pass::add`](https://fragmentcolor.org/api/core/pass#add) method, and one
-binding per platform. Setters fall into two groups:
+binding per platform. Every setter returns `Result<Self, LightError>` for
+chaining, and they fall into two groups:
 
 - **Universal**: [`set_color`](https://fragmentcolor.org/api/scene/light#set_color)
   and [`set_intensity`](https://fragmentcolor.org/api/scene/light#set_intensity)
-  apply to every kind and return `Self` for chaining.
+  apply to every kind.
 - **Kind-specific**: [`set_position`](https://fragmentcolor.org/api/scene/light#set_position),
   [`set_direction`](https://fragmentcolor.org/api/scene/light#set_direction),
   [`set_range`](https://fragmentcolor.org/api/scene/light#set_range), and
   [`set_cone_angles`](https://fragmentcolor.org/api/scene/light#set_cone_angles)
-  return `Result<Self, LightError>`. Calling one on the wrong kind returns
-  `LightError::FieldNotApplicable { kind, field }`.
+  apply to the kinds that carry the field. Calling one on the wrong kind
+  returns `LightError::FieldNotApplicable { kind, field }`.
+
+The constructors and every setter but `set_range` refuse NaN and an
+infinity with `LightError::NotFinite`, which names the call and the item,
+and a refused setter leaves the light as it was. The other languages also
+refuse a number past the 32-bit float range there, such as `1e39`, before
+the call runs: an `InvalidInputError` in JavaScript and Python,
+`FragmentColorError` in Swift and `FragmentColorException` in Kotlin.
+`set_range` reads an infinity as an unlimited range and refuses NaN with
+`LightError::NegativeRange`.
 
 The matching getters use `Option<T>` for the kind-specific fields:
 [`position`](https://fragmentcolor.org/api/scene/light#position),
@@ -33,45 +43,72 @@ The matching getters use `Option<T>` for the kind-specific fields:
 return `Some` only on the kinds that carry the value, `None` otherwise.
 
 Lights hold Arc-shared state, so a single handle can be absorbed by
-multiple Passes; later mutators propagate to every shader the Light has
-been wired into.
+multiple Passes, and a later setter reaches every shader the Light lights
+at the next render.
+
+## Lifetime
+
+A Light lights as long as a `Scene`, a `Pass` or a handle of yours holds
+it. Each `Pass` and each `Scene` holds the lights added to it, so
+`scene.add(&light)` keeps lighting after the local `light` handle drops.
+A `Model` holds no lights. When it joins a pass, its shader takes every
+light that pass holds, and so does a shader added with
+[`Pass::add_shader`](https://fragmentcolor.org/api/core/pass#add_shader).
+Once the last pass, scene and handle holding a Light are gone, the
+shaders it reached draw without it.
 
 ## Cost model
 
-The default Material::pbr shader uses **forward shading**. Every fragment
-loops over every active light and accumulates the contribution. That makes
-the per-frame cost roughly `O(fragments × lights)`, so the practical
-ceiling depends on resolution and overdraw. The current cap of **32
-lights** fits the forward path comfortably; for scenes with hundreds of
-lights, a clustered / storage-buffer path is on the roadmap.
+`Material::pbr` shades each fragment with the lights that reach it. At
+each render the renderer sorts every light with a finite `range` into a
+grid of clusters over the pass's camera view, and a fragment loops over
+the lights of its own cluster. The cost of a fragment grows with the
+lights that overlap it, not with every light in the scene.
 
-### Cap semantics: lights bind to the shader, not the Pass
+A light without a range reaches every fragment, so every fragment pays
+for it. That covers each directional light and every point or spot light
+left at the default range of 0. Keep those to a few suns and fill lights,
+and give lamps, torches and other local lights a range.
 
-The 32-light cap is enforced **per `ShaderObject`**, not per `Pass`. Two
-Passes that share the same Material (and therefore the same shader)
-share its light slots:
+A still scene sorts its lights once. Moving a light, changing its range
+or cone, or moving the camera sorts them again at the next render. A new
+color or intensity sorts nothing and uploads only the lights from the
+first one that changed to the last.
 
-- Adding the same `Light` to Pass A and Pass B reuses one shader slot
-  (the dedup is by shader-pointer identity). Both Passes render with
-  that light visible.
-- Adding two different `Light`s, one to Pass A, one to Pass B, packs
-  them into two separate slots on the shared shader. **Both lights
-  illuminate both Passes**, even though each was only `add(&...)`-ed
-  to one. That's surprising if you think of a Pass as an isolated
-  scene; it's the right answer if you think of a Material as the
-  lighting model and the Passes as views into the same lit world.
-- The cap exceeds at 32 *distinct* Lights on one shader. Whether the
-  33rd fails depends on the order. Added to a pass whose shader already
-  holds 32, it returns `Err(PassError::LightCapReached { cap: 32 })`.
-  Added before that shader joins the pass, it doesn't fail: the shader
-  drops it with a logged warning when it joins.
+### How many lights a shader takes
 
-For genuinely independent lighting setups, build a separate Material
-per scene (each `Material::pbr()` allocates a fresh shader, so its 32
-slots are independent) or pass your own shader to `Material::custom`.
-A single scene with one Material covers the typical case. The per-
-shader semantic is what lets `Scene::add(&light)` propagate through
-every Pass that renders the Scene without re-attaching.
+The device sets the cap. A device with compute shaders and storage
+buffers in fragment shaders, as on WebGPU, Vulkan, Metal and DirectX 12,
+takes as many lights as its largest storage buffer binding holds: about
+two million at the common 128 MiB. Every OpenGL backend, WebGL2
+included, takes the lights through a uniform block, and so does any
+other device, so the cap is what the device's largest uniform block
+holds, from 253 lights in 16 KiB up to 1,021.
+
+Past the cap, `pass.add(&light)` returns
+`PassError::LightCapReached { cap }`, and so does adding a `Model` whose
+shader would take more lights than that when it joins the pass. Lights
+added before the renderer opened a device are checked at render, which
+returns `RendererError::PassError` with the same error.
+
+### Lights bind to the shader, not the Pass
+
+Each shader keeps its own list of lights, and the cap applies to that
+list. Two Passes that share a Material, and so its shader, share its
+lights:
+
+- Adding the same `Light` to Pass A and Pass B lists it once on the
+  shared shader. Both Passes render with it.
+- Adding one `Light` to Pass A and another to Pass B lists both on the
+  shared shader, so **both lights illuminate both Passes**. Think of a
+  Material as the lighting model and the Passes as views into the same
+  lit world.
+
+For independent lighting setups, build a separate Material per scene
+(each `Material::pbr()` makes a new shader with its own list) or pass
+your own shader to `Material::custom`. One scene with one Material
+covers the typical case, and the shared list is what lets
+`Scene::add(&light)` reach every Pass that renders the Scene.
 
 ## Constructors
 
@@ -108,16 +145,18 @@ use fragmentcolor::{Light, Material, Mesh, Model, Pass, Renderer, Vertex};
 
 let renderer = Renderer::new();
 let mesh = Mesh::new();
-mesh.add_vertex(
+mesh.add_vertices([
     Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]),
-);
+    Vertex::pbr([-0.5, -0.5, 0.0]).set(Vertex::UV0, [0.0, 0.0]),
+    Vertex::pbr([0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]),
+]);
 let model = Model::new(mesh, Material::pbr());
 
-let sun = Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])
-    .set_intensity(1.5);
-let lamp = Light::point([0.0, 2.5, 0.0], [1.0, 0.95, 0.8]).set_intensity(15.0);
-let torch = Light::spot([0.0, 1.8, 1.0], [0.0, -0.3, -1.0], [1.0, 0.9, 0.7])
-    .set_intensity(5.0)
+let sun = Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])?
+    .set_intensity(1.5)?;
+let lamp = Light::point([0.0, 2.5, 0.0], [1.0, 0.95, 0.8])?.set_intensity(15.0)?;
+let torch = Light::spot([0.0, 1.8, 1.0], [0.0, -0.3, -1.0], [1.0, 0.9, 0.7])?
+    .set_intensity(5.0)?
     .set_cone_angles(0.15, 0.4)?;
 
 let pass = Pass::new("scene");

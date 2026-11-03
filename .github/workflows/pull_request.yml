@@ -94,9 +94,6 @@ jobs:
       - name: Lint
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
-      - name: Format
-        run: cargo fmt --check --message-format human
-
       - name: Tests
         run: cargo test
 

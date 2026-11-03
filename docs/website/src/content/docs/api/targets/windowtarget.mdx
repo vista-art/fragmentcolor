@@ -26,9 +26,6 @@ In Rust, we officially support Winit. Check the examples folder for details.
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-let canvas = fragmentcolor::headless_window([800, 600]);
-
 use fragmentcolor::{Renderer, Shader, Target};
 
 let renderer = Renderer::new();
@@ -37,14 +34,8 @@ let renderer = Renderer::new();
 let target = renderer.create_target(canvas).await?;
 
 renderer.render(&Shader::default(), &target)?;
-
-let s = target.size();
-assert_eq!([s.width, s.height], [800, 600]);
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-2, 13-17}"
+lang="rust"
 />
 
 </TabItem>
@@ -105,7 +96,7 @@ let canvas = CAMetalLayer()
 let renderer = Renderer()
 
 // The canvas comes from your platform's windowing system.
-let target = try await renderer.createTarget(canvas)
+let target = try renderer.createTarget(canvas)
 
 try renderer.render(Shader.default(), target)
 `}
@@ -156,20 +147,13 @@ Python, `undefined` in JS, `nil` in Swift and `null` in Kotlin.
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-let canvas = fragmentcolor::headless_window([800, 600]);
 use fragmentcolor::{Renderer, Target};
 
 let renderer = Renderer::new();
 let target = renderer.create_target(canvas).await?;
 let size = target.size();
-
-assert_eq!([size.width, size.height], [800, 600]);
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-2, 9-12}"
+lang="rust"
 />
 
 </TabItem>
@@ -193,19 +177,20 @@ lang="js" meta="collapse={2-2}"
 <TabItem label="Python">
 <Code
 code={`
+from fragmentcolor import Renderer
 import os, sys
 # Skip this example in headless/CI environments that have no display surface.
 if os.environ.get('DISPLAY') is None and sys.platform != 'win32' and os.environ.get('FC_ALLOW_WINDOW') != '1':
     raise SystemExit(0)
 from rendercanvas.auto import RenderCanvas
-from fragmentcolor import Renderer
-
 canvas = RenderCanvas(size=(800, 600))
+
 renderer = Renderer()
 target = renderer.create_target(canvas)
 size = target.size()
+
 `}
-lang="python"
+lang="python" meta="collapse={2-7}"
 />
 
 </TabItem>
@@ -218,7 +203,7 @@ import QuartzCore
 let canvas = CAMetalLayer()
 
 let renderer = Renderer()
-let target = try await renderer.createTarget(canvas)
+let target = try renderer.createTarget(canvas)
 let size = target.size()
 `}
 lang="swift" meta="collapse={2-3}"
@@ -253,6 +238,10 @@ lang="kotlin" meta="collapse={2-3, 8-8}"
 Resizes the [WindowTarget](/api/targets/windowtarget) to the given width and height.
 Call it when the window or canvas changes size.
 
+A width or height of zero, such as the 0×0 a minimized window reports, is no error: the target keeps
+its last size and draws at the new one once the window has an area again. A side past the device limit
+returns an error.
+
 #### Example
 
 <Tabs>
@@ -260,22 +249,14 @@ Call it when the window or canvas changes size.
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-let canvas = fragmentcolor::headless_window([800, 600]);
 use fragmentcolor::{Renderer, Target};
 
 let renderer = Renderer::new();
 let mut target = renderer.create_target(canvas).await?;
 
-target.resize([1024, 768]);
-
-let size = target.size();
-assert_eq!([size.width, size.height], [1024, 768]);
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+target.resize([1024, 768])?;
 `}
-lang="rust" meta="collapse={1-2, 10-14}"
+lang="rust"
 />
 
 </TabItem>
@@ -327,9 +308,9 @@ import QuartzCore
 let canvas = CAMetalLayer()
 
 let renderer = Renderer()
-let target = try await renderer.createTarget(canvas)
+let target = try renderer.createTarget(canvas)
 
-target.resize([1024, 768])
+try target.resize([1024, 768])
 `}
 lang="swift" meta="collapse={2-3}"
 />
@@ -361,9 +342,9 @@ lang="kotlin" meta="collapse={2-3, 9-9}"
 
 ### WindowTarget::get_image() \{#get_image\}
 
-This operation returns an empty array for [WindowTarget](/api/targets/windowtarget).
+Returns an error for a [WindowTarget](/api/targets/windowtarget): a frame on screen can't be read back. JavaScript throws an `Error` named `FragmentColorError`, Python and Swift throw a `FragmentColorError`, and Kotlin throws a `FragmentColorException`.
 
-Use a [TextureTarget](/api/targets/texturetarget) instead.
+To read the pixels of a frame, draw it into a [TextureTarget](/api/targets/texturetarget) and call `get_image` there, as the example does.
 
 #### Example
 
@@ -372,21 +353,19 @@ Use a [TextureTarget](/api/targets/texturetarget) instead.
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-let canvas = fragmentcolor::headless_window([800, 600]);
 use fragmentcolor::{Renderer, Shader, Target};
 
 let renderer = Renderer::new();
 let target = renderer.create_target(canvas).await?;
-renderer.render(&Shader::default(), &target)?;
+let shader = Shader::default();
+renderer.render(&shader, &target)?;
 
-let image = target.get_image().await;
-_ = image;
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+// The same frame, drawn where it can be read back.
+let offscreen = renderer.create_texture_target([800, 600]).await?;
+renderer.render(&shader, &offscreen)?;
+let image = offscreen.get_image().await?;
 `}
-lang="rust" meta="collapse={1-2, 10-13}"
+lang="rust"
 />
 
 </TabItem>
@@ -399,9 +378,13 @@ const canvas = document.createElement("canvas");
 
 const renderer = new Renderer();
 const target = await renderer.createTarget(canvas);
-renderer.render(Shader.default(), target);
+const shader = Shader.default();
+renderer.render(shader, target);
 
-const image = await target.getImage();
+// The same frame, drawn where it can be read back.
+const offscreen = await renderer.createTextureTarget([800, 600]);
+renderer.render(shader, offscreen);
+const image = await offscreen.getImage();
 `}
 lang="js" meta="collapse={2-2}"
 />
@@ -421,9 +404,13 @@ canvas = RenderCanvas(size=(800, 600))
 
 renderer = Renderer()
 target = renderer.create_target(canvas)
-renderer.render(Shader.default(), target)
+shader = Shader.default()
+renderer.render(shader, target)
 
-image = target.get_image()
+# The same frame, drawn where it can be read back.
+offscreen = renderer.create_texture_target([800, 600])
+renderer.render(shader, offscreen)
+image = offscreen.get_image()
 `}
 lang="python" meta="collapse={2-7}"
 />
@@ -438,10 +425,14 @@ import QuartzCore
 let canvas = CAMetalLayer()
 
 let renderer = Renderer()
-let target = try await renderer.createTarget(canvas)
-try renderer.render(Shader.default(), target)
+let target = try renderer.createTarget(canvas)
+let shader = Shader.default()
+try renderer.render(shader, target)
 
-let image = try await target.getImage()
+// The same frame, drawn where it can be read back.
+let offscreen = try await renderer.createTextureTarget([800, 600])
+try renderer.render(shader, offscreen)
+let image = try await offscreen.getImage()
 `}
 lang="swift" meta="collapse={2-3}"
 />
@@ -457,12 +448,16 @@ val canvas = android.view.Surface(surfaceTexture)
 
 val renderer = Renderer()
 val target = renderer.createTarget(canvas)
-renderer.render(Shader.default(), target)
+val shader = Shader.default()
+renderer.render(shader, target)
 
-val image = target.getImage()
+// The same frame, drawn where it can be read back.
+val offscreen = renderer.createTextureTarget(listOf(800u, 600u))
+renderer.render(shader, offscreen)
+val image = offscreen.getImage()
 surfaceTexture.release()
 `}
-lang="kotlin" meta="collapse={2-3, 10-10}"
+lang="kotlin" meta="collapse={2-3, 14-14}"
 />
 
 </TabItem>

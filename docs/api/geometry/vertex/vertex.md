@@ -20,7 +20,7 @@ The constants are plain `&'static str` literals: `vertex.set(Vertex::UV0, [...])
 ## Example
 
 ```rust
-use fragmentcolor::mesh::Vertex;
+use fragmentcolor::Vertex;
 let v = Vertex::new([0.0, 0.0, 0.0])
     .set(Vertex::UV0, [0.5, 0.5])
     .set(Vertex::NORMAL, [0.0, 1.0, 0.0]);

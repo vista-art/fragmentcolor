@@ -50,7 +50,11 @@ where
     let start = Instant::now();
     let mut app = App::new(Renderer::new());
     app.on_start(move |app, windows| pollster::block_on(start_app(app, windows, setup)))
-        .on_resize(|app, size| app.resize([size.width, size.height]))
+        .on_resize(|app, size| {
+            if let Err(error) = app.resize([size.width, size.height]) {
+                eprintln!("resize failed: {error}");
+            }
+        })
         .on_redraw_requested(move |app| draw(app, frame, start.elapsed().as_secs_f32()));
     app.run();
 }
@@ -111,14 +115,14 @@ where
     for index in 0..frames {
         frame(&state, &renderer, &target, index as f32 / 60.0)?;
         if (index + 1) % SYNC_EVERY == 0 || index + 1 == frames {
-            image = target.get_image().await;
+            image = target.get_image().await?;
         }
     }
 
     // A frame of one flat color means the step drew nothing on top of its background.
     let (pixels, _) = image.as_chunks::<4>();
     let Some(corner) = pixels.first() else {
-        bail!("the target returned no pixels; the GPU may have timed out on the readback");
+        bail!("the target returned no pixels");
     };
     let total = pixels.len();
     let drawn = pixels.iter().filter(|pixel| *pixel != corner).count();

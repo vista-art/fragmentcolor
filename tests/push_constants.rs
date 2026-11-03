@@ -29,7 +29,7 @@ var<immediate> pc: PC;
             .expect("set pc.color");
 
         renderer.render(&shader, &target).expect("render");
-        let img = target.get_image().await;
+        let img = target.get_image().await.expect("read back");
         assert!(img.len() >= 4);
         // Expect RGBA8 (0,255,0,255) on the first pixel
         assert_eq!([img[0], img[1], img[2], img[3]], [0u8, 255, 0, 255]);
@@ -66,7 +66,7 @@ var<immediate> b: B;
             .expect("set b.color");
 
         renderer.render(&shader, &target).expect("render");
-        let img = target.get_image().await;
+        let img = target.get_image().await.expect("read back");
         assert!(img.len() >= 4);
         assert_eq!([img[0], img[1], img[2], img[3]], [0u8, 0, 255, 255]);
     });

@@ -1,14 +1,15 @@
 # Pass::setClearColor (mobile)
 
 Mobile binding for `Pass::set_clear_color`. Accepts a `Vec<Float>` of 3 or 4
-components (`[r, g, b]` or `[r, g, b, a]`) in linear 0..1 color space.
+linear components (`[r, g, b]` or `[r, g, b, a]`) and passes each one to the GPU
+as given. A wrong length or a channel that is NaN or infinite throws.
 
 Uniffi cannot marshal `[f32; 4]` fixed-length arrays across the FFI boundary,
 so the mobile shim takes a `Vec<Float>` and validates the length at runtime.
 
-Swift / Kotlin extension shims provide typed overloads
-(`pass.setClearColor(r:g:b:)` and `pass.setClearColor(r:g:b:a:)`) so callers
-never need to build a list manually.
+The Swift extension also takes `[Double]`, and the Kotlin extensions take
+`FloatArray`, `DoubleArray` and `List<Double>`, the vector forms every other
+color setter takes. A color is a list in every language, never separate channels.
 
 ## Example
 

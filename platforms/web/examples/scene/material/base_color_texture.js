@@ -8,3 +8,7 @@ const albedo = await renderer.createTexture(albedo_bytes, [2, 2]);
 // texture; passing the same handle into N Material instances costs one
 // upload and N shader-uniform references.
 const material = Material.pbr().baseColorTexture(albedo);
+
+// Raw pixels with their size upload when the scene loads.
+const tint = [255, 128, 0, 255];
+const tinted = Material.pbr().baseColorTexture(tint, [1, 1]);

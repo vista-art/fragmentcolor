@@ -28,8 +28,8 @@ let scene = Scene::load("path/to/model.glb")?;
 // our own. Most scenes carry a single camera, so the loop body usually
 // runs once.
 for camera in scene.cameras() {
-    camera.look_at([0.0, 1.5, 4.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
-    camera.set_aspect(16.0 / 9.0);
+    camera.look_at([0.0, 1.5, 4.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])?;
+    camera.set_aspect(16.0 / 9.0)?;
 }
 # Ok(())
 # }

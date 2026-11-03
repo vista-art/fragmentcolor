@@ -26,7 +26,11 @@ fun Camera.lookAt(position: FloatArray, target: FloatArray, up: FloatArray): Cam
 /** Aim the camera from [position] at [target], with [up] as the up direction. */
 @JvmName("lookAtDoubles")
 fun Camera.lookAt(position: List<Double>, target: List<Double>, up: List<Double>): Camera =
-    lookAt(position.map { it.toFloat() }, target.map { it.toFloat() }, up.map { it.toFloat() })
+    lookAt(
+        readFloats(position, "Camera.lookAt: position"),
+        readFloats(target, "Camera.lookAt: target"),
+        readFloats(up, "Camera.lookAt: up"),
+    )
 
 /** Aim the camera from [position] at [target], with [up] as the up direction. */
 fun Camera.lookAt(position: DoubleArray, target: DoubleArray, up: DoubleArray): Camera =

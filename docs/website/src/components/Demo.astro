@@ -9,6 +9,10 @@
 // `frame` also gets a sixth argument, `pointer`, as the playground harness passes it:
 // canvas pixels with y pointing down, and the canvas center until the pointer first moves.
 //
+// With `gestures`, `frame` gets a seventh argument too: the zoom (in doublings) and the pan (in
+// canvas pixels) since the last frame, from src/gestures.js. On an article only a pinch zooms,
+// so the wheel and one finger keep scrolling the page.
+//
 // `tools/capture` pins both for a still image: `data-time="2.5"` fixes the time in seconds,
 // and `data-pointer="640,360"` fixes the pointer in canvas pixels. Either attribute can change
 // while the demo runs, and the next frame reads it.
@@ -38,9 +42,11 @@ interface Props {
   autoplay?: boolean;
   /** If true, the demo needs WebGPU and shows a note instead of running on WebGL2. */
   webgpu?: boolean;
+  /** If true, a pinch zooms and a drag pans, and `frame` gets them as a seventh argument. */
+  gestures?: boolean;
 }
 
-const { file, height = "420px", autoplay = false, webgpu = false } = Astro.props;
+const { file, height = "420px", autoplay = false, webgpu = false, gestures = false } = Astro.props;
 
 const entry = tutorials[file];
 if (!entry) {
@@ -59,11 +65,14 @@ const moduleKey = `../tutorials/${entry.jsModulePath}`;
   data-canvas-height={height}
   data-autoplay={autoplay ? "1" : "0"}
   data-webgpu={webgpu ? "1" : "0"}
+  data-gestures={gestures ? "1" : "0"}
   style="display: block; margin: 1.5rem 0;">
 </tutorial-demo>
 
 <script>
 // @ts-nocheck
+import { Gestures } from '../gestures.js';
+
 // Vite picks up every example.js under src/tutorials/ at build time so
 // dynamic imports below resolve to bundled chunks. Without the `eager: false`
 // loaders, Demo would have to guess the URL of each module and bypass Vite.
@@ -99,6 +108,7 @@ if (!customElements.get('tutorial-demo')) {
     #start = performance.now();
     #fcModule;
     #pointer = null;       // canvas pixels, y down; null until the pointer moves
+    #gestures = null;      // zoom and pan, for a demo with `gestures`
 
     constructor() {
       super();
@@ -223,6 +233,7 @@ if (!customElements.get('tutorial-demo')) {
       cancelAnimationFrame(this.#raf);
       try { this.#ro?.disconnect(); } catch {}
       try { this.#io?.disconnect(); } catch {}
+      this.#gestures?.detach();
       if (this.#onOtherStarted) {
         document.removeEventListener('tutorial-demo-started', this.#onOtherStarted);
       }
@@ -299,6 +310,10 @@ if (!customElements.get('tutorial-demo')) {
       };
       this.#canvas.addEventListener('pointermove', track);
       this.#canvas.addEventListener('pointerdown', track);
+      if (this.dataset.gestures === '1') {
+        this.#gestures = new Gestures(this.#canvas, { scroll: true });
+        this.#gestures.enabled = true;
+      }
 
       // 6) RAF loop, stored on `this` so the IntersectionObserver and
       //    the cross-demo coordination can re-arm it.
@@ -310,9 +325,12 @@ if (!customElements.get('tutorial-demo')) {
           const pinned = this.dataset.time;
           const t = pinned === undefined ? (now - this.#start) / 1000.0 : Number(pinned);
           const size = [this.#canvas.width, this.#canvas.height];
+          // A pinch zooms around the point between the fingers, so that point becomes the pointer.
+          const { pointer: pinch, ...gesture } = this.#gestures?.take() ?? { zoom: 0, pan: [0, 0] };
+          if (pinch) this.#pointer = pinch;
           const held = this.dataset.pointer?.split(',').map(Number);
           const pointer = held ?? this.#pointer ?? [size[0] / 2, size[1] / 2];
-          this.#frame(this.#state, this.#renderer, this.#target, t, size, pointer);
+          this.#frame(this.#state, this.#renderer, this.#target, t, size, pointer, gesture);
         } catch (e) {
           console.error('[Demo] frame failed (stopping loop)', e);
           this.#stopped = true;

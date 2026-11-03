@@ -1,0 +1,1958 @@
+//! Tests that render refuses, before it takes a frame, what the device can't run.
+
+use super::{SpyTarget, Uncaptured, setup};
+use crate::core::LayoutLoss;
+use crate::core::renderer::checks::shader::{TextureFacts, Verdict, check_texture, refuse_layout};
+use crate::core::renderer::device::CANDIDATES;
+use crate::core::renderer::lights::LightPath;
+use crate::core::renderer::pipelines::layout::build_module;
+use crate::core::renderer::pipelines::layout::{
+    describe_texture, find_entry, pick_source, plan_layout,
+};
+use crate::core::renderer::*;
+use crate::texture::{Registration, Texture, TextureObject};
+use crate::{Material, Mesh, Shader, ShaderError, Vertex};
+use std::sync::atomic::Ordering;
+
+const VERTEX: &str = r#"
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>, 3>(vec2f(-1.0, -1.0), vec2f(3.0, -1.0), vec2f(-1.0, 3.0));
+  return vec4<f32>(p[i], 0.0, 1.0);
+}
+"#;
+
+/// A render shader: the fullscreen vertex stage, then `rest`.
+fn fullscreen(rest: &str) -> Result<Shader, ShaderError> {
+    Shader::new(format!("{VERTEX}\n{rest}").as_str())
+}
+
+/// Renders `shader` into a spy target and returns the error, or `None` when it renders.
+/// Render must acquire no frame, build no pipeline and leave no GPU error uncaptured.
+fn refuse(
+    renderer: &Renderer,
+    context: &RenderContext,
+    uncaptured: &Uncaptured,
+    shader: &Shader,
+) -> Option<RendererError> {
+    let target = SpyTarget::new(context, wgpu::TextureUsages::RENDER_ATTACHMENT);
+    let error = renderer.render(shader, &target).err()?;
+    assert_eq!(
+        target.counts.acquired(),
+        0,
+        "a frame was acquired for {error}"
+    );
+    assert!(
+        context.render_pipelines.is_empty(),
+        "a pipeline was built for {error}"
+    );
+    assert!(
+        context.compute_pipelines.is_empty(),
+        "a pipeline was built for {error}"
+    );
+    assert!(uncaptured.lock().is_empty(), "got {:?}", uncaptured.lock());
+    Some(error)
+}
+
+/// Renders `shader` on a fresh renderer and returns the error, as `refuse` checks it.
+fn refuse_alone(shader: &Shader) -> Option<RendererError> {
+    pollster::block_on(async move {
+        let (renderer, context, uncaptured) = setup().await.ok()?;
+        refuse(&renderer, &context, &uncaptured, shader)
+    })
+}
+
+/// A 4x4 texture of `format` with `usage`, made past the creation helpers.
+fn create_texture(
+    context: &Arc<RenderContext>,
+    format: wgpu::TextureFormat,
+    usage: wgpu::TextureUsages,
+) -> Result<Texture, crate::texture::TextureError> {
+    let size = wgpu::Extent3d {
+        width: 4,
+        height: 4,
+        depth_or_array_layers: 1,
+    };
+    let object = TextureObject::new(context, size, format, usage, Default::default())?;
+    let registration = Registration::create(context, Arc::new(object));
+    Ok(Texture::new(context.clone(), registration))
+}
+
+/// Asserts that `error` is the variant `pattern` names and that its text holds `text`.
+macro_rules! assert_refused {
+    ($error:expr, $pattern:pat, $text:expr) => {{
+        let error = $error;
+        assert!(matches!(error, $pattern), "got {error:?}");
+        assert!(error.to_string().contains($text), "got {error}");
+    }};
+}
+
+// Story: a group past the device's bind groups fails before the frame, on every platform alike.
+#[test]
+fn group_past_the_device_fails() {
+    let groups = pollster::block_on(async {
+        let (_renderer, context, _) = setup().await.expect("render context");
+        context.device.limits().max_bind_groups
+    });
+    let shader = fullscreen(&format!(
+        "@group({groups}) @binding(0) var<uniform> tint: vec4<f32>;
+@fragment fn fs_main() -> @location(0) vec4<f32> {{ return tint; }}"
+    ))
+    .expect("shader");
+    let error = refuse_alone(&shader).expect("refused");
+    assert_refused!(
+        error,
+        RendererError::LimitError { .. },
+        &format!(
+            "'tint' at @group({groups}) @binding(0) needs max_bind_groups of at least {}, and the device has {groups}",
+            groups + 1
+        )
+    );
+}
+
+// Story: an immediate root lowered to a uniform in a group past the device's groups fails
+// with an item that names the root and its slot, with nothing shaped for the sentence.
+#[test]
+fn lowered_immediates_past_the_groups_fail() {
+    let groups = pollster::block_on(async {
+        let (_renderer, context, _) = setup().await.expect("render context");
+        context.device.limits().max_bind_groups
+    });
+    let uniforms: String = (0..groups)
+        .map(|group| format!("@group({group}) @binding(0) var<uniform> u{group}: f32;\n"))
+        .collect();
+    let reads: String = (0..groups).map(|group| format!(" + u{group}")).collect();
+    // Two immediate roots never take native immediates. An entry point reads one at most.
+    let shader = fullscreen(&format!(
+        "var<immediate> red: f32;
+var<immediate> spare: f32;
+{uniforms}@fragment fn fs_main() -> @location(0) vec4<f32> {{ return vec4<f32>(red{reads}); }}"
+    ))
+    .expect("shader");
+
+    let error = refuse_alone(&shader).expect("refused");
+
+    let item = format!("immediate root 'red' as a uniform at @group({groups}) @binding(0)");
+    let expected = vec![
+        ("item", Field::Text(item.clone())),
+        ("limit", Field::Text("max_bind_groups".into())),
+        ("value", Field::Number(u64::from(groups) + 1)),
+        ("max", Field::Number(u64::from(groups))),
+    ];
+    assert_eq!(error.list_fields(), expected);
+    assert_refused!(
+        error,
+        RendererError::LimitError { .. },
+        &format!(
+            "{item} needs max_bind_groups of at least {}, and the device has {groups}",
+            groups + 1
+        )
+    );
+}
+
+// Story: the group that holds immediate roots on a device without native immediates
+// takes the lowest free index, so a shader that leaves a gap still fits.
+#[test]
+fn lowered_immediates_take_the_lowest_free_group() {
+    pollster::block_on(async move {
+        let (renderer, context, uncaptured) = setup().await.expect("render context");
+        let last = context.device.limits().max_bind_groups - 1;
+        let target = renderer
+            .create_texture_target([4, 4])
+            .await
+            .expect("texture target");
+        // Two immediate roots never take native immediates. An entry point reads one at most.
+        let shader = fullscreen(&format!(
+            "var<immediate> red: f32;
+var<immediate> spare: f32;
+@group(0) @binding(0) var<uniform> blue: f32;
+@group({last}) @binding(0) var<uniform> alpha: f32;
+@fragment fn fs_main() -> @location(0) vec4<f32> {{ return vec4<f32>(red, 0.0, blue, alpha); }}"
+        ))
+        .expect("shader");
+        // A bare immediate root takes its bytes whole.
+        for key in ["red", "spare"] {
+            shader
+                .set(key, 1.0f32.to_le_bytes().as_slice())
+                .expect("set");
+        }
+        shader.set("blue", 1.0).expect("blue");
+        shader.set("alpha", 1.0).expect("alpha");
+
+        renderer.render(&shader, &target).expect("render");
+        let image = target.get_image().await.expect("read back");
+
+        assert_eq!(image[..4], [255, 0, 255, 255]);
+        assert!(uncaptured.lock().is_empty(), "got {:?}", uncaptured.lock());
+    });
+}
+
+// Story: more bindings of one kind in a stage than the device takes fail before the frame,
+// and the same bindings split across two stages fit, since each counts only where it is used.
+#[test]
+fn stage_counts_follow_the_stages_that_use_each_binding() {
+    pollster::block_on(async move {
+        let (_renderer, context, uncaptured) = setup().await.expect("render context");
+        // WebGPU's sampler limit. Lavapipe takes a million, too many to declare in a test.
+        let mut small = copy_context(&context);
+        small.limits.max_samplers_per_shader_stage =
+            context.limits.max_samplers_per_shader_stage.min(16);
+        let max = small.limits.max_samplers_per_shader_stage;
+        let (renderer, context) = adopt(small);
+        let declare = |count: u32| -> String {
+            (0..count)
+                .map(|index| format!("@group(0) @binding({index}) var s{index}: sampler;\n"))
+                .collect()
+        };
+        let sample = |range: std::ops::Range<u32>| -> String {
+            range
+                .map(|index| format!("textureSampleLevel(image, s{index}, vec2<f32>(0.5), 0.0)"))
+                .collect::<Vec<_>>()
+                .join(" + ")
+        };
+        let image = "@group(1) @binding(0) var image: texture_2d<f32>;";
+        let crowded = Shader::new(
+            format!(
+                "{}{image}
+{VERTEX}
+@fragment fn fs_main() -> @location(0) vec4<f32> {{ return {}; }}",
+                declare(max + 1),
+                sample(0..max + 1)
+            )
+            .as_str(),
+        )
+        .expect("shader");
+        let texture = create_texture(
+            &context,
+            wgpu::TextureFormat::Rgba8Unorm,
+            wgpu::TextureUsages::TEXTURE_BINDING,
+        )
+        .expect("texture");
+        crowded.set("image", &texture).expect("image");
+        let error = refuse(&renderer, &context, &uncaptured, &crowded).expect("refused");
+        assert_refused!(
+            error,
+            RendererError::LimitError { .. },
+            &format!(
+                "the fragment stage needs max_samplers_per_shader_stage of at least {}, and the device has {max}",
+                max + 1
+            )
+        );
+
+        let half = (max + 1).div_ceil(2);
+        let split = Shader::new(
+            format!(
+                "{}{image}
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {{
+  return {} * f32(i);
+}}
+@fragment fn fs_main() -> @location(0) vec4<f32> {{ return {}; }}",
+                declare(max + 1),
+                sample(0..half),
+                sample(half..max + 1)
+            )
+            .as_str(),
+        )
+        .expect("shader");
+        split.set("image", &texture).expect("image");
+        let target = renderer
+            .create_texture_target([4, 4])
+            .await
+            .expect("texture target");
+        renderer
+            .render(&split, &target)
+            .expect("split samplers fit");
+    });
+}
+
+// Story: a binding past the device's bindings, a uniform past its size limit and a storage
+// buffer past its size limit each fail with an error that names the root and the limit.
+#[test]
+fn slots_past_the_limits_fail() {
+    pollster::block_on(async move {
+        let (_renderer, context, _) = setup().await.expect("render context");
+        // The WebGPU defaults, which the web's devices give.
+        let limits = wgpu::Limits::default();
+        let check = |source: String| {
+            let shader = fullscreen(&source).expect("shader");
+            let layout = plan_layout(&shader.object, &context, None);
+            layout
+                .slots
+                .iter()
+                .find_map(|slot| {
+                    crate::core::renderer::checks::shader::check_slot(
+                        &format!("'{}'", slot.name),
+                        slot,
+                        &limits,
+                    )
+                    .err()
+                    .map(RendererError::from)
+                })
+                .expect("a slot past the limits")
+                .to_string()
+        };
+        let binding = check(
+            "@group(0) @binding(1000) var<uniform> tint: vec4<f32>;
+@fragment fn fs_main() -> @location(0) vec4<f32> { return tint; }"
+                .into(),
+        );
+        assert!(
+            binding.contains(
+                "'tint' needs max_bindings_per_bind_group of at least 1001, and the device has 1000"
+            ),
+            "{binding}"
+        );
+        let uniform = check(
+            "@group(0) @binding(0) var<uniform> big: array<vec4<f32>, 8192>;
+@fragment fn fs_main() -> @location(0) vec4<f32> { return big[0]; }"
+                .into(),
+        );
+        assert!(
+            uniform.contains(
+                "'big' needs max_uniform_buffer_binding_size of at least 131072, and the device has 65536"
+            ),
+            "{uniform}"
+        );
+        let storage = check(
+            "@group(0) @binding(0) var<storage, read> big: array<vec4<f32>, 16777216>;
+@fragment fn fs_main() -> @location(0) vec4<f32> { return big[0]; }"
+                .into(),
+        );
+        assert!(
+            storage.contains(
+                "'big' needs max_storage_buffer_binding_size of at least 268435456, and the device has 134217728"
+            ),
+            "{storage}"
+        );
+    });
+}
+
+// Story: a storage format the device can't bind fails before any GPU work, such as
+// bgra8unorm, which needs BGRA8UNORM_STORAGE, a feature FragmentColor never requests.
+// The healthchecks of every binding use this shader for their FeatureError.
+#[test]
+fn storage_formats_the_device_lacks_fail() {
+    let shader = Shader::new(
+        "@group(0) @binding(0) var img: texture_storage_2d<bgra8unorm, write>;
+@compute @workgroup_size(1) fn cs_main() { textureStore(img, vec2<i32>(0), vec4<f32>(1.0)); }",
+    )
+    .expect("shader");
+    let error = refuse_alone(&shader).expect("refused");
+    let expected = vec![
+        ("item", Field::Text("'img' at @group(0) @binding(0)".into())),
+        (
+            "feature",
+            Field::Text("WriteOnly storage access to Bgra8Unorm".into()),
+        ),
+    ];
+    assert_eq!(error.list_fields(), expected);
+    assert_refused!(
+        error,
+        RendererError::FeatureError { .. },
+        "'img' at @group(0) @binding(0) needs WriteOnly storage access to Bgra8Unorm, which the device lacks"
+    );
+}
+
+// Story: a storage texture binds in the format the shader declares, such as r32float.
+#[test]
+fn storage_textures_bind_their_declared_format() {
+    pollster::block_on(async move {
+        let (renderer, context, uncaptured) = setup().await.expect("render context");
+        let shader = Shader::new(
+            r#"
+@group(0) @binding(0) var image: texture_storage_2d<r32float, write>;
+@compute @workgroup_size(1)
+fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
+  textureStore(image, id.xy, vec4<f32>(0.5));
+}
+"#,
+        )
+        .expect("shader");
+        let usage = wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::COPY_SRC;
+        let texture =
+            create_texture(&context, wgpu::TextureFormat::R32Float, usage).expect("texture");
+        shader.set("image", &texture).expect("image");
+        let pass = crate::Pass::from_shader("store", &shader);
+        pass.set_compute_dispatch(4, 4, 1);
+        let target = renderer
+            .create_texture_target([4, 4])
+            .await
+            .expect("texture target");
+
+        renderer.render(&pass, &target).expect("render");
+        let bytes = renderer
+            .read_texture(*texture.id())
+            .await
+            .expect("read back");
+
+        assert_eq!(bytes[..4], 0.5f32.to_le_bytes());
+        assert!(uncaptured.lock().is_empty(), "got {:?}", uncaptured.lock());
+    });
+}
+
+// Story: a fragment entry point writes a storage texture, and the pass draws.
+#[test]
+fn fragment_writes_a_storage_texture() {
+    pollster::block_on(async move {
+        let (renderer, context, uncaptured) = setup().await.expect("render context");
+        let shader = fullscreen(
+            "@group(0) @binding(0) var marks: texture_storage_2d<rgba8unorm, write>;
+@fragment fn fs_main(@builtin(position) at: vec4<f32>) -> @location(0) vec4<f32> {
+  textureStore(marks, vec2<u32>(at.xy), vec4<f32>(1.0, 0.0, 0.0, 1.0));
+  return vec4<f32>(1.0);
+}",
+        )
+        .expect("shader");
+        let usage = wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::COPY_SRC;
+        let marks =
+            create_texture(&context, wgpu::TextureFormat::Rgba8Unorm, usage).expect("texture");
+        shader.set("marks", &marks).expect("marks");
+        let target = renderer
+            .create_texture_target([4, 4])
+            .await
+            .expect("texture target");
+
+        renderer.render(&shader, &target).expect("render");
+        let bytes = renderer.read_texture(*marks.id()).await.expect("read back");
+
+        assert_eq!(bytes[..4], [255, 0, 0, 255]);
+        assert!(uncaptured.lock().is_empty(), "got {:?}", uncaptured.lock());
+    });
+}
+
+// Story: a compute shader that leaves group 0 empty still dispatches,
+// with an empty group in the gap as a render pipeline has.
+#[test]
+fn compute_fills_group_gaps() {
+    pollster::block_on(async move {
+        let (renderer, _context, uncaptured) = setup().await.expect("render context");
+        let shader = Shader::new(
+            r#"
+@group(1) @binding(0) var<storage, read_write> gap_values: array<f32, 4>;
+@compute @workgroup_size(4)
+fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) { gap_values[id.x] = 1.0; }
+"#,
+        )
+        .expect("shader");
+        let target = renderer
+            .create_texture_target([4, 4])
+            .await
+            .expect("texture target");
+
+        renderer.render(&shader, &target).expect("render");
+        let bytes = renderer
+            .read_storage(&shader, "gap_values")
+            .await
+            .expect("read back");
+
+        assert_eq!(bytes, [1.0f32; 4].map(f32::to_le_bytes).concat());
+        assert!(uncaptured.lock().is_empty(), "got {:?}", uncaptured.lock());
+    });
+}
+
+// Story: a compute shader reads its immediate data, natively for one root that fits
+// and through the uniform group when it declares two roots.
+#[test]
+fn compute_reads_immediates() {
+    pollster::block_on(async move {
+        let (renderer, _context, uncaptured) = setup().await.expect("render context");
+        let target = renderer
+            .create_texture_target([4, 4])
+            .await
+            .expect("texture target");
+        let one = Shader::new(
+            r#"
+var<immediate> params: vec4<f32>;
+@group(0) @binding(0) var<storage, read_write> one_root: vec4<f32>;
+@compute @workgroup_size(1) fn cs_main() { one_root = params; }
+"#,
+        )
+        .expect("shader");
+        let two = Shader::new(
+            r#"
+var<immediate> spare: vec2<f32>;
+var<immediate> params: vec4<f32>;
+@group(0) @binding(0) var<storage, read_write> two_roots: vec4<f32>;
+@compute @workgroup_size(1) fn cs_main() { two_roots = params; }
+"#,
+        )
+        .expect("shader");
+        // A bare immediate root takes its bytes whole.
+        let expected = [1.0f32, 2.0, 3.0, 4.0].map(f32::to_le_bytes).concat();
+        one.set("params", expected.as_slice()).expect("params");
+        two.set("spare", [0u8; 8].as_slice()).expect("spare");
+        two.set("params", expected.as_slice()).expect("params");
+
+        for (shader, root) in [(&one, "one_root"), (&two, "two_roots")] {
+            renderer.render(shader, &target).expect("render");
+            let bytes = renderer
+                .read_storage(shader, root)
+                .await
+                .expect("read back");
+            assert_eq!(bytes, expected, "{root}");
+        }
+        assert!(uncaptured.lock().is_empty(), "got {:?}", uncaptured.lock());
+    });
+}
+
+// Story: a workgroup past the device's limits fails before any GPU work,
+// also when an override sizes it.
+#[test]
+fn workgroup_past_the_device_fails() {
+    let wide = Shader::new("@compute @workgroup_size(4096) fn cs_main() {}").expect("shader");
+    assert_refused!(
+        refuse_alone(&wide).expect("refused"),
+        RendererError::LimitError { .. },
+        "`cs_main` needs max_compute_workgroup_size_x of at least 4096, and the device has"
+    );
+    let crowded = Shader::new(
+        "override side: u32 = 64;
+@compute @workgroup_size(side, side) fn cs_main() {}",
+    )
+    .expect("shader");
+    assert_refused!(
+        refuse_alone(&crowded).expect("refused"),
+        RendererError::LimitError { .. },
+        "`cs_main` needs max_compute_invocations_per_workgroup of at least 4096, and the device has"
+    );
+}
+
+// Story: a render shader without a vertex or a fragment entry point fails before any GPU work.
+#[test]
+fn missing_entry_points_fail() {
+    let fragment =
+        Shader::new("@fragment fn main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }")
+            .expect("a lone fragment stage parses");
+    assert_refused!(
+        refuse_alone(&fragment).expect("refused"),
+        RendererError::EntryError { .. },
+        "the shader has no @vertex entry point"
+    );
+    let vertex = Shader::new(VERTEX).expect("a lone vertex stage parses");
+    assert_refused!(
+        refuse_alone(&vertex).expect("refused"),
+        RendererError::EntryError { .. },
+        "the shader has no @fragment entry point"
+    );
+}
+
+// Story: every texture a slot can't take fails before the frame with an error naming the
+// slot and the mismatch, the same on the web, where no error scope resolves in time.
+#[test]
+fn textures_their_slots_cannot_take_fail() {
+    pollster::block_on(async move {
+        let (renderer, context, uncaptured) = setup().await.expect("render context");
+        let sampled = "@group(0) @binding(0) var image: texture_2d<f32>;
+@group(0) @binding(1) var linear: sampler;
+@fragment fn fs_main() -> @location(0) vec4<f32> { return textureSample(image, linear, vec2<f32>(0.5)); }";
+        let storage = "@group(0) @binding(0) var image: texture_storage_2d<rgba8unorm, write>;
+@fragment fn fs_main() -> @location(0) vec4<f32> {
+  textureStore(image, vec2<u32>(0u), vec4<f32>(1.0));
+  return vec4<f32>(1.0);
+}";
+        let depth = renderer
+            .create_depth_texture([4, 4])
+            .await
+            .expect("depth texture");
+        let volume = renderer
+            .create_texture((vec![0u8; 4 * 4 * 4 * 4], [4u32, 4, 4]))
+            .await
+            .expect("3D texture");
+        let plain = renderer
+            .create_texture((vec![0u8; 4 * 4 * 4], [4u32, 4]))
+            .await
+            .expect("2D texture");
+        let cases: [(&str, &Texture, &str); 3] = [
+            (
+                sampled,
+                &depth,
+                "'image' takes a texture that samples as Float { filterable: true }, not Depth32Float, which samples as Depth",
+            ),
+            (
+                sampled,
+                &volume,
+                "'image' takes a D2 texture, not a D3 texture",
+            ),
+            (
+                storage,
+                &plain,
+                "'image' takes a texture with STORAGE_BINDING usage, not usage",
+            ),
+        ];
+        for (source, texture, problem) in cases {
+            let shader = fullscreen(source).expect("shader");
+            shader.set("image", texture).expect("set");
+            let error = refuse(&renderer, &context, &uncaptured, &shader).expect("refused");
+            assert_refused!(error, RendererError::BindingError { .. }, problem);
+        }
+
+        let unset = fullscreen(sampled).expect("shader");
+        assert_refused!(
+            refuse(&renderer, &context, &uncaptured, &unset).expect("refused"),
+            RendererError::BindingError { .. },
+            "'image' takes a texture, not none, since it was never set"
+        );
+        let removed = fullscreen(sampled).expect("shader");
+        removed.set("image", &plain).expect("set");
+        renderer
+            .unregister_texture(*plain.id())
+            .expect("unregister");
+        assert_refused!(
+            refuse(&renderer, &context, &uncaptured, &removed).expect("refused"),
+            RendererError::TextureNotFoundError(_),
+            "not found"
+        );
+    });
+}
+
+// Story: a Material map given a texture its slot can't take fails at render, the same
+// on every platform, instead of drawing a broken frame on the web.
+#[test]
+fn material_maps_check_their_textures() {
+    pollster::block_on(async move {
+        let (renderer, context, uncaptured) = setup().await.expect("render context");
+        let depth = renderer
+            .create_depth_texture([4, 4])
+            .await
+            .expect("depth texture");
+        let material = Material::pbr()
+            .base_color_texture(&depth)
+            .expect("base color map");
+
+        let error = refuse(&renderer, &context, &uncaptured, material.shader()).expect("refused");
+
+        assert_refused!(
+            error,
+            RendererError::BindingError { .. },
+            "'base_color_map' takes a texture that samples as Float { filterable: true }, not Depth32Float"
+        );
+    });
+}
+
+// Story: the bind-time texture check follows wgpu's rules: an unfilterable float slot takes
+// filterable floats and depth, and a multisampled slot takes only a multisampled texture.
+#[test]
+fn texture_checks_follow_wgpu_rules() {
+    pollster::block_on(async move {
+        let (_renderer, context, _) = setup().await.expect("render context");
+        let usage = wgpu::TextureUsages::TEXTURE_BINDING;
+        let color =
+            create_texture(&context, wgpu::TextureFormat::Rgba8Unorm, usage).expect("texture");
+        let meta = |sampled: bool| crate::texture::TextureMeta {
+            sampled,
+            ..crate::texture::TextureMeta::from(*color.id())
+        };
+        let features = context.device.features();
+        let facts = TextureFacts::read(&color.object());
+        let loaded = describe_texture(&meta(false));
+        assert!(check_texture("t", &loaded, &facts, features).is_ok());
+        let filtered = describe_texture(&meta(true));
+        assert!(check_texture("t", &filtered, &facts, features).is_ok());
+        let multi = wgpu::BindingType::Texture {
+            sample_type: wgpu::TextureSampleType::Float { filterable: false },
+            view_dimension: wgpu::TextureViewDimension::D2,
+            multisampled: true,
+        };
+        let error = check_texture("t", &multi, &facts, features).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("'t' takes a multisampled texture, not 1 samples"),
+            "{error}"
+        );
+    });
+}
+
+/// A context on the device of `context`, with its own verdicts, for a test to set
+/// the backend, downlevel flags, limits, padding or light path of a device it can't open.
+fn copy_context(context: &RenderContext) -> RenderContext {
+    let mut copy = RenderContext::new(context.device.clone(), context.queue.clone());
+    copy.adapter = context.adapter.clone();
+    copy.downlevel = context.downlevel;
+    copy.backend = context.backend;
+    copy
+}
+
+/// A renderer that draws with `context`, for a test that lowers a device's limits.
+fn adopt(context: RenderContext) -> (Renderer, Arc<RenderContext>) {
+    let renderer = Renderer::new();
+    let context = Arc::new(context);
+    renderer.context.write().replace(context.clone());
+    (renderer, context)
+}
+
+// Story: the GL backends write a buffer struct member by member into a std140 block,
+// so they refuse an explicit @size or @align layout instead of shifting its members.
+// The refusal names the shader's own struct, also where WebGL2 pads a copy of it.
+#[test]
+fn gl_refuses_explicit_layouts() {
+    pollster::block_on(async move {
+        let (_renderer, context, _) = setup().await.expect("render context");
+        let shader = fullscreen(
+            "struct Params { scale: f32, @align(16) offset: vec2<f32> };
+@group(0) @binding(0) var<uniform> params: Params;
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(params.offset, params.scale, 1.0); }",
+        )
+        .expect("shader");
+        let short = fullscreen(
+            "struct P { @size(8) a: f32, b: f32 };
+@group(0) @binding(0) var<uniform> p: P;
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(p.a, p.b, 0.0, 1.0); }",
+        )
+        .expect("shader");
+        let mut gl = copy_context(&context);
+        gl.backend = wgpu::Backend::Gl;
+        let mut padded = copy_context(&context);
+        padded.backend = wgpu::Backend::Gl;
+        padded
+            .aligned_uniform_bindings
+            .store(true, Ordering::Relaxed);
+
+        let error = gl.check_shader(&shader.object).unwrap_err();
+        let short_error = padded.check_shader(&short.object).unwrap_err();
+
+        assert_refused!(
+            error,
+            RendererError::FeatureError { .. },
+            "struct `Params` needs @size and @align offsets in a std140 block, which the device lacks"
+        );
+        assert_refused!(
+            short_error,
+            RendererError::FeatureError { .. },
+            "struct `P` needs @size and @align offsets"
+        );
+        assert!(copy_context(&context).check_shader(&shader.object).is_ok());
+    });
+}
+
+// Story: on the browser's WebGPU a pipeline asks for each entry point under the name naga's
+// writer gives it, since wgpu hands the browser that writer's text, and elsewhere under its own.
+#[test]
+fn browser_pipelines_ask_for_written_entry_names() {
+    let shader = Shader::new("@compute @workgroup_size(1) fn blur2() {}").expect("shader");
+
+    let web = pick_source(shader.object.module.clone(), true).expect("web source");
+    let native = pick_source(shader.object.module.clone(), false).expect("native source");
+
+    let compute = naga::ShaderStage::Compute;
+    assert_eq!(find_entry(&web.entries, compute).expect("entry"), "blur2_");
+    assert_eq!(
+        find_entry(&native.entries, compute).expect("entry"),
+        "blur2"
+    );
+}
+
+/// A compute shader whose workgroup size two overrides give, 8 by 4 at their defaults.
+const OVERRIDE_SIZES: &str = "
+override width: u32 = 8;
+override height: u32 = width / 2;
+@group(0) @binding(0) var<storage, read_write> lanes: array<u32, 32>;
+@compute @workgroup_size(width, height)
+fn cs_main(@builtin(local_invocation_index) index: u32) { lanes[index] = index + 1u; }
+";
+
+/// The WGSL the browser reads for `source`: the text as given,
+/// or what naga's writer prints for a module, as wgpu does there.
+fn written_text(source: &wgpu::ShaderSource<'_>) -> String {
+    match source {
+        wgpu::ShaderSource::Wgsl(text) => text.to_string(),
+        wgpu::ShaderSource::Naga(module) => {
+            let info = crate::core::validate_module(module, None).expect("valid module");
+            let flags = naga::back::wgsl::WriterFlags::empty();
+            naga::back::wgsl::write_string(module, &info, flags).expect("written WGSL")
+        }
+        _ => panic!("a pipeline source is WGSL or a naga module"),
+    }
+}
+
+/// The workgroup size of the compute entry point in `source`, as the browser reads it.
+fn written_size(source: &wgpu::ShaderSource<'_>) -> String {
+    let text = written_text(source);
+    let start = text.find("@workgroup_size(").expect("a workgroup size");
+    let end = start + text[start..].find(')').expect("a closing parenthesis");
+    text[start..=end].to_string()
+}
+
+// Story: every pipeline source carries the workgroup size the overrides' defaults give,
+// so the browser runs 8 by 4 threads where naga's writer printed a size of 1 for an override.
+// A module whose buffer layout the browser gets as WGSL text keeps the size there too.
+#[test]
+fn override_workgroup_sizes_reach_every_source() {
+    let plain = Shader::new(OVERRIDE_SIZES).expect("shader");
+    let laid_out = Shader::new(
+        "
+override width: u32 = 8;
+override height: u32 = width / 2;
+struct Lanes { first: u32, @align(16) rest: array<u32, 32> };
+@group(0) @binding(0) var<storage, read_write> lanes: Lanes;
+@compute @workgroup_size(width, height)
+fn cs_main(@builtin(local_invocation_index) index: u32) { lanes.rest[index] = index + 1u; }
+",
+    )
+    .expect("shader");
+
+    let native = pick_source(plain.object.module.clone(), false).expect("native source");
+    let web = pick_source(plain.object.module.clone(), true).expect("web source");
+    let layout = pick_source(laid_out.object.module.clone(), true).expect("web layout source");
+
+    let wgpu::ShaderSource::Naga(module) = &native.source else {
+        panic!("a native pipeline takes a naga module");
+    };
+    let entry = &module.entry_points[0];
+    assert_eq!(entry.workgroup_size, [8, 4, 1]);
+    assert!(entry.workgroup_size_overrides.is_none());
+    assert_eq!(written_size(&web.source), "@workgroup_size(8, 4, 1)");
+    assert!(matches!(layout.source, wgpu::ShaderSource::Wgsl(_)));
+    assert_eq!(written_size(&layout.source), "@workgroup_size(8, 4, 1)");
+}
+
+// Story: an override whose default reads another override reaches the browser resolved,
+// in a render shader too, so naga's WGSL writer, which panicked on such a default, writes it.
+#[test]
+fn derived_overrides_write_for_the_browser() {
+    let shader = fullscreen(
+        "override red: f32 = 0.25;
+override doubled: f32 = red * 2.0;
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(doubled, 0.0, 0.0, 1.0); }",
+    )
+    .expect("shader");
+
+    let web = pick_source(shader.object.module.clone(), true).expect("web source");
+
+    let text = written_text(&web.source);
+    assert!(text.contains("const doubled: f32 = 0.5f;"), "{text}");
+}
+
+// Story: a module naga's writer can't write for the browser is refused in one sentence,
+// with naga's reason in parentheses.
+#[test]
+fn browser_writer_refusals_read_as_one_sentence() {
+    let reason = "fall-through switch case block";
+    let loss = LayoutLoss::Write(naga::back::wgsl::Error::Unimplemented(reason.into()));
+
+    let error = RendererError::from(refuse_layout(loss));
+
+    let fields = error.list_fields();
+    assert_eq!(fields[0], ("item", Field::Text("the shader".into())));
+    let ("feature", Field::Text(feature)) = &fields[1] else {
+        panic!("expected a feature, got {fields:?}");
+    };
+    assert!(
+        feature.starts_with("WGSL that naga can write for the browser (") && feature.ends_with(')'),
+        "{feature}"
+    );
+    assert!(feature.contains(reason), "{feature}");
+    assert_refused!(
+        error,
+        RendererError::FeatureError { .. },
+        &format!("the shader needs {feature}, which the device lacks")
+    );
+}
+
+// Story: a struct whose layout the WGSL wgpu writes for the browser can't keep is refused
+// with the item the GL refusal gives, and the feature says where that text moves the struct.
+#[test]
+fn browser_layout_refusals_name_the_struct() {
+    let loss = LayoutLoss::Moved {
+        name: "Gaps".into(),
+        reason: "there `b` sits at byte 8, not 16".into(),
+    };
+
+    let error = RendererError::from(refuse_layout(loss));
+
+    let feature = "@size and @align offsets in the WGSL wgpu writes for the browser (there `b` sits at byte 8, not 16)";
+    let expected = vec![
+        ("item", Field::Text("struct `Gaps`".into())),
+        ("feature", Field::Text(feature.into())),
+    ];
+    assert_eq!(error.list_fields(), expected);
+    assert_refused!(
+        error,
+        RendererError::FeatureError { .. },
+        &format!("struct `Gaps` needs {feature}, which the device lacks")
+    );
+}
+
+// Story: a device that takes lights through a uniform block refuses a shader that
+// measures a light root with `arrayLength`, and keeps that verdict like any other.
+#[test]
+fn uniform_lights_refuse_measured_roots() {
+    pollster::block_on(async move {
+        let (_renderer, context, _) = setup().await.expect("render context");
+        let shader = fullscreen(
+            "struct Light { kind: u32, intensity: f32, range: f32, inner_cone_cos: f32, position: vec3<f32>, outer_cone_cos: f32, direction: vec3<f32>, color: vec3<f32> }
+struct LightGrid { view_proj: mat4x4<f32>, depth_plane: vec4<f32>, size: vec3<u32>, slicing: u32, slice_scale: f32, slice_bias: f32, reach: f32 }
+struct Lights { count: u32, global_count: u32, promoted_count: u32, ambient: vec3<f32>, grid: LightGrid, lights: array<Light> }
+@group(0) @binding(0) var<storage, read> lights: Lights;
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(f32(arrayLength(&lights.lights))); }",
+        )
+        .expect("shader");
+        let uniform = copy_context(&context);
+        *uniform.light_path.write() = LightPath::Uniform { count: 4 };
+
+        let first = uniform.check_shader(&shader.object).unwrap_err();
+        let second = uniform.check_shader(&shader.object).unwrap_err();
+
+        assert_eq!(first.to_string(), second.to_string());
+        assert_refused!(
+            first,
+            RendererError::FeatureError { .. },
+            "a shader that measures `lights` or `light_grid` with `arrayLength` needs clustered lights in storage buffers, which the device lacks"
+        );
+        let verdict = uniform.checked.get(&shader.object.hash).expect("a verdict");
+        assert!(
+            matches!(verdict.value(), Verdict::Refused(_)),
+            "got {:?}",
+            verdict.value()
+        );
+    });
+}
+
+// Story: a binding no entry point uses is visible to the compute stage only, so a render
+// pipeline with an unused storage buffer builds on a device without vertex storage.
+#[test]
+fn unused_storage_needs_no_vertex_storage() {
+    pollster::block_on(async move {
+        let (_renderer, context, _) = setup().await.expect("render context");
+        let mut plain = copy_context(&context);
+        plain.downlevel = context.downlevel - wgpu::DownlevelFlags::VERTEX_STORAGE;
+        let unused = fullscreen(
+            "@group(0) @binding(0) var<storage, read> spare: array<vec4<f32>, 4>;
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }",
+        )
+        .expect("shader");
+        let read = Shader::new(
+            "@group(0) @binding(0) var<storage, read> spare: array<vec4<f32>, 4>;
+@vertex fn vs_main() -> @builtin(position) vec4<f32> { return spare[0]; }
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }",
+        )
+        .expect("shader");
+
+        assert!(plain.check_shader(&unused.object).is_ok());
+        assert_refused!(
+            plain.check_shader(&read.object).unwrap_err(),
+            RendererError::FeatureError { .. },
+            "'spare' at @group(0) @binding(0) needs VERTEX_STORAGE"
+        );
+    });
+}
+
+// Story: on a backend that pads uniform bindings to 16 bytes, such as WebGL2, an immediate
+// root lowered to a uniform is padded too, so a 12-byte root binds as 16 bytes.
+#[test]
+fn lowered_immediates_fill_sixteen_bytes() {
+    pollster::block_on(async move {
+        let (_renderer, context, _) = setup().await.expect("render context");
+        let padded = copy_context(&context);
+        padded
+            .aligned_uniform_bindings
+            .store(true, Ordering::Relaxed);
+        let shader = fullscreen(
+            "var<immediate> tint: vec3<f32>;
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(tint, 1.0); }",
+        )
+        .expect("shader");
+
+        let layout = plan_layout(&shader.object, &padded, None);
+        let module = build_module(&shader.object, &layout, true, None).expect("module");
+
+        let mut layouter = naga::proc::Layouter::default();
+        layouter.update(module.to_ctx()).expect("layout");
+        let tint = module
+            .global_variables
+            .iter()
+            .find(|(_, global)| global.name.as_deref() == Some("tint"))
+            .map(|(_, global)| global)
+            .expect("tint");
+        assert_eq!(tint.space, naga::AddressSpace::Uniform);
+        assert_eq!(
+            layouter[tint.ty].size % 16,
+            0,
+            "binds a multiple of 16 bytes"
+        );
+        assert!(padded.check_shader(&shader.object).is_ok());
+    });
+}
+
+// Story: more workgroup memory than the device holds fails before any GPU work.
+// An array that an override sizes counts at the override's default, also one computed from another.
+#[test]
+fn workgroup_memory_past_the_device_fails() {
+    let max = pollster::block_on(async {
+        let (_renderer, context, _) = setup().await.expect("render context");
+        context.limits.max_compute_workgroup_storage_size
+    });
+    let count = max / 16 + 1;
+    let shader = Shader::new(
+        format!(
+            "var<workgroup> tile: array<vec4<f32>, {count}>;
+@compute @workgroup_size(1) fn cs_main() {{ tile[0] = vec4<f32>(1.0); }}"
+        )
+        .as_str(),
+    )
+    .expect("shader");
+    assert_refused!(
+        refuse_alone(&shader).expect("refused"),
+        RendererError::LimitError { .. },
+        &format!(
+            "`cs_main` needs max_compute_workgroup_storage_size of at least {}, and the device has {max}",
+            count * 16
+        )
+    );
+    let half = max / 32 + 1;
+    let computed = Shader::new(
+        format!(
+            "override half: u32 = {half};
+override count: u32 = half * 2;
+var<workgroup> tile: array<vec4<f32>, count>;
+@compute @workgroup_size(1) fn cs_main() {{ tile[0] = vec4<f32>(1.0); }}"
+        )
+        .as_str(),
+    )
+    .expect("shader");
+    assert_refused!(
+        refuse_alone(&computed).expect("refused"),
+        RendererError::LimitError { .. },
+        &format!(
+            "`cs_main` needs max_compute_workgroup_storage_size of at least {}, and the device has {max}",
+            half * 32
+        )
+    );
+}
+
+// Story: a refused shader keeps its verdict, so each later frame returns the same
+// error without building and validating its module again.
+#[test]
+fn refused_shaders_keep_their_verdict() {
+    pollster::block_on(async move {
+        let (renderer, context, uncaptured) = setup().await.expect("render context");
+        let lone =
+            Shader::new("@fragment fn main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }")
+                .expect("shader");
+
+        let first = refuse(&renderer, &context, &uncaptured, &lone).expect("refused");
+        let second = refuse(&renderer, &context, &uncaptured, &lone).expect("refused");
+
+        assert_eq!(first.to_string(), second.to_string());
+        let verdict = context.checked.get(&lone.object.hash).expect("a verdict");
+        assert!(
+            matches!(verdict.value(), Verdict::Refused(_)),
+            "got {:?}",
+            verdict.value()
+        );
+    });
+}
+
+// Story: an unset PBR map takes its 1x1 default only where the slot takes a 2D float
+// texture, and a compute shader, which binds no default, needs its texture set.
+#[test]
+fn pbr_defaults_fit_their_slots() {
+    pollster::block_on(async move {
+        let (renderer, context, uncaptured) = setup().await.expect("render context");
+        let layered = fullscreen(
+            "@group(0) @binding(0) var normal_map: texture_2d_array<f32>;
+@fragment fn fs_main() -> @location(0) vec4<f32> { return textureLoad(normal_map, vec2<i32>(0), 0, 0); }",
+        )
+        .expect("shader");
+        assert_refused!(
+            refuse(&renderer, &context, &uncaptured, &layered).expect("refused"),
+            RendererError::BindingError { .. },
+            "'normal_map' takes a D2Array view, which no FragmentColor texture makes yet, not a D2 texture"
+        );
+        let compute = Shader::new(
+            "@group(0) @binding(0) var base_color_map: texture_2d<f32>;
+@group(0) @binding(1) var<storage, read_write> pbr_out: vec4<f32>;
+@compute @workgroup_size(1) fn cs_main() { pbr_out = textureLoad(base_color_map, vec2<i32>(0), 0); }",
+        )
+        .expect("shader");
+        assert_refused!(
+            refuse(&renderer, &context, &uncaptured, &compute).expect("refused"),
+            RendererError::BindingError { .. },
+            "'base_color_map' takes a texture, not none, since it was never set"
+        );
+    });
+}
+
+// Story: a cube slot takes no FragmentColor texture yet, and says so.
+#[test]
+fn cube_slots_take_no_texture_yet() {
+    pollster::block_on(async move {
+        let (renderer, context, uncaptured) = setup().await.expect("render context");
+        let sky = fullscreen(
+            "@group(0) @binding(0) var sky: texture_cube<f32>;
+@group(0) @binding(1) var linear: sampler;
+@fragment fn fs_main() -> @location(0) vec4<f32> { return textureSample(sky, linear, vec3<f32>(1.0, 0.0, 0.0)); }",
+        )
+        .expect("shader");
+        let plain = renderer
+            .create_texture((vec![0u8; 4 * 4 * 4], [4u32, 4]))
+            .await
+            .expect("2D texture");
+        sky.set("sky", &plain).expect("set");
+
+        assert_refused!(
+            refuse(&renderer, &context, &uncaptured, &sky).expect("refused"),
+            RendererError::BindingError { .. },
+            "'sky' takes a Cube view, which no FragmentColor texture makes yet"
+        );
+    });
+}
+
+/// A compute shader that adds 1 across each subgroup
+/// of a 64-invocation workgroup and keeps the subgroup size each one sees.
+const SUBGROUP_SUMS: &str = r#"
+@group(0) @binding(0) var<storage, read_write> sums: array<u32, 64>;
+@group(0) @binding(1) var<storage, read_write> sizes: array<u32, 64>;
+@compute @workgroup_size(64)
+fn cs_main(@builtin(local_invocation_index) index: u32, @builtin(subgroup_size) size: u32) {
+  sums[index] = subgroupAdd(1u);
+  sizes[index] = size;
+}
+"#;
+
+/// The `u32` words of `bytes`, little endian.
+fn read_words(bytes: &[u8]) -> Vec<u32> {
+    let (words, _) = bytes.as_chunks::<4>();
+    words.iter().map(|word| u32::from_le_bytes(*word)).collect()
+}
+
+/// Renders `shader` on a renderer whose device lacks `missing`, and returns the error,
+/// as `refuse` checks it. Render refuses before any GPU work, so the device can't tell.
+fn refuse_without(
+    context: &RenderContext,
+    missing: wgpu::Features,
+    shader: &Shader,
+) -> Option<RendererError> {
+    let mut device = copy_context(context);
+    device.features = context.features - missing;
+    let (renderer, device) = adopt(device);
+    let uncaptured = super::record_uncaptured(&device);
+    refuse(&renderer, &device, &uncaptured, shader)
+}
+
+// Story: a compute shader sums across its subgroups where the device has SUBGROUP,
+// and render refuses it before any GPU work where the device lacks it, naming the flag.
+#[test]
+fn subgroups_run_where_the_device_has_them() {
+    pollster::block_on(async move {
+        let (renderer, context, uncaptured) = setup().await.expect("render context");
+        let shader = Shader::new(SUBGROUP_SUMS).expect("shader");
+        if context.features.contains(wgpu::Features::SUBGROUP) {
+            eprintln!("the device has SUBGROUP, so the sums were checked");
+            let target = renderer
+                .create_texture_target([4, 4])
+                .await
+                .expect("texture target");
+
+            renderer.render(&shader, &target).expect("render");
+            let sums = renderer.read_storage(&shader, "sums").await.expect("sums");
+            let sizes = renderer
+                .read_storage(&shader, "sizes")
+                .await
+                .expect("sizes");
+
+            let info = context.adapter.as_ref().expect("an adapter").get_info();
+            let range = info.subgroup_min_size..=info.subgroup_max_size;
+            for (sum, size) in read_words(&sums).into_iter().zip(read_words(&sizes)) {
+                assert!(range.contains(&size), "size {size} outside {range:?}");
+                assert_eq!(sum, size.min(64), "size {size}");
+            }
+            assert!(uncaptured.lock().is_empty(), "got {:?}", uncaptured.lock());
+        } else {
+            eprintln!("the device lacks SUBGROUP, so only the refusal was checked");
+        }
+        let subgroups = wgpu::Features::SUBGROUP
+            | wgpu::Features::SUBGROUP_VERTEX
+            | wgpu::Features::SUBGROUP_BARRIER;
+        assert_refused!(
+            refuse_without(&context, subgroups, &shader).expect("refused"),
+            RendererError::FeatureError { .. },
+            "the shader needs SUBGROUP, which the device lacks"
+        );
+    });
+}
+
+// Story: a fragment shader reads `@builtin(primitive_index)` where the device has
+// PRIMITIVE_INDEX, so each of two triangles shades its own half of the target,
+// and render refuses it before any GPU work where the device lacks it.
+#[test]
+fn primitive_index_draws_where_the_device_has_it() {
+    pollster::block_on(async move {
+        let (renderer, context, uncaptured) = setup().await.expect("render context");
+        let shader = Shader::new(
+            r#"
+enable primitive_index;
+@vertex fn vs_main(@location(0) position: vec2<f32>) -> @builtin(position) vec4<f32> {
+  return vec4<f32>(position, 0.0, 1.0);
+}
+@fragment fn fs_main(@builtin(primitive_index) index: u32) -> @location(0) vec4<f32> {
+  return vec4<f32>(f32(index), 1.0 - f32(index), 0.0, 1.0);
+}
+"#,
+        )
+        .expect("shader");
+        // Two triangles, each covering one half of the target.
+        let mesh = Mesh::new();
+        mesh.add_vertices([
+            Vertex::new([0.0, -3.0]),
+            Vertex::new([0.0, 3.0]),
+            Vertex::new([-3.0, 0.0]),
+            Vertex::new([0.0, -3.0]),
+            Vertex::new([3.0, 0.0]),
+            Vertex::new([0.0, 3.0]),
+        ]);
+        shader.add_mesh(&mesh).expect("mesh");
+        if context.features.contains(wgpu::Features::PRIMITIVE_INDEX) {
+            eprintln!("the device has PRIMITIVE_INDEX, so the draw was checked");
+            let target = renderer
+                .create_texture_target([8, 8])
+                .await
+                .expect("texture target");
+
+            renderer.render(&shader, &target).expect("render");
+            let image = target.get_image().await.expect("read back");
+
+            let pixel = |x: usize, y: usize| image[(y * 8 + x) * 4..][..4].to_vec();
+            assert_eq!(pixel(1, 4), [0, 255, 0, 255]);
+            assert_eq!(pixel(6, 4), [255, 0, 0, 255]);
+            assert!(uncaptured.lock().is_empty(), "got {:?}", uncaptured.lock());
+        } else {
+            eprintln!("the device lacks PRIMITIVE_INDEX, so only the refusal was checked");
+        }
+        assert_refused!(
+            refuse_without(&context, wgpu::Features::PRIMITIVE_INDEX, &shader).expect("refused"),
+            RendererError::FeatureError { .. },
+            "the shader needs PRIMITIVE_INDEX, which the device lacks"
+        );
+    });
+}
+
+// Story: a shader that uses a feature the device lacks is refused with the wgpu flags
+// it needs, a set the device's validator takes with none it can drop, on every device alike.
+// A vertex stage needs SUBGROUP_VERTEX, which no Metal device offers, a subgroup
+// barrier needs SUBGROUP_BARRIER, which no DX12 device offers, an atomic storage
+// texture needs TEXTURE_ATOMIC, which neither the browser's WebGPU nor GL offers,
+// an external texture needs EXTERNAL_TEXTURE, which only Metal and DX12 offer,
+// and f16 needs SHADER_F16, which GL never offers.
+#[test]
+fn missing_features_name_their_flags() {
+    pollster::block_on(async move {
+        let (_renderer, context, _) = setup().await.expect("render context");
+        let no_vertex = CANDIDATES - wgpu::Features::SUBGROUP_VERTEX;
+        let profiles = [
+            wgpu::Features::empty(),
+            no_vertex,
+            no_vertex - wgpu::Features::SUBGROUP_BARRIER,
+            CANDIDATES,
+        ];
+        let compute_add = Shader::new(
+            "@group(0) @binding(0) var<storage, read_write> sums: array<u32, 64>;
+@compute @workgroup_size(64)
+fn cs_main(@builtin(local_invocation_index) index: u32) { sums[index] = subgroupAdd(1u); }",
+        )
+        .expect("shader");
+        let barrier =
+            Shader::new("@compute @workgroup_size(64) fn cs_main() { subgroupBarrier(); }")
+                .expect("shader");
+        let vertex_add = Shader::new(
+            "@vertex fn vs_main() -> @builtin(position) vec4<f32> { return vec4<f32>(subgroupAdd(0.0)); }
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }",
+        )
+        .expect("shader");
+        let fragment_add = fullscreen(
+            "@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(subgroupAdd(1.0)); }",
+        )
+        .expect("shader");
+        let primitive = Shader::new(
+            format!(
+                "enable primitive_index;\n{VERTEX}\n@fragment fn fs_main(@builtin(primitive_index) index: u32) -> @location(0) vec4<f32> {{ return vec4<f32>(f32(index)); }}"
+            )
+            .as_str(),
+        )
+        .expect("shader");
+        let barrier_flags = [
+            Some("SUBGROUP | SUBGROUP_BARRIER"),
+            None,
+            Some("SUBGROUP_BARRIER"),
+            None,
+        ];
+        // The storage check meets an atomic slot before the module check, and names its slot.
+        let atomic = Shader::new(ATOMIC_COUNTS).expect("shader");
+        let vertex = Some("SUBGROUP_VERTEX");
+        let shader = "the shader";
+        let counts = "'counts' at @group(0) @binding(0)";
+        let atomic_flags = Some("TEXTURE_ATOMIC for a R32Uint storage texture");
+        // So does the external texture check, which runs beside it.
+        let external = fullscreen(EXTERNAL_LOAD).expect("shader");
+        let video = "'video' at @group(0) @binding(0)";
+        let half = half_fullscreen(HALF_TINT).expect("shader");
+        let cases = [
+            (&compute_add, shader, [Some("SUBGROUP"), None, None, None]),
+            (&barrier, shader, barrier_flags),
+            (&vertex_add, shader, [vertex, vertex, vertex, None]),
+            (&fragment_add, shader, [Some("SUBGROUP"), None, None, None]),
+            (
+                &primitive,
+                shader,
+                [Some("PRIMITIVE_INDEX"), None, None, None],
+            ),
+            (&atomic, counts, [atomic_flags, None, None, None]),
+            (
+                &external,
+                video,
+                [Some("EXTERNAL_TEXTURE"), None, None, None],
+            ),
+            (&half, shader, [Some("SHADER_F16"), None, None, None]),
+        ];
+
+        for (shader, item, expected) in cases {
+            for (features, flags) in profiles.into_iter().zip(expected) {
+                let mut device = copy_context(&context);
+                device.features = features;
+
+                let checked = device.check_shader(&shader.object);
+
+                match flags {
+                    None => assert!(checked.is_ok(), "{features}: {checked:?}"),
+                    Some(flags) => assert_refused!(
+                        checked.unwrap_err(),
+                        RendererError::FeatureError { .. },
+                        &format!("{item} needs {flags}, which the device lacks")
+                    ),
+                }
+            }
+        }
+    });
+}
+
+// Story: a module the device's validator refuses for what no candidate feature gives
+// keeps naga's report, as a device without multisampled shading refuses `sample_index`.
+#[test]
+fn refusals_no_feature_fixes_keep_naga_report() {
+    pollster::block_on(async move {
+        let (_renderer, context, _) = setup().await.expect("render context");
+        let shader = fullscreen(
+            "@fragment fn fs_main(@builtin(sample_index) sample: u32) -> @location(0) vec4<f32> { return vec4<f32>(f32(sample)); }",
+        )
+        .expect("shader");
+        let mut device = copy_context(&context);
+        device.downlevel = wgpu::DownlevelFlags::all() - wgpu::DownlevelFlags::MULTISAMPLED_SHADING;
+
+        let error = device.check_shader(&shader.object).unwrap_err();
+
+        assert_refused!(
+            error,
+            RendererError::FeatureError { .. },
+            "the shader needs what the device's shader validator refuses: "
+        );
+    });
+}
+
+/// A compute shader that adds 1 to a texel of `counts` in each invocation.
+/// Dispatched as 8x8 workgroups of 8x8, it counts 256 into each texel of a 4x4 texture.
+const ATOMIC_COUNTS: &str = r#"
+@group(0) @binding(0) var counts: texture_storage_2d<r32uint, atomic>;
+@compute @workgroup_size(8, 8)
+fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
+  textureAtomicAdd(counts, id.xy / 16u, 1u);
+}
+"#;
+
+// Story: a compute shader counts into an R32Uint storage texture with texture atomics
+// where the device has TEXTURE_ATOMIC, whose storage textures in that format take wgpu's
+// STORAGE_ATOMIC usage, and render refuses it before any GPU work where the device lacks it.
+#[test]
+fn atomic_storage_textures_count() {
+    pollster::block_on(async move {
+        let (renderer, context, uncaptured) = setup().await.expect("render context");
+        let shader = Shader::new(ATOMIC_COUNTS).expect("shader");
+        let counts = renderer
+            .create_storage_texture(([4, 4], crate::TextureFormat::R32Uint))
+            .await
+            .expect("texture");
+        shader.set("counts", &counts).expect("counts");
+        let pass = crate::Pass::from_shader("count", &shader);
+        pass.set_compute_dispatch(8, 8, 1);
+        let atomic = context.features.contains(wgpu::Features::TEXTURE_ATOMIC);
+
+        let usage = counts.object().usage;
+
+        assert_eq!(
+            usage.contains(wgpu::TextureUsages::STORAGE_ATOMIC),
+            atomic,
+            "{usage:?}"
+        );
+        if atomic {
+            eprintln!("the device has TEXTURE_ATOMIC, so the counts were checked");
+            let target = renderer
+                .create_texture_target([4, 4])
+                .await
+                .expect("texture target");
+            renderer.render(&pass, &target).expect("render");
+            let bytes = renderer
+                .read_texture(*counts.id())
+                .await
+                .expect("read back");
+            assert_eq!(read_words(&bytes), [256; 16]);
+            assert!(uncaptured.lock().is_empty(), "got {:?}", uncaptured.lock());
+        } else {
+            eprintln!("the device lacks TEXTURE_ATOMIC, so only the refusal was checked");
+            assert_refused!(
+                refuse(&renderer, &context, &uncaptured, &shader).expect("refused"),
+                RendererError::FeatureError { .. },
+                "needs TEXTURE_ATOMIC for a R32Uint storage texture, which the device lacks"
+            );
+        }
+    });
+}
+
+// Story: on a device without TEXTURE_ATOMIC, as the browser's WebGPU and GL are,
+// an R32Uint storage texture takes no STORAGE_ATOMIC usage, and render refuses an atomic
+// slot with a FeatureError that names the feature, before it builds a layout the browser's
+// wgpu backend can't build. A copy of any device without the feature shows it.
+#[test]
+fn atomic_storage_needs_texture_atomics() {
+    pollster::block_on(async move {
+        let (_renderer, context, _) = setup().await.expect("render context");
+        let mut lacking = copy_context(&context);
+        lacking.features = context.features - wgpu::Features::TEXTURE_ATOMIC;
+        let (renderer, lacking) = adopt(lacking);
+        let uncaptured = super::record_uncaptured(&lacking);
+        let usage = wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::COPY_SRC;
+        let counts =
+            create_texture(&lacking, wgpu::TextureFormat::R32Uint, usage).expect("texture");
+        let shader = Shader::new(ATOMIC_COUNTS).expect("shader");
+        shader.set("counts", &counts).expect("counts");
+
+        let error = refuse(&renderer, &lacking, &uncaptured, &shader).expect("refused");
+
+        assert_eq!(counts.object().usage, usage);
+        let expected = vec![
+            (
+                "item",
+                Field::Text("'counts' at @group(0) @binding(0)".into()),
+            ),
+            (
+                "feature",
+                Field::Text("TEXTURE_ATOMIC for a R32Uint storage texture".into()),
+            ),
+        ];
+        assert_eq!(error.list_fields(), expected);
+        assert_refused!(
+            error,
+            RendererError::FeatureError { .. },
+            "'counts' at @group(0) @binding(0) needs TEXTURE_ATOMIC for a R32Uint storage texture, which the device lacks"
+        );
+    });
+}
+
+/// A fullscreen shader that writes the texel of `video` under each pixel, from `textureLoad`.
+const EXTERNAL_LOAD: &str = "@group(0) @binding(0) var video: texture_external;
+@fragment fn fs_main(@builtin(position) at: vec4<f32>) -> @location(0) vec4<f32> {
+  return textureLoad(video, vec2<u32>(at.xy));
+}";
+
+/// A fullscreen shader that samples `video` at the texel center under each pixel,
+/// and writes the size `textureDimensions` gives as 10 * width + height in alpha.
+const EXTERNAL_SAMPLE: &str = "@group(0) @binding(0) var video: texture_external;
+@group(0) @binding(1) var soft: sampler;
+@fragment fn fs_main(@builtin(position) at: vec4<f32>) -> @location(0) vec4<f32> {
+  let size = textureDimensions(video);
+  let texel = textureSampleBaseClampToEdge(video, soft, at.xy / vec2<f32>(size));
+  return vec4<f32>(texel.rgb, f32(size.x * 10u + size.y) / 255.0);
+}";
+
+/// Four texels of a 2x2 texture, each channel its own value.
+const TEXELS: [u8; 16] = [
+    200, 10, 30, 255, 40, 220, 60, 255, 70, 80, 240, 255, 120, 130, 140, 255,
+];
+
+// Story: a shader reads an ordinary texture through `texture_external` where the device has
+// EXTERNAL_TEXTURE, as Metal does. `textureLoad`, `textureSampleBaseClampToEdge` and
+// `textureDimensions` see its base level, also for a texture with a mip chain, in Rgba8Unorm
+// and Bgra8Unorm. Where the device lacks the feature, render refuses the shader before any GPU work.
+#[test]
+fn external_textures_read_textures() {
+    pollster::block_on(async move {
+        let (renderer, context, uncaptured) = setup().await.expect("render context");
+        let load = fullscreen(EXTERNAL_LOAD).expect("shader");
+        let sample = fullscreen(EXTERNAL_SAMPLE).expect("shader");
+        let external = wgpu::Features::EXTERNAL_TEXTURE;
+        #[cfg(target_os = "macos")]
+        assert!(
+            context.features.contains(external),
+            "Metal offers EXTERNAL_TEXTURE"
+        );
+        if !context.features.contains(external) {
+            eprintln!("the device lacks EXTERNAL_TEXTURE, so only the refusal was checked");
+            assert_refused!(
+                refuse(&renderer, &context, &uncaptured, &load).expect("refused"),
+                RendererError::FeatureError { .. },
+                "'video' at @group(0) @binding(0) needs EXTERNAL_TEXTURE, which the device lacks"
+            );
+            return;
+        }
+        eprintln!("the device has EXTERNAL_TEXTURE, so the reads were checked");
+        let target = renderer
+            .create_texture_target([2, 2])
+            .await
+            .expect("texture target");
+        for format in [
+            crate::TextureFormat::Rgba8Unorm,
+            crate::TextureFormat::Bgra8Unorm,
+        ] {
+            let texture = renderer
+                .create_texture((TEXELS.to_vec(), format, [2u32, 2]))
+                .await
+                .expect("texture");
+            let levels = texture.object().inner.mip_level_count();
+            assert!(levels > 1, "{format:?} has {levels} level");
+            // BGRA bytes hold blue first, and the shader reads them as RGBA.
+            let texels = TEXELS.as_chunks::<4>().0.iter();
+            let expected: Vec<u8> = match format {
+                crate::TextureFormat::Bgra8Unorm => {
+                    texels.flat_map(|[b, g, r, a]| [*r, *g, *b, *a]).collect()
+                }
+                _ => texels.flatten().copied().collect(),
+            };
+            load.set("video", &texture).expect("video");
+            sample.set("video", &texture).expect("video");
+
+            renderer.render(&load, &target).expect("load");
+            let loaded = target.get_image().await.expect("read back");
+            renderer.render(&sample, &target).expect("sample");
+            let sampled = target.get_image().await.expect("read back");
+
+            assert_eq!(loaded, expected, "textureLoad of {format:?}");
+            let pixels = sampled.as_chunks::<4>().0.iter();
+            for (pixel, texel) in pixels.zip(expected.as_chunks::<4>().0) {
+                let close = (0..3).all(|channel| pixel[channel].abs_diff(texel[channel]) <= 1);
+                assert!(close, "{format:?} sampled {pixel:?} for {texel:?}");
+                assert_eq!(pixel[3], 22, "textureDimensions of {format:?}");
+            }
+        }
+        assert!(uncaptured.lock().is_empty(), "got {:?}", uncaptured.lock());
+    });
+}
+
+// Story: on a device without EXTERNAL_TEXTURE, as Vulkan, GL and the browser's WebGPU are,
+// render refuses an external texture slot with a FeatureError that names the slot and the
+// feature, before it builds any layout and before it looks for the slot's texture.
+// A copy of any device without the feature shows it, a GL one included.
+#[test]
+fn external_textures_need_the_feature() {
+    pollster::block_on(async move {
+        let (_renderer, context, _) = setup().await.expect("render context");
+        let shader = fullscreen(EXTERNAL_LOAD).expect("shader");
+        let external = wgpu::Features::EXTERNAL_TEXTURE;
+        let mut gl = copy_context(&context);
+        gl.features = context.features - external;
+        gl.backend = wgpu::Backend::Gl;
+
+        let error = refuse_without(&context, external, &shader).expect("refused");
+        let on_gl = gl.check_shader(&shader.object).unwrap_err();
+
+        let expected = vec![
+            (
+                "item",
+                Field::Text("'video' at @group(0) @binding(0)".into()),
+            ),
+            ("feature", Field::Text("EXTERNAL_TEXTURE".into())),
+        ];
+        assert_eq!(error.list_fields(), expected);
+        assert_eq!(on_gl.list_fields(), expected);
+        assert_refused!(
+            error,
+            RendererError::FeatureError { .. },
+            "'video' at @group(0) @binding(0) needs EXTERNAL_TEXTURE, which the device lacks"
+        );
+    });
+}
+
+// Story: an external texture slot takes a single-sampled 2D texture in Rgba8Unorm,
+// Bgra8Unorm or Rgba16Float with TEXTURE_BINDING usage, and any number of mip levels,
+// since it binds the base level. wgpu refuses every other texture there, sRGB included.
+#[test]
+fn external_slots_take_plain_2d_textures() {
+    use wgpu::TextureFormat as Format;
+    use wgpu::TextureViewDimension as View;
+    let slot = wgpu::BindingType::ExternalTexture;
+    let plain = TextureFacts {
+        format: Format::Rgba8Unorm,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING,
+        dimension: View::D2,
+        samples: 1,
+        levels: 1,
+    };
+    let fits = [
+        plain,
+        TextureFacts { levels: 5, ..plain },
+        TextureFacts {
+            format: Format::Bgra8Unorm,
+            ..plain
+        },
+        TextureFacts {
+            format: Format::Rgba16Float,
+            ..plain
+        },
+    ];
+    let refused = [
+        (
+            TextureFacts {
+                format: Format::Rgba8UnormSrgb,
+                ..plain
+            },
+            "'video' takes an Rgba8Unorm, Bgra8Unorm or Rgba16Float texture, not Rgba8UnormSrgb",
+        ),
+        (
+            TextureFacts {
+                dimension: View::D2Array,
+                ..plain
+            },
+            "'video' takes a D2 texture, not a D2Array texture",
+        ),
+        (
+            TextureFacts {
+                dimension: View::D3,
+                ..plain
+            },
+            "'video' takes a D2 texture, not a D3 texture",
+        ),
+        (
+            TextureFacts {
+                samples: 4,
+                ..plain
+            },
+            "'video' takes a single-sampled texture, not 4 samples",
+        ),
+        (
+            TextureFacts {
+                usage: wgpu::TextureUsages::COPY_DST,
+                ..plain
+            },
+            "'video' takes a texture with TEXTURE_BINDING usage, not usage",
+        ),
+    ];
+
+    for facts in fits {
+        let checked = check_texture("video", &slot, &facts, wgpu::Features::empty());
+        assert!(checked.is_ok(), "{facts:?}: {checked:?}");
+    }
+    for (facts, problem) in refused {
+        let checked = check_texture("video", &slot, &facts, wgpu::Features::empty());
+        assert_refused!(
+            checked.unwrap_err(),
+            RendererError::BindingError { .. },
+            problem
+        );
+    }
+}
+
+// Story: an external texture counts against the stage limits as wgpu counts it: four sampled
+// textures, a sampler and a uniform buffer. A shader past a limit that way fails before the
+// frame on a device that has the feature, which a copy of any device shows.
+#[test]
+fn external_textures_count_as_wgpu_counts() {
+    pollster::block_on(async move {
+        let (_renderer, context, _) = setup().await.expect("render context");
+        let two = fullscreen(
+            "@group(0) @binding(0) var front: texture_external;
+@group(0) @binding(1) var back: texture_external;
+@fragment fn fs_main() -> @location(0) vec4<f32> {
+  return textureLoad(front, vec2<u32>(0u)) + textureLoad(back, vec2<u32>(0u));
+}",
+        )
+        .expect("shader");
+        let sampled = fullscreen(EXTERNAL_SAMPLE).expect("shader");
+        let tinted = fullscreen(
+            "@group(0) @binding(0) var video: texture_external;
+@group(0) @binding(1) var<uniform> tint: vec4<f32>;
+@fragment fn fs_main() -> @location(0) vec4<f32> { return textureLoad(video, vec2<u32>(0u)) * tint; }",
+        )
+        .expect("shader");
+        let cases: [(&Shader, &str, u32); 3] = [
+            (&two, "max_sampled_textures_per_shader_stage", 8),
+            (&sampled, "max_samplers_per_shader_stage", 2),
+            (&tinted, "max_uniform_buffers_per_shader_stage", 2),
+        ];
+
+        for (shader, limit, value) in cases {
+            let mut device = copy_context(&context);
+            device.features |= wgpu::Features::EXTERNAL_TEXTURE;
+            let max = value - 1;
+            let limits = &mut device.limits;
+            match limit {
+                "max_sampled_textures_per_shader_stage" => {
+                    limits.max_sampled_textures_per_shader_stage = max
+                }
+                "max_samplers_per_shader_stage" => limits.max_samplers_per_shader_stage = max,
+                _ => limits.max_uniform_buffers_per_shader_stage = max,
+            }
+
+            let error = device.check_shader(&shader.object).unwrap_err();
+
+            assert_refused!(
+                error,
+                RendererError::LimitError { .. },
+                &format!(
+                    "the fragment stage needs {limit} of at least {value}, and the device has {max}"
+                )
+            );
+        }
+    });
+}
+
+// Story: an external texture slot reads its texture, so a pass that draws into the texture
+// its shader binds there conflicts before any GPU work, where the device has EXTERNAL_TEXTURE.
+// Where the device lacks it, the shader's refusal comes first.
+#[test]
+fn external_slots_conflict_with_their_target() {
+    pollster::block_on(async move {
+        let (renderer, context, uncaptured) = setup().await.expect("render context");
+        let shader = fullscreen(EXTERNAL_LOAD).expect("shader");
+        let target = renderer
+            .create_texture_target([4, 4])
+            .await
+            .expect("texture target");
+        shader.set("video", &target.texture()).expect("video");
+
+        let error = renderer.render(&shader, &target).expect_err("refused");
+
+        match context.features.contains(wgpu::Features::EXTERNAL_TEXTURE) {
+            true => assert_refused!(
+                error,
+                RendererError::PassError(crate::PassError::TextureConflict { .. }),
+                "'video' reads"
+            ),
+            false => assert_refused!(
+                error,
+                RendererError::FeatureError { .. },
+                "needs EXTERNAL_TEXTURE"
+            ),
+        }
+        assert!(uncaptured.lock().is_empty(), "got {:?}", uncaptured.lock());
+    });
+}
+
+/// A render shader that opens with `enable f16;`: the fullscreen vertex stage, then `rest`.
+fn half_fullscreen(rest: &str) -> Result<Shader, ShaderError> {
+    Shader::new(format!("enable f16;\n{VERTEX}\n{rest}").as_str())
+}
+
+/// A fullscreen shader that writes an f16 tint times a bare f16 gain, a 2-byte root.
+const HALF_TINT: &str = "@group(0) @binding(0) var<uniform> tint: vec4<f16>;
+@group(0) @binding(1) var<uniform> gain: f16;
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(tint * gain); }";
+
+/// Asserts that the one pixel of `image` is within 1 of
+/// `[64, 128, 191, 255]`, what `[0.25, 0.5, 0.75, 1.0]` writes into Rgba8Unorm.
+fn assert_tint(image: &[u8], what: &str) {
+    let expected = [64u8, 128, 191, 255];
+    let close = image
+        .iter()
+        .zip(expected)
+        .all(|(got, want)| got.abs_diff(want) <= 1);
+    assert!(close, "{what} drew {image:?}, not {expected:?}");
+}
+
+/// Whether the device runs f16, as every Metal device does.
+/// Without it, render must refuse `shader` with a FeatureError before any GPU work.
+fn check_half(
+    renderer: &Renderer,
+    context: &RenderContext,
+    uncaptured: &Uncaptured,
+    shader: &Shader,
+) -> bool {
+    #[cfg(target_os = "macos")]
+    assert!(
+        context.features.contains(wgpu::Features::SHADER_F16),
+        "Metal offers SHADER_F16"
+    );
+    if context.features.contains(wgpu::Features::SHADER_F16) {
+        eprintln!("the device has SHADER_F16, so the draw was checked");
+        return true;
+    }
+    eprintln!("the device lacks SHADER_F16, so only the refusal was checked");
+    assert_refused!(
+        refuse(renderer, context, uncaptured, shader).expect("refused"),
+        RendererError::FeatureError { .. },
+        "the shader needs SHADER_F16, which the device lacks"
+    );
+    false
+}
+
+// Story: a shader reads an f16 vec4 uniform and a bare f16 uniform, whose 2-byte root
+// uploads padded to a whole word, where the device has SHADER_F16, as Metal does.
+#[test]
+fn f16_uniforms_render() {
+    pollster::block_on(async move {
+        let (renderer, context, uncaptured) = setup().await.expect("render context");
+        let shader = half_fullscreen(HALF_TINT).expect("shader");
+        if !check_half(&renderer, &context, &uncaptured, &shader) {
+            return;
+        }
+        let target = renderer
+            .create_texture_target([1, 1])
+            .await
+            .expect("texture target");
+
+        shader.set("tint", [0.25, 0.5, 0.75, 1.0]).expect("tint");
+        shader.set("gain", 1.0).expect("gain");
+        renderer.render(&shader, &target).expect("render");
+
+        assert_tint(
+            &target.get_image().await.expect("read back"),
+            "the uniforms",
+        );
+        assert!(uncaptured.lock().is_empty(), "got {:?}", uncaptured.lock());
+    });
+}
+
+// Story: a compute shader writes a 6-byte f16 storage root, which read_storage returns
+// exactly, and a fragment shader reads a vec3<f16> storage root set on the CPU. Both
+// buffers, their bindings and the readback round the root up to a whole word.
+#[test]
+fn f16_storage_round_trips() {
+    pollster::block_on(async move {
+        let (renderer, context, uncaptured) = setup().await.expect("render context");
+        let compute = Shader::new(
+            "enable f16;
+@group(0) @binding(0) var<storage, read_write> out: array<f16, 3>;
+@compute @workgroup_size(1) fn cs_main() { out[0] = 0.0h; out[1] = 1.5h; out[2] = 3.0h; }",
+        )
+        .expect("shader");
+        let draw = half_fullscreen(
+            "@group(0) @binding(0) var<storage, read> tint: vec3<f16>;
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(vec3<f32>(tint), 1.0); }",
+        )
+        .expect("shader");
+        if !check_half(&renderer, &context, &uncaptured, &draw) {
+            return;
+        }
+        let target = renderer
+            .create_texture_target([1, 1])
+            .await
+            .expect("texture target");
+
+        renderer.render(&compute, &target).expect("compute");
+        let bytes = renderer.read_storage(&compute, "out").await.expect("out");
+        // A storage root that isn't a struct takes its bytes whole: three halves, 6 bytes.
+        let tint: Vec<u8> = [0.25f32, 0.5, 0.75]
+            .iter()
+            .flat_map(|value| half::f16::from_f32(*value).to_ne_bytes())
+            .collect();
+        draw.set("tint", tint.as_slice()).expect("tint");
+        renderer.render(&draw, &target).expect("draw");
+
+        let pairs = bytes.as_chunks::<2>().0.iter();
+        let values: Vec<f32> = pairs
+            .map(|pair| half::f16::from_ne_bytes(*pair).to_f32())
+            .collect();
+        assert_eq!(values, [0.0, 1.5, 3.0], "{bytes:?}");
+        assert_tint(
+            &target.get_image().await.expect("read back"),
+            "the storage root",
+        );
+        assert!(uncaptured.lock().is_empty(), "got {:?}", uncaptured.lock());
+    });
+}
+
+// Story: f16 vertex inputs read a mesh's 32-bit floats, plain numbers for the position
+// and the tint, and the GPU converts them, where the device has SHADER_F16.
+#[test]
+fn f16_vertex_inputs_draw() {
+    pollster::block_on(async move {
+        let (renderer, context, uncaptured) = setup().await.expect("render context");
+        let shader = Shader::new(
+            "enable f16;
+struct Out { @builtin(position) at: vec4<f32>, @location(0) tint: vec4<f32> };
+@vertex fn vs_main(@location(0) position: vec2<f16>, @location(1) tint: vec4<f16>) -> Out {
+  return Out(vec4<f32>(vec2<f32>(position), 0.0, 1.0), vec4<f32>(tint));
+}
+@fragment fn fs_main(in: Out) -> @location(0) vec4<f32> { return in.tint; }",
+        )
+        .expect("shader");
+        let mesh = Mesh::new();
+        mesh.add_vertices(
+            [[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]]
+                .map(|corner| Vertex::new(corner).set("tint", [0.25, 0.5, 0.75, 1.0])),
+        );
+        shader.add_mesh(&mesh).expect("mesh");
+        if !check_half(&renderer, &context, &uncaptured, &shader) {
+            return;
+        }
+        let target = renderer
+            .create_texture_target([1, 1])
+            .await
+            .expect("texture target");
+
+        renderer.render(&shader, &target).expect("render");
+
+        assert_tint(&target.get_image().await.expect("read back"), "the mesh");
+        assert!(uncaptured.lock().is_empty(), "got {:?}", uncaptured.lock());
+    });
+}
+
+// Story: on a device without SHADER_F16, as GL and some Vulkan devices are, render refuses
+// an f16 shader with a FeatureError that names the flag, before any GPU work. A copy of any
+// device without the feature shows it, a GL one with padded uniforms included, whether the
+// padding takes the shader (an 8-byte root) or leaves it (a 2-byte root), and so does a
+// shader whose only f16 is an inferred literal.
+#[test]
+fn f16_needs_the_feature() {
+    pollster::block_on(async move {
+        let (_renderer, context, _) = setup().await.expect("render context");
+        let half = wgpu::Features::SHADER_F16;
+        let mut gl = copy_context(&context);
+        gl.features = context.features - half;
+        gl.backend = wgpu::Backend::Gl;
+        gl.aligned_uniform_bindings.store(true, Ordering::Relaxed);
+        let shaders = [
+            half_fullscreen(HALF_TINT),
+            half_fullscreen(
+                "@group(0) @binding(0) var<uniform> tint: vec4<f16>;
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(tint); }",
+            ),
+            half_fullscreen(
+                "@fragment fn fs_main() -> @location(0) vec4<f32> { let x = 0.5h; return vec4<f32>(f32(x)); }",
+            ),
+        ];
+
+        let expected = vec![
+            ("item", Field::Text("the shader".into())),
+            ("feature", Field::Text("SHADER_F16".into())),
+        ];
+        for shader in shaders {
+            let shader = shader.expect("shader");
+            let error = refuse_without(&context, half, &shader).expect("refused");
+            let on_gl = gl.check_shader(&shader.object).unwrap_err();
+
+            assert_eq!(error.list_fields(), expected);
+            assert_eq!(on_gl.list_fields(), expected);
+            assert_refused!(
+                error,
+                RendererError::FeatureError { .. },
+                "the shader needs SHADER_F16, which the device lacks"
+            );
+        }
+    });
+}
+
+// Story: the device opens with each candidate feature the adapter offers.
+#[test]
+fn the_device_takes_every_candidate_offered() {
+    pollster::block_on(async move {
+        let (_renderer, context, _) = setup().await.expect("render context");
+        let adapter = context.adapter.as_ref().expect("an adapter");
+
+        assert_eq!(context.features, adapter.features() & CANDIDATES);
+    });
+}
+
+// Story: no candidate is experimental, since wgpu refuses an experimental
+// feature in `required_features`.
+#[test]
+fn candidates_hold_no_experimental_feature() {
+    let experimental = CANDIDATES & wgpu::Features::all_experimental_mask();
+
+    assert!(experimental.is_empty(), "{experimental}");
+}

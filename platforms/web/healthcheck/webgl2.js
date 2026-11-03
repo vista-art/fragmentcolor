@@ -1,7 +1,9 @@
 // WebGL2 fallback smoke: the runner deletes `navigator.gpu` before this
-// module runs, so the engine must pick the GL backend. Uniform blocks whose
-// WGSL size is not a multiple of 16 bytes once drew nothing here.
-import init, { Renderer, Shader } from "fragmentcolor";
+// module runs, so the engine must pick the GL backend. Uniform blocks and
+// immediate roots whose WGSL size is not a multiple of 16 bytes bind padded.
+import init, {
+  Camera, Light, Material, Mesh, Model, Pass, Renderer, Shader, Vertex,
+} from "fragmentcolor";
 
 console.log("[webgl2] boot; navigator.gpu:", typeof navigator.gpu);
 
@@ -45,6 +47,35 @@ ${TRI}
     set: (s) => { s.set("u.resolution", [64.0, 64.0]); s.set("u.zoom", 1.0); s.set("u.press", 0.0); s.set("u.pulse", 0.0); },
     expect: [0, 0, 255, 255],
   },
+  {
+    name: "three-float immediate (12 bytes)",
+    source: `struct PC { r: f32, g: f32, b: f32 };
+var<immediate> pc: PC;
+${TRI}
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(pc.r, pc.g, pc.b, 1.0); }`,
+    set: (s) => { s.set("pc.r", 0.0); s.set("pc.g", 1.0); s.set("pc.b", 1.0); },
+    expect: [0, 255, 255, 255],
+  },
+];
+
+// The GL backend writes a buffer struct member by member into a std140 block, so
+// render refuses a struct whose layout @size or @align sets. The error names the
+// shader's own struct, also the 12-byte `P` that WebGL2 binds as a padded copy.
+const EXPLICIT = [
+  {
+    struct: "Params",
+    source: `struct Params { scale: f32, @align(16) offset: vec2<f32> };
+@group(0) @binding(0) var<uniform> params: Params;
+${TRI}
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(params.offset, params.scale, 1.0); }`,
+  },
+  {
+    struct: "P",
+    source: `struct P { @size(8) a: f32, b: f32 };
+@group(0) @binding(0) var<uniform> p: P;
+${TRI}
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(p.a, p.b, 0.0, 1.0); }`,
+  },
 ];
 
 // The GL backend needs a canvas to create its context, so the adapter is
@@ -76,5 +107,76 @@ for (const c of CASES) {
     console.error(`[webgl2] FAIL: ${c.name}: ${e?.message || e}`);
   }
 }
+for (const c of EXPLICIT) {
+  try {
+    const shader = new Shader(c.source);
+    let error;
+    try {
+      renderer.render(shader, target);
+    } catch (e) {
+      error = e;
+    }
+    if (!(error instanceof Error)) throw new Error(`render should throw an Error, got ${error}`);
+    const item = `struct \`${c.struct}\``;
+    const feature = "@size and @align offsets in a std140 block";
+    if (error.item !== item || error.feature !== feature || error.name !== "FeatureError") {
+      throw new Error(`threw item ${error.item}, feature ${error.feature}, name ${error.name}`);
+    }
+    if (error.message !== `${item} needs ${feature}, which the device lacks`) {
+      throw new Error(`threw ${error.message}`);
+    }
+    console.log(`[webgl2] ok: refused ${c.struct}: ${error.message}`);
+  } catch (e) {
+    failed++;
+    console.error(`[webgl2] FAIL: explicit layout ${c.struct}: ${e?.message || e}`);
+  }
+}
+
+// WebGL2 runs on a GL backend, so a PBR shader takes
+// its lights through a uniform block, as many as the device's largest block
+// holds. Adding lights past that throws, and the message names the cap.
+try {
+  const scratch = document.createElement("canvas").getContext("webgl2");
+  const blockSize = scratch.getParameter(scratch.MAX_UNIFORM_BLOCK_SIZE);
+  const cap = Math.floor((Math.min(blockSize, 65536) - 144) / 64);
+  console.log(`[webgl2] MAX_UNIFORM_BLOCK_SIZE ${blockSize}, so ${cap} lights`);
+
+  const quad = new Mesh();
+  for (const corner of [[-1, -1], [1, -1], [1, 1], [-1, -1], [1, 1], [-1, 1]]) {
+    quad.addVertex(Vertex.pbr([corner[0], corner[1], 0.0]).set("normal", [0.0, 0.0, 1.0]));
+  }
+  const camera = Camera.perspective(1.0, 1.0, 0.1, 10.0)
+    .lookAt([0.0, 0.0, 3.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+  const pass = new Pass("light cap");
+  pass.add(new Model(quad, Material.pbr()));
+  pass.add(camera);
+
+  let added = 0;
+  let message = "";
+  while (added < 4096) {
+    try {
+      pass.add(Light.point([0.0, 0.0, 1.0], [1.0, 1.0, 1.0]).setIntensity(1.5 / cap));
+      added++;
+    } catch (e) {
+      message = e?.message || String(e);
+      break;
+    }
+  }
+  console.log(`[webgl2] added ${added} lights, then: ${message}`);
+  if (added !== cap) throw new Error(`added ${added} lights, want the cap of ${cap}`);
+  if (!message.includes(`takes at most ${cap} lights`)) {
+    throw new Error(`the cap error should name ${cap}: ${message}`);
+  }
+
+  renderer.render(pass, target);
+  const img = await target.getImage();
+  const center = (4 * 8 + 4) * 4;
+  if (img[center] < 100) throw new Error(`the quad should be lit, got red ${img[center]}`);
+  console.log(`[webgl2] ok: ${cap} lights render, red ${img[center]}`);
+} catch (e) {
+  failed++;
+  console.error(`[webgl2] FAIL: light cap: ${e?.message || e}`);
+}
+
 if (failed) throw new Error(`${failed} webgl2 case(s) failed`);
 console.log("✅ webgl2 test result: ok");

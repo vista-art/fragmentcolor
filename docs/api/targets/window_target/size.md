@@ -8,7 +8,7 @@ Python, `undefined` in JS, `nil` in Swift and `null` in Kotlin.
 
 ```rust
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-# let canvas = fragmentcolor::headless_window([800, 600]);
+# let canvas = fragmentcolor::HeadlessWindow::new([800, 600]);
 # /*[js]
 # const canvas = document.createElement("canvas");
 # */

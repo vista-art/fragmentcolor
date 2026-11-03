@@ -17,7 +17,7 @@ let compute = try Shader("""
 
 let pass = Pass.compute("seed")
 pass.setComputeDispatch(1, 1, 1)
-pass.addShader(compute)
+try pass.addShader(compute)
 try renderer.render(pass, target)
 
 let bytes = try await renderer.readStorage(compute, "out")

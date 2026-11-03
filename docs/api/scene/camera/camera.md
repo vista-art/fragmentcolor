@@ -22,6 +22,21 @@ Internally a Camera carries:
   shaders that need it (specular highlights, fresnel) don't have to invert
   the view matrix on every frame.
 
+Parameters that leave no usable view return an error, and a Camera that
+already exists keeps its state. `perspective`, `orthographic`, `look_at`
+and `set_aspect` return a `CameraError` in Rust, throw an `Error` named
+`CameraError` in JavaScript, raise `CameraError` (a `FragmentColorError` and a `ValueError`)
+in Python, throw `FragmentColorError` in Swift and throw
+`FragmentColorException` in Kotlin.
+
+A shader whose `camera.view_proj` or `camera.position` can't hold the
+Camera's value, such as an `f16` position past ±65504 or a `vec4<f32>`
+position for the Camera's three numbers, keeps the value it had.
+`Renderer::render` returns the shader's `ShaderError::TypeMismatch` until a
+value of that key lands, from the Camera or from `Shader::set`. A shader
+that declares neither key, such as one whose `camera` is a plain
+`mat4x4<f32>`, takes nothing from the Camera, with no error.
+
 The Camera is the user's domain, not the Material's: a Material is "what the
 surface looks like under any light from any viewpoint", a Camera is "which
 viewpoint we're using right now".
@@ -44,13 +59,15 @@ viewpoint we're using right now".
 use fragmentcolor::{Camera, Material, Mesh, Model, Pass, Renderer, Vertex};
 
 let renderer = Renderer::new();
-let camera = Camera::perspective(1.047, 16.0 / 9.0, 0.1, 100.0)
-    .look_at([0.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+let camera = Camera::perspective(1.047, 16.0 / 9.0, 0.1, 100.0)?
+    .look_at([0.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])?;
 
 let mesh = Mesh::new();
-mesh.add_vertex(
+mesh.add_vertices([
     Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]),
-);
+    Vertex::pbr([-0.5, -0.5, 0.0]).set(Vertex::UV0, [0.0, 0.0]),
+    Vertex::pbr([0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]),
+]);
 let model = Model::new(mesh, Material::pbr());
 
 let pass = Pass::new("scene");
@@ -58,7 +75,7 @@ pass.add(&model)?;
 pass.add(&camera);
 
 // Move it later. Every shader on the pass picks up the new view at the next render.
-camera.look_at([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+camera.look_at([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])?;
 # Ok(())
 # }
 # fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }

@@ -2,6 +2,10 @@
 
 Resizes the [TextureTarget](https://fragmentcolor.org/api/targets/texturetarget) to the given width and height.
 
+Passes that draw into the target, shaders that sample it and every `texture()` handle use the new texture.
+Its pixels start blank, and the current size keeps them. A width or height of zero, a side past the device limit, or a layer count other than 1 returns
+`TextureError::InvalidInput` and keeps the texture.
+
 ## Example
 
 ```rust
@@ -12,7 +16,7 @@ use fragmentcolor::{Renderer, Target};
 let renderer = Renderer::new();
 let mut target = renderer.create_texture_target([64, 64]).await?;
 
-target.resize([128, 32]);
+target.resize([128, 32])?;
 
 # let size: [u32; 2] = target.size().into();
 # assert_eq!(size, [128, 32]);

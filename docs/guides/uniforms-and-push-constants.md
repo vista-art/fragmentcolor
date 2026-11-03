@@ -53,7 +53,7 @@ let pass = Pass::from_shader("params", &shader);
 renderer.render(&pass, &target)?;
 
 // 4) Quick check
-let image = target.get_image().await;
+let image = target.get_image().await?;
 assert_eq!(image.len(), 64 * 64 * 4);
 # Ok(())
 # }

@@ -14,7 +14,11 @@ rebuild.
 use fragmentcolor::{Material, Mesh, Model, Vertex};
 
 let mesh = Mesh::new();
-mesh.add_vertex(Vertex::pbr([0.0, 0.5, 0.0]));
+mesh.add_vertices([
+    Vertex::pbr([0.0, 0.5, 0.0]),
+    Vertex::pbr([-0.5, -0.5, 0.0]),
+    Vertex::pbr([0.5, -0.5, 0.0]),
+]);
 let model = Model::new(mesh, Material::pbr());
 
 // Models start visible; toggle with `set_visible`.

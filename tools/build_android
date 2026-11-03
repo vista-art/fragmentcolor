@@ -78,10 +78,10 @@ echo "==> Regenerating Kotlin bindings"
 first_abi=$(abi_for_target "${TARGETS[0]}")
 rm -rf "$BINDINGS_DIR/java/org/fragmentcolor/generated"
 mkdir -p "$BINDINGS_DIR/java"
+# uniffi reads the crate's own `uniffi.toml` from the crate root, so no `--config`.
 cargo run "${CARGO_FLAGS[@]}" \
   --bin uniffi-bindgen generate \
   --library "$BINDINGS_DIR/jniLibs/$first_abi/lib$NAME.so" \
-  --config "$ROOT_DIR/uniffi.toml" \
   --language kotlin \
   --out-dir "$BINDINGS_DIR/java"
 

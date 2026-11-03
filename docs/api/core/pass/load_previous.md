@@ -16,7 +16,7 @@ let target = renderer.create_texture_target([64, 64]).await?;
 
 let shader = Shader::default();
 let mut pass = Pass::new("blend with previous");
-pass.add_shader(&shader);
+pass.add_shader(&shader)?;
 pass.load_previous();
 
 renderer.render(&pass, &target)?;

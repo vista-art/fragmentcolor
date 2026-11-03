@@ -82,11 +82,12 @@ fun Shader.set(key: String, texture: Texture) = set(key, UniformValue.Texture(te
 
 /**
  * The number a scalar uniform holds, as a [Float].
- * `null` for anything but a bool, float, int or uint.
+ * `null` for anything but a bool, float, half, int or uint.
  */
 val UniformData.float: Float?
     get() = when (this) {
         is UniformData.Float -> v1
+        is UniformData.Half -> v1
         is UniformData.Int -> v1.toFloat()
         is UniformData.UInt -> v1.toFloat()
         is UniformData.Bool -> if (v1) 1f else 0f
@@ -105,6 +106,12 @@ val UniformData.floats: List<Float>?
         is UniformData.Mat2 -> v1
         is UniformData.Mat3 -> v1
         is UniformData.Mat4 -> v1
+        is UniformData.HalfVec2 -> v1
+        is UniformData.HalfVec3 -> v1
+        is UniformData.HalfVec4 -> v1
+        is UniformData.HalfMat2 -> v1
+        is UniformData.HalfMat3 -> v1
+        is UniformData.HalfMat4 -> v1
         is UniformData.UVec2 -> v1.map { it.toFloat() }
         is UniformData.UVec3 -> v1.map { it.toFloat() }
         is UniformData.UVec4 -> v1.map { it.toFloat() }

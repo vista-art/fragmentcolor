@@ -9,10 +9,10 @@ val shader = Shader("""
 
 """)
 
-val vertex = Vertex(listOf(0.0f, 0.0f)).set("id", 7).set("weight", 0.5f)
+val vertex = Vertex(listOf(0.0f, 0.5f)).set("id", 7).set("weight", 0.5f)
 
 val mesh = Mesh()
-mesh.addVertex(vertex)
+mesh.addVertices(listOf(vertex, Vertex(listOf(-0.5f, -0.5f)).set("id", 8).set("weight", 1.0f), Vertex(listOf(0.5f, -0.5f)).set("id", 9).set("weight", 1.0f)))
 
-// id uploads as the u32 7 and weight as the f32 0.5.
+// The first id uploads as the u32 7 and its weight as the f32 0.5.
 shader.addMesh(mesh)

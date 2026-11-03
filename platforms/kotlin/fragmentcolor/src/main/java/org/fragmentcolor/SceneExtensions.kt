@@ -28,10 +28,10 @@ fun Scene.ambient(color: FloatArray): Scene = ambient(color.toList())
 
 /** Set the scene ambient color from `[r, g, b]`. */
 @JvmName("ambientDoubles")
-fun Scene.ambient(color: List<Double>): Scene = ambient(color.map { it.toFloat() })
+fun Scene.ambient(color: List<Double>): Scene = ambient(readFloats(color, "Scene.ambient"))
 
 /** Set the scene ambient color from `[r, g, b]`. */
-fun Scene.ambient(color: DoubleArray): Scene = ambient(color.map { it.toFloat() })
+fun Scene.ambient(color: DoubleArray): Scene = ambient(readFloats(color, "Scene.ambient"))
 
 // add_to overloads: target a Pass by index or name, passing the concrete
 // object type directly instead of wrapping it in PassTarget /

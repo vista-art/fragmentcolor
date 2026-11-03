@@ -47,6 +47,11 @@ mod example {
     }
 
     impl Harness {
+        /// The hidden lines that run before the example's own.
+        pub fn read_setup(&self) -> &[String] {
+            &self.before
+        }
+
         /// `body` with the hidden lines around it, and the 1-based line ranges they take.
         /// The lines before go after the imports `body` opens with.
         pub fn wrap(&self, body: &str) -> (String, Vec<(usize, usize)>) {

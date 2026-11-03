@@ -9,10 +9,14 @@ shader = Shader("""
 
 """)
 
-vertex = Vertex([0.0, 0.0]).set("id", 7).set("weight", 0.5)
+vertex = Vertex([0.0, 0.5]).set("id", 7).set("weight", 0.5)
 
 mesh = Mesh()
-mesh.add_vertex(vertex)
+mesh.add_vertices([
+    vertex,
+    Vertex([-0.5, -0.5]).set("id", 8).set("weight", 1.0),
+    Vertex([0.5, -0.5]).set("id", 9).set("weight", 1.0),
+])
 
-# id uploads as the u32 7 and weight as the f32 0.5.
+# The first id uploads as the u32 7 and its weight as the f32 0.5.
 shader.add_mesh(mesh)

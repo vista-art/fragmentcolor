@@ -29,6 +29,9 @@ downstream Pass clears the upstream Pass's output unless you opt out:
 - Or call `pass.set_clear_color([r, g, b, a])` to choose a specific clear
   value (still a clear, just a different color).
 
+Depth clears at the start of every pass too, so `load_previous` keeps an
+earlier pass's colors but not its depth.
+
 `Scene::add_pass` stores each pass independently. There's no automatic
 chaining of their attachments. To share a target between two passes, route
 them through the same `set_target(...)` and use `load_previous` to compose.
@@ -42,14 +45,16 @@ use fragmentcolor::{Material, Mesh, Model, Pass, Renderer, Scene, Vertex};
 let renderer = Renderer::new();
 
 let mesh = Mesh::new();
-mesh.add_vertex(
+mesh.add_vertices([
     Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]),
-);
+    Vertex::pbr([-0.5, -0.5, 0.0]).set(Vertex::UV0, [0.0, 0.0]),
+    Vertex::pbr([0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]),
+]);
 let model = Model::new(mesh, Material::pbr());
 
 // A backdrop pass that clears to a soft blue before the scene's main draw.
 let backdrop = Pass::new("backdrop");
-backdrop.set_clear_color([0.05, 0.08, 0.12, 1.0]);
+backdrop.set_clear_color([0.05, 0.08, 0.12, 1.0])?;
 
 let scene = Scene::new();
 scene.add_pass(&backdrop);

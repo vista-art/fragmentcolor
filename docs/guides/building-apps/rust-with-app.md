@@ -57,8 +57,8 @@ let mut app = App::new(renderer);
 
 app.on_start(|app, _windows| {
     let scene = Scene::load("model.glb")?;
-    let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0)
-        .look_at([0.0, 0.0, 3.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+    let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0)?
+        .look_at([0.0, 0.0, 3.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])?;
     scene.add(&camera)?;
 
     // Stash anything the per-frame draw needs to read. App's typed
@@ -100,7 +100,7 @@ app.on_draw(|app, window_id, _event| {
         [elapsed.cos() * radius, 1.0, elapsed.sin() * radius],
         [0.0, 0.0, 0.0],
         [0.0, 1.0, 0.0],
-    );
+    ).expect("the orbit never looks straight down");
 
     let renderer = app.renderer();
     app.with_target(window_id, |target| {
@@ -127,8 +127,14 @@ square. Same Arc-shared backing, no Scene rebuild.
 # let renderer = fragmentcolor::Renderer::new();
 # let mut app = fragmentcolor::App::new(renderer);
 app.on_resize(|app, size| {
-    if let Some(preview) = app.get_state::<PreviewState>("preview") {
-        preview.camera.set_aspect(size.width as f32 / size.height as f32);
+    // A minimized window reports a size of 0, which has no aspect, so the
+    // camera keeps its last one.
+    if let Some(preview) = app.get_state::<PreviewState>("preview")
+        && size.width > 0
+        && size.height > 0
+    {
+        let aspect = size.width as f32 / size.height as f32;
+        preview.camera.set_aspect(aspect).expect("a window with area has an aspect");
     }
 });
 # Ok(())

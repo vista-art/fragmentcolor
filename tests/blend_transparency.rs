@@ -49,22 +49,23 @@ fn renders_two_blend_quads_at_different_depths() {
 
         let far_mat = Material::pbr()
             .base_color([1.0, 0.0, 0.0, 0.5])
+            .expect("base color")
             .alpha_mode(AlphaMode::Blend);
         let near_mat = Material::pbr()
             .base_color([0.0, 0.0, 1.0, 0.5])
+            .expect("base color")
             .alpha_mode(AlphaMode::Blend);
 
         let far_model = Model::new(unit_quad(), far_mat);
-        far_model.translate([0.0, 0.0, -2.0]);
+        far_model.translate([0.0, 0.0, -2.0]).expect("translate");
         let near_model = Model::new(unit_quad(), near_mat);
-        near_model.translate([0.0, 0.0, 0.0]);
+        near_model.translate([0.0, 0.0, 0.0]).expect("translate");
 
-        let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0).look_at(
-            [0.0, 0.0, 5.0],
-            [0.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0],
-        );
-        let sun = Light::directional([0.0, 0.0, -1.0], [1.0, 1.0, 1.0]);
+        let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0)
+            .expect("camera")
+            .look_at([0.0, 0.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+            .expect("camera");
+        let sun = Light::directional([0.0, 0.0, -1.0], [1.0, 1.0, 1.0]).expect("light");
 
         let scene = Scene::new();
         // Add in the WRONG order on purpose (near before far). With proper
@@ -80,7 +81,7 @@ fn renders_two_blend_quads_at_different_depths() {
             .expect("sun");
 
         renderer.render(&scene, &target).expect("render");
-        let image = target.get_image().await;
+        let image = target.get_image().await.expect("read back");
         assert_eq!(image.len(), 32 * 32 * 4);
 
         // Sample the center pixel. The PBR shader applies Cook-Torrance
@@ -124,9 +125,11 @@ fn cross_shader_blend_sorts_globally() {
 
         let red_mat = Material::pbr()
             .base_color([1.0, 0.0, 0.0, 0.5])
+            .expect("base color")
             .alpha_mode(AlphaMode::Blend);
         let blue_mat = Material::pbr()
             .base_color([0.0, 0.0, 1.0, 0.5])
+            .expect("base color")
             .alpha_mode(AlphaMode::Blend);
 
         // Six quads interleaved on the eye axis. Red at -3, -1, 1; blue at
@@ -141,17 +144,16 @@ fn cross_shader_blend_sorts_globally() {
         ] {
             for z in zs {
                 let m = Model::new(unit_quad(), mat.clone());
-                m.translate([0.0, 0.0, z]);
+                m.translate([0.0, 0.0, z]).expect("translate");
                 models.push(m);
             }
         }
 
-        let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0).look_at(
-            [0.0, 0.0, 5.0],
-            [0.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0],
-        );
-        let sun = Light::directional([0.0, 0.0, -1.0], [1.0, 1.0, 1.0]);
+        let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0)
+            .expect("camera")
+            .look_at([0.0, 0.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+            .expect("camera");
+        let sun = Light::directional([0.0, 0.0, -1.0], [1.0, 1.0, 1.0]).expect("light");
 
         let scene = Scene::new();
         // Scramble the insertion order so the test exercises the sort,
@@ -163,7 +165,7 @@ fn cross_shader_blend_sorts_globally() {
         }
 
         renderer.render(&scene, &target).expect("render");
-        let image = target.get_image().await;
+        let image = target.get_image().await.expect("read back");
         assert_eq!(image.len(), 16 * 16 * 4);
 
         let center_idx = ((8 * 16 + 8) * 4) as usize;
@@ -191,22 +193,24 @@ fn opaque_and_blend_in_same_pass_render_without_panic() {
             .await
             .expect("texture target");
 
-        let opaque_mat = Material::pbr().base_color([0.5, 0.5, 0.5, 1.0]);
+        let opaque_mat = Material::pbr()
+            .base_color([0.5, 0.5, 0.5, 1.0])
+            .expect("base color");
         let blend_mat = Material::pbr()
             .base_color([1.0, 1.0, 1.0, 0.5])
+            .expect("base color")
             .alpha_mode(AlphaMode::Blend);
 
         let solid = Model::new(unit_quad(), opaque_mat);
-        solid.translate([0.0, 0.0, -1.0]);
+        solid.translate([0.0, 0.0, -1.0]).expect("translate");
         let glass = Model::new(unit_quad(), blend_mat);
-        glass.translate([0.0, 0.0, 0.0]);
+        glass.translate([0.0, 0.0, 0.0]).expect("translate");
 
-        let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0).look_at(
-            [0.0, 0.0, 5.0],
-            [0.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0],
-        );
-        let sun = Light::directional([0.0, 0.0, -1.0], [1.0, 1.0, 1.0]);
+        let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0)
+            .expect("camera")
+            .look_at([0.0, 0.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+            .expect("camera");
+        let sun = Light::directional([0.0, 0.0, -1.0], [1.0, 1.0, 1.0]).expect("light");
 
         let scene = Scene::new();
         scene
@@ -220,7 +224,7 @@ fn opaque_and_blend_in_same_pass_render_without_panic() {
             .expect("sun");
 
         renderer.render(&scene, &target).expect("render");
-        let image = target.get_image().await;
+        let image = target.get_image().await.expect("read back");
         assert_eq!(image.len(), 16 * 16 * 4);
     });
 }

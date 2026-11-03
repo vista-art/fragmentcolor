@@ -1,7 +1,9 @@
 # Shader::remove_mesh
 
 Remove a single Mesh previously attached to this Shader.
-If the Mesh is attached multiple times, removes the first match.
+If the Mesh is attached multiple times, removes the first match. Once the
+shader holds the mesh no more, a vertex or instance added to the mesh may
+leave out what this shader reads.
 
 ## Example
 
@@ -22,7 +24,11 @@ let shader = Shader::new(r#"
 "#)?;
 
 let mesh = Mesh::new();
-mesh.add_vertex([0.0, 0.0]);
+mesh.add_vertices([
+    [-0.5, -0.5],
+    [0.5, -0.5],
+    [0.0, 0.5],
+]);
 shader.add_mesh(&mesh)?;
 
 // Detach the mesh

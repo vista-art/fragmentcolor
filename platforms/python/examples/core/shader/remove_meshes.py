@@ -14,9 +14,17 @@ shader = Shader("""
 """)
 
 m1 = Mesh()
-m1.add_vertex([0.0, 0.0])
+m1.add_vertices([
+    [-0.5, -0.5],
+    [0.0, -0.5],
+    [-0.5, 0.0],
+])
 m2 = Mesh()
-m2.add_vertex([0.5, 0.0])
+m2.add_vertices([
+    [0.0, 0.0],
+    [0.5, 0.0],
+    [0.0, 0.5],
+])
 
 shader.add_mesh(m1)
 shader.add_mesh(m2)

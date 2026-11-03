@@ -240,7 +240,7 @@ async fn render_one(
     let shader = Shader::new(parts.as_slice())?;
 
     renderer.render(&shader, &target)?;
-    let bytes = target.get_image().await;
+    let bytes = target.get_image().await?;
     if bytes.is_empty() {
         return Err(format!("readback returned empty buffer for {}", comp.name).into());
     }

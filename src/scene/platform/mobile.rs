@@ -3,9 +3,12 @@
 use lsp_doc::lsp_doc;
 use std::sync::Arc;
 
-use crate::renderer::platform::mobile::FragmentColorError;
-use crate::renderer::renderable::SceneObjectHandle;
-use crate::scene::{Camera, Light, LightKind, Model, Scene, SceneSource};
+use crate::SceneObjectHandle;
+use crate::bindings::numbers::{read_finite, read_floats, read_vector};
+use crate::errors::platform::mobile::FragmentColorError;
+use crate::scene::{
+    Camera, CameraError, GltfSource, Light, LightError, LightKind, Model, ModelError, Scene,
+};
 use crate::{Material, Mesh, Pass};
 
 /// Mobile-marshallable target for [`Scene::add_to`]: a pass index or a pass
@@ -21,6 +24,27 @@ use crate::{Material, Mesh, Pass};
 pub enum PassTarget {
     Index(u32),
     Name(String),
+}
+
+/// Refused camera parameters reach Swift and Kotlin as a render error.
+impl From<CameraError> for FragmentColorError {
+    fn from(error: CameraError) -> Self {
+        FragmentColorError::Render(error.to_string())
+    }
+}
+
+/// A light setter's refusal reaches Swift and Kotlin as a render error.
+impl From<LightError> for FragmentColorError {
+    fn from(error: LightError) -> Self {
+        FragmentColorError::Render(error.to_string())
+    }
+}
+
+/// A Model transform call's refusal reaches Swift and Kotlin as a render error.
+impl From<ModelError> for FragmentColorError {
+    fn from(error: ModelError) -> Self {
+        FragmentColorError::Render(error.to_string())
+    }
 }
 
 #[uniffi::export]
@@ -45,13 +69,8 @@ impl Model {
 
     #[uniffi::method(name = "transform")]
     #[lsp_doc("docs/api/scene/model/transform.md")]
-    pub fn transform_mobile(self: Arc<Self>) -> Vec<f32> {
-        let cols = self.transform();
-        let mut out = Vec::with_capacity(16);
-        for col in cols.iter() {
-            out.extend_from_slice(col);
-        }
-        out
+    pub fn transform_mobile(self: Arc<Self>) -> Vec<Vec<f32>> {
+        self.transform().map(Vec::from).to_vec()
     }
 
     #[uniffi::method(name = "setTransform")]
@@ -60,27 +79,22 @@ impl Model {
         self: Arc<Self>,
         matrix: Vec<f32>,
     ) -> Result<(), FragmentColorError> {
-        if matrix.len() != 16 {
+        let flat = read_floats(matrix, "Model.setTransform")?;
+        let Ok(flat) = <[f32; 16]>::try_from(flat.as_slice()) else {
             return Err(FragmentColorError::Render(
                 "Model.setTransform: expected 16 floats (column-major mat4)".into(),
             ));
-        }
-        let m = [
-            [matrix[0], matrix[1], matrix[2], matrix[3]],
-            [matrix[4], matrix[5], matrix[6], matrix[7]],
-            [matrix[8], matrix[9], matrix[10], matrix[11]],
-            [matrix[12], matrix[13], matrix[14], matrix[15]],
-        ];
-        self.set_transform(m);
-        Ok(())
+        };
+        let columns =
+            std::array::from_fn(|column| std::array::from_fn(|row| flat[column * 4 + row]));
+        Ok(self.set_transform(columns)?)
     }
 
     #[uniffi::method(name = "translate")]
     #[lsp_doc("docs/api/scene/model/translate.md")]
     pub fn translate_mobile(self: Arc<Self>, offset: Vec<f32>) -> Result<(), FragmentColorError> {
-        let arr = take_vec3(&offset, "Model.translate")?;
-        self.translate(arr);
-        Ok(())
+        let offset = read_vector::<3>(offset, "Model.translate")?;
+        Ok(self.translate(offset)?)
     }
 
     #[uniffi::method(name = "rotate")]
@@ -90,17 +104,16 @@ impl Model {
         axis: Vec<f32>,
         radians: f32,
     ) -> Result<(), FragmentColorError> {
-        let arr = take_vec3(&axis, "Model.rotate")?;
-        self.rotate(arr, radians);
-        Ok(())
+        let axis = read_vector::<3>(axis, "Model.rotate: axis")?;
+        let radians = read_finite(radians, "Model.rotate: radians")?;
+        Ok(self.rotate(axis, radians)?)
     }
 
     #[uniffi::method(name = "scale")]
     #[lsp_doc("docs/api/scene/model/scale.md")]
     pub fn scale_mobile(self: Arc<Self>, factor: Vec<f32>) -> Result<(), FragmentColorError> {
-        let arr = take_vec3(&factor, "Model.scale")?;
-        self.scale(arr);
-        Ok(())
+        let factor = read_vector::<3>(factor, "Model.scale")?;
+        Ok(self.scale(factor)?)
     }
 
     #[uniffi::method(name = "visible")]
@@ -120,8 +133,18 @@ impl Model {
 impl Camera {
     #[uniffi::constructor(name = "perspective")]
     #[lsp_doc("docs/api/scene/camera/perspective.md")]
-    pub fn perspective_mobile(fovy_radians: f32, aspect: f32, near: f32, far: f32) -> Arc<Self> {
-        Arc::new(Camera::perspective(fovy_radians, aspect, near, far))
+    pub fn perspective_mobile(
+        fovy_radians: f32,
+        aspect: f32,
+        near: f32,
+        far: f32,
+    ) -> Result<Arc<Self>, FragmentColorError> {
+        Ok(Arc::new(Camera::perspective(
+            fovy_radians,
+            aspect,
+            near,
+            far,
+        )?))
     }
 
     #[uniffi::constructor(name = "orthographic")]
@@ -133,8 +156,10 @@ impl Camera {
         top: f32,
         near: f32,
         far: f32,
-    ) -> Arc<Self> {
-        Arc::new(Camera::orthographic(left, right, bottom, top, near, far))
+    ) -> Result<Arc<Self>, FragmentColorError> {
+        Ok(Arc::new(Camera::orthographic(
+            left, right, bottom, top, near, far,
+        )?))
     }
 
     #[uniffi::method(name = "lookAt")]
@@ -145,27 +170,25 @@ impl Camera {
         target: Vec<f32>,
         up: Vec<f32>,
     ) -> Result<Arc<Self>, FragmentColorError> {
-        let pos = take_vec3(&position, "Camera.lookAt position")?;
-        let target = take_vec3(&target, "Camera.lookAt target")?;
-        let up = take_vec3(&up, "Camera.lookAt up")?;
-        Ok(Arc::new(self.look_at(pos, target, up)))
+        let position = read_vector::<3>(position, "Camera.lookAt: position")?;
+        let target = read_vector::<3>(target, "Camera.lookAt: target")?;
+        let up = read_vector::<3>(up, "Camera.lookAt: up")?;
+        Ok(Arc::new(self.look_at(position, target, up)?))
     }
 
     #[uniffi::method(name = "setAspect")]
     #[lsp_doc("docs/api/scene/camera/set_aspect.md")]
-    pub fn set_aspect_mobile(self: Arc<Self>, aspect: f32) -> Arc<Self> {
-        Arc::new(self.set_aspect(aspect))
+    pub fn set_aspect_mobile(
+        self: Arc<Self>,
+        aspect: f32,
+    ) -> Result<Arc<Self>, FragmentColorError> {
+        Ok(Arc::new(self.set_aspect(aspect)?))
     }
 
     #[uniffi::method(name = "viewProj")]
     #[lsp_doc("docs/api/scene/camera/view_proj.md")]
-    pub fn view_proj_mobile(self: Arc<Self>) -> Vec<f32> {
-        let cols = self.view_proj();
-        let mut out = Vec::with_capacity(16);
-        for col in cols.iter() {
-            out.extend_from_slice(col);
-        }
-        out
+    pub fn view_proj_mobile(self: Arc<Self>) -> Vec<Vec<f32>> {
+        self.view_proj().map(Vec::from).to_vec()
     }
 
     #[uniffi::method(name = "position")]
@@ -183,9 +206,9 @@ impl Light {
         direction: Vec<f32>,
         color: Vec<f32>,
     ) -> Result<Arc<Self>, FragmentColorError> {
-        let direction = take_vec3(&direction, "Light.directional direction")?;
-        let color = take_vec3(&color, "Light.directional color")?;
-        Ok(Arc::new(Light::directional(direction, color)))
+        let direction = read_vector::<3>(direction, "Light.directional: direction")?;
+        let color = read_vector::<3>(color, "Light.directional: color")?;
+        Ok(Arc::new(Light::directional(direction, color)?))
     }
 
     #[uniffi::constructor(name = "point")]
@@ -194,9 +217,9 @@ impl Light {
         position: Vec<f32>,
         color: Vec<f32>,
     ) -> Result<Arc<Self>, FragmentColorError> {
-        let position = take_vec3(&position, "Light.point position")?;
-        let color = take_vec3(&color, "Light.point color")?;
-        Ok(Arc::new(Light::point(position, color)))
+        let position = read_vector::<3>(position, "Light.point: position")?;
+        let color = read_vector::<3>(color, "Light.point: color")?;
+        Ok(Arc::new(Light::point(position, color)?))
     }
 
     #[uniffi::constructor(name = "spot")]
@@ -206,20 +229,16 @@ impl Light {
         direction: Vec<f32>,
         color: Vec<f32>,
     ) -> Result<Arc<Self>, FragmentColorError> {
-        let position = take_vec3(&position, "Light.spot position")?;
-        let direction = take_vec3(&direction, "Light.spot direction")?;
-        let color = take_vec3(&color, "Light.spot color")?;
-        Ok(Arc::new(Light::spot(position, direction, color)))
+        let position = read_vector::<3>(position, "Light.spot: position")?;
+        let direction = read_vector::<3>(direction, "Light.spot: direction")?;
+        let color = read_vector::<3>(color, "Light.spot: color")?;
+        Ok(Arc::new(Light::spot(position, direction, color)?))
     }
 
     #[uniffi::method(name = "kind")]
     #[lsp_doc("docs/api/scene/light/kind.md")]
-    pub fn kind_mobile(self: Arc<Self>) -> String {
-        match self.kind() {
-            LightKind::Directional => "directional".to_string(),
-            LightKind::Point => "point".to_string(),
-            LightKind::Spot => "spot".to_string(),
-        }
+    pub fn kind_mobile(self: Arc<Self>) -> LightKind {
+        self.kind()
     }
 
     #[uniffi::method(name = "color")]
@@ -270,14 +289,18 @@ impl Light {
         self: Arc<Self>,
         color: Vec<f32>,
     ) -> Result<Arc<Self>, FragmentColorError> {
-        let color = take_vec3(&color, "Light.setColor")?;
-        Ok(Arc::new(self.set_color(color)))
+        let color = read_vector::<3>(color, "Light.setColor")?;
+        Ok(Arc::new(self.set_color(color)?))
     }
 
     #[uniffi::method(name = "setIntensity")]
     #[lsp_doc("docs/api/scene/light/set_intensity.md")]
-    pub fn set_intensity_mobile(self: Arc<Self>, value: f32) -> Arc<Self> {
-        Arc::new(self.set_intensity(value))
+    pub fn set_intensity_mobile(
+        self: Arc<Self>,
+        value: f32,
+    ) -> Result<Arc<Self>, FragmentColorError> {
+        let value = read_finite(value, "Light.setIntensity: value")?;
+        Ok(Arc::new(self.set_intensity(value)?))
     }
 
     #[uniffi::method(name = "setPosition")]
@@ -286,10 +309,8 @@ impl Light {
         self: Arc<Self>,
         position: Vec<f32>,
     ) -> Result<Arc<Self>, FragmentColorError> {
-        let position = take_vec3(&position, "Light.setPosition")?;
-        self.set_position(position)
-            .map(Arc::new)
-            .map_err(|e| FragmentColorError::Render(e.to_string()))
+        let position = read_vector::<3>(position, "Light.setPosition")?;
+        Ok(Arc::new(self.set_position(position)?))
     }
 
     #[uniffi::method(name = "setDirection")]
@@ -298,18 +319,14 @@ impl Light {
         self: Arc<Self>,
         direction: Vec<f32>,
     ) -> Result<Arc<Self>, FragmentColorError> {
-        let direction = take_vec3(&direction, "Light.setDirection")?;
-        self.set_direction(direction)
-            .map(Arc::new)
-            .map_err(|e| FragmentColorError::Render(e.to_string()))
+        let direction = read_vector::<3>(direction, "Light.setDirection")?;
+        Ok(Arc::new(self.set_direction(direction)?))
     }
 
     #[uniffi::method(name = "setRange")]
     #[lsp_doc("docs/api/scene/light/set_range.md")]
     pub fn set_range_mobile(self: Arc<Self>, value: f32) -> Result<Arc<Self>, FragmentColorError> {
-        self.set_range(value)
-            .map(Arc::new)
-            .map_err(|e| FragmentColorError::Render(e.to_string()))
+        Ok(Arc::new(self.set_range(value)?))
     }
 
     #[uniffi::method(name = "setConeAngles")]
@@ -319,9 +336,9 @@ impl Light {
         inner_radians: f32,
         outer_radians: f32,
     ) -> Result<Arc<Self>, FragmentColorError> {
-        self.set_cone_angles(inner_radians, outer_radians)
-            .map(Arc::new)
-            .map_err(|e| FragmentColorError::Render(e.to_string()))
+        let inner = read_finite(inner_radians, "Light.setConeAngles: inner_radians")?;
+        let outer = read_finite(outer_radians, "Light.setConeAngles: outer_radians")?;
+        Ok(Arc::new(self.set_cone_angles(inner, outer)?))
     }
 }
 
@@ -342,7 +359,7 @@ impl Scene {
         cameras: bool,
         lights: bool,
     ) -> Result<Arc<Self>, FragmentColorError> {
-        let source = SceneSource::gltf(path).cameras(cameras).lights(lights);
+        let source = GltfSource::from(path).cameras(cameras).lights(lights);
         Ok(Arc::new(Scene::load(source)?))
     }
 
@@ -355,11 +372,11 @@ impl Scene {
         cameras: bool,
         lights: bool,
     ) -> Result<Arc<Self>, FragmentColorError> {
-        let source = SceneSource::gltf(bytes).cameras(cameras).lights(lights);
+        let source = GltfSource::from(bytes).cameras(cameras).lights(lights);
         Ok(Arc::new(Scene::load(source)?))
     }
 
-    /// Unified `Scene.add` — branches on the runtime mobile handle. Adding
+    /// Unified `Scene.add`, which branches on the runtime mobile handle. Adding
     /// a new `SceneObject` Rust-side means adding one extra variant to
     /// [`SceneObjectHandle`](crate::SceneObjectHandle) and one arm here.
     /// Every Scene mutator returns the scene, as in Rust, so calls chain.
@@ -477,8 +494,8 @@ impl Scene {
         self: Arc<Self>,
         color: Vec<f32>,
     ) -> Result<Arc<Self>, FragmentColorError> {
-        let c = take_vec3(&color, "Scene.ambient")?;
-        self.ambient(c);
+        let color = read_vector::<3>(color, "Scene.ambient")?;
+        self.ambient(color)?;
         Ok(self)
     }
 
@@ -499,14 +516,4 @@ impl Scene {
     pub fn lights_mobile(self: Arc<Self>) -> Vec<Arc<Light>> {
         self.lights().into_iter().map(Arc::new).collect()
     }
-}
-
-fn take_vec3(v: &[f32], field: &str) -> Result<[f32; 3], FragmentColorError> {
-    if v.len() != 3 {
-        return Err(FragmentColorError::Render(format!(
-            "{field}: expected an array of length 3, got {}",
-            v.len()
-        )));
-    }
-    Ok([v[0], v[1], v[2]])
 }

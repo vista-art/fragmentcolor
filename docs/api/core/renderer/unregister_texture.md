@@ -1,9 +1,15 @@
 # Renderer::unregister_texture(id)
 
-Explicitly remove a texture from the renderer’s registry.
+Remove a texture from the renderer’s registry now.
 
-- Call this when you replace a texture, stop a video stream, or tear down a scene, to release GPU memory.
-- If the texture is still referenced elsewhere, it will remain alive until all strong references are dropped.
+The renderer releases a texture on its own when the last thing holding it
+drops: every `Texture` handle, the `TextureTarget` that owns it, and each
+shader uniform or pass target that binds it. Call this to release one sooner,
+for example when a video stream stops.
+
+- After the call, the id names no texture, and shaders and passes that bind it can't draw it. A pass that keeps it as its color or depth target makes `render` return `TextureNotFoundError`.
+- A `Texture` handle you still hold keeps its GPU memory until it drops.
+- The id of a `Material` map removes this `Renderer`'s copy of it. The Material keeps the map, and the next `load`, or native `render`, uploads it again.
 
 ## Example
 ```rust

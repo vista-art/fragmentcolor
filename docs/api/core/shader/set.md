@@ -4,14 +4,16 @@ Sets the value of the uniform identified by the given key.
 
 If the key does not exist or the value format is incorrect, the `set` method throws an exception. The shader remains valid, and if the exception is caught, the shader can still be used with the renderer.
 
-`set` never blocks. When another thread holds the shader's storage, the value is queued and applied before the next draw. A bad value that can't be checked right away is dropped later with a logged warning instead of throwing.
+`set` never waits for a draw. When another thread holds the shader's storage, the value is queued and applied before the next draw. A texture can wait a moment while another thread binds a texture to the same shader, or while the renderer applies the shader's queued values, so the latest one wins. A bad value that can't be checked right away is dropped later with a logged warning instead of throwing.
 
 The uniform's declared WGSL type decides how the value is read, so a call behaves the same in every language:
 
-- A number fits an `f32`, `i32`, or `u32` uniform. Integer uniforms take whole numbers in range.
+- A number fits an `f32`, `f16`, `i32`, or `u32` uniform. Integer uniforms take whole numbers in range. A float uniform rounds the number to its type, so an `f16` one keeps the nearest `f16`, and NaN, infinities and numbers past the type's range throw.
 - A vector takes exactly as many numbers as it has components. A `mat2x2`, `mat3x3`, or `mat4x4` takes 4, 9, or 16.
-- A `Texture` created by a `Renderer` binds to a texture uniform.
-- Raw bytes replace a whole storage-buffer or push-constant root: a byte slice in Rust, a `Uint8Array` in JavaScript, `bytes` (or a `bytearray` or `memoryview`) in Python, `Data` in Swift, or a `ByteArray` in Kotlin.
+- A `Texture` created by a `Renderer` binds to a texture uniform, a `texture_external` one included.
+- Raw bytes replace a whole storage-buffer or push-constant root: a byte slice in Rust, a `Uint8Array` in JavaScript, `bytes` (or a `bytearray` or `memoryview`) in Python, `Data` in Swift, or a `ByteArray` in Kotlin. The byte count must equal the root's size, and any other length throws.
+
+Setting one field of a storage root uploads the whole root from the shader's CPU copy at the next render that binds it, which overwrites everything a compute pass wrote to that root.
 
 ## Example
 
@@ -20,7 +22,9 @@ The uniform's declared WGSL type decides how the value is read, so a call behave
 use fragmentcolor::{Renderer, Shader};
 let r = Renderer::new();
 let shader = Shader::new(r#"
+enable f16;
 @group(0) @binding(0) var<uniform> resolution: vec2<f32>;
+@group(0) @binding(1) var<uniform> gain: f16;
 
 struct VOut { @builtin(position) pos: vec4<f32> };
 @vertex fn vs_main(@builtin(vertex_index) i: u32) -> VOut {
@@ -29,11 +33,12 @@ struct VOut { @builtin(position) pos: vec4<f32> };
   out.pos = vec4<f32>(p[i], 0., 1.);
   return out;
 }
-@fragment fn main() -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
+@fragment fn main() -> @location(0) vec4<f32> { return vec4<f32>(f32(gain), 0., 0., 1.); }
 "#)?;
 
 // Set scalars/vectors on declared uniforms
 shader.set("resolution", [800.0, 600.0])?;
+shader.set("gain", 0.5)?;
 # Ok(())
 # }
 ```

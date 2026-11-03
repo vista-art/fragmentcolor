@@ -18,13 +18,15 @@ the light you pass.
 use fragmentcolor::{Light, Material, Mesh, Model, Scene, Vertex};
 
 let mesh = Mesh::new();
-mesh.add_vertex(
+mesh.add_vertices([
     Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]),
-);
+    Vertex::pbr([-0.5, -0.5, 0.0]).set(Vertex::UV0, [0.0, 0.0]),
+    Vertex::pbr([0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]),
+]);
 let scene = Scene::new();
 scene.add(&Model::new(mesh, Material::pbr()))?;
 
-let key = Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]);
+let key = Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])?;
 scene.set_default_light(&key);
 # Ok(())
 # }

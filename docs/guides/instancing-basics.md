@@ -13,7 +13,7 @@ This introduces per‑instance attributes, a simple way to place many copies of 
 
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, Shader, Pass, Target};
-use fragmentcolor::mesh::{Mesh, Vertex};
+use fragmentcolor::{Mesh, Vertex};
 
 // 1) Renderer + offscreen target
 let renderer = Renderer::new();

@@ -10,10 +10,10 @@ const shader = new Shader(`
 
 `);
 
-const vertex = new Vertex([0.0, 0.0]).set("id", 7).set("weight", 0.5);
+const vertex = new Vertex([0.0, 0.5]).set("id", 7).set("weight", 0.5);
 
 const mesh = new Mesh();
-mesh.addVertex(vertex);
+mesh.addVertices([ vertex, new Vertex([-0.5, -0.5]).set("id", 8).set("weight", 1.0), new Vertex([0.5, -0.5]).set("id", 9).set("weight", 1.0), ]);
 
-// id uploads as the u32 7 and weight as the f32 0.5.
+// The first id uploads as the u32 7 and its weight as the f32 0.5.
 shader.addMesh(mesh);

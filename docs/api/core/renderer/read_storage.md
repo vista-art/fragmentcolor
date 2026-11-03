@@ -8,6 +8,9 @@ the bytes.
 This is the only way to observe what a compute pass *wrote* into a storage
 binding. [`Shader::get`](https://fragmentcolor.org/api/core/shader) returns
 what was last set on the CPU side, so GPU writes don't show up through it.
+A [`Shader::set`](https://fragmentcolor.org/api/core/shader#set) on any field
+of the root uploads the whole root from that CPU copy at the next render that
+binds it, which replaces what a compute pass wrote there.
 
 `read_storage` is `async` because the underlying `map_async` requires an
 awaited callback. It returns a Promise in JS, is `async` in Swift and
@@ -16,10 +19,21 @@ the implementation drives the device forward (`device.poll(Wait)`) before
 awaiting, so callers don't have to spin their own poll loop. On Web the
 browser schedules the callback; the helper just awaits.
 
+The result holds exactly as many bytes as the binding spans, also for a
+root of `f16` values, which can span 2 or 6 bytes and reads back as 2-byte
+IEEE halves.
+
 Returns `RendererError::StorageBindingNotFound` when the shader does not
 declare a storage binding called `binding`, or when no render pass has yet
 materialized the GPU-side buffer (storage buffers are allocated lazily on
 first bind).
+
+In JavaScript, `readStorage` waits for the frames rendered before it to
+report their GPU errors and throws the first one, as
+[`Renderer::render`](https://fragmentcolor.org/api/core/renderer#render)
+describes. An error throws only once, so when another call, such as the next
+`render`, has already thrown it, `readStorage` returns the bytes the failed
+frame left behind.
 
 ## Example
 
@@ -46,7 +60,7 @@ let compute = Shader::new(
 
 let pass = Pass::compute("seed");
 pass.set_compute_dispatch(1, 1, 1);
-pass.add_shader(&compute);
+pass.add_shader(&compute)?;
 renderer.render(&pass, &target)?;
 
 let bytes = renderer.read_storage(&compute, "out").await?;

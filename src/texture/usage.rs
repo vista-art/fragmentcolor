@@ -18,6 +18,8 @@
 
 use std::ops::{BitOr, BitOrAssign};
 
+use crate::texture::TextureError;
+
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
@@ -29,6 +31,9 @@ use wasm_bindgen::prelude::*;
 #[cfg_attr(mobile, derive(uniffi::Record))]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct TextureUsage {
+    // Read-only in JavaScript, as Python's frozen class is.
+    // A uniffi Record is a copy, so Swift and Kotlin never change the original.
+    #[cfg_attr(wasm, wasm_bindgen(readonly))]
     pub bits: u32,
 }
 
@@ -53,9 +58,11 @@ impl TextureUsage {
     pub const fn contains(self, other: TextureUsage) -> bool {
         (self.bits & other.bits) == other.bits
     }
+}
 
-    pub const fn raw_bits(self) -> u32 {
-        self.bits
+impl From<TextureUsage> for u32 {
+    fn from(usage: TextureUsage) -> Self {
+        usage.bits
     }
 }
 
@@ -153,21 +160,35 @@ impl BitOrAssign for TextureUsage {
     }
 }
 
-impl From<TextureUsage> for wgpu::TextureUsages {
-    fn from(usage: TextureUsage) -> wgpu::TextureUsages {
-        wgpu::TextureUsages::from_bits_retain(usage.bits)
-    }
-}
+/// The bits of the five flags `TextureUsage` names, `COPY_SRC` to `RENDER_ATTACHMENT`.
+const NAMED: u32 = 0x1F;
 
-impl From<wgpu::TextureUsages> for TextureUsage {
-    fn from(usage: wgpu::TextureUsages) -> TextureUsage {
-        TextureUsage { bits: usage.bits() }
+/// The wgpu usage for `bits` from a caller, which may set only the five named flags.
+pub(crate) fn check_usage(bits: u32) -> Result<wgpu::TextureUsages, TextureError> {
+    let unknown = bits & !NAMED;
+    if unknown != 0 {
+        return Err(TextureError::InvalidInput(format!(
+            "usage {bits:#x} sets bits {unknown:#x} outside the TextureUsage flags"
+        )));
     }
+    Ok(wgpu::TextureUsages::from_bits_retain(bits))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    impl TextureUsage {
+        /// The wgpu `TextureUsages` this `TextureUsage` stands for.
+        fn to_wgpu(self) -> wgpu::TextureUsages {
+            wgpu::TextureUsages::from_bits_retain(self.bits)
+        }
+
+        /// The `TextureUsage` for wgpu's `TextureUsages`.
+        fn from_wgpu(usage: wgpu::TextureUsages) -> Self {
+            TextureUsage { bits: usage.bits() }
+        }
+    }
 
     #[test]
     fn composes_with_bit_or_and_contains() {
@@ -190,9 +211,29 @@ mod tests {
             TextureUsage::STORAGE_BINDING | TextureUsage::COPY_SRC,
         ];
         for u in cases.iter().copied() {
-            let w: wgpu::TextureUsages = u.into();
-            let back: TextureUsage = w.into();
+            let w: wgpu::TextureUsages = u.to_wgpu();
+            let back: TextureUsage = TextureUsage::from_wgpu(w);
             assert_eq!(u, back);
+        }
+    }
+
+    // Story: a usage takes the five named flags and nothing else, so wgpu-only
+    // bits such as TRANSIENT_ATTACHMENT (32) and STORAGE_ATOMIC (65536) are refused.
+    #[test]
+    fn check_usage_takes_the_named_flags() {
+        let all = TextureUsage::COPY_SRC
+            | TextureUsage::COPY_DST
+            | TextureUsage::TEXTURE_BINDING
+            | TextureUsage::STORAGE_BINDING
+            | TextureUsage::RENDER_ATTACHMENT;
+        let usage = check_usage(all.bits).expect("the named flags");
+        assert_eq!(usage.bits(), all.bits);
+        assert!(check_usage(0).expect("no flags").is_empty());
+        for bits in [32, 64, 65536, 1 << 20] {
+            assert!(
+                matches!(check_usage(bits), Err(TextureError::InvalidInput(_))),
+                "{bits} should be refused"
+            );
         }
     }
 }

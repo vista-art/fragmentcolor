@@ -23,6 +23,12 @@ The three variants:
   so self-intersecting or interpenetrating translucent meshes can still show artifacts.
   Cross-Material interleaving works correctly: translucent draws across every shader
   in the Pass merge into one globally-sorted back-to-front pass.
+  Blending needs a color target that blends and a shader that writes a `vec4`.
+  A format that never blends, such as an integer one, and an output without alpha
+  return `PassError::InvalidColorTarget` on every device. Whether `Rgba32Float` blends
+  depends on the device: the renderer asks for float32 blending wherever the GPU offers it,
+  and a device without it returns `RendererError::FeatureError`. `Rgba16Float` and the 8-bit
+  unorm formats blend everywhere.
 
 This is a pipeline-state flag. Changing it forces the renderer to rebuild the pipeline
 for the affected `(shader, alpha_mode, double_sided)` key. Switching it every frame is
@@ -37,10 +43,10 @@ use fragmentcolor::{AlphaMode, Material};
 
 let foliage = Material::pbr()
     .alpha_mode(AlphaMode::Mask)
-    .alpha_cutoff(0.3);
+    .alpha_cutoff(0.3)?;
 
 let glass = Material::pbr()
-    .base_color([0.9, 0.95, 1.0, 0.25])
+    .base_color([0.9, 0.95, 1.0, 0.25])?
     .alpha_mode(AlphaMode::Blend);
 
 let solid = Material::pbr().alpha_mode(AlphaMode::Opaque);

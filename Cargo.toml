@@ -1,6 +1,6 @@
 [package]
 name = "fragmentcolor"
-version = "0.12.6"
+version = "0.12.7"
 homepage = "https://fragmentcolor.org"
 repository = "https://github.com/vista-art/fragmentcolor"
 description = "Universal GPU abstraction for Rust, JavaScript, Python, Swift, and Kotlin."
@@ -149,11 +149,17 @@ shaders-all = [
 
 [dependencies]
 wgpu = { version = "30", features = ["glsl", "wgsl", "webgl", "naga-ir"] }
-naga = { version = "30", features = ["wgsl-in", "glsl-in"] }
+naga = { version = "30", features = ["wgsl-in", "wgsl-out", "glsl-in", "glsl-out"] }
+# Maps device features to the naga capabilities a shader may use. It ships with
+# wgpu and naga, so it moves with them: wgpu, naga and it share one major version.
+wgpu-naga-bridge = "30"
+# The window traits `Renderer::create_target` takes, which wgpu and winit share.
+raw-window-handle = "0.6"
 parking_lot = "0.12"
 derive-new = "0.7"
 thiserror = "2.0"
 bytemuck = "1.0"
+half = "2.7"
 futures = "0.3"
 lsp_doc = "0.2"
 dashmap = "6.1"
@@ -178,8 +184,10 @@ ktx2 = "0.5"
 # (`gltf::import` / `import_slice`); `utils` adds the typed accessors that
 # decode `u8`/`u16` indices and tightly-packed vertex attributes; the
 # `KHR_lights_punctual` extension is opt-in. `extras` accepts application
-# attributes such as `_ID`, which gltf-json rejects without it.
-gltf = { version = "1", features = ["KHR_lights_punctual", "KHR_texture_transform", "extras"] }
+# attributes such as `_ID`, which gltf-json rejects without it. `extensions`
+# keeps the raw extension JSON, the only way to reach `KHR_texture_transform`
+# on normal and occlusion textures.
+gltf = { version = "1", features = ["KHR_lights_punctual", "KHR_texture_transform", "extensions", "extras"] }
 
 # Python FFI (optional)
 pyo3 = { version = "0.29.3", features = ["abi3-py39"], optional = true }
@@ -219,21 +227,21 @@ pollster = "0.4"
 jni = "0.22"
 jni_fn = "0.1"
 ndk-sys = "0.6"
-raw-window-handle = "0.6"
 
 # WASM-Specific
 [target.'cfg(target_family = "wasm")'.dependencies]
 console_error_panic_hook = "0.1"
-wasm-bindgen-futures = "0.4"
-# Pinned to 0.2.118, the last version compatible with the `impl_js_bridge!`
-# macro in `src/macros.rs`. wasm-bindgen 0.2.126 changed the `RefFromWasmAbi`
-# ABI from `u32` to `WasmPtr`, and the macro hands that ABI a raw pointer.
-# Lift the pin once the macro is updated for the new ABI.
-wasm-bindgen = "=0.2.118"
+# The wasm-bindgen family moves in step: wasm-bindgen, js-sys, web-sys,
+# wasm-bindgen-futures and wasm-bindgen-test each pin the same wasm-bindgen.
+# Its `JsOption` takes only `undefined` as empty, so platforms/web/patch_glue.mjs
+# hands wgpu 30 `undefined` where WebGPU resolves an error scope or an adapter with `null`.
+# Drop that rewrite once a wgpu release carries gfx-rs/wgpu#10039 (see ROADMAP.md).
+wasm-bindgen-futures = "0.4.76"
+wasm-bindgen = "0.2.126"
 console_log = "1"
 lsp_doc = "0.2"
-js-sys = "0.3"
-web-sys = { version = "0.3", features = [
+js-sys = "0.3.103"
+web-sys = { version = "0.3.103", features = [
     'OffscreenCanvasRenderingContext2d',
     'CanvasRenderingContext2d',
     'WebGl2RenderingContext',
@@ -264,7 +272,7 @@ proc-macro2 = "1"
 uniffi = { version = "0.32", features = ["build"] }
 
 [dev-dependencies]
-wasm-bindgen-test = "0.3"
+wasm-bindgen-test = "0.3.76"
 image-compare = "0.5"
 pollster = "0.4"
 fastrand = "2"

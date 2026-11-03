@@ -9,10 +9,8 @@ locate a pass in a scene's graph, and it's the label graphics debuggers
 (RenderDoc, Xcode GPU capture) show for the pass.
 
 Names aren't required to be unique. If two passes share a name, name lookup
-returns the first one. `require` tells dependencies apart by name, though: a
-pass can't require two passes with the same name
-(`PassError::DuplicateDependency`), or a pass with its own name
-(`PassError::SelfDependency`).
+returns the first one. `require` tells passes apart by identity, so a pass can
+require two passes of one name, or another pass of its own name.
 
 ## Example
 
