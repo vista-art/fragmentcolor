@@ -6745,7 +6745,8 @@ public enum RenderableHandle {
     case scene(Scene
     )
     /**
-     * Iterable of `Pass` instances — emits passes in order.
+     * A list of passes, which renders as a Rust list does: each pass in order,
+     * after the passes it requires, and each pass once.
      */
     case passes([Pass]
     )

@@ -413,7 +413,7 @@ class Renderer:
         """
         Renders the given object to the given [Target](https://fragmentcolor.org/api/targets/target).
 
-        `renderable` can be a `Shader`, a `Pass`, a `Mesh`, a `Scene`, or any iterable of `Pass` (`Vec<Pass>`, `&[Pass]`, `&[&Pass]`). Passes in an iterable are rendered in order.
+        `renderable` can be a `Shader`, a `Pass`, a `Mesh`, a `Scene`, or any iterable of `Pass` (`Vec<Pass>`, `&[Pass]`, `&[&Pass]`). Passes in an iterable render in order, each after the passes it [requires](https://fragmentcolor.org/api/core/pass#require). A render runs each pass once, at the first place a list, a `Scene` or a `require` puts it, so with `b.require(&a)`, `render(&vec![a, b])`, `render(&vec![b])` and `render(&b)` all run `a`, then `b`.
 
         A window that is hidden or minimized has no frame to draw on. `render` then returns `RendererError::SurfaceError(SurfaceError::Occluded)`, which Python raises as `OccludedSurfaceError`, a `FragmentColorError`, Swift throws as `FragmentColorError.Occluded` and Kotlin as `FragmentColorException.Occluded`. Skip that frame and draw the next one.
 
@@ -1663,6 +1663,7 @@ class Pass:
         - A pass is the same pass by identity, never by name, so two passes that share a name are two dependencies.
         - Dependencies are stored in insertion order.
         - Traversal is dependencies-first, then the current pass, with deduplication.
+        - A render runs each pass once, after the passes it requires, also when a list or a `Scene` holds a pass and the passes it requires.
         - Creation order of passes does not matter.
 
         Example:
@@ -2375,7 +2376,9 @@ class Scene:
     ## An open, composable pass graph
 
     A `Scene` owns one ordered `Vec<Pass>`. Loaders, builders, and your own code
-    all append into the same list, and the renderer walks it in order. No pass is
+    all append into the same list, and the renderer walks it in order, running
+    each pass once, after the passes it
+    [requires](https://fragmentcolor.org/api/core/pass#require). No pass is
     privileged in render order: the default Pass that `scene.add(&model)` targets
     is an ordinary member, slotted in at the point of your first `add`. After
     [`Scene::load`](https://fragmentcolor.org/api/scene/scene#load) the whole
