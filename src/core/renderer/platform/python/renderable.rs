@@ -13,27 +13,10 @@ const EXPECTED: &str = "Expected a Scene, Pass, Shader, Mesh, or a sequence of t
 /// It keeps the objects and lists their passes when the renderer asks, so a render
 /// refused before it draws runs no setup, such as a Scene's default camera and light.
 /// One object renders as Rust renders it, so a Pass brings the passes it requires.
-/// A sequence renders its passes in order, and a Pass in it renders on its own, as in a Rust list.
+/// A sequence renders as a Rust list does: each item's passes in order,
+/// each pass once and after the passes it requires.
 pub struct PyRenderable {
-    items: Vec<Item>,
-}
-
-/// One object of a `PyRenderable`.
-enum Item {
-    /// A Scene, Shader, Mesh or Pass that renders as it does in Rust.
-    Whole(Box<dyn Renderable>),
-    /// A Pass in a sequence: the pass itself, without the passes it requires.
-    Bare(Arc<PassObject>),
-}
-
-impl Item {
-    /// The passes of this item, listed by `list`, one of the `Renderable` listings.
-    fn collect(&self, list: fn(&dyn Renderable) -> Arc<[Arc<PassObject>]>) -> Vec<Arc<PassObject>> {
-        match self {
-            Item::Whole(renderable) => list(renderable.as_ref()).to_vec(),
-            Item::Bare(pass) => vec![pass.clone()],
-        }
-    }
+    items: Vec<Box<dyn Renderable>>,
 }
 
 impl PyRenderable {
@@ -51,57 +34,43 @@ impl PyRenderable {
         let mut items = Vec::new();
         for index in 0..sequence.len()? {
             let item = sequence.get_item(index)?;
-            let item = match item.cast::<Pass>() {
-                Ok(pass) => Item::Bare(pass.borrow().object.clone()),
-                Err(_) => Self::read_object(&item).ok_or_else(|| {
-                    PyTypeError::new_err(format!(
-                        "item {index}: expected a Scene, Pass, Shader, or Mesh"
-                    ))
-                })?,
-            };
+            let item = Self::read_object(&item).ok_or_else(|| {
+                PyTypeError::new_err(format!(
+                    "item {index}: expected a Scene, Pass, Shader, or Mesh"
+                ))
+            })?;
             items.push(item);
         }
         Ok(Self { items })
     }
 
-    fn read_object(object: &Bound<'_, PyAny>) -> Option<Item> {
+    fn read_object(object: &Bound<'_, PyAny>) -> Option<Box<dyn Renderable>> {
         if let Ok(pass) = object.cast::<Pass>() {
-            return Some(Item::Whole(Box::new(pass.borrow().clone())));
+            return Some(Box::new(pass.borrow().clone()));
         }
         if let Ok(shader) = object.cast::<Shader>() {
-            return Some(Item::Whole(Box::new(shader.borrow().clone())));
+            return Some(Box::new(shader.borrow().clone()));
         }
         if let Ok(mesh) = object.cast::<Mesh>() {
-            return Some(Item::Whole(Box::new(mesh.borrow().clone())));
+            return Some(Box::new(mesh.borrow().clone()));
         }
         if let Ok(scene) = object.cast::<Scene>() {
-            return Some(Item::Whole(Box::new(scene.borrow().clone())));
+            return Some(Box::new(scene.borrow().clone()));
         }
         None
-    }
-
-    /// Every item's passes, listed by `list`.
-    fn gather(
-        &self,
-        list: fn(&dyn Renderable) -> Arc<[Arc<PassObject>]>,
-    ) -> Arc<[Arc<PassObject>]> {
-        self.items
-            .iter()
-            .flat_map(|item| item.collect(list))
-            .collect()
     }
 }
 
 impl Renderable for PyRenderable {
     fn passes(&self) -> Arc<[Arc<PassObject>]> {
-        self.gather(|renderable| renderable.passes())
+        self.items.passes()
     }
 
     fn roots(&self) -> Arc<[Arc<PassObject>]> {
-        self.gather(|renderable| renderable.roots())
+        self.items.roots()
     }
 
     fn peek_passes(&self) -> Arc<[Arc<PassObject>]> {
-        self.gather(|renderable| renderable.peek_passes())
+        self.items.peek_passes()
     }
 }

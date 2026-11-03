@@ -1205,13 +1205,13 @@ final class GeneratedExamples: ExampleCase {
 
     func test_scene_material_alpha_cutoff() async {
         await example("docs/api/scene/material/alpha_cutoff.md") {
-            let foliage = Material.pbr().alphaCutoff(0.3)
+            let foliage = try Material.pbr().alphaCutoff(0.3)
         }
     }
 
     func test_scene_material_alpha_mode() async {
         await example("docs/api/scene/material/alpha_mode.md") {
-            let foliage = Material.pbr().alphaMode(AlphaMode.mask).alphaCutoff(0.3)
+            let foliage = try Material.pbr().alphaMode(AlphaMode.mask).alphaCutoff(0.3)
 
             let glass = try Material.pbr().baseColor([0.9, 0.95, 1.0, 0.25]).alphaMode(AlphaMode.blend)
 
@@ -1290,7 +1290,7 @@ final class GeneratedExamples: ExampleCase {
         await example("docs/api/scene/material/double_sided.md") {
             let renderer = Renderer()
             // Leaf cards: thin, single-quad geometry; needs both sides + alpha cut-out.
-            let leaf = Material.pbr().doubleSided(true).alphaMode(AlphaMode.mask).alphaCutoff(0.5)
+            let leaf = try Material.pbr().doubleSided(true).alphaMode(AlphaMode.mask).alphaCutoff(0.5)
 
             // The default is single-sided, with back-face culling on.
             let solid_mesh = Material.pbr().doubleSided(false)
@@ -1319,7 +1319,7 @@ final class GeneratedExamples: ExampleCase {
 
     func test_scene_material_metallic() async {
         await example("docs/api/scene/material/metallic.md") {
-            let chrome = Material.pbr().metallic(1.0).roughness(0.05)
+            let chrome = try Material.pbr().metallic(1.0).roughness(0.05)
         }
     }
 
@@ -1338,7 +1338,7 @@ final class GeneratedExamples: ExampleCase {
 
     func test_scene_material_normal_scale() async {
         await example("docs/api/scene/material/normal_scale.md") {
-            let detailed = Material.pbr().normalScale(1.5)
+            let detailed = try Material.pbr().normalScale(1.5)
         }
     }
 
@@ -1357,7 +1357,7 @@ final class GeneratedExamples: ExampleCase {
 
     func test_scene_material_occlusion_strength() async {
         await example("docs/api/scene/material/occlusion_strength.md") {
-            let crevices = Material.pbr().occlusionStrength(0.8)
+            let crevices = try Material.pbr().occlusionStrength(0.8)
         }
     }
 
@@ -1383,7 +1383,7 @@ final class GeneratedExamples: ExampleCase {
     func test_scene_material_roughness() async {
         await example("docs/api/scene/material/roughness.md") {
             let renderer = Renderer()
-            let satin = Material.pbr().roughness(0.35)
+            let satin = try Material.pbr().roughness(0.35)
         }
     }
 

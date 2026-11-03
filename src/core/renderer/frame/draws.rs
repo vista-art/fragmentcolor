@@ -122,13 +122,14 @@ pub(in crate::core::renderer) struct BlendMesh {
 
 impl RenderContext {
     /// Checks a compute pass before any frame is acquired: each shader against the
-    /// device and its textures (`check_shader`, `check_textures`), then its dispatch and
-    /// texture accesses (`check_compute`).
+    /// device, its textures and the values pushed to it (`check_shader`, `check_textures`,
+    /// `check_pushes`), then its dispatch and texture accesses (`check_compute`).
     pub(super) fn plan_compute(&self, pass: &PassObject) -> Result<(), RendererError> {
         for shader in pass.shaders.read().iter() {
             shader.flush_pending();
             self.check_shader(shader)?;
             self.check_textures(shader)?;
+            shader.check_pushes()?;
         }
         self.check_compute(pass)
     }
@@ -140,7 +141,8 @@ impl RenderContext {
     /// vertex inputs with no mesh, a mesh is asked for more instances than it holds,
     /// a mesh the device's limits or its own checks refuse (`plan_shader`), a shader
     /// asks for more than the device has (`check_shader`), a texture uniform has no
-    /// texture or one its slot can't take (`check_textures`), a viewport side passes
+    /// texture or one its slot can't take (`check_textures`), a shader can't hold a
+    /// value pushed to it, such as a camera's (`check_pushes`), a viewport side passes
     /// the device's 2D limit (`check_viewport`), or a target the pass set is missing.
     ///
     /// A pass with a target of its own checks its attachments here too.
@@ -186,6 +188,7 @@ impl RenderContext {
         shader.flush_pending();
         self.check_shader(&shader)?;
         self.check_textures(&shader)?;
+        shader.check_pushes()?;
         // The quick view checks its mesh on every render, however the render
         // reached it, and a mesh it refuses says why on every render.
         let (meshes, passed) = shader.read_meshes()?;

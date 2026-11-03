@@ -63,7 +63,9 @@ fn square(material: Material, z: f32) -> Model {
 fn glow(color: [f32; 3], z: f32) -> Model {
     let material = Material::pbr()
         .base_color([0.0, 0.0, 0.0, 1.0])
-        .emissive(color);
+        .expect("base color")
+        .emissive(color)
+        .expect("emissive");
     square(material, z)
 }
 
@@ -71,7 +73,9 @@ fn glow(color: [f32; 3], z: f32) -> Model {
 fn glass(color: [f32; 3], z: f32) -> Model {
     let material = Material::pbr()
         .base_color([0.0, 0.0, 0.0, 0.5])
+        .expect("base color")
         .emissive(color)
+        .expect("emissive")
         .alpha_mode(AlphaMode::Blend);
     square(material, z)
 }

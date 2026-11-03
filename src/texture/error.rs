@@ -59,12 +59,6 @@ pub enum TextureError {
     /// A source that can't build a texture, such as an empty Mipmap or an unreadable KTX2 file.
     #[error("Failed to create texture: {0}")]
     CreateTextureError(String),
-    /// A `ShaderError` a texture call passes on.
-    #[error("Shader error: {0}")]
-    ShaderError(#[from] crate::ShaderError),
-    /// A bind group layout that can't be built.
-    #[error("Bind Group Layout error: {0}")]
-    BindGroupLayoutError(String),
     /// A GPU error an earlier frame left, which a readback reports before it reads.
     #[error("Device error ({kind}) in '{label}': {detail}")]
     DeviceError {
@@ -185,18 +179,13 @@ impl From<TextureError> for wasm_bindgen::JsValue {
 mod tests {
     use super::*;
 
-    // Story: TextureError wraps failures from creation paths and shader conversion.
+    // Story: TextureError formats carry the failure's details.
     #[test]
-    fn texture_error_variants_and_from_shader() {
+    fn texture_error_variants() {
         let e1 = TextureError::NoContext;
         assert!(e1.to_string().contains("Context not initialized"));
 
         let e2 = TextureError::CreateTextureError("bad".into());
         assert!(e2.to_string().contains("Failed to create texture"));
-
-        // From ShaderError
-        let se = crate::ShaderError::UniformNotFound("u".into());
-        let e3: TextureError = se.into();
-        assert!(matches!(e3, TextureError::ShaderError(_)));
     }
 }

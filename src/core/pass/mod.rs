@@ -1,6 +1,7 @@
 //! `Pass`, which groups the shaders that draw together with
 //! their targets, viewport, clear color and compute dispatch.
 
+use crate::core::renderer::deduplicate;
 use crate::geometry::MeshObject;
 use crate::scene::{LightObject, ModelEntry, PassLights, SceneObject};
 use crate::texture::{Registration, Texture, TextureObject};
@@ -187,59 +188,79 @@ impl Pass {
 
 impl Renderable for Pass {
     fn passes(&self) -> Arc<[Arc<PassObject>]> {
-        PassObject::ensure_flat_current(&self.object);
-        let required = self.object.flat.read().clone();
-        required
-            .iter()
-            .cloned()
-            .chain([self.object.clone()])
-            .collect()
+        PassObject::expand(&self.object).into()
     }
     fn roots(&self) -> Arc<[Arc<PassObject>]> {
         vec![self.object.clone()].into()
     }
 }
 
-// Sequential lists: do not expand dependencies; return the listed passes in order.
+/// The passes a list of passes renders: each listed pass in order, after the passes
+/// it requires, and each pass once, so a pass the list also requires runs at its first place.
+pub(crate) fn expand_list<'list>(
+    list: impl IntoIterator<Item = &'list Arc<PassObject>>,
+) -> Arc<[Arc<PassObject>]> {
+    deduplicate(list.into_iter().flat_map(PassObject::expand))
+}
+
+/// The passes a list of passes links as dependencies: the listed passes themselves.
+fn link_list<'list>(
+    list: impl IntoIterator<Item = &'list Arc<PassObject>>,
+) -> Arc<[Arc<PassObject>]> {
+    list.into_iter().cloned().collect()
+}
+
 impl Renderable for &[Pass] {
     fn passes(&self) -> Arc<[Arc<PassObject>]> {
-        let v: Vec<Arc<PassObject>> = self.iter().map(|pass| pass.object.clone()).collect();
-        v.into()
+        expand_list(self.iter().map(|pass| &pass.object))
+    }
+    fn roots(&self) -> Arc<[Arc<PassObject>]> {
+        link_list(self.iter().map(|pass| &pass.object))
     }
 }
 
 impl Renderable for Vec<Pass> {
     fn passes(&self) -> Arc<[Arc<PassObject>]> {
-        let v: Vec<Arc<PassObject>> = self.iter().map(|pass| pass.object.clone()).collect();
-        v.into()
+        expand_list(self.iter().map(|pass| &pass.object))
+    }
+    fn roots(&self) -> Arc<[Arc<PassObject>]> {
+        link_list(self.iter().map(|pass| &pass.object))
     }
 }
 
 impl Renderable for &[&Pass] {
     fn passes(&self) -> Arc<[Arc<PassObject>]> {
-        let v: Vec<Arc<PassObject>> = self.iter().map(|pass| pass.object.clone()).collect();
-        v.into()
+        expand_list(self.iter().map(|pass| &pass.object))
+    }
+    fn roots(&self) -> Arc<[Arc<PassObject>]> {
+        link_list(self.iter().map(|pass| &pass.object))
     }
 }
 
 impl Renderable for Vec<&Pass> {
     fn passes(&self) -> Arc<[Arc<PassObject>]> {
-        let v: Vec<Arc<PassObject>> = self.iter().map(|pass| pass.object.clone()).collect();
-        v.into()
+        expand_list(self.iter().map(|pass| &pass.object))
+    }
+    fn roots(&self) -> Arc<[Arc<PassObject>]> {
+        link_list(self.iter().map(|pass| &pass.object))
     }
 }
 
-// Provide convenience for direct Arc containers if needed.
 impl Renderable for &[Arc<PassObject>] {
     fn passes(&self) -> Arc<[Arc<PassObject>]> {
-        let v: Vec<Arc<PassObject>> = self.to_vec();
-        v.into()
+        expand_list(self.iter())
+    }
+    fn roots(&self) -> Arc<[Arc<PassObject>]> {
+        link_list(self.iter())
     }
 }
 
 impl Renderable for Vec<Arc<PassObject>> {
     fn passes(&self) -> Arc<[Arc<PassObject>]> {
-        self.clone().into()
+        expand_list(self.iter())
+    }
+    fn roots(&self) -> Arc<[Arc<PassObject>]> {
+        link_list(self.iter())
     }
 }
 
@@ -723,6 +744,13 @@ impl PassObject {
         false
     }
 
+    /// The pass after every pass it requires, each once, dependencies first.
+    pub(crate) fn expand(self_arc: &Arc<PassObject>) -> Vec<Arc<PassObject>> {
+        Self::ensure_flat_current(self_arc);
+        let required = self_arc.flat.read().clone();
+        required.iter().cloned().chain([self_arc.clone()]).collect()
+    }
+
     // Ensure cached deps-first slice of required passes is up-to-date with global graph version
     pub(crate) fn ensure_flat_current(self_arc: &Arc<PassObject>) {
         let global = GRAPH_VERSION.load(Ordering::Relaxed);
@@ -1161,6 +1189,34 @@ mod tests {
             .collect();
 
         assert_eq!(names, ["color", "blur_x", "blur_y", "compose"]);
+    }
+
+    // Story: every list of passes runs each pass once, after the passes it requires,
+    // and links only the listed passes when another pass requires the list.
+    #[test]
+    fn lists_run_each_pass_once() {
+        let first = Pass::new("first");
+        let second = Pass::new("second");
+        second.require(&first).expect("second requires first");
+        let ids = |passes: Arc<[Arc<PassObject>]>| -> Vec<u64> {
+            passes.iter().map(|pass| pass.id).collect()
+        };
+        let order = vec![first.object.id, second.object.id];
+
+        assert_eq!(ids(vec![first.clone(), second.clone()].passes()), order);
+        assert_eq!(ids(vec![second.clone()].passes()), order);
+        assert_eq!(ids(vec![second.clone(), first.clone()].passes()), order);
+        assert_eq!(ids(vec![&first, &second].passes()), order);
+        assert_eq!(ids((&[first.clone(), second.clone()][..]).passes()), order);
+        assert_eq!(ids((&[&first, &second][..]).passes()), order);
+        let objects = vec![first.object.clone(), second.object.clone()];
+        assert_eq!(ids(objects.passes()), order);
+        assert_eq!(ids((&objects[..]).passes()), order);
+        let boxed: Vec<Box<dyn Renderable>> =
+            vec![Box::new(first.clone()), Box::new(second.clone())];
+        assert_eq!(ids(boxed.passes()), order);
+        assert_eq!(ids(boxed.peek_passes()), order);
+        assert_eq!(ids(vec![second.clone()].roots()), [second.object.id]);
     }
 
     // Story: dropping a rendered pass chain frees every pass and the shaders only they held.

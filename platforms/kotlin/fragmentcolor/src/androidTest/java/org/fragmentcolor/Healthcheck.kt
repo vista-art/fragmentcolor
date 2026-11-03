@@ -105,6 +105,46 @@ class Healthcheck : ExampleCase() {
         renderer.render(solid, target)
     }
 
+    // A render runs each pass once, after the passes it requires, from a list, a Scene
+    // or the pass itself, as in every other binding. Each pass counts its runs in storage.
+    @Test
+    fun requiredPassesRunOnce() = runBlocking {
+        val renderer = Renderer()
+        val target = renderer.createTextureTarget(listOf(1u, 1u))
+        fun counter(name: String) = Shader(
+            """
+            @group(0) @binding(0) var<storage, read_write> $name: array<u32, 1>;
+            @compute @workgroup_size(1)
+            fn cs_main() { $name[0] += 1u; }
+            """.trimIndent()
+        )
+        val firstCount = counter("first_runs")
+        val secondCount = counter("second_runs")
+        val first = Pass.fromShader("first", firstCount)
+        val second = Pass.fromShader("second", secondCount)
+        second.require(first)
+        val scene = Scene()
+        scene.addPass(first)
+        scene.addPass(second)
+        suspend fun runs(): List<Int> {
+            val word = { bytes: ByteArray ->
+                java.nio.ByteBuffer.wrap(bytes, 0, 4).order(java.nio.ByteOrder.LITTLE_ENDIAN).int
+            }
+            val firstBytes = renderer.readStorage(firstCount, "first_runs")
+            val secondBytes = renderer.readStorage(secondCount, "second_runs")
+            return listOf(word(firstBytes), word(secondBytes))
+        }
+
+        renderer.render(listOf(first, second), target)
+        assertEquals(listOf(1, 1), runs(), "a list")
+        renderer.render(scene, target)
+        assertEquals(listOf(2, 2), runs(), "a scene")
+        renderer.render(listOf(second), target)
+        assertEquals(listOf(3, 3), runs(), "a list without first")
+        renderer.render(second, target)
+        assertEquals(listOf(4, 4), runs(), "a pass")
+    }
+
     // One shader draws meshes with other layouts, and a second Renderer draws them too,
     // where it stopped the app inside wgpu. render refuses indices past the vertices,
     // and addMesh a vertex property named position.
@@ -286,6 +326,14 @@ class Healthcheck : ExampleCase() {
             "Material.uvTransform: offset" to { material.uvTransform(doubleArrayOf(1e39, 0.0), doubleArrayOf(1.0, 1.0), 0.0) },
             "Material.textureTransform: scale" to {
                 material.textureTransform(TextureSlot.NORMAL, listOf(0f, 0f), listOf(Float.POSITIVE_INFINITY, 1f), 0f)
+            },
+            "Material.metallic: value" to { material.metallic(Float.NaN) },
+            "Material.alphaCutoff: value" to { material.alphaCutoff(1e39) },
+            "Material.uvTransform: rotation" to {
+                material.uvTransform(doubleArrayOf(0.0, 0.0), doubleArrayOf(1.0, 1.0), Double.POSITIVE_INFINITY)
+            },
+            "Material.textureTransform: rotation" to {
+                material.textureTransform(TextureSlot.NORMAL, listOf(0f, 0f), listOf(1f, 1f), Float.NaN)
             },
             "Vertex: position" to { Vertex(doubleArrayOf(1e39, 0.0, 0.0)) },
             "Vertex: position" to { Vertex(listOf(Float.NaN, 0f)) },

@@ -59,12 +59,11 @@ impl AttributeTypes {
     }
 }
 
-/// How a shader reads one attribute: the format the mesh packs it in,
-/// the WGSL type the shader declares, such as `vec2<f16>`, and whether it is `f16`,
-/// whose range every value of the attribute must stay in after rounding, later ones too.
+/// How a shader reads one attribute: its declared WGSL type,
+/// such as `vec2<f16>`, and whether it is `f16`, whose range every value
+/// of the attribute must stay in after rounding, values added later included.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct Read {
-    pub(crate) format: wgpu::VertexFormat,
     pub(crate) declared: &'static str,
     pub(crate) half: bool,
 }

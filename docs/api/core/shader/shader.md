@@ -183,7 +183,7 @@ A root that isn't a struct takes its bytes whole through `set`, as a storage roo
 - Subgroup operations need `SUBGROUP` in compute and fragment shaders and `SUBGROUP_VERTEX` in vertex shaders, and `subgroupBarrier` also needs `SUBGROUP_BARRIER`. Vulkan devices with the full set of subgroup operations offer them, as do Metal GPUs of the Apple7, Mac2 and Metal 3 families and DX12 devices with Shader Model 6.0 wave operations. Only Vulkan offers `SUBGROUP_VERTEX`, and DX12 has no `SUBGROUP_BARRIER`.
 - `primitive_index` needs `PRIMITIVE_INDEX`, which DX12, Vulkan devices with geometry shaders, the same Metal GPU families, OpenGL 3.2 and OpenGL ES 3.2 offer.
 
-The browser's WebGPU and WebGL2 offer neither, and native GL offers no subgroups. Write subgroup code in WGSL and leave out `enable subgroups;`, which naga doesn't take yet:
+Neither runs on the web. Chrome's WebGPU offers subgroups, but wgpu 30 doesn't request them for the device it opens there, and WebGL2 has neither. Native GL offers no subgroups. Write subgroup code in WGSL and leave out `enable subgroups;`, which naga doesn't take yet:
 
 ```wgsl
 @group(0) @binding(0) var<storage, read_write> sums: array<u32, 64>;
@@ -213,6 +213,8 @@ fn fs_main() -> @location(0) vec4<f32> {
 ```
 
 `set` takes plain numbers for an `f16` key, as it does for an `f32` one, and rounds each to the nearest `f16`. NaN, infinities and numbers past ±65504 that don't round back to it throw, and the key keeps its value. `get` returns the rounded value as `f32` numbers in every language, so `0.1` reads back as `0.0999755859375`. Past 2048, an `f16` skips some whole numbers, as an `f32` does past 2^24, and rounding one raises no error.
+
+A `Camera` or `Scene::ambient` value that an `f16` field can't hold leaves the field as it was, and `Renderer::render` returns the same error until a later value fits.
 
 A vertex input declared as `f16` or `vec4<f16>` reads the mesh's 32-bit floats, which the GPU converts, so one mesh feeds `f32` and `f16` shaders alike. An attach error names the type the shader declares, such as `vec2<f16>`.
 

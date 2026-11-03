@@ -18,9 +18,14 @@ fn build_minimal_triangle_glb() -> Vec<u8> {
     build_triangle_glb(TRIANGLE_JSON)
 }
 
-/// Pack `json` with the triangle's BIN chunk: three vec3 positions, the
-/// u32 indices `[0, 1, 2]` and 24 bytes of `[0.5, 0.5]` float pairs.
+/// Pack `json` with the triangle's BIN chunk.
 fn build_triangle_glb(json: &str) -> Vec<u8> {
+    build_glb(json, &build_triangle_bin())
+}
+
+/// The triangle's BIN chunk: three vec3 positions, the u32 indices
+/// `[0, 1, 2]` and 24 bytes of `[0.5, 0.5]` float pairs, 72 bytes in all.
+fn build_triangle_bin() -> Vec<u8> {
     #[rustfmt::skip]
     let positions: [f32; 9] = [
          0.0,  0.5, 0.0,
@@ -30,18 +35,22 @@ fn build_triangle_glb(json: &str) -> Vec<u8> {
     let mut bin: Vec<u8> = positions.iter().flat_map(|f| f.to_le_bytes()).collect();
     bin.extend([0u32, 1, 2].iter().flat_map(|i| i.to_le_bytes()));
     bin.extend([0.5f32; 6].iter().flat_map(|f| f.to_le_bytes()));
-    build_glb(json, &bin)
+    bin
 }
 
 /// Apply text patches to the minimal triangle's JSON and pack it.
 fn mutate_triangle(patches: &[(&str, &str)]) -> Vec<u8> {
-    let json = patches
+    build_triangle_glb(&patch_triangle(patches))
+}
+
+/// The minimal triangle's JSON with text patches applied.
+fn patch_triangle(patches: &[(&str, &str)]) -> String {
+    patches
         .iter()
         .fold(TRIANGLE_JSON.to_string(), |json, (from, to)| {
             assert!(json.contains(from), "patch target {from:?} not in the JSON");
             json.replace(from, to)
-        });
-    build_triangle_glb(&json)
+        })
 }
 
 /// Wrap a JSON chunk and a BIN chunk in a .glb container.
@@ -427,6 +436,55 @@ fn load_names_the_mesh_and_primitive_at_fault() {
         (r#""nodes":[{"mesh":0}]"#, r#""nodes":[{"mesh":1}]"#),
     ]);
     assert_invalid(bytes, "glTF mesh 1 primitive 2 draws in mode Points");
+}
+
+/// The triangle with NORMAL as accessor 1, three vec3 normals in bufferView 3
+/// after the triangle's bytes, and `normal` as the last of them.
+fn triangle_with_normal(normal: [f32; 3]) -> Vec<u8> {
+    let json = patch_triangle(&[
+        (ATTRIBUTES, r#"{"POSITION":0,"NORMAL":1}"#),
+        (r#""byteLength":72}]"#, r#""byteLength":108}]"#),
+        (
+            r#"{"buffer":0,"byteLength":24,"byteOffset":48}"#,
+            r#"{"buffer":0,"byteLength":24,"byteOffset":48},{"buffer":0,"byteLength":36,"byteOffset":72}"#,
+        ),
+        (
+            LAST_ACCESSOR,
+            r#""max":[0.5,0.5,0.0]},{"bufferView":3,"componentType":5126,"count":3,"type":"VEC3"}]"#,
+        ),
+    ]);
+    let mut bin = build_triangle_bin();
+    let normals = [[0.0, 0.0, 1.0], [0.0, 0.0, 1.0], normal];
+    bin.extend(normals.as_flattened().iter().flat_map(|f| f.to_le_bytes()));
+    build_glb(&json, &bin)
+}
+
+#[test]
+fn load_refuses_a_normal_that_isnt_finite() {
+    // The PBR shader would refuse the normal at attach,
+    // with a message that names no mesh or accessor.
+    assert_invalid(
+        triangle_with_normal([0.0, f32::NAN, 1.0]),
+        "glTF mesh 0 primitive 0 reads NaN at item 2 of accessor 1 (NORMAL)",
+    );
+    assert_invalid(
+        triangle_with_normal([f32::INFINITY, 0.0, 1.0]),
+        "reads inf at item 2 of accessor 1 (NORMAL)",
+    );
+    let scene = Scene::load(triangle_with_normal([0.0, 0.0, 1.0])).expect("finite normals");
+    assert_eq!(scene.models().len(), 1);
+}
+
+#[test]
+fn load_refuses_a_position_that_isnt_finite() {
+    // A position that isn't finite would draw nothing, with no error at all.
+    // Bytes 16 to 20 hold the y of vertex 1.
+    let mut bin = build_triangle_bin();
+    bin[16..20].copy_from_slice(&f32::NEG_INFINITY.to_le_bytes());
+    assert_invalid(
+        build_glb(TRIANGLE_JSON, &bin),
+        "glTF mesh 0 primitive 0 reads -inf at item 1 of accessor 0 (POSITION)",
+    );
 }
 
 #[test]
@@ -848,6 +906,23 @@ fn load_reads_a_null_texture_transform_as_none_on_every_slot() {
         assert_eq!(read_slot(material, index), (0, [0.0, 0.0], [1.0, 1.0], 0.0));
     }
     assert_eq!(read_slot(material, 2), (1, [0.0, 0.0], [1.0, 1.0], 0.0));
+}
+
+// Story: a texture transform whose number reads as an infinity in a 32-bit float,
+// such as an offset of 1e39, fails the load with an error that names the part.
+#[test]
+fn load_refuses_a_transform_past_the_float_range() {
+    let normal = quote(&[
+        "'materials':[{'normalTexture':{'index':0,",
+        "'extensions':{'KHR_texture_transform':{'offset':[0.0,1e39]}}}}]",
+    ]);
+    match load_textured(&normal) {
+        Err(SceneLoadError::Material(error)) => assert_eq!(
+            error.to_string(),
+            "KHR_texture_transform: offset: item 1 must be finite, got inf"
+        ),
+        other => panic!("expected SceneLoadError::Material, got {other:?}"),
+    }
 }
 
 #[test]

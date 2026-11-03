@@ -17,7 +17,9 @@ fn cover() -> Model {
     );
     let material = Material::pbr()
         .base_color([0.0, 0.0, 0.0, 1.0])
-        .emissive([GLOW, GLOW, GLOW]);
+        .expect("base color")
+        .emissive([GLOW, GLOW, GLOW])
+        .expect("emissive");
     Model::new(mesh, material)
 }
 

@@ -16,6 +16,7 @@ Takes the inputs [`Material::base_color_texture`](https://fragmentcolor.org/api/
 ## Example
 
 ```rust
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Material;
 
 // Raw pixels with their size upload when the scene loads.
@@ -27,6 +28,8 @@ let normal_map_bytes: Vec<u8> = vec![
 ];
 let mat = Material::pbr()
     .normal_texture((normal_map_bytes, [2, 2]))
-    .normal_scale(1.2);
+    .normal_scale(1.2)?;
 # let _ = mat;
+# Ok(())
+# }
 ```

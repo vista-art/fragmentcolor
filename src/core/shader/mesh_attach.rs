@@ -314,7 +314,6 @@ impl ShaderObject {
 /// How `input` reads its attribute, as the mesh keeps it to check values added later.
 fn describe_read(input: &VertexInputDesc) -> Read {
     Read {
-        format: input.format,
         declared: input.declared,
         half: input.half,
     }

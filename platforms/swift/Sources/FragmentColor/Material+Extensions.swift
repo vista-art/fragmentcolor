@@ -22,50 +22,51 @@ extension Material {
     // `occlusionStrength(value:)`, `alphaCutoff(value:)`, `doubleSided(value:)`
     // — accept positional `Float` / `Double` / `Bool` so example code can
     // write `mat.metallic(0.5)` instead of `mat.metallic(value: 0.5)`.
+    // A number setter throws for NaN, an infinity or a `Double` past the `Float` range.
 
     @discardableResult
-    public func metallic(_ value: Float) -> Material {
-        return metallic(value: value)
+    public func metallic(_ value: Float) throws -> Material {
+        return try metallic(value: value)
     }
     @discardableResult
-    public func metallic(_ value: Double) -> Material {
-        return metallic(value: Float(value))
-    }
-
-    @discardableResult
-    public func roughness(_ value: Float) -> Material {
-        return roughness(value: value)
-    }
-    @discardableResult
-    public func roughness(_ value: Double) -> Material {
-        return roughness(value: Float(value))
+    public func metallic(_ value: Double) throws -> Material {
+        return try metallic(value: readFinite(value, "Material.metallic: value"))
     }
 
     @discardableResult
-    public func normalScale(_ value: Float) -> Material {
-        return normalScale(value: value)
+    public func roughness(_ value: Float) throws -> Material {
+        return try roughness(value: value)
     }
     @discardableResult
-    public func normalScale(_ value: Double) -> Material {
-        return normalScale(value: Float(value))
-    }
-
-    @discardableResult
-    public func occlusionStrength(_ value: Float) -> Material {
-        return occlusionStrength(value: value)
-    }
-    @discardableResult
-    public func occlusionStrength(_ value: Double) -> Material {
-        return occlusionStrength(value: Float(value))
+    public func roughness(_ value: Double) throws -> Material {
+        return try roughness(value: readFinite(value, "Material.roughness: value"))
     }
 
     @discardableResult
-    public func alphaCutoff(_ value: Float) -> Material {
-        return alphaCutoff(value: value)
+    public func normalScale(_ value: Float) throws -> Material {
+        return try normalScale(value: value)
     }
     @discardableResult
-    public func alphaCutoff(_ value: Double) -> Material {
-        return alphaCutoff(value: Float(value))
+    public func normalScale(_ value: Double) throws -> Material {
+        return try normalScale(value: readFinite(value, "Material.normalScale: value"))
+    }
+
+    @discardableResult
+    public func occlusionStrength(_ value: Float) throws -> Material {
+        return try occlusionStrength(value: value)
+    }
+    @discardableResult
+    public func occlusionStrength(_ value: Double) throws -> Material {
+        return try occlusionStrength(value: readFinite(value, "Material.occlusionStrength: value"))
+    }
+
+    @discardableResult
+    public func alphaCutoff(_ value: Float) throws -> Material {
+        return try alphaCutoff(value: value)
+    }
+    @discardableResult
+    public func alphaCutoff(_ value: Double) throws -> Material {
+        return try alphaCutoff(value: readFinite(value, "Material.alphaCutoff: value"))
     }
 
     @discardableResult
@@ -110,7 +111,7 @@ extension Material {
         return try uvTransform(
             offset: readFloats(offset, "Material.uvTransform: offset"),
             scale: readFloats(scale, "Material.uvTransform: scale"),
-            rotation: Float(rotation)
+            rotation: readFinite(rotation, "Material.uvTransform: rotation")
         )
     }
 
@@ -134,7 +135,7 @@ extension Material {
             slot: slot,
             offset: readFloats(offset, "Material.textureTransform: offset"),
             scale: readFloats(scale, "Material.textureTransform: scale"),
-            rotation: Float(rotation)
+            rotation: readFinite(rotation, "Material.textureTransform: rotation")
         )
     }
 

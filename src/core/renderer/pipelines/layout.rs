@@ -9,7 +9,8 @@ use crate::core::renderer::{RenderContext, pools};
 use crate::core::{PushEntry, StorageEntry, Uniform, UniformData};
 use crate::core::{list_explicit, lower_immediates, name_entries, validate_module, write_layouts};
 use crate::texture::{TextureClass, TextureDim, TextureMeta, TextureScalarKind};
-use crate::{ShaderError, ShaderObject};
+use crate::{Diagnostic, ShaderError, ShaderObject};
+use naga::back::pipeline_constants::process_overrides;
 use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap};
 use std::num::NonZeroU64;
@@ -279,14 +280,16 @@ pub(in crate::core::renderer) struct PipelineSource {
     pub(in crate::core::renderer) entries: Vec<(naga::ShaderStage, String)>,
 }
 
-/// The source a pipeline hands wgpu for `module`. On the browser's WebGPU (`writes_wgsl`),
-/// wgpu writes a module back to WGSL without `@size` and `@align`, so a module whose
-/// buffer structs set their layout with them goes as WGSL that keeps the layout. There every
-/// entry point takes the name naga's writer gives it, from this exact module, in either source.
+/// The source a pipeline hands wgpu for `module`, with its overrides at their defaults.
+/// On the browser's WebGPU (`writes_wgsl`), wgpu writes a module back to WGSL without
+/// `@size` and `@align`, so a module whose buffer structs set their layout with them goes
+/// as WGSL that keeps the layout. There every entry point takes the name naga's writer gives it,
+/// from this exact module, in either source.
 pub(in crate::core::renderer) fn pick_source(
     module: naga::Module,
     writes_wgsl: bool,
 ) -> Result<PipelineSource, ShaderError> {
+    let module = resolve_overrides(module)?;
     if !writes_wgsl {
         let entries = module
             .entry_points
@@ -307,6 +310,22 @@ pub(in crate::core::renderer) fn pick_source(
     }
     let source = wgpu::ShaderSource::Naga(Cow::Owned(module));
     Ok(PipelineSource { source, entries })
+}
+
+/// `module` with every override at its default, as a pipeline with no constants runs it,
+/// and each `@workgroup_size` an override names at the size the default gives.
+/// naga's WGSL writer prints 1 for such a size, and the browser's WebGPU reads that text,
+/// so every target compiles the resolved module. One without overrides stays as it is.
+fn resolve_overrides(module: naga::Module) -> Result<naga::Module, ShaderError> {
+    if module.overrides.is_empty() {
+        return Ok(module);
+    }
+    let info = validate_module(&module, None)?;
+    let constants = naga::back::PipelineConstants::default();
+    match process_overrides(&module, &info, None, &constants) {
+        Ok((resolved, _)) => Ok(resolved.into_owned()),
+        Err(error) => Err(ShaderError::ValidationError(Diagnostic::from_error(&error))),
+    }
 }
 
 /// The name the first entry point of `stage` takes in a pipeline's source.

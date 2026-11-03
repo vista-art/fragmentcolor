@@ -1,3 +1,3 @@
 import FragmentColor
 
-let detailed = Material.pbr().normalScale(1.5)
+let detailed = try Material.pbr().normalScale(1.5)

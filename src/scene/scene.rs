@@ -38,6 +38,7 @@ use pyo3::prelude::*;
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
+use crate::core::expand_list;
 use crate::scene::{Camera, Light, SceneObject, push_uniform};
 use crate::{Pass, PassError, PassObject, Renderable};
 
@@ -324,7 +325,7 @@ impl Scene {
         // picks it up.
         if let Some(amb) = *self.inner.ambient.read() {
             for shader in pass.object.shaders.read().iter() {
-                push_uniform(shader, "lights.ambient", amb);
+                push_uniform(shader, "lights.ambient", &amb);
             }
         }
         Ok(())
@@ -384,7 +385,7 @@ impl Scene {
         // added via `Scene::add` pick the value up from the stash.
         for pass in self.inner.passes.read().iter() {
             for shader in pass.object.shaders.read().iter() {
-                push_uniform(shader, "lights.ambient", color);
+                push_uniform(shader, "lights.ambient", &color);
             }
         }
         self
@@ -650,12 +651,10 @@ impl Renderable for Scene {
     }
 
     /// The scene's passes, without adding the default camera and light it draws with.
+    /// Each pass comes once, after the passes it requires, as in a list of passes.
     fn peek_passes(&self) -> Arc<[Arc<PassObject>]> {
-        let mut all: Vec<Arc<PassObject>> = Vec::new();
-        for pass in self.inner.passes.read().iter() {
-            all.extend(pass.passes().iter().cloned());
-        }
-        all.into()
+        let passes = self.inner.passes.read();
+        expand_list(passes.iter().map(|pass| &pass.object))
     }
 
     fn roots(&self) -> Arc<[Arc<PassObject>]> {
@@ -707,6 +706,26 @@ mod tests {
         scene.add(&model).expect("add");
         assert!(scene.inner.default_pass.read().is_some());
         assert_eq!(scene.inner.passes.read().len(), 1);
+    }
+
+    // Story: a scene lists each pass once, after the passes it requires,
+    // so a member that another member requires runs once.
+    #[test]
+    fn passes_list_a_required_member_once() {
+        let scene = Scene::new();
+        let first = Pass::new("first");
+        let second = Pass::new("second");
+        second.require(&first).expect("second requires first");
+        scene.add_pass(&first);
+        scene.add_pass(&second);
+
+        let names = |passes: Arc<[Arc<PassObject>]>| -> Vec<String> {
+            passes.iter().map(|pass| pass.name.to_string()).collect()
+        };
+
+        assert_eq!(names(scene.peek_passes()), ["first", "second"]);
+        assert_eq!(names(scene.passes()), ["first", "second"]);
+        assert_eq!(names(scene.roots()), ["first", "second"]);
     }
 
     #[test]
@@ -901,6 +920,50 @@ mod tests {
         assert_eq!(lights[1].color(), [0.0, 1.0, 0.0]);
     }
 
+    // Story: an ambient color past the range of a shader's f16 ambient stays as that
+    // shader's refusal, which a later ambient that fits clears. A shader without the
+    // key refuses nothing.
+    #[test]
+    fn an_ambient_a_shader_cannot_hold_stays_refused() {
+        let half = crate::Shader::new(
+            "enable f16;
+struct Lights { ambient: vec3<f16> }
+@group(0) @binding(0) var<uniform> lights: Lights;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  return vec4<f32>(f32(i), 0.0, 0.0, 1.0);
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> {
+  return vec4<f32>(vec3<f32>(lights.ambient), 1.0);
+}",
+        )
+        .expect("shader");
+        let plain = crate::Shader::new(
+            "
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  return vec4<f32>(f32(i), 0.0, 0.0, 1.0);
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }",
+        )
+        .expect("shader");
+        let pass = Pass::new("ambient");
+        pass.add_shader(&half).expect("shader");
+        pass.add_shader(&plain).expect("shader");
+        let scene = Scene::new();
+        scene.add_pass(&pass);
+
+        scene.ambient([70000.0, 0.0, 0.0]);
+        let refused = half.object.check_pushes();
+        let quiet = plain.object.check_pushes();
+        scene.ambient([0.5, 0.5, 0.5]);
+        let fitted = half.object.check_pushes();
+
+        let message = refused.expect_err("past the f16 range").to_string();
+        let expected = "lights.ambient: expected vec3<f16>, got 70000";
+        assert!(message.contains(expected), "{message}");
+        assert!(quiet.is_ok(), "{quiet:?}");
+        assert!(fitted.is_ok(), "{fitted:?}");
+    }
+
     #[test]
     fn renders_through_renderer_end_to_end() {
         // Smoke test: the canonical "scene with model + default fallbacks"
@@ -914,7 +977,9 @@ mod tests {
                 .expect("texture target");
             let model = Model::new(
                 pbr_triangle_mesh(),
-                Material::pbr().base_color([0.6, 0.2, 0.8, 1.0]),
+                Material::pbr()
+                    .base_color([0.6, 0.2, 0.8, 1.0])
+                    .expect("base color"),
             );
             let scene = Scene::new();
             scene.add(&model).expect("add model");

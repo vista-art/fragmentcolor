@@ -223,7 +223,7 @@ extension Renderer {
     /// Default-options overload: drop the trailing `options: nil` from
     /// idiomatic call sites. Mirrors the JS / Python bindings where
     /// `create_texture(input)` is fine without an explicit options arg.
-    public func createTexture(input: TextureInputMobile) async throws -> Texture {
+    public func createTexture(input: MobileTextureInput) async throws -> Texture {
         try await createTexture(input: input, options: nil)
     }
 
@@ -359,14 +359,19 @@ func byteData(_ bytes: [Int], _ method: String) throws -> Data {
 /// Throws for NaN, an infinity, or a finite number past the `Float` range.
 func readFloats(_ values: [Double], _ label: String) throws -> [Float] {
     try values.enumerated().map { index, value in
-        let float = Float(value)
-        guard float.isFinite else {
-            throw FragmentColorError.Render(
-                "\(label): item \(index) must be a finite number that fits a 32-bit float, got \(showNumber(value))"
-            )
-        }
-        return float
+        try readFinite(value, "\(label): item \(index)")
     }
+}
+
+/// One number as a `Float`, such as a roughness, a UV rotation or an item of `readFloats`.
+func readFinite(_ value: Double, _ label: String) throws -> Float {
+    let float = Float(value)
+    guard float.isFinite else {
+        throw FragmentColorError.Render(
+            "\(label) must be a finite number that fits a 32-bit float, got \(showNumber(value))"
+        )
+    }
+    return float
 }
 
 /// A vertex position of 1 to 4 numbers as Floats, each checked as `readFloats` checks it.
@@ -406,7 +411,7 @@ func showNumber(_ value: Double) -> String {
 }
 
 /// A URL input for `http(s)`, otherwise a file path.
-func pathInput(_ path: String) -> TextureInputMobile {
+func pathInput(_ path: String) -> MobileTextureInput {
     path.hasPrefix("http://") || path.hasPrefix("https://") ? .url(path) : .path(path)
 }
 

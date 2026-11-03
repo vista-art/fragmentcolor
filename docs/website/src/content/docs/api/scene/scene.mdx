@@ -39,7 +39,9 @@ the rest of FragmentColor follows.
 ## An open, composable pass graph
 
 A `Scene` owns one ordered `Vec<Pass>`. Loaders, builders, and your own code
-all append into the same list, and the renderer walks it in order. No pass is
+all append into the same list, and the renderer walks it in order, running
+each pass once, after the passes it
+[requires](/api/core/pass#require). No pass is
 privileged in render order: the default Pass that `scene.add(&model)` targets
 is an ordinary member, slotted in at the point of your first `add`. After
 [`Scene::load`](/api/scene/scene#load) the whole
@@ -158,6 +160,8 @@ A file that breaks the glTF rules returns the same error. That covers:
 - an accessor with a count of 0, a type its semantic doesn't take, or a
   byte range outside its buffer view or buffer
 - an attribute with a different element count than `POSITION`
+- NaN or an infinity in an attribute the loader reads, which the message
+  names with the mesh, the primitive and the item
 - an index past the last vertex
 - a node reached twice, through a cycle or a child with two parents
 - a point or spot light with a negative `range`
@@ -1147,6 +1151,12 @@ hardcoded before this knob existed). Calling `Scene::ambient` overrides
 that for every shader the scene visits today *and* for any Models added
 afterwards: the value is stashed on the Scene and re-stamped onto
 shaders that join later via `Scene::add`.
+
+A shader whose `lights.ambient` can't hold the color, such as an `f16`
+ambient and a channel past ±65504, keeps the color it had, and
+`Renderer::render` returns the shader's `ShaderError::TypeMismatch` until a
+color lands there, from a later `ambient` call or from `Shader::set`. A
+shader without `lights.ambient` takes nothing.
 
 Returns a handle to the same Scene (Arc-shared) for chaining.
 

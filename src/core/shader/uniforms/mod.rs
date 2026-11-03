@@ -160,10 +160,9 @@ impl StorageAccess {
             StorageAccess::Read | StorageAccess::Atomic | StorageAccess::AtomicRead
         )
     }
-}
 
-impl From<naga::StorageAccess> for StorageAccess {
-    fn from(value: naga::StorageAccess) -> Self {
+    /// The `StorageAccess` for naga's `StorageAccess` flags.
+    pub(crate) fn from_naga(value: naga::StorageAccess) -> Self {
         use naga::StorageAccess as SA;
 
         let load = value.contains(SA::LOAD);
@@ -927,23 +926,23 @@ mod tests {
 
     #[test]
     fn storage_access_combinations() {
-        assert_eq!(StorageAccess::from(SA::LOAD), StorageAccess::Read);
-        assert_eq!(StorageAccess::from(SA::STORE), StorageAccess::Write);
-        assert_eq!(StorageAccess::from(SA::ATOMIC), StorageAccess::Atomic);
+        assert_eq!(StorageAccess::from_naga(SA::LOAD), StorageAccess::Read);
+        assert_eq!(StorageAccess::from_naga(SA::STORE), StorageAccess::Write);
+        assert_eq!(StorageAccess::from_naga(SA::ATOMIC), StorageAccess::Atomic);
         assert_eq!(
-            StorageAccess::from(SA::LOAD | SA::STORE),
+            StorageAccess::from_naga(SA::LOAD | SA::STORE),
             StorageAccess::ReadWrite
         );
         assert_eq!(
-            StorageAccess::from(SA::LOAD | SA::ATOMIC),
+            StorageAccess::from_naga(SA::LOAD | SA::ATOMIC),
             StorageAccess::AtomicRead
         );
         assert_eq!(
-            StorageAccess::from(SA::STORE | SA::ATOMIC),
+            StorageAccess::from_naga(SA::STORE | SA::ATOMIC),
             StorageAccess::AtomicWrite
         );
         assert_eq!(
-            StorageAccess::from(SA::LOAD | SA::STORE | SA::ATOMIC),
+            StorageAccess::from_naga(SA::LOAD | SA::STORE | SA::ATOMIC),
             StorageAccess::AtomicReadWrite
         );
     }

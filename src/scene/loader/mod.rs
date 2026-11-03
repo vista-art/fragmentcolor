@@ -189,8 +189,9 @@ impl From<&[u8]> for SceneSource {
 pub enum SceneLoadError {
     #[error("glTF parse error: {0}")]
     Gltf(String),
-    #[error("PBR material construction failed: {0}")]
-    Material(#[from] crate::ShaderError),
+    /// A glTF material whose factors or texture transforms the PBR material refuses.
+    #[error("glTF material: {0}")]
+    Material(#[from] crate::MaterialError),
     #[error("invalid glTF data: {0}")]
     Invalid(String),
     #[error("glTF camera {index}: {source}. Load with cameras(false) to skip the file's cameras")]

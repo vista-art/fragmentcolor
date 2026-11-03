@@ -1351,7 +1351,9 @@ const RIGHT: (u32, u32) = (12, 8);
 fn red_glow() -> crate::Material {
     crate::Material::pbr()
         .base_color([0.0, 0.0, 0.0, 1.0])
+        .expect("base color")
         .emissive([1.0, 0.0, 0.0])
+        .expect("emissive")
 }
 
 /// A model whose mesh spans `left` to `right` across the middle of the view.

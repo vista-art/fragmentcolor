@@ -3,7 +3,7 @@
 
 use super::error::Source;
 use super::source::joined::Joined;
-use super::{Diagnostic, PushEntry, ShaderError, ShaderHash, StorageEntry};
+use super::{Diagnostic, PushEntry, ShaderError, ShaderHash, StorageAccess, StorageEntry};
 use super::{Uniform, UniformData, convert_type};
 use crate::core::renderer::device::CANDIDATES;
 use crate::texture::TextureStorageFormat;
@@ -337,7 +337,7 @@ pub(super) fn parse_uniforms(
                 UniformData::Storage(vec![StorageEntry {
                     inner: vec![inner],
                     span,
-                    access: access.into(),
+                    access: StorageAccess::from_naga(access),
                 }])
             }
             _ => {

@@ -29,9 +29,9 @@ inner shader. Mutating one handle changes the state every other handle
 reads:
 
 ```text
-let red = Material::pbr().base_color([1.0, 0.0, 0.0, 1.0]);
+let red = Material::pbr().base_color([1.0, 0.0, 0.0, 1.0])?;
 let same = red.clone();
-same.base_color([0.0, 1.0, 0.0, 1.0]); // both `red` and `same` now read green
+same.base_color([0.0, 1.0, 0.0, 1.0])?; // both `red` and `same` now read green
 ```
 
 Same goes for the chained-setter return: `Material::pbr().metallic(...)`
@@ -96,10 +96,10 @@ mesh.add_vertices([
 ]);
 
 let material = Material::pbr()
-    .base_color([0.85, 0.2, 0.2, 1.0])
-    .metallic(0.0)
-    .roughness(0.4)
-    .emissive([0.0, 0.0, 0.05]);
+    .base_color([0.85, 0.2, 0.2, 1.0])?
+    .metallic(0.0)?
+    .roughness(0.4)?
+    .emissive([0.0, 0.0, 0.05])?;
 
 let model = Model::new(mesh, material);
 # let _model = model;

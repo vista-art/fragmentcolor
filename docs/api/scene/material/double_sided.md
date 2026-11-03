@@ -26,7 +26,7 @@ let renderer = Renderer::new();
 let leaf = Material::pbr()
     .double_sided(true)
     .alpha_mode(AlphaMode::Mask)
-    .alpha_cutoff(0.5);
+    .alpha_cutoff(0.5)?;
 
 // The default is single-sided, with back-face culling on.
 let solid_mesh = Material::pbr().double_sided(false);

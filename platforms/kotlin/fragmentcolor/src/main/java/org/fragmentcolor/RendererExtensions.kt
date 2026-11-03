@@ -92,7 +92,7 @@ suspend fun Renderer.createStorageTexture(
  * [usage] adds to the `TEXTURE_BINDING | COPY_DST` every texture gets.
  */
 suspend fun Renderer.createTexture(bytes: ByteArray, usage: TextureUsage? = null): Texture =
-    createTexture(TextureInputMobile.Bytes(bytes), textureOptions(usage = usage))
+    createTexture(MobileTextureInput.Bytes(bytes), textureOptions(usage = usage))
 
 /** Create a texture from encoded image bytes, one [Int] per byte. */
 suspend fun Renderer.createTexture(bytes: List<Int>, usage: TextureUsage? = null): Texture =
@@ -100,7 +100,7 @@ suspend fun Renderer.createTexture(bytes: List<Int>, usage: TextureUsage? = null
 
 /** Create a texture from encoded image bytes, decoded into [format]. */
 suspend fun Renderer.createTexture(bytes: ByteArray, format: TextureFormat, usage: TextureUsage? = null): Texture =
-    createTexture(TextureInputMobile.Bytes(bytes), textureOptions(format = format, usage = usage))
+    createTexture(MobileTextureInput.Bytes(bytes), textureOptions(format = format, usage = usage))
 
 /** Create a texture from encoded image bytes, one [Int] per byte, decoded into [format]. */
 suspend fun Renderer.createTexture(bytes: List<Int>, format: TextureFormat, usage: TextureUsage? = null): Texture =
@@ -108,7 +108,7 @@ suspend fun Renderer.createTexture(bytes: List<Int>, format: TextureFormat, usag
 
 /** Create a texture from raw RGBA pixels and their [Size], so the bytes are never decoded. */
 suspend fun Renderer.createTexture(bytes: ByteArray, size: Size, usage: TextureUsage? = null): Texture =
-    createTexture(TextureInputMobile.Bytes(bytes), textureOptions(size = size, usage = usage))
+    createTexture(MobileTextureInput.Bytes(bytes), textureOptions(size = size, usage = usage))
 
 /** Create a texture from raw RGBA pixels, one [Int] per byte, and their [Size]. */
 suspend fun Renderer.createTexture(bytes: List<Int>, size: Size, usage: TextureUsage? = null): Texture =
@@ -124,7 +124,7 @@ suspend fun Renderer.createTexture(bytes: List<Int>, size: List<UInt>, usage: Te
 
 /** Create a texture from bytes with every option spelled out. */
 suspend fun Renderer.createTexture(bytes: ByteArray, options: TextureOptions): Texture =
-    createTexture(TextureInputMobile.Bytes(bytes), options)
+    createTexture(MobileTextureInput.Bytes(bytes), options)
 
 /** Create a texture from bytes, one [Int] per byte, with every option spelled out. */
 suspend fun Renderer.createTexture(bytes: List<Int>, options: TextureOptions): Texture =
@@ -143,14 +143,14 @@ suspend fun Renderer.createTexture(path: String, options: TextureOptions): Textu
 
 /** Create a texture from a [Mipmap] chain, which uploads without decoding. */
 suspend fun Renderer.createTexture(chain: Mipmap): Texture =
-    createTexture(TextureInputMobile.Prepared(chain), null)
+    createTexture(MobileTextureInput.Prepared(chain), null)
 
 /** Create a texture from a [Mipmap] chain, with a sampler and usage from [options]. */
 suspend fun Renderer.createTexture(chain: Mipmap, options: TextureOptions): Texture =
-    createTexture(TextureInputMobile.Prepared(chain), options)
+    createTexture(MobileTextureInput.Prepared(chain), options)
 
-/** Create a texture from any [TextureInputMobile] with the default options. */
-suspend fun Renderer.createTexture(input: TextureInputMobile): Texture = createTexture(input, null)
+/** Create a texture from any [MobileTextureInput] with the default options. */
+suspend fun Renderer.createTexture(input: MobileTextureInput): Texture = createTexture(input, null)
 
 // ── render / load ────────────────────────────────────────────────────────────
 
@@ -263,15 +263,18 @@ internal fun sizeRecord(size: List<UInt>, method: String): Size {
  * Throws [FragmentColorException] for NaN, an infinity, or a finite number past the [Float] range.
  */
 internal fun readFloats(values: List<Double>, label: String): List<Float> =
-    values.mapIndexed { index, value ->
-        val float = value.toFloat()
-        if (!float.isFinite()) {
-            throw FragmentColorException.Render(
-                "$label: item $index must be a finite number that fits a 32-bit float, got ${showNumber(value)}",
-            )
-        }
-        float
+    values.mapIndexed { index, value -> readFinite(value, "$label: item $index") }
+
+/** One number as a [Float], such as a roughness, a UV rotation or an item of [readFloats]. */
+internal fun readFinite(value: Double, label: String): Float {
+    val float = value.toFloat()
+    if (!float.isFinite()) {
+        throw FragmentColorException.Render(
+            "$label must be a finite number that fits a 32-bit float, got ${showNumber(value)}",
+        )
     }
+    return float
+}
 
 /**
  * The number as the shared Rust message prints it: `NaN`, `inf`, `-inf`, or `1e39`.
@@ -325,11 +328,11 @@ internal fun byteArray(bytes: List<Int>, method: String): ByteArray =
     }
 
 /** A URL input for `http(s)`, otherwise a file path. */
-internal fun pathInput(path: String): TextureInputMobile =
+internal fun pathInput(path: String): MobileTextureInput =
     if (path.startsWith("http://") || path.startsWith("https://")) {
-        TextureInputMobile.Url(path)
+        MobileTextureInput.Url(path)
     } else {
-        TextureInputMobile.Path(path)
+        MobileTextureInput.Path(path)
     }
 
 /**

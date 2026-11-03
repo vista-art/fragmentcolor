@@ -357,6 +357,9 @@ class Renderer:
         This is the only way to observe what a compute pass *wrote* into a storage
         binding. [`Shader::get`](https://fragmentcolor.org/api/core/shader) returns
         what was last set on the CPU side, so GPU writes don't show up through it.
+        A [`Shader::set`](https://fragmentcolor.org/api/core/shader#set) on any field
+        of the root uploads the whole root from that CPU copy at the next render that
+        binds it, which replaces what a compute pass wrote there.
 
         `read_storage` is `async` because the underlying `map_async` requires an
         awaited callback. It returns a Promise in JS, is `async` in Swift and
@@ -413,7 +416,7 @@ class Renderer:
         """
         Renders the given object to the given [Target](https://fragmentcolor.org/api/targets/target).
 
-        `renderable` can be a `Shader`, a `Pass`, a `Mesh`, a `Scene`, or any iterable of `Pass` (`Vec<Pass>`, `&[Pass]`, `&[&Pass]`). Passes in an iterable are rendered in order.
+        `renderable` can be a `Shader`, a `Pass`, a `Mesh`, a `Scene`, or any iterable of `Pass` (`Vec<Pass>`, `&[Pass]`, `&[&Pass]`). Passes in an iterable render in order, each after the passes it [requires](https://fragmentcolor.org/api/core/pass#require). A render runs each pass once, at the first place a list, a `Scene` or a `require` puts it, so with `b.require(&a)`, `render(&vec![a, b])`, `render(&vec![b])` and `render(&b)` all run `a`, then `b`.
 
         A window that is hidden or minimized has no frame to draw on. `render` then returns `RendererError::SurfaceError(SurfaceError::Occluded)`, which Python raises as `OccludedSurfaceError`, a `FragmentColorError`, Swift throws as `FragmentColorError.Occluded` and Kotlin as `FragmentColorException.Occluded`. Skip that frame and draw the next one.
 
@@ -429,7 +432,7 @@ class Renderer:
 
         `render` also returns what the GPU rejects. When a pipeline fails to build or a frame's commands fail, it returns a [DeviceError](https://fragmentcolor.org/api/errors/deviceerror), `RendererError::DeviceError` in Rust. Its `kind` tells validation errors, internal errors such as a shader the backend compiler refuses, and running out of memory apart, and its `label` names the step that failed: the render pipeline, the compute pipeline, the light binning pipeline, the frame, or a bind group or texture view inside the frame. When one error causes another, `render` returns the first. In Rust, Python, Swift and Kotlin, a pipeline that failed is never kept, and the next frame builds it again and returns the same error.
 
-        A frame that fails is still presented. wgpu clears an image that no valid command drew into, so after a GPU error the window usually shows a cleared frame. On Apple GPUs the renderer submits the commands recorded so far before each compute pass that follows another compute pass. When a pass after that point fails, what the earlier passes drew stays on the image. A shader without its mesh, an instance count past the mesh's instances, a mesh the device's limits or its own checks refuse, a shader or texture the device checks refuse, a target from another `Renderer`, a pass target that is missing, a viewport past the device's 2D limit, and a pass whose own target or compute dispatch fails its checks fail before `render` takes a frame, and the window keeps its last image.
+        A frame that fails is still presented. wgpu clears an image that no valid command drew into, so after a GPU error the window usually shows a cleared frame. On Apple GPUs the renderer submits the commands recorded so far before each compute pass that follows another compute pass. When a pass after that point fails, what the earlier passes drew stays on the image. On Apple GPUs, after a compute pass whose shader binds a storage texture with atomic access, `render` also submits the commands recorded so far and waits for the GPU to finish them before it records the next pass, so a readback, a later pass and the next `render` all see the pass's counts. A shader without its mesh, an instance count past the mesh's instances, a mesh the device's limits or its own checks refuse, a shader or texture the device checks refuse, a target from another `Renderer`, a pass target that is missing, a viewport past the device's 2D limit, and a pass whose own target or compute dispatch fails its checks fail before `render` takes a frame, and the window keeps its last image.
 
         JavaScript gets the GPU's errors late, because WebGPU reports them after `render` has returned. Each error logs a `console.error` when it lands, and the next `render` still throws the first one, as an `Error` named `DeviceError`, with `kind`, `label` and `detail` properties, before doing any work. `load`, `readTexture`, `readStorage`, and `getImage` on a `Texture` or `TextureTarget` wait for the frames before them to report, so they throw a frame's error even when called right after it. A call that waits throws only the error of a frame rendered before it began: the error of a frame rendered while it waits, even one rendered in the same task right after the call, stays for the next call. Only the first error to land throws, and only once; the ones that land after it, before a call takes it, only log. The label names the render pipeline, the compute pipeline, the light binning pipeline or the frame. A pipeline that failed stays in the cache until its error lands, and a frame that draws with it before then reports a frame error. Once the error lands, the pipeline leaves the cache. In a loop that renders each frame, the next `render` throws the error before doing any work, and the one after it builds the pipeline again and reports the same error.
 
@@ -788,6 +791,8 @@ class Shader:
         - A `Texture` created by a `Renderer` binds to a texture uniform, a `texture_external` one included.
         - Raw bytes replace a whole storage-buffer or push-constant root: a byte slice in Rust, a `Uint8Array` in JavaScript, `bytes` (or a `bytearray` or `memoryview`) in Python, `Data` in Swift, or a `ByteArray` in Kotlin. The byte count must equal the root's size, and any other length throws.
 
+        Setting one field of a storage root uploads the whole root from the shader's CPU copy at the next render that binds it, which overwrites everything a compute pass wrote to that root.
+
         Example:
 
         ```python
@@ -1134,7 +1139,7 @@ class Shader:
         ```
         """
     @staticmethod
-    def from_vertex(v: Vertex) -> Shader:
+    def from_vertex(vertex: Vertex) -> Shader:
         """
         Build a basic WGSL shader source from a single Vertex layout.
 
@@ -1663,6 +1668,7 @@ class Pass:
         - A pass is the same pass by identity, never by name, so two passes that share a name are two dependencies.
         - Dependencies are stored in insertion order.
         - Traversal is dependencies-first, then the current pass, with deduplication.
+        - A render runs each pass once, after the passes it requires, also when a list or a `Scene` holds a pass and the passes it requires.
         - Creation order of passes does not matter.
 
         Example:
@@ -2375,7 +2381,9 @@ class Scene:
     ## An open, composable pass graph
 
     A `Scene` owns one ordered `Vec<Pass>`. Loaders, builders, and your own code
-    all append into the same list, and the renderer walks it in order. No pass is
+    all append into the same list, and the renderer walks it in order, running
+    each pass once, after the passes it
+    [requires](https://fragmentcolor.org/api/core/pass#require). No pass is
     privileged in render order: the default Pass that `scene.add(&model)` targets
     is an ordinary member, slotted in at the point of your first `add`. After
     [`Scene::load`](https://fragmentcolor.org/api/scene/scene#load) the whole
@@ -2538,6 +2546,8 @@ class Scene:
         - an accessor with a count of 0, a type its semantic doesn't take, or a
           byte range outside its buffer view or buffer
         - an attribute with a different element count than `POSITION`
+        - NaN or an infinity in an attribute the loader reads, which the message
+          names with the mesh, the primitive and the item
         - an index past the last vertex
         - a node reached twice, through a cycle or a child with two parents
         - a point or spot light with a negative `range`
@@ -3092,6 +3102,12 @@ class Scene:
         afterwards: the value is stashed on the Scene and re-stamped onto
         shaders that join later via `Scene::add`.
 
+        A shader whose `lights.ambient` can't hold the color, such as an `f16`
+        ambient and a channel past ±65504, keeps the color it had, and
+        `Renderer::render` returns the shader's `ShaderError::TypeMismatch` until a
+        color lands there, from a later `ambient` call or from `Shader::set`. A
+        shader without `lights.ambient` takes nothing.
+
         Returns a handle to the same Scene (Arc-shared) for chaining.
 
         Example:
@@ -3624,6 +3640,14 @@ class Camera:
     `CameraError` in JavaScript, raise `CameraError` (a `FragmentColorError` and a `ValueError`)
     in Python, throw `FragmentColorError` in Swift and throw
     `FragmentColorException` in Kotlin.
+
+    A shader whose `camera.view_proj` or `camera.position` can't hold the
+    Camera's value, such as an `f16` position past ±65504 or a `vec4<f32>`
+    position for the Camera's three numbers, keeps the value it had.
+    `Renderer::render` returns the shader's `ShaderError::TypeMismatch` until a
+    value of that key lands, from the Camera or from `Shader::set`. A shader
+    that declares neither key, such as one whose `camera` is a plain
+    `mat4x4<f32>`, takes nothing from the Camera, with no error.
 
     The Camera is the user's domain, not the Material's: a Material is "what the
     surface looks like under any light from any viewpoint", a Camera is "which
@@ -4377,9 +4401,9 @@ class Material:
     reads:
 
     ```text
-    let red = Material::pbr().base_color([1.0, 0.0, 0.0, 1.0]);
+    let red = Material::pbr().base_color([1.0, 0.0, 0.0, 1.0])?;
     let same = red.clone();
-    same.base_color([0.0, 1.0, 0.0, 1.0]); // both `red` and `same` now read green
+    same.base_color([0.0, 1.0, 0.0, 1.0])?; // both `red` and `same` now read green
     ```
 
     Same goes for the chained-setter return: `Material::pbr().metallic(...)`
@@ -4560,9 +4584,15 @@ class Material:
         Wrap an arbitrary `Shader` as a `Material` so it can be paired with a
         `Mesh` to form a `Model`. The PBR-named setters (`base_color`, `metallic`,
         …) still work; they call `shader.set(...)` under matching uniform paths
-        (`material.base_color`, etc.). If your shader doesn't declare those
-        uniforms the setters log-warn and return self unchanged; set custom uniforms
+        (`material.base_color`, etc.). A setter skips a uniform your shader doesn't
+        declare with a log warning and returns the Material, so set custom uniforms
         directly via `material.shader().set(...)`.
+
+        A value your shader declares but can't hold, such as a number past ±65504
+        for an `f16` field, returns `MaterialError::Shader` with the shader's error,
+        and the call changes nothing, a whole `uv_transform` included. JavaScript
+        throws an `Error` named `MaterialError`, Python raises `MaterialError`, Swift
+        throws `FragmentColorError` and Kotlin throws `FragmentColorException`.
 
         `Material::custom` is the escape hatch for any shading model that isn't
         glTF-spec PBR: toon shading, flat unlit colors, wireframe debug views,
@@ -4845,6 +4875,15 @@ class Material:
         [Material: Cloning is an Arc-share](https://fragmentcolor.org/api/scene/material#cloning-is-an-arc-share-not-a-deep-copy)
         for what that means for mutation visibility.
 
+        An item that is NaN or an infinity returns `MaterialError::NotFinite`,
+        which names the call and the item, and the material keeps the value it
+        had. The other languages also refuse an item past the 32-bit float range,
+        such as `1e39`, with a message like `Material.baseColor: item 3 must be a
+        finite number that fits a 32-bit float, got 1e39`. JavaScript throws an
+        `Error` named `InvalidInputError`, Python raises `InvalidInputError`,
+        Swift throws `FragmentColorError` and Kotlin throws
+        `FragmentColorException`.
+
         Example:
 
         ```python
@@ -4865,6 +4904,14 @@ class Material:
         out-of-the-box surface reads as a clean dielectric rather than dark gunmetal
         under the factor-driven defaults.
 
+        NaN or an infinity returns `MaterialError::NotFinite`, which names the
+        call, and the material keeps the value it had. The other languages also
+        refuse a number past the 32-bit float range, such as `1e39`, with a
+        message like `Material.metallic: value must be a finite number that fits a
+        32-bit float, got 1e39`. JavaScript throws an `Error` named
+        `InvalidInputError`, Python raises `InvalidInputError`, Swift throws
+        `FragmentColorError` and Kotlin throws `FragmentColorException`.
+
         Example:
 
         ```python
@@ -4881,6 +4928,14 @@ class Material:
         shared with glTF 2.0.
 
         Maps to the `material.roughness` uniform. Default is `1.0`.
+
+        NaN or an infinity returns `MaterialError::NotFinite`, which names the
+        call, and the material keeps the value it had. The other languages also
+        refuse a number past the 32-bit float range, such as `1e39`, with a
+        message like `Material.roughness: value must be a finite number that fits
+        a 32-bit float, got 1e39`. JavaScript throws an `Error` named
+        `InvalidInputError`, Python raises `InvalidInputError`, Swift throws
+        `FragmentColorError` and Kotlin throws `FragmentColorException`.
 
         Example:
 
@@ -4901,6 +4956,14 @@ class Material:
         PBR shader samples `normal_map`, decodes the bytes, and scales the XY
         perturbation by this value before combining with the world-space normal.
 
+        NaN or an infinity returns `MaterialError::NotFinite`, which names the
+        call, and the material keeps the value it had. The other languages also
+        refuse a number past the 32-bit float range, such as `1e39`, with a
+        message like `Material.normalScale: value must be a finite number that
+        fits a 32-bit float, got 1e39`. JavaScript throws an `Error` named
+        `InvalidInputError`, Python raises `InvalidInputError`, Swift throws
+        `FragmentColorError` and Kotlin throws `FragmentColorException`.
+
         Example:
 
         ```python
@@ -4919,6 +4982,14 @@ class Material:
         default PBR shader samples `occlusion_map.r` and `mix(1.0, sampled, strength)`s
         the result into the diffuse term.
 
+        NaN or an infinity returns `MaterialError::NotFinite`, which names the
+        call, and the material keeps the value it had. The other languages also
+        refuse a number past the 32-bit float range, such as `1e39`, with a
+        message like `Material.occlusionStrength: value must be a finite number
+        that fits a 32-bit float, got 1e39`. JavaScript throws an `Error` named
+        `InvalidInputError`, Python raises `InvalidInputError`, Swift throws
+        `FragmentColorError` and Kotlin throws `FragmentColorException`.
+
         Example:
 
         ```python
@@ -4935,6 +5006,15 @@ class Material:
         you can go beyond.
 
         Maps to the `material.emissive` uniform. Default is `[0, 0, 0]`.
+
+        An item that is NaN or an infinity returns `MaterialError::NotFinite`,
+        which names the call and the item, and the material keeps the value it
+        had. The other languages also refuse an item past the 32-bit float range,
+        such as `1e39`, with a message like `Material.emissive: item 1 must be a
+        finite number that fits a 32-bit float, got 1e39`. JavaScript throws an
+        `Error` named `InvalidInputError`, Python raises `InvalidInputError`,
+        Swift throws `FragmentColorError` and Kotlin throws
+        `FragmentColorException`.
 
         Example:
 
@@ -4954,6 +5034,14 @@ class Material:
         Only `AlphaMode::Mask` reads this value; in `Opaque` and `Blend` modes the
         fragment shader ignores it. Use it together with `Material::alpha_mode`
         when you want hard-edged cut-out transparency (foliage, chain-link, decals).
+
+        NaN or an infinity returns `MaterialError::NotFinite`, which names the
+        call, and the material keeps the value it had. The other languages also
+        refuse a number past the 32-bit float range, such as `1e39`, with a
+        message like `Material.alphaCutoff: value must be a finite number that
+        fits a 32-bit float, got 1e39`. JavaScript throws an `Error` named
+        `InvalidInputError`, Python raises `InvalidInputError`, Swift throws
+        `FragmentColorError` and Kotlin throws `FragmentColorException`.
 
         Example:
 
@@ -4983,6 +5071,17 @@ class Material:
         transform to the UV set that
         [`texture_uv`](https://fragmentcolor.org/api/scene/material#texture_uv)
         picks for it.
+
+        A number that is NaN or an infinity returns `MaterialError::NotFinite`,
+        which names the part, such as `Material::uv_transform: rotation must be
+        finite, got NaN`, and leaves every slot as it was: the setter checks the
+        offset, the scale and the rotation before it writes any of them. The other
+        languages also refuse a number past the 32-bit float range, such as
+        `1e39`, with a message like `Material.uvTransform: rotation must be a
+        finite number that fits a 32-bit float, got 1e39`. JavaScript throws an
+        `Error` named `InvalidInputError`, Python raises `InvalidInputError`,
+        Swift throws `FragmentColorError` and Kotlin throws
+        `FragmentColorException`.
 
         Example:
 
@@ -5062,6 +5161,17 @@ class Material:
         left at its 1×1 default doesn't count. So a material with only an
         occlusion map tiles it with the occlusion map's own options, and one with
         a clamped base color texture clamps a tiled normal map too.
+
+        A number that is NaN or an infinity returns `MaterialError::NotFinite`,
+        which names the part, such as `Material::texture_transform: rotation must
+        be finite, got NaN`, and leaves the slot as it was: the setter checks the
+        offset, the scale and the rotation before it writes any of them. The other
+        languages also refuse a number past the 32-bit float range, such as
+        `1e39`, with a message like `Material.textureTransform: rotation must be a
+        finite number that fits a 32-bit float, got 1e39`. JavaScript throws an
+        `Error` named `InvalidInputError`, Python raises `InvalidInputError`,
+        Swift throws `FragmentColorError` and Kotlin throws
+        `FragmentColorException`.
 
         Example:
 

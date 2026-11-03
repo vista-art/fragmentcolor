@@ -116,8 +116,8 @@ impl Shader {
     #[staticmethod]
     #[pyo3(name = "from_vertex")]
     #[lsp_doc("docs/api/core/shader/from_vertex.md")]
-    pub fn from_vertex_py(v: &crate::Vertex) -> PyResult<Self> {
-        Ok(Shader::from_vertex(v)?)
+    pub fn from_vertex_py(vertex: &crate::Vertex) -> PyResult<Self> {
+        Ok(Shader::from_vertex(vertex)?)
     }
 
     #[staticmethod]

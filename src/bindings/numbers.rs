@@ -1,5 +1,5 @@
-//! How every binding reads numbers: whole numbers for counts and sizes,
-//! and finite 32-bit floats for colors, positions, directions, axes and UV transforms.
+//! How every binding reads numbers: whole numbers for counts and sizes, and finite
+//! 32-bit floats for colors, positions, directions, axes, UV transforms and Material factors.
 
 use crate::errors::show_number;
 use crate::{Color, Vertex};
@@ -45,9 +45,14 @@ pub(crate) fn read_unsigned(value: f64, what: &str) -> Result<u32, NumberError> 
     })
 }
 
-/// A float vector that can't be used, such as a color or a position.
+/// A float or a float vector that can't be used, such as a roughness, a color or a position.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum VectorError {
+    #[error(
+        "{label} must be a finite number that fits a 32-bit float, got {}",
+        show_number(*value)
+    )]
+    Number { label: String, value: f64 },
     #[error(
         "{label}: item {index} must be a finite number that fits a 32-bit float, got {}",
         show_number(*value)
@@ -76,18 +81,28 @@ pub(crate) fn read_floats(
         .enumerate()
         .map(|(index, value)| {
             let value: f64 = value.into();
-            let float = value as f32;
-            if float.is_finite() {
-                Ok(float)
-            } else {
-                Err(VectorError::Item {
-                    label: label.to_string(),
-                    index,
-                    value,
-                })
-            }
+            narrow(value).ok_or_else(|| VectorError::Item {
+                label: label.to_string(),
+                index,
+                value,
+            })
         })
         .collect()
+}
+
+/// One number as an `f32`, such as a roughness or a UV rotation, by the rule of [`read_floats`].
+pub(crate) fn read_finite(number: impl Into<f64>, label: &str) -> Result<f32, VectorError> {
+    let value: f64 = number.into();
+    narrow(value).ok_or_else(|| VectorError::Number {
+        label: label.to_string(),
+        value,
+    })
+}
+
+/// `value` as an `f32`, or nothing when it isn't finite once narrowed.
+fn narrow(value: f64) -> Option<f32> {
+    let float = value as f32;
+    float.is_finite().then_some(float)
 }
 
 /// Exactly `N` numbers, read as [`read_floats`] reads them.
@@ -215,6 +230,35 @@ mod tests {
         assert_eq!(
             message.as_deref(),
             Some("Pass.setClearColor takes 3 or 4 numbers, got 5")
+        );
+    }
+
+    // Story: one number, such as a roughness or a UV rotation, follows the rule
+    // of a vector's items, and its error names the parameter with no item.
+    #[test]
+    fn reads_one_finite_float() {
+        assert_eq!(read_finite(0.5, "x").ok(), Some(0.5));
+        assert_eq!(read_finite(-3.4e38, "x").ok(), Some(-3.4e38));
+        for value in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY, 1e39] {
+            assert!(read_finite(value, "x").is_err(), "{value} should fail");
+        }
+        let message = read_finite(1e39, "Material.metallic: value")
+            .err()
+            .map(|error| error.to_string());
+        assert_eq!(
+            message.as_deref(),
+            Some(
+                "Material.metallic: value must be a finite number that fits a 32-bit float, got 1e39"
+            )
+        );
+        let message = read_finite(f32::NAN, "Material.uvTransform: rotation")
+            .err()
+            .map(|error| error.to_string());
+        assert_eq!(
+            message.as_deref(),
+            Some(
+                "Material.uvTransform: rotation must be a finite number that fits a 32-bit float, got NaN"
+            )
         );
     }
 

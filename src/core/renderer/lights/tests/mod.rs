@@ -171,8 +171,11 @@ fn quad(corners: [[f32; 3]; 4], normal: [f32; 3]) -> Mesh {
 fn rough() -> Material {
     Material::pbr()
         .base_color([1.0, 1.0, 1.0, 1.0])
+        .expect("base color")
         .roughness(0.8)
+        .expect("roughness")
         .metallic(0.0)
+        .expect("metallic")
 }
 
 /// A floor at y = 0 and a wall at z = -6, both 12 meters wide.

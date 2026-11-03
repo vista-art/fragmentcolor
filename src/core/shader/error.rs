@@ -7,9 +7,6 @@ pub enum ShaderError {
     /// A shader that can't be read, such as one whose vertex inputs share a name.
     #[error("Failed to parse shader: {0}")]
     ParseError(String),
-    /// A feature that isn't built yet.
-    #[error("Planned feature not yet implemented: {0}")]
-    PlannedFeature(String),
     /// A uniform name the shader doesn't declare.
     #[error("Uniform not found: {0}")]
     UniformNotFound(String),
@@ -52,9 +49,6 @@ pub enum ShaderError {
         index: usize,
         len: usize,
     },
-    /// A read of a shader whose storage another thread holds.
-    #[error("Shader busy: {0}")]
-    Busy(String),
     /// A mesh value that doesn't fit the type its attribute takes.
     #[error("Mesh attribute {name}: expected {expected}, got {found}")]
     AttributeMismatch {
@@ -79,6 +73,21 @@ pub enum ShaderError {
     #[cfg(wasm)]
     #[error("WASM Shader Error: {0}")]
     Error(String),
+}
+
+impl ShaderError {
+    /// Whether the error says the key names no slot the shader declares: an unknown
+    /// uniform or field, a path past a plain value such as `camera.view_proj` on a
+    /// `mat4x4<f32>` root, a field of an array, or an index past the array's end.
+    pub(crate) fn is_missing(&self) -> bool {
+        matches!(
+            self,
+            Self::UniformNotFound(_)
+                | Self::FieldNotFound(_)
+                | Self::InvalidKey(_)
+                | Self::IndexOutOfBounds { .. }
+        )
+    }
 }
 
 /// What naga reports about a shader: its message, with the source lines it points at
@@ -289,7 +298,6 @@ mod tests {
     #[test]
     fn formats_shader_error_variants() {
         let a = ShaderError::ParseError("p".into());
-        let b = ShaderError::PlannedFeature("pf".into());
         let c = ShaderError::UniformNotFound("u".into());
         let d = ShaderError::TypeMismatch("k".into());
         let e = ShaderError::InvalidKey("k".into());
@@ -311,7 +319,6 @@ mod tests {
         };
 
         assert!(a.to_string().contains("parse"));
-        assert!(b.to_string().contains("Planned feature"));
         assert!(c.to_string().contains("Uniform not found"));
         assert!(d.to_string().contains("Type mismatch"));
         assert!(e.to_string().contains("Invalid key"));

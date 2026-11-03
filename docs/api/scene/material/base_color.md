@@ -11,6 +11,15 @@ Returns a handle to the same Material (Arc-shared) so calls chain. See
 [Material: Cloning is an Arc-share](https://fragmentcolor.org/api/scene/material#cloning-is-an-arc-share-not-a-deep-copy)
 for what that means for mutation visibility.
 
+An item that is NaN or an infinity returns `MaterialError::NotFinite`,
+which names the call and the item, and the material keeps the value it
+had. The other languages also refuse an item past the 32-bit float range,
+such as `1e39`, with a message like `Material.baseColor: item 3 must be a
+finite number that fits a 32-bit float, got 1e39`. JavaScript throws an
+`Error` named `InvalidInputError`, Python raises `InvalidInputError`,
+Swift throws `FragmentColorError` and Kotlin throws
+`FragmentColorException`.
+
 ## Example
 
 ```rust
@@ -18,7 +27,7 @@ for what that means for mutation visibility.
 use fragmentcolor::{Material, Renderer};
 
 let renderer = Renderer::new();
-let red = Material::pbr().base_color([1.0, 0.2, 0.2, 1.0]);
+let red = Material::pbr().base_color([1.0, 0.2, 0.2, 1.0])?;
 # let _ = red;
 # Ok(())
 # }

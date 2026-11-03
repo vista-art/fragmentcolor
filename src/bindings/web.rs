@@ -91,6 +91,15 @@ pub(crate) fn read_float(value: &wasm_bindgen::JsValue, label: &str) -> Result<f
     Ok(read_number(value, label)? as f32)
 }
 
+/// A number argument for a Material factor or a UV rotation, read as [`read_number`] reads it.
+/// NaN, an infinity or a number past the `f32` range is an `InvalidInputError` that names `label`.
+pub(crate) fn read_finite(value: &wasm_bindgen::JsValue, label: &str) -> Result<f32, WebError> {
+    Ok(super::numbers::read_finite(
+        read_number(value, label)?,
+        label,
+    )?)
+}
+
 /// A count or index, read first as [`read_number`] reads a number.
 /// A negative or out-of-range one is an `InvalidInputError`, as Python raises.
 /// A fraction is one too, though Python refuses every float, 2.0 included, with a `TypeError`.

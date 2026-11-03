@@ -1,5 +1,6 @@
 //! `RenderableHandle`, `TargetHandle` and `SceneObjectHandle`.
 
+use crate::core::expand_list;
 use crate::{PassObject, Renderable};
 use std::sync::Arc;
 
@@ -18,7 +19,8 @@ pub enum RenderableHandle {
     /// Top-level [`Scene`](crate::Scene). Emits its ordered pass graph,
     /// including the default Pass that holds the scene's `SceneObject`s.
     Scene(Arc<crate::Scene>),
-    /// Iterable of `Pass` instances. Emits passes in order.
+    /// A list of passes, which renders as a Rust list does: each pass in order,
+    /// after the passes it requires, and each pass once.
     Passes(Vec<Arc<crate::Pass>>),
 }
 
@@ -29,13 +31,7 @@ impl Renderable for RenderableHandle {
             Self::Pass(pass) => pass.passes(),
             Self::Mesh(mesh) => mesh.passes(),
             Self::Scene(scene) => scene.passes(),
-            Self::Passes(passes) => {
-                let mut all: Vec<Arc<PassObject>> = Vec::new();
-                for pass in passes {
-                    all.extend_from_slice(&pass.passes());
-                }
-                all.into()
-            }
+            Self::Passes(passes) => expand_list(passes.iter().map(|pass| &pass.object)),
         }
     }
 
@@ -45,13 +41,7 @@ impl Renderable for RenderableHandle {
             Self::Pass(pass) => pass.peek_passes(),
             Self::Mesh(mesh) => mesh.peek_passes(),
             Self::Scene(scene) => scene.peek_passes(),
-            Self::Passes(passes) => {
-                let mut all: Vec<Arc<PassObject>> = Vec::new();
-                for pass in passes {
-                    all.extend_from_slice(&pass.peek_passes());
-                }
-                all.into()
-            }
+            Self::Passes(passes) => expand_list(passes.iter().map(|pass| &pass.object)),
         }
     }
 

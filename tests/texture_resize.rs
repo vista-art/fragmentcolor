@@ -120,7 +120,9 @@ fn a_depth_target_follows_its_texture() {
         );
         let glow = Material::pbr()
             .base_color([0.0, 0.0, 0.0, 1.0])
-            .emissive([1.0, 0.0, 0.0]);
+            .expect("base color")
+            .emissive([1.0, 0.0, 0.0])
+            .expect("emissive");
         let pass = Pass::new("scene");
         pass.add(&Model::new(mesh, glow)).expect("add failed");
         pass.set_depth_target(&depth)

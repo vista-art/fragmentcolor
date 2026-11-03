@@ -90,13 +90,6 @@ pub enum RendererError {
     /// An `InitializationError` from opening the GPU or a target.
     #[error("initialization error: {0}")]
     InitializationError(#[from] InitializationError),
-    /// A failed request for a URL.
-    #[cfg(not(wasm))]
-    #[error("Network request error: {0}")]
-    NetworkRequestError(#[from] crate::NetworkError),
-    /// A failed read of a file or stream.
-    #[error("Malformed input error: {0}")]
-    IoError(#[from] std::io::Error),
     /// Any other renderer failure.
     #[error("Renderer error: {0}")]
     Error(String),
@@ -372,19 +365,6 @@ mod tests {
         let ie = InitializationError::Error("boom".into());
         let e2: RendererError = ie.into();
         assert!(matches!(e2, RendererError::InitializationError(_)));
-
-        // IoError conversion
-        let io = std::io::Error::other("oops");
-        let e3: RendererError = io.into();
-        assert!(matches!(e3, RendererError::IoError(_)));
-
-        // NetworkRequestError (non-WASM)
-        #[cfg(not(wasm))]
-        {
-            let net = crate::NetworkError("connection refused".into());
-            let e4: RendererError = net.into();
-            assert!(matches!(e4, RendererError::NetworkRequestError(_)));
-        }
     }
 
     // Story: a device error names its kind, the step that raised it and the GPU's message.

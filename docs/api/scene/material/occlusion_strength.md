@@ -8,13 +8,21 @@ Maps to the `material.occlusion_strength` uniform. Default is `1.0`. The
 default PBR shader samples `occlusion_map.r` and `mix(1.0, sampled, strength)`s
 the result into the diffuse term.
 
+NaN or an infinity returns `MaterialError::NotFinite`, which names the
+call, and the material keeps the value it had. The other languages also
+refuse a number past the 32-bit float range, such as `1e39`, with a
+message like `Material.occlusionStrength: value must be a finite number
+that fits a 32-bit float, got 1e39`. JavaScript throws an `Error` named
+`InvalidInputError`, Python raises `InvalidInputError`, Swift throws
+`FragmentColorError` and Kotlin throws `FragmentColorException`.
+
 ## Example
 
 ```rust
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Material;
 
-let crevices = Material::pbr().occlusion_strength(0.8);
+let crevices = Material::pbr().occlusion_strength(0.8)?;
 # let _crevices = crevices;
 # Ok(())
 # }

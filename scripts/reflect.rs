@@ -1454,7 +1454,7 @@ mod reflect {
     impl Reflection {
         /// Each crate type uniffi doesn't export in `build`,
         /// paired with the one exported type no Python or wasm build declares that converts into it,
-        /// the way `impl From<TextureRegionMobile> for TextureRegion` pairs those two.
+        /// the way `impl From<MobileTextureRegion> for TextureRegion` pairs those two.
         /// A pair whose mobile type exports under the crate type's own name needs no rename.
         pub fn stand_ins(&self, build: Build) -> Vec<StandIn> {
             let declared: BTreeSet<&str> = self.types_in(build).map(|t| t.ident.as_str()).collect();

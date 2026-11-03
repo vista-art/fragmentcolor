@@ -5,7 +5,7 @@ use lsp_doc::lsp_doc;
 use wasm_bindgen::prelude::*;
 
 use crate::Shader;
-use crate::bindings::web::{describe, read_count, read_flag, read_float, read_vector};
+use crate::bindings::web::{describe, read_count, read_finite, read_flag, read_vector};
 use crate::texture::read_texture_input;
 use crate::{AlphaMode, Material, TextureSlot};
 
@@ -36,7 +36,7 @@ impl Material {
         #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] color: &JsValue,
     ) -> Result<Material, WebError> {
         let color = read_vector::<4>(color, "Material.baseColor")?;
-        Ok(self.base_color(color))
+        Ok(self.base_color(color)?)
     }
 
     #[wasm_bindgen(js_name = "metallic")]
@@ -45,7 +45,7 @@ impl Material {
         &self,
         #[wasm_bindgen(unchecked_param_type = "number")] value: &JsValue,
     ) -> Result<Material, WebError> {
-        Ok(self.metallic(read_float(value, "Material.metallic: value")?))
+        Ok(self.metallic(read_finite(value, "Material.metallic: value")?)?)
     }
 
     #[wasm_bindgen(js_name = "roughness")]
@@ -54,7 +54,7 @@ impl Material {
         &self,
         #[wasm_bindgen(unchecked_param_type = "number")] value: &JsValue,
     ) -> Result<Material, WebError> {
-        Ok(self.roughness(read_float(value, "Material.roughness: value")?))
+        Ok(self.roughness(read_finite(value, "Material.roughness: value")?)?)
     }
 
     #[wasm_bindgen(js_name = "normalScale")]
@@ -63,7 +63,7 @@ impl Material {
         &self,
         #[wasm_bindgen(unchecked_param_type = "number")] value: &JsValue,
     ) -> Result<Material, WebError> {
-        Ok(self.normal_scale(read_float(value, "Material.normalScale: value")?))
+        Ok(self.normal_scale(read_finite(value, "Material.normalScale: value")?)?)
     }
 
     #[wasm_bindgen(js_name = "occlusionStrength")]
@@ -72,7 +72,7 @@ impl Material {
         &self,
         #[wasm_bindgen(unchecked_param_type = "number")] value: &JsValue,
     ) -> Result<Material, WebError> {
-        Ok(self.occlusion_strength(read_float(value, "Material.occlusionStrength: value")?))
+        Ok(self.occlusion_strength(read_finite(value, "Material.occlusionStrength: value")?)?)
     }
 
     #[wasm_bindgen(js_name = "emissive")]
@@ -82,7 +82,7 @@ impl Material {
         #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] factor: &JsValue,
     ) -> Result<Material, WebError> {
         let factor = read_vector::<3>(factor, "Material.emissive")?;
-        Ok(self.emissive(factor))
+        Ok(self.emissive(factor)?)
     }
 
     #[wasm_bindgen(js_name = "alphaCutoff")]
@@ -91,7 +91,7 @@ impl Material {
         &self,
         #[wasm_bindgen(unchecked_param_type = "number")] value: &JsValue,
     ) -> Result<Material, WebError> {
-        Ok(self.alpha_cutoff(read_float(value, "Material.alphaCutoff: value")?))
+        Ok(self.alpha_cutoff(read_finite(value, "Material.alphaCutoff: value")?)?)
     }
 
     #[wasm_bindgen(js_name = "uvTransform")]
@@ -104,8 +104,8 @@ impl Material {
     ) -> Result<Material, WebError> {
         let offset = read_vector::<2>(offset, "Material.uvTransform: offset")?;
         let scale = read_vector::<2>(scale, "Material.uvTransform: scale")?;
-        let rotation = read_float(rotation, "Material.uvTransform: rotation")?;
-        Ok(self.uv_transform(offset, scale, rotation))
+        let rotation = read_finite(rotation, "Material.uvTransform: rotation")?;
+        Ok(self.uv_transform(offset, scale, rotation)?)
     }
 
     #[wasm_bindgen(js_name = "textureUv")]
@@ -130,8 +130,8 @@ impl Material {
     ) -> Result<Material, WebError> {
         let offset = read_vector::<2>(offset, "Material.textureTransform: offset")?;
         let scale = read_vector::<2>(scale, "Material.textureTransform: scale")?;
-        let rotation = read_float(rotation, "Material.textureTransform: rotation")?;
-        Ok(self.texture_transform(read_texture_slot(slot)?, offset, scale, rotation))
+        let rotation = read_finite(rotation, "Material.textureTransform: rotation")?;
+        Ok(self.texture_transform(read_texture_slot(slot)?, offset, scale, rotation)?)
     }
 
     #[wasm_bindgen(js_name = "alphaMode")]
