@@ -542,7 +542,7 @@ lang="kotlin" meta="collapse={2-3, 9-9}"
 
 Create a [Texture](/api/texture/texture) from bytes, a file path, a URL, a KTX2 container, or a pre-built [Mipmap](/api/texture/mipmap).
 
-When you pass a `size`, the bytes are treated as raw pixels in the chosen format. Without a size, the bytes (or the file/URL contents) are decoded as PNG, JPEG, BMP, HDR, etc. A size applies to bytes only: a path, a URL, a KTX2 file and a `Mipmap` carry their own, so a size with one is an `InvalidInput` error, raised before any file read or fetch.
+When you pass a `size`, the bytes are treated as raw pixels in the chosen format. Without a size, the bytes (or the file/URL contents) are decoded as PNG, JPEG, BMP, HDR, etc. A size applies to bytes only: a path, a URL, a KTX2 file and a `Mipmap` carry their own, so a size with one is an `InvalidInput` error, raised before any file read or fetch. An empty byte list, path or URL holds nothing to read, and is an `InvalidInput` error too.
 
 A size with a side of zero, or one past the device's limits, is an error that reaches no GPU call, and so is an image larger than the device takes, which is checked from its header before the pixels decode: `TextureError::InvalidInput` inside `RendererError::TextureError` in Rust, a thrown `Error` named `InvalidInputError` in JavaScript, `InvalidInputError` (a `FragmentColorError`) in Python, `FragmentColorError` in Swift and `FragmentColorException` in Kotlin.
 

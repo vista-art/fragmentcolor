@@ -227,7 +227,7 @@ class Renderer:
         """
         Create a [Texture](https://fragmentcolor.org/api/texture/texture) from bytes, a file path, a URL, a KTX2 container, or a pre-built [Mipmap](https://fragmentcolor.org/api/texture/mipmap).
 
-        When you pass a `size`, the bytes are treated as raw pixels in the chosen format. Without a size, the bytes (or the file/URL contents) are decoded as PNG, JPEG, BMP, HDR, etc. A size applies to bytes only: a path, a URL, a KTX2 file and a `Mipmap` carry their own, so a size with one is an `InvalidInput` error, raised before any file read or fetch.
+        When you pass a `size`, the bytes are treated as raw pixels in the chosen format. Without a size, the bytes (or the file/URL contents) are decoded as PNG, JPEG, BMP, HDR, etc. A size applies to bytes only: a path, a URL, a KTX2 file and a `Mipmap` carry their own, so a size with one is an `InvalidInput` error, raised before any file read or fetch. An empty byte list, path or URL holds nothing to read, and is an `InvalidInput` error too.
 
         A size with a side of zero, or one past the device's limits, is an error that reaches no GPU call, and so is an image larger than the device takes, which is checked from its header before the pixels decode: `TextureError::InvalidInput` inside `RendererError::TextureError` in Rust, a thrown `Error` named `InvalidInputError` in JavaScript, `InvalidInputError` (a `FragmentColorError`) in Python, `FragmentColorError` in Swift and `FragmentColorException` in Kotlin.
 
@@ -5462,8 +5462,8 @@ class Material:
         The setter checks its input and the slot at once, and a call it refuses
         leaves the slot as it was. Options beside a `Texture` return
         `MaterialError::Texture` with an `InvalidInput` texture error that names the
-        call, and so does an input that holds no data, such as Rust's
-        `TextureData::Empty`. A slot that a `Material::custom` shader declares as
+        call, and so does an input that holds no data: Rust's `TextureData::Empty`,
+        or an empty byte list, path or URL in any language. A slot that a `Material::custom` shader declares as
         something other than a texture returns `MaterialError::Shader` with the
         shader's `TypeMismatch`. A slot the shader doesn't declare is skipped with a
         log warning, as the number setters skip a field, and the setter returns the
@@ -5536,7 +5536,7 @@ class Material:
         Takes the inputs [`Material::base_color_texture`](https://fragmentcolor.org/api/scene/material#base_color_texture) takes, spelled as each language's `create_texture` spells them: a `Texture`, or encoded bytes, raw pixels with their size, bytes with a format or with every option, a path or a URL, alone or with a format or every option, or a `Mipmap`, alone or with options. The Material keeps a source as a map, and each `Renderer` uploads a copy of its own when it loads the scene. `base_color_texture` tells how a map loads, what it holds in memory and how it fails.
 
         The setter refuses options beside a `Texture`, and an input that holds no
-        data, with `MaterialError::Texture`. JavaScript throws it as an `Error`
+        data, such as an empty byte list, with `MaterialError::Texture`. JavaScript throws it as an `Error`
         named `InvalidInputError`, and Python raises `InvalidInputError`. A
         `Material::custom` shader that declares `metallic_roughness_map` as
         something other than a texture refuses the call with
@@ -5577,7 +5577,7 @@ class Material:
         Takes the inputs [`Material::base_color_texture`](https://fragmentcolor.org/api/scene/material#base_color_texture) takes, spelled as each language's `create_texture` spells them: a `Texture`, or encoded bytes, raw pixels with their size, bytes with a format or with every option, a path or a URL, alone or with a format or every option, or a `Mipmap`, alone or with options. The Material keeps a source as a map, and each `Renderer` uploads a copy of its own when it loads the scene. `base_color_texture` tells how a map loads, what it holds in memory and how it fails.
 
         The setter refuses options beside a `Texture`, and an input that holds no
-        data, with `MaterialError::Texture`. JavaScript throws it as an `Error`
+        data, such as an empty byte list, with `MaterialError::Texture`. JavaScript throws it as an `Error`
         named `InvalidInputError`, and Python raises `InvalidInputError`. A
         `Material::custom` shader that declares `normal_map` as something other than
         a texture refuses the call with `MaterialError::Shader`, which JavaScript
@@ -5614,7 +5614,7 @@ class Material:
         Takes the inputs [`Material::base_color_texture`](https://fragmentcolor.org/api/scene/material#base_color_texture) takes, spelled as each language's `create_texture` spells them: a `Texture`, or encoded bytes, raw pixels with their size, bytes with a format or with every option, a path or a URL, alone or with a format or every option, or a `Mipmap`, alone or with options. The Material keeps a source as a map, and each `Renderer` uploads a copy of its own when it loads the scene. `base_color_texture` tells how a map loads, what it holds in memory and how it fails.
 
         The setter refuses options beside a `Texture`, and an input that holds no
-        data, with `MaterialError::Texture`. JavaScript throws it as an `Error`
+        data, such as an empty byte list, with `MaterialError::Texture`. JavaScript throws it as an `Error`
         named `InvalidInputError`, and Python raises `InvalidInputError`. A
         `Material::custom` shader that declares `occlusion_map` as something other
         than a texture refuses the call with `MaterialError::Shader`, which
@@ -5652,7 +5652,7 @@ class Material:
         Takes the inputs [`Material::base_color_texture`](https://fragmentcolor.org/api/scene/material#base_color_texture) takes, spelled as each language's `create_texture` spells them: a `Texture`, or encoded bytes, raw pixels with their size, bytes with a format or with every option, a path or a URL, alone or with a format or every option, or a `Mipmap`, alone or with options. The Material keeps a source as a map, and each `Renderer` uploads a copy of its own when it loads the scene. `base_color_texture` tells how a map loads, what it holds in memory and how it fails.
 
         The setter refuses options beside a `Texture`, and an input that holds no
-        data, with `MaterialError::Texture`. JavaScript throws it as an `Error`
+        data, such as an empty byte list, with `MaterialError::Texture`. JavaScript throws it as an `Error`
         named `InvalidInputError`, and Python raises `InvalidInputError`. A
         `Material::custom` shader that declares `emissive_map` as something other
         than a texture refuses the call with `MaterialError::Shader`, which
