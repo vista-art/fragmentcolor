@@ -27,7 +27,7 @@ pub(crate) use platform::{
     PySamplerOptions, PyTextureBytes, PyTextureId, PyTextureSource, PyTextureUsage, read_ndarray,
 };
 #[cfg(mobile)]
-pub use platform::{TextureInputMobile, TextureRegionMobile};
+pub use platform::{MobileTextureInput, MobileTextureRegion};
 #[cfg(wasm)]
 pub(crate) use platform::{
     js_to_texture_bytes, js_to_texture_id, parse_compare, read_format, read_texture_input,

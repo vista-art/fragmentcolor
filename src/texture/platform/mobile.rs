@@ -1,5 +1,5 @@
 //! Mobile (Swift / Kotlin) uniffi bindings for `Texture` and `Mipmap`,
-//! and the input types they take, `TextureInputMobile` and `TextureRegionMobile`.
+//! and the input types they take, `MobileTextureInput` and `MobileTextureRegion`.
 //!
 //! Mirrors the `wasm_bindgen` shim in `web.rs` and the `pyo3` shim in
 //! `python.rs`: each foreign binding gets a thin wrapper around the
@@ -25,7 +25,7 @@ use crate::{
 /// bindings can carry a concrete variant. Web and Python use their own dispatch
 /// (`TryFrom<JsValue>` and Python kwargs) and never see this type.
 #[derive(Debug, Clone, uniffi::Enum)]
-pub enum TextureInputMobile {
+pub enum MobileTextureInput {
     Bytes(Vec<u8>),
     Path(String),
     Url(String),
@@ -36,17 +36,17 @@ pub enum TextureInputMobile {
     Ktx2Url(String),
 }
 
-impl From<TextureInputMobile> for TextureData {
-    fn from(input: TextureInputMobile) -> Self {
+impl From<MobileTextureInput> for TextureData {
+    fn from(input: MobileTextureInput) -> Self {
         match input {
-            TextureInputMobile::Bytes(b) => TextureData::Bytes(b),
-            TextureInputMobile::Path(s) => TextureData::Path(std::path::PathBuf::from(s)),
-            TextureInputMobile::Url(s) => TextureData::Url(s),
-            TextureInputMobile::CloneOf(t) => TextureData::CloneOf((*t).clone()),
-            TextureInputMobile::Prepared(c) => TextureData::Prepared((*c).clone()),
-            TextureInputMobile::Ktx2Bytes(b) => TextureData::Ktx2Bytes(b),
-            TextureInputMobile::Ktx2Path(s) => TextureData::Ktx2Path(std::path::PathBuf::from(s)),
-            TextureInputMobile::Ktx2Url(s) => TextureData::Ktx2Url(s),
+            MobileTextureInput::Bytes(b) => TextureData::Bytes(b),
+            MobileTextureInput::Path(s) => TextureData::Path(std::path::PathBuf::from(s)),
+            MobileTextureInput::Url(s) => TextureData::Url(s),
+            MobileTextureInput::CloneOf(t) => TextureData::CloneOf((*t).clone()),
+            MobileTextureInput::Prepared(c) => TextureData::Prepared((*c).clone()),
+            MobileTextureInput::Ktx2Bytes(b) => TextureData::Ktx2Bytes(b),
+            MobileTextureInput::Ktx2Path(s) => TextureData::Ktx2Path(std::path::PathBuf::from(s)),
+            MobileTextureInput::Ktx2Url(s) => TextureData::Ktx2Url(s),
         }
     }
 }
@@ -60,7 +60,7 @@ impl From<TextureInputMobile> for TextureData {
 /// Swift and Kotlin see it as `TextureRegion`, the name every other binding uses.
 #[derive(Debug, Clone, uniffi::Record)]
 #[uniffi(name = "TextureRegion")]
-pub struct TextureRegionMobile {
+pub struct MobileTextureRegion {
     pub origin_x: u32,
     pub origin_y: u32,
     pub origin_z: u32,
@@ -74,8 +74,8 @@ pub struct TextureRegionMobile {
     pub rows_per_image: Option<u32>,
 }
 
-impl From<TextureRegionMobile> for TextureRegion {
-    fn from(m: TextureRegionMobile) -> Self {
+impl From<MobileTextureRegion> for TextureRegion {
+    fn from(m: MobileTextureRegion) -> Self {
         TextureRegion {
             origin: [m.origin_x, m.origin_y, m.origin_z],
             size: [m.size_width, m.size_height, m.size_depth],
@@ -135,7 +135,7 @@ impl Texture {
     pub fn write_region_mobile(
         &self,
         bytes: Vec<u8>,
-        region: TextureRegionMobile,
+        region: MobileTextureRegion,
     ) -> Result<(), FragmentColorError> {
         Ok(self.write_region(&bytes, region)?)
     }

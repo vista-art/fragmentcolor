@@ -224,6 +224,7 @@ A patch release that checks shaders, meshes, textures and passes against the dev
 - The raw uniffi `createTextureTarget` and `createDepthTexture` take a `Size`, so Swift's `createTextureTarget(width:height:)` and Kotlin's `createTextureTarget(32u, 64u)` are gone. The `[w, h]` and `Size` overloads stay and now carry the depth to the checks the other languages run, where they dropped it and a depth of 2 built a flat target.
 - The raw uniffi `resize(width:height:)` on `WindowTarget` and `TextureTarget`, `resize(width, height)` in Kotlin, takes a `Size` as `resize(size:)`. The `[w, h]` and `Size` overloads stay.
 - Swift's `TextureRegion.from([...])` throws `FragmentColorError` for an array that isn't 2, 4 or 6 numbers long, so a call to it needs `try`.
+- Swift's and Kotlin's `TextureInputMobile` is `MobileTextureInput`, with the qualifier first, as every other FragmentColor name puts it. Code that names the enum, such as Kotlin's `TextureInputMobile.Bytes(bytes)`, needs the new name, and Swift's `.bytes(data)` shorthand keeps working. The deprecated `TextureRegionMobile` alias of `TextureRegion` stays.
 - Overlapping models draw with depth. A model behind another stays hidden where, added last, it drew on top.
 - In a pass that draws models, a shader that draws none, such as a fullscreen backdrop, ignores the depth target the pass sets, where it tested and wrote it and could hide every model.
 - Texture ids are unique across renderers, so a second renderer's first texture no longer gets id 1.

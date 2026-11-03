@@ -24,7 +24,7 @@ use lsp_doc::lsp_doc;
 
 use crate::MobileTextureTarget;
 use crate::errors::platform::mobile::FragmentColorError;
-use crate::texture::TextureInputMobile;
+use crate::texture::MobileTextureInput;
 use crate::{LogLevel, Renderer, Shader, Size};
 use crate::{Texture, TextureData, TextureFormat, TextureId, TextureInput, TextureOptions};
 
@@ -71,7 +71,7 @@ impl Renderer {
     #[lsp_doc("docs/api/core/renderer/create_texture.md")]
     pub async fn create_texture_mobile(
         self: Arc<Self>,
-        input: TextureInputMobile,
+        input: MobileTextureInput,
         options: Option<TextureOptions>,
     ) -> Result<Arc<Texture>, FragmentColorError> {
         let spec = TextureInput {

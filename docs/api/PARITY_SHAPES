@@ -14,8 +14,8 @@ docs/api/core/renderer/create_storage_texture.md swift Renderer.createStorageTex
 docs/api/core/renderer/create_storage_texture.md web Renderer.createStorageTexture: (any, any, any?, any?) -> Texture throws async | rust (into TextureInput) -> Texture throws async
 docs/api/core/renderer/create_target.md kotlin Renderer.createTarget: (int) -> WindowTarget throws | rust (impl HasWindowHandle) -> RenderTarget throws async
 docs/api/core/renderer/create_target.md swift Renderer.createTarget: (int) -> WindowTarget throws | rust (impl HasWindowHandle) -> RenderTarget throws async
-docs/api/core/renderer/create_texture.md kotlin Renderer.createTexture: (TextureInputMobile, TextureOptions) -> Texture throws async | rust (into TextureInput) -> Texture throws async
-docs/api/core/renderer/create_texture.md swift Renderer.createTexture: (TextureInputMobile, TextureOptions) -> Texture throws async | rust (into TextureInput) -> Texture throws async
+docs/api/core/renderer/create_texture.md kotlin Renderer.createTexture: (MobileTextureInput, TextureOptions) -> Texture throws async | rust (into TextureInput) -> Texture throws async
+docs/api/core/renderer/create_texture.md swift Renderer.createTexture: (MobileTextureInput, TextureOptions) -> Texture throws async | rust (into TextureInput) -> Texture throws async
 docs/api/core/renderer/set_log_level.md kotlin Renderer.useLogLevel: (LogLevel) -> self | rust (LogLevel) -> unit
 docs/api/core/renderer/set_log_level.md swift Renderer.useLogLevel: (LogLevel) -> self | rust (LogLevel) -> unit
 docs/api/core/shader/set_registry.md kotlin Shader.useRegistry: (text) -> self | rust (text) -> unit

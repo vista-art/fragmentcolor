@@ -123,7 +123,7 @@ type RenderableHandle:swift,kotlin:uniffi can't marshal &impl Renderable, so mob
 type TargetHandle:swift,kotlin:uniffi can't marshal &impl Target, so mobile render and the pass target setters take this enum; the Swift and Kotlin extensions overload the natural shapes on top.
 type SceneObjectHandle:swift,kotlin:uniffi can't marshal &impl SceneObject, so mobile Scene.add and Pass.add take this enum; the Swift and Kotlin extensions overload Model, Camera and Light on top.
 type PassTarget:swift,kotlin:uniffi can't marshal impl Into<PassRef>, so the mobile Scene methods that pick a pass take this index-or-name enum.
-type TextureInputMobile:swift,kotlin:uniffi can't marshal impl Into<TextureInput>, so the mobile texture inputs take this enum, which mirrors TextureData without Empty.
+type MobileTextureInput:swift,kotlin:uniffi can't marshal impl Into<TextureInput>, so the mobile texture inputs take this enum, which mirrors TextureData without Empty.
 type UniformValue:swift,kotlin:uniffi can't marshal impl Into<UniformData>, so mobile Shader.set takes this enum; the Swift and Kotlin extensions overload set on top.
 type RenderCanvasFrame:python:the frame object of the rendercanvas present protocol, which only Python uses.
 type InvalidInputError:python:Python raises a FragmentColorError subclass for a value the call can't take, such as an int past u32, a bad size, or texture bytes that don't match their size; Rust reports a TextureError, SizeError, ScreenRegionError, ColorError or PassError, and JavaScript an Error named InvalidInputError.

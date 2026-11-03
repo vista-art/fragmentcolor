@@ -6,7 +6,7 @@ use std::sync::Arc;
 use crate::Shader;
 use crate::bindings::numbers::{read_finite, read_vector};
 use crate::errors::platform::mobile::FragmentColorError;
-use crate::texture::{Texture, TextureInput, TextureInputMobile, TextureOptions};
+use crate::texture::{Texture, TextureInput, MobileTextureInput, TextureOptions};
 use crate::{AlphaMode, Material, MaterialError, TextureSlot};
 
 #[uniffi::export]
@@ -182,7 +182,7 @@ impl Material {
     #[lsp_doc("docs/api/scene/material/hidden/base_color_source_mobile.md")]
     pub fn base_color_source_mobile(
         self: Arc<Self>,
-        input: TextureInputMobile,
+        input: MobileTextureInput,
         options: Option<TextureOptions>,
     ) -> Arc<Self> {
         Arc::new(self.base_color_texture(texture_input(input, options)))
@@ -194,7 +194,7 @@ impl Material {
     #[lsp_doc("docs/api/scene/material/hidden/metallic_roughness_source_mobile.md")]
     pub fn metallic_roughness_source_mobile(
         self: Arc<Self>,
-        input: TextureInputMobile,
+        input: MobileTextureInput,
         options: Option<TextureOptions>,
     ) -> Arc<Self> {
         Arc::new(self.metallic_roughness_texture(texture_input(input, options)))
@@ -206,7 +206,7 @@ impl Material {
     #[lsp_doc("docs/api/scene/material/hidden/normal_source_mobile.md")]
     pub fn normal_source_mobile(
         self: Arc<Self>,
-        input: TextureInputMobile,
+        input: MobileTextureInput,
         options: Option<TextureOptions>,
     ) -> Arc<Self> {
         Arc::new(self.normal_texture(texture_input(input, options)))
@@ -218,7 +218,7 @@ impl Material {
     #[lsp_doc("docs/api/scene/material/hidden/occlusion_source_mobile.md")]
     pub fn occlusion_source_mobile(
         self: Arc<Self>,
-        input: TextureInputMobile,
+        input: MobileTextureInput,
         options: Option<TextureOptions>,
     ) -> Arc<Self> {
         Arc::new(self.occlusion_texture(texture_input(input, options)))
@@ -230,7 +230,7 @@ impl Material {
     #[lsp_doc("docs/api/scene/material/hidden/emissive_source_mobile.md")]
     pub fn emissive_source_mobile(
         self: Arc<Self>,
-        input: TextureInputMobile,
+        input: MobileTextureInput,
         options: Option<TextureOptions>,
     ) -> Arc<Self> {
         Arc::new(self.emissive_texture(texture_input(input, options)))
@@ -245,7 +245,7 @@ impl From<MaterialError> for FragmentColorError {
 }
 
 /// A crate texture input from the mobile input and its optional options.
-fn texture_input(input: TextureInputMobile, options: Option<TextureOptions>) -> TextureInput {
+fn texture_input(input: MobileTextureInput, options: Option<TextureOptions>) -> TextureInput {
     TextureInput {
         data: input.into(),
         options: options.unwrap_or_default(),

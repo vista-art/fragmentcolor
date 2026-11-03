@@ -223,7 +223,7 @@ extension Renderer {
     /// Default-options overload: drop the trailing `options: nil` from
     /// idiomatic call sites. Mirrors the JS / Python bindings where
     /// `create_texture(input)` is fine without an explicit options arg.
-    public func createTexture(input: TextureInputMobile) async throws -> Texture {
+    public func createTexture(input: MobileTextureInput) async throws -> Texture {
         try await createTexture(input: input, options: nil)
     }
 
@@ -417,7 +417,7 @@ func showNumber(_ value: Double) -> String {
 }
 
 /// A URL input for `http(s)`, otherwise a file path.
-func pathInput(_ path: String) -> TextureInputMobile {
+func pathInput(_ path: String) -> MobileTextureInput {
     path.hasPrefix("http://") || path.hasPrefix("https://") ? .url(path) : .path(path)
 }
 
