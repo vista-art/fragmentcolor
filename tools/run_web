@@ -116,8 +116,9 @@ echo "[run_web] repl vite port: $REPL_PORT"
 rm -rf "$REPL_DIR/node_modules"
 pnpm install --dir "$REPL_DIR"
 
-# Start Vite dev server on the chosen port and open the requested page
-pnpm --dir "$REPL_DIR" dev -- --port "$REPL_PORT" --strictPort &
+# Start Vite dev server on the chosen port and open the requested page.
+# pnpm hands a `--` to Vite as is, and Vite ignores every flag after one.
+pnpm --dir "$REPL_DIR" dev --port "$REPL_PORT" --strictPort &
 SERVER_PID=$!
 cleanup() {
   if ps -p "$SERVER_PID" >/dev/null 2>&1; then
