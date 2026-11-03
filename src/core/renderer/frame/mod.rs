@@ -5,14 +5,53 @@ pub(super) mod draws;
 mod record;
 mod samplers;
 
+#[cfg(apple)]
+use crate::core::renderer::MAP_LIMIT;
 use crate::core::renderer::checks::pass::check_target;
 #[cfg(not(wasm))]
 use crate::core::renderer::device_errors::scopes::Origin;
 use crate::core::renderer::{RenderContext, Renderable, Renderer, RendererError};
 use crate::geometry::{MeshError, MeshObject, Upload};
+#[cfg(apple)]
+use crate::texture::TextureClass;
+#[cfg(apple)]
+use crate::{PassObject, UniformData};
 use crate::{ShaderObject, SurfaceError, Target, TargetFrame};
 use draws::{PREVIEW_TRIES, PassDraws};
 use std::sync::atomic::Ordering;
+
+/// Whether a shader of `pass` binds a storage texture with atomic access.
+#[cfg(apple)]
+fn writes_atomics(pass: &PassObject) -> bool {
+    let atomic = |data: &UniformData| match data {
+        UniformData::Texture(meta) => {
+            matches!(meta.class, TextureClass::Storage { access, .. } if access.atomic)
+        }
+        _ => false,
+    };
+    pass.shaders.read().iter().any(|shader| {
+        let storage = shader.storage.read();
+        storage
+            .uniforms
+            .values()
+            .any(|(_, _, uniform)| atomic(&uniform.data))
+    })
+}
+
+/// Waits until the GPU finishes the submission `index`, for at most `MAP_LIMIT`.
+#[cfg(apple)]
+fn wait_done(device: &wgpu::Device, index: wgpu::SubmissionIndex) -> Result<(), RendererError> {
+    let wait = wgpu::PollType::Wait {
+        submission_index: Some(index),
+        timeout: Some(MAP_LIMIT),
+    };
+    match device.poll(wait) {
+        Ok(_) => Ok(()),
+        Err(error) => Err(RendererError::Error(format!(
+            "the compute pass with texture atomics did not finish: {error}"
+        ))),
+    }
+}
 
 impl Renderer {
     /// Draws `renderable` into `target` once the checks that need no frame pass.
@@ -144,6 +183,20 @@ impl RenderContext {
                 self.process_compute_pass(&mut encoder, pass)?
             } else if let Some(frame) = frame {
                 self.process_render_pass(&mut encoder, pass, frame, draws)?
+            }
+            // Metal can run work submitted later, a readback copy or a pass of the next render,
+            // before a compute pass's texture atomics land, so it read zeros or a partial count.
+            // The renderer submits such a pass and waits for the GPU to finish it.
+            #[cfg(apple)]
+            if pass.is_compute() && writes_atomics(pass) {
+                let index = self.queue.submit(Some(encoder.finish()));
+                wait_done(&self.device, index)?;
+                encoder = self
+                    .device
+                    .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                        label: Some("Command Encoder (Metal texture atomics wait)"),
+                    });
+                prev_was_compute = false;
             }
         }
 
