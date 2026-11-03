@@ -7,6 +7,7 @@ use gltf::accessor::{DataType, Dimensions};
 
 use super::SceneLoadError;
 use crate::Mesh;
+use crate::errors::show_number;
 
 /// Accessor types the loader reads for each semantic.
 const VEC3_FLOAT: &[(DataType, Dimensions)] = &[(DataType::F32, Dimensions::Vec3)];
@@ -246,6 +247,43 @@ fn read_items<Item>(
     Ok(Some(values))
 }
 
+/// Collect a declared float accessor's items, as `read_items` does,
+/// and refuse NaN or an infinity, which glTF doesn't allow in an accessor.
+fn read_floats<const SIZE: usize>(
+    label: &str,
+    declared: Option<gltf::Accessor<'_>>,
+    items: Option<impl Iterator<Item = [f32; SIZE]>>,
+    semantic: &str,
+) -> Result<Option<Vec<[f32; SIZE]>>, SceneLoadError> {
+    let index = declared.as_ref().map(|accessor| accessor.index());
+    let values = read_items(declared, items, semantic)?;
+    if let (Some(index), Some(values)) = (index, &values) {
+        check_finite(label, index, semantic, values)?;
+    }
+    Ok(values)
+}
+
+/// Refuse the first item of accessor `index` that holds a number that isn't finite,
+/// naming the primitive in `label`, the accessor, the item and the number.
+fn check_finite<const SIZE: usize>(
+    label: &str,
+    index: usize,
+    semantic: &str,
+    values: &[[f32; SIZE]],
+) -> Result<(), SceneLoadError> {
+    let found = values.iter().enumerate().find_map(|(item, value)| {
+        let number = value.iter().find(|number| !number.is_finite())?;
+        Some((item, *number))
+    });
+    match found {
+        Some((item, number)) => Err(SceneLoadError::Invalid(format!(
+            "{label} reads {} at item {item} of accessor {index} ({semantic}), and glTF accessors hold finite numbers only",
+            show_number(f64::from(number))
+        ))),
+        None => Ok(()),
+    }
+}
+
 pub(super) fn build_mesh(
     gltf_mesh: &gltf::Mesh<'_>,
     primitive: &gltf::Primitive<'_>,
@@ -261,33 +299,39 @@ pub(super) fn build_mesh(
     let mesh = Mesh::new();
     let reader = primitive.reader(|buffer| buffers.get(buffer.index()).map(|data| &data[..]));
 
-    let positions: Vec<[f32; 3]> = read_items(
+    let positions: Vec<[f32; 3]> = read_floats(
+        &label,
         primitive.get(&Semantic::Positions),
         reader.read_positions(),
         "POSITION",
     )?
     .ok_or_else(|| SceneLoadError::Invalid(format!("{label} has no POSITION attribute")))?;
-    let supplied_normals: Option<Vec<[f32; 3]>> = read_items(
+    let supplied_normals: Option<Vec<[f32; 3]>> = read_floats(
+        &label,
         primitive.get(&Semantic::Normals),
         reader.read_normals(),
         "NORMAL",
     )?;
-    let uvs: Option<Vec<[f32; 2]>> = read_items(
+    let uvs: Option<Vec<[f32; 2]>> = read_floats(
+        &label,
         primitive.get(&Semantic::TexCoords(0)),
         reader.read_tex_coords(0).map(|it| it.into_f32()),
         "TEXCOORD_0",
     )?;
-    let uv1s: Option<Vec<[f32; 2]>> = read_items(
+    let uv1s: Option<Vec<[f32; 2]>> = read_floats(
+        &label,
         primitive.get(&Semantic::TexCoords(1)),
         reader.read_tex_coords(1).map(|it| it.into_f32()),
         "TEXCOORD_1",
     )?;
-    let colors: Option<Vec<[f32; 4]>> = read_items(
+    let colors: Option<Vec<[f32; 4]>> = read_floats(
+        &label,
         primitive.get(&Semantic::Colors(0)),
         reader.read_colors(0).map(|it| it.into_rgba_f32()),
         "COLOR_0",
     )?;
-    let tangents: Option<Vec<[f32; 4]>> = read_items(
+    let tangents: Option<Vec<[f32; 4]>> = read_floats(
+        &label,
         primitive.get(&Semantic::Tangents),
         reader.read_tangents(),
         "TANGENT",
