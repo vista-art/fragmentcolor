@@ -7,9 +7,6 @@ pub enum ShaderError {
     /// A shader that can't be read, such as one whose vertex inputs share a name.
     #[error("Failed to parse shader: {0}")]
     ParseError(String),
-    /// A feature that isn't built yet.
-    #[error("Planned feature not yet implemented: {0}")]
-    PlannedFeature(String),
     /// A uniform name the shader doesn't declare.
     #[error("Uniform not found: {0}")]
     UniformNotFound(String),
@@ -52,9 +49,6 @@ pub enum ShaderError {
         index: usize,
         len: usize,
     },
-    /// A read of a shader whose storage another thread holds.
-    #[error("Shader busy: {0}")]
-    Busy(String),
     /// A mesh value that doesn't fit the type its attribute takes.
     #[error("Mesh attribute {name}: expected {expected}, got {found}")]
     AttributeMismatch {
@@ -296,7 +290,6 @@ mod tests {
     #[test]
     fn formats_shader_error_variants() {
         let a = ShaderError::ParseError("p".into());
-        let b = ShaderError::PlannedFeature("pf".into());
         let c = ShaderError::UniformNotFound("u".into());
         let d = ShaderError::TypeMismatch("k".into());
         let e = ShaderError::InvalidKey("k".into());
@@ -318,7 +311,6 @@ mod tests {
         };
 
         assert!(a.to_string().contains("parse"));
-        assert!(b.to_string().contains("Planned feature"));
         assert!(c.to_string().contains("Uniform not found"));
         assert!(d.to_string().contains("Type mismatch"));
         assert!(e.to_string().contains("Invalid key"));
