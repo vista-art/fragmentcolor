@@ -359,17 +359,11 @@ func byteData(_ bytes: [Int], _ method: String) throws -> Data {
 /// Throws for NaN, an infinity, or a finite number past the `Float` range.
 func readFloats(_ values: [Double], _ label: String) throws -> [Float] {
     try values.enumerated().map { index, value in
-        let float = Float(value)
-        guard float.isFinite else {
-            throw FragmentColorError.Render(
-                "\(label): item \(index) must be a finite number that fits a 32-bit float, got \(showNumber(value))"
-            )
-        }
-        return float
+        try readFinite(value, "\(label): item \(index)")
     }
 }
 
-/// One number as a `Float`, such as a roughness or a UV rotation, by the rule of `readFloats`.
+/// One number as a `Float`, such as a roughness, a UV rotation or an item of `readFloats`.
 func readFinite(_ value: Double, _ label: String) throws -> Float {
     let float = Float(value)
     guard float.isFinite else {

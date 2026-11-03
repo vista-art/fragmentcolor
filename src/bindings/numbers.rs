@@ -81,16 +81,11 @@ pub(crate) fn read_floats(
         .enumerate()
         .map(|(index, value)| {
             let value: f64 = value.into();
-            let float = value as f32;
-            if float.is_finite() {
-                Ok(float)
-            } else {
-                Err(VectorError::Item {
-                    label: label.to_string(),
-                    index,
-                    value,
-                })
-            }
+            narrow(value).ok_or_else(|| VectorError::Item {
+                label: label.to_string(),
+                index,
+                value,
+            })
         })
         .collect()
 }
@@ -98,14 +93,16 @@ pub(crate) fn read_floats(
 /// One number as an `f32`, such as a roughness or a UV rotation, by the rule of [`read_floats`].
 pub(crate) fn read_finite(number: impl Into<f64>, label: &str) -> Result<f32, VectorError> {
     let value: f64 = number.into();
+    narrow(value).ok_or_else(|| VectorError::Number {
+        label: label.to_string(),
+        value,
+    })
+}
+
+/// `value` as an `f32`, or nothing when it isn't finite once narrowed.
+fn narrow(value: f64) -> Option<f32> {
     let float = value as f32;
-    match float.is_finite() {
-        true => Ok(float),
-        false => Err(VectorError::Number {
-            label: label.to_string(),
-            value,
-        }),
-    }
+    float.is_finite().then_some(float)
 }
 
 /// Exactly `N` numbers, read as [`read_floats`] reads them.

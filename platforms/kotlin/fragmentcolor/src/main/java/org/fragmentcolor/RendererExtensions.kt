@@ -263,17 +263,9 @@ internal fun sizeRecord(size: List<UInt>, method: String): Size {
  * Throws [FragmentColorException] for NaN, an infinity, or a finite number past the [Float] range.
  */
 internal fun readFloats(values: List<Double>, label: String): List<Float> =
-    values.mapIndexed { index, value ->
-        val float = value.toFloat()
-        if (!float.isFinite()) {
-            throw FragmentColorException.Render(
-                "$label: item $index must be a finite number that fits a 32-bit float, got ${showNumber(value)}",
-            )
-        }
-        float
-    }
+    values.mapIndexed { index, value -> readFinite(value, "$label: item $index") }
 
-/** One number as a [Float], such as a roughness or a UV rotation, by the rule of [readFloats]. */
+/** One number as a [Float], such as a roughness, a UV rotation or an item of [readFloats]. */
 internal fun readFinite(value: Double, label: String): Float {
     val float = value.toFloat()
     if (!float.isFinite()) {
