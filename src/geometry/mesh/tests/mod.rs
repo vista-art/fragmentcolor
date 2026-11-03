@@ -859,7 +859,6 @@ fn a_pack_during_a_model_attach_finds_the_columns() {
         let mut read = Reads::default();
         for field in build_columns().fields {
             let column = Read {
-                format: field.fmt,
                 declared: "vec4<f32>",
                 half: false,
             };
