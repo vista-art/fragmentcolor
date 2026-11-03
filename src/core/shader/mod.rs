@@ -228,7 +228,7 @@ pub(crate) struct ShaderObject {
     /// last passed this shader's checks.
     preview: Mutex<Option<Preview>>,
     /// The values `push` kept because their keys can't hold them, by key,
-    /// which every render reports until a later push of the key lands.
+    /// which every render reports until a value of the key lands.
     refused: RwLock<BTreeMap<String, UniformInput>>,
 }
 
@@ -295,10 +295,11 @@ impl ShaderObject {
         Ok(())
     }
 
-    /// Sets a uniform from a loose value, shaped to the key's declared WGSL type.
-    /// A texture waits on `texture_writes`, which a texture write and a flush hold.
-    /// Nothing else waits for the storage: when it's busy the update is queued, shaped
-    /// when a read lock is free, so a type error still surfaces here in the common case.
+    /// Sets a uniform from a loose value, shaped to the key's declared WGSL type,
+    /// and ends the refusal `push` kept for the key. A texture waits on `texture_writes`,
+    /// which a texture write and a flush hold. Nothing else waits for the storage: when
+    /// it's busy the update is queued, shaped when a read lock is free, so a type error
+    /// still surfaces here in the common case.
     pub(crate) fn set_input(&self, key: &str, input: UniformInput) -> Result<(), ShaderError> {
         if self.routes_ambient(key) {
             let UniformData::Vec3(color) = input.resolve(key, &UniformData::Vec3(vec![0.0; 3]))?
@@ -309,6 +310,7 @@ impl ShaderObject {
                 return Err(ShaderError::TypeMismatch(AMBIENT_KEY.into()));
             };
             self.set_ambient([red, green, blue]);
+            self.end_refusal(key);
             return Ok(());
         }
         let texture = match &input {
@@ -333,15 +335,21 @@ impl ShaderObject {
         let released = texture.map(|id| self.bind_texture(key, id));
         drop(writing);
         drop(released);
+        self.end_refusal(key);
         Ok(())
     }
 
     /// Shapes `input` to `key`'s declared type, as `set_input` does, and writes nothing.
-    /// It passes while another thread writes the storage, where `set_input` queues the value unshaped.
+    /// It waits for a write on another thread, as `get_uniform_data` does.
     pub(crate) fn check_input(&self, key: &str, input: &UniformInput) -> Result<(), ShaderError> {
-        match self.storage.try_read() {
-            Some(storage) => self.shape_input(&storage, key, input),
-            None => Ok(()),
+        let storage = self.storage.read();
+        self.shape_input(&storage, key, input)
+    }
+
+    /// Drops the value `push` kept for `key`, once a value of the key lands.
+    fn end_refusal(&self, key: &str) {
+        if self.refused.read().contains_key(key) {
+            self.refused.write().remove(key);
         }
     }
 

@@ -76,9 +76,17 @@ pub enum ShaderError {
 }
 
 impl ShaderError {
-    /// Whether the error names a uniform or field the shader doesn't declare.
+    /// Whether the error says the key names no slot the shader declares: an unknown
+    /// uniform or field, a path past a plain value such as `camera.view_proj` on a
+    /// `mat4x4<f32>` root, a field of an array, or an index past the array's end.
     pub(crate) fn is_missing(&self) -> bool {
-        matches!(self, Self::UniformNotFound(_) | Self::FieldNotFound(_))
+        matches!(
+            self,
+            Self::UniformNotFound(_)
+                | Self::FieldNotFound(_)
+                | Self::InvalidKey(_)
+                | Self::IndexOutOfBounds { .. }
+        )
     }
 }
 

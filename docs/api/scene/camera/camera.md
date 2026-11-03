@@ -30,10 +30,12 @@ in Python, throw `FragmentColorError` in Swift and throw
 `FragmentColorException` in Kotlin.
 
 A shader whose `camera.view_proj` or `camera.position` can't hold the
-Camera's value, such as an `f16` position past ±65504, keeps the value it
-had, and `Renderer::render` returns the shader's `ShaderError::TypeMismatch`
-until the Camera moves to a value the field holds. A shader that declares
-neither key takes nothing from the Camera, with no error.
+Camera's value, such as an `f16` position past ±65504 or a `vec4<f32>`
+position for the Camera's three numbers, keeps the value it had.
+`Renderer::render` returns the shader's `ShaderError::TypeMismatch` until a
+value of that key lands, from the Camera or from `Shader::set`. A shader
+that declares neither key, such as one whose `camera` is a plain
+`mat4x4<f32>`, takes nothing from the Camera, with no error.
 
 The Camera is the user's domain, not the Material's: a Material is "what the
 surface looks like under any light from any viewpoint", a Camera is "which

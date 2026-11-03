@@ -424,6 +424,34 @@ struct Factors { uv: array<TextureUv, 5> }
         }
     }
 
+    // Story: a custom shader with fewer UV slots than the PBR shader takes the transform
+    // in the slots it declares and skips the rest, as it skips a factor it leaves out.
+    #[test]
+    fn a_transform_skips_the_slots_a_shader_lacks() {
+        let shader = crate::Shader::new(
+            "
+struct TextureUv { offset: vec2<f32>, scale: vec2<f32>, rotation: f32, uv_set: u32, pad: vec2<u32> }
+struct Factors { uv: array<TextureUv, 2> }
+@group(0) @binding(0) var<uniform> material: Factors;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  return vec4<f32>(f32(i), 0.0, 0.0, 1.0);
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> {
+  return vec4<f32>(material.uv[1].offset, material.uv[1].rotation, 1.0);
+}",
+        )
+        .expect("shader");
+        let material = Material::custom(shader);
+
+        let result = material.uv_transform([0.5, 0.25], [2.0, 2.0], 0.5);
+
+        assert!(result.is_ok(), "{result:?}");
+        for slot in [TextureSlot::BaseColor, TextureSlot::MetallicRoughness] {
+            let offset: [f32; 2] = read_field(&material, slot, "offset");
+            assert_eq!(offset, [0.5, 0.25], "{slot:?}");
+        }
+    }
+
     // Story: occlusion moves by its own transform while base color keeps its own.
     #[test]
     fn slot_transform_moves_only_its_slot() {

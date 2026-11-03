@@ -7,17 +7,17 @@ use crate::ShaderError;
 impl ShaderObject {
     /// Writes `numbers` under `key` for an object that keeps the key in step.
     /// A key the shader doesn't declare is skipped, and a value the key can't hold
-    /// stays for `check_pushes` to report until a later push of the key lands.
+    /// stays for `check_pushes` to report until a value of the key lands. The check
+    /// waits for a write on another thread, so a busy storage can't hide a refusal.
     pub(crate) fn push(&self, key: &str, numbers: &[f32]) {
         let input = UniformInput::from(numbers);
-        match self.set_input(key, input.clone()) {
-            Ok(()) => {
-                self.refused.write().remove(key);
-            }
-            Err(error) if error.is_missing() => {}
-            Err(_) => {
-                self.refused.write().insert(key.to_string(), input);
-            }
+        let result = self
+            .check_input(key, &input)
+            .and_then(|()| self.set_input(key, input.clone()));
+        if let Err(error) = result
+            && !error.is_missing()
+        {
+            self.refused.write().insert(key.to_string(), input);
         }
     }
 
@@ -79,6 +79,18 @@ struct Lights { ambient: vec3<f16> }
         assert_eq!(ambient, [0.5, 0.25, 1.0]);
     }
 
+    // Story: a `Shader::set` that fits the key ends a refusal no later push brings,
+    // as when the Scene that pushed the value lets the pass go.
+    #[test]
+    fn a_set_that_fits_ends_the_refusal() {
+        let shader = half_ambient();
+        shader.object.push("lights.ambient", &[70000.0, 0.0, 0.0]);
+
+        shader.set("lights.ambient", [0.5, 0.25, 1.0]).expect("set");
+
+        assert!(shader.object.check_pushes().is_ok());
+    }
+
     // Story: a push to a key the shader doesn't declare leaves nothing to report.
     #[test]
     fn a_push_to_an_undeclared_key_stays_silent() {
@@ -87,5 +99,36 @@ struct Lights { ambient: vec3<f16> }
         shader.object.push("camera.position", &[1e9, 0.0, 0.0]);
 
         assert!(shader.object.check_pushes().is_ok());
+    }
+
+    // Story: a shader whose `camera` is a plain matrix declares no `camera.view_proj`,
+    // so the Camera's push skips it and the matrix the user set stays.
+    #[test]
+    fn a_push_past_a_plain_root_stays_silent() {
+        let shader = Shader::new(
+            "
+@group(0) @binding(0) var<uniform> camera: mat4x4<f32>;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  return camera * vec4<f32>(f32(i), 0.0, 0.0, 1.0);
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> {
+  return vec4<f32>(1.0);
+}",
+        )
+        .expect("shader");
+        let identity = [
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ];
+        shader.set("camera", identity).expect("matrix");
+
+        shader.object.push("camera.view_proj", &[2.0; 16]);
+        shader.object.push("camera.position", &[1.0, 2.0, 3.0]);
+
+        assert!(shader.object.check_pushes().is_ok());
+        let camera: [[f32; 4]; 4] = shader.get("camera").expect("camera");
+        assert_eq!(camera, identity);
     }
 }
