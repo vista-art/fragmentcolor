@@ -8,10 +8,11 @@
 **Sequence.**
 
 1. **0.12.x:** fixes, shader support and tooling that keep today's public signatures. 0.12.7 is the exception: it changes signatures in every language so that 0.13.0 starts from typed errors, one set of number rules and types at the crate root, and its CHANGELOG opens with an upgrade list.
-2. **0.13.0:** one breaking minor with every break and API addition that the earlier plan spread from 0.13.0 to 0.14.x: the primitives an engine drives, instances that live on `Mesh`, the 3D and scene layers with draw merging, plugins, live shader editing, the dependency features, and the record and enum changes the reference scenes need.
-3. **0.13.x:** patches that break no public API: fixes, USD loading, the feature tracks, which only add calls (characters and the 2D layer among them), the Mario walk-through and the first integrations.
-4. **0.14:** light and surfaces, the next breaking minor: PBR lighting designed once, targets with options, the texture shapes and formats 0.13.0 leaves out, and pipeline completion, with a pbrt-v4 subset rasterized as its acceptance test.
-5. **Later:** work that waits on an outside event, such as a split trigger, BoltFFI's rewrite, a stable API for the C target, or a user's request.
+2. **0.12.8:** the material release, which breaks signatures as 0.12.7 does. `Material` gives way to one type per shading model, so 0.13.0 builds its 3D layer on them, and errors take one shape in every language.
+3. **0.13.0:** one breaking minor with every break and API addition that the earlier plan spread from 0.13.0 to 0.14.x: the primitives an engine drives, instances that live on `Mesh`, the 3D and scene layers with draw merging, plugins, live shader editing, the dependency features, and the record and enum changes the reference scenes need.
+4. **0.13.x:** patches that break no public API: fixes, USD loading, the feature tracks, which only add calls (characters and the 2D layer among them), the Mario walk-through and the first integrations.
+5. **0.14:** light and surfaces, the next breaking minor: PBR lighting designed once, targets with options, the texture shapes and formats 0.13.0 leaves out, and pipeline completion, with a pbrt-v4 subset rasterized as its acceptance test.
+6. **Later:** work that waits on an outside event, such as a split trigger, BoltFFI's rewrite, a stable API for the C target, or a user's request.
 
 0.14 is planned around that one theme, and a break that comes up during 0.13.x waits for it. The Reference scenes goal below ties three milestones to these releases.
 
@@ -133,13 +134,41 @@ No user sees these names, so renaming breaks nothing.
 - [x] `AGENTS.md` states that qualifiers go first, as in `MobileTextureRegion`, never `TextureRegionMobile` (0.12.6)
 - [x] `SceneInner` becomes `SceneState`, like `ModelState` (0.12.6)
 
+## 0.12.8: materials
+
+Today one `Material` type covers every look. `Material::pbr()` and `Material::custom(shader)` share one set of setters, so a custom shader takes a `metallic` it never reads, and a texture slot is an enum argument, `TextureSlot`, passed beside the setter that binds it. 0.12.8 gives each shading model a type of its own, the way `Target` has `WindowTarget` and `TextureTarget`, and each type offers only the settings its shader reads. Signatures change in every language, as in 0.12.7, and the CHANGELOG opens with an upgrade list. Ranged storage uploads, under Bug fixes, land in this release too.
+
+### Material types
+
+- [ ] `PbrMaterial`, which `Material::pbr` becomes: glTF's metallic-roughness model, with the number setters `base_color`, `metallic`, `roughness`, `normal_scale`, `occlusion_strength`, `emissive` and `alpha_cutoff`, and five maps, `base_color_map()`, `metallic_roughness_map()`, `normal_map()`, `occlusion_map()` and `emissive_map()`
+- [ ] `UnlitMaterial`: `base_color` times its `base_color_map()`, with no lighting. glTF's `KHR_materials_unlit` loads as one, and it serves UI, sprites, baked lighting and debug views
+- [ ] `ToonMaterial`: `base_color` and `base_color_map()`, with diffuse light cut into `bands(n)` steps or read from a `ramp_map()` gradient, a hard highlight and a `rim` color. It reads the `camera` and `lights` roots that `PbrMaterial` reads, so the clustered lights of 0.12.7 light it as they are
+- [ ] A `Shader` is the custom material. `Model::new` takes one directly and the renderer fills the `camera`, `lights` and `model` slots it declares, as it does under `Material::custom` today, which goes. A custom shader sets its own values with `set`
+- [ ] Every type has `alpha_mode` and `double_sided`. A setting two types share keeps one name on both, so `base_color` and `base_color_map()` mean the same on all three shading types
+- [ ] `Material` becomes an enum over the four, `Pbr`, `Unlit`, `Toon` and `Custom`, built from each type with `From`. It plays the part `RenderTarget` plays beside `Target`: `Model::new(&mesh, &gold)` takes any of them, and `model.material()` and the glTF loader return the enum. It is `#[non_exhaustive]`, so a later type, such as a matcap material, lands in a patch. Swift and Kotlin see an enum that holds the object, and JavaScript and Python get the object itself
+- [ ] `MaterialMap`, the handle each map call returns, with `texture`, `uv` and `transform`, as in `gold.normal_map().texture(&tiles)?.uv(1)?.transform([0.0, 0.0], [4.0, 4.0], 0.0)?`. `texture` takes the inputs the texture setters take today, and 0.13.0 narrows it to a `Texture`. `TextureSlot`, `texture_uv`, `texture_transform` and the five `*_texture` setters go
+- [ ] The glTF loader builds an `UnlitMaterial` for `KHR_materials_unlit` and a `PbrMaterial` for every other material
+- [ ] An outline example: a second pass that draws edges from depth and normals. An outline needs a draw of its own, so it ships as a pass, never as a `ToonMaterial` setting
+- [ ] A page for each type and one for `MaterialMap` in the Scene category, with examples in every language. The `Material` page lists the types, as the `Target` page lists the targets
+
+No type is planned for Lambert or Blinn-Phong shading, which costs about what PBR costs on current GPUs and looks dated. The glTF extensions, such as clearcoat, sheen, transmission, iridescence and anisotropy, extend the PBR model, as three.js, Bevy and glTF itself treat them, so they arrive as `PbrMaterial` settings. Transmission carries the 0.14 glass preset.
+
+### Errors
+
+- [ ] One error shape in every language. Each error carries its class name, its message and its fields under the same names, so a docs page describes it once. Swift's and Kotlin's cases follow the classes Python raises, and Kotlin's `message` holds the error's text, where it lists the fields today
+- [ ] `DeviceError` and `ErrorKind` leave the object menu. Users never build an error, so one Errors page lists each class, when it's raised and its fields, with `kind` among the fields of `DeviceError`. The build keeps checking their docs
+
+### Demo
+
+- [ ] The walkable world from 0.12.7 gains a style switcher that swaps every model between `PbrMaterial`, `ToonMaterial` and `UnlitMaterial` while it runs, with a blog post. One glTF model behind the same switcher is the fallback, if the world's assets read poorly in toon
+
 ## 0.13.0: one breaking minor
 
 Every public call ships in all five languages in this release, and every platform ships the full package.
 
 Every heavy item stays in this release: the 3D and scene layers, plugins, freeing on drop, non-blocking `render`, storage roots owned by their shader and the dependency features. Plugins only add calls, so they may slip to 0.13.1 if they are the last item left. Any other item that slipped would wait for 0.14.
 
-The breaks, detailed below: `add_mesh` on `Pass` takes a shader and an instance range; instances live only on `Mesh`, `add_instance` returns an index, `resize_instances` replaces `add_instances`, `clear_instances` and `set_instance_count`, and `Instance` goes; a mesh lays out its instance slots from the shader in location order, and `set_source` lays them out again; `list_keys` and `list_uniforms` go; `set` takes exact byte lengths and one key grammar; `Compare` replaces `CompareFunction`; `SamplerOptions` and `TextureOptions` gain fields and `TextureFormat` gains cases; the pool types turn internal; the aliases and deprecated forms that 0.12.6 keeps for old names go in every language, and `MobileTextureInput` becomes `TextureData` on Swift and Kotlin; sizes, regions and colors become arrays, JavaScript records plain objects, and `TextureId` and `TextureUsage` plain numbers; three free functions become methods; parse errors gain fields, and every public error enum and every record FC returns turns `#[non_exhaustive]`; `Shader::new` rejects ambiguous entry points; core fills five magic uniforms; storage roots belong to their shader; GPU objects are freed on last drop; `render` stops blocking, `Renderer::load` becomes optional warm-up and the `Material` texture setters take a `Texture`; neighboring entries merge, so a hand-ordered list can cost more draws than in 0.12; `Pass::add` keeps its objects in that pass only; `Scene` keeps one pass and `Scene::load` turns async; the glTF loader builds a `SceneNode` per glTF node with a `Model` per primitive over meshes the nodes share, and `scene.nodes()` returns the root nodes; `Model::new` takes references and returns a `Result`, and each instance draws at the model's transform times its `model` slot; `Camera` and `Light` stop writing into shaders; `SceneObject` is sealed and moves into core; `SceneLoadError` and `TextureError` stop wrapping decoder errors; `App` moves to the examples; and the glTF, image and KTX2 decoders move behind default features.
+The breaks, detailed below: `add_mesh` on `Pass` takes a shader and an instance range; instances live only on `Mesh`, `add_instance` returns an index, `resize_instances` replaces `add_instances`, `clear_instances` and `set_instance_count`, and `Instance` goes; a mesh lays out its instance slots from the shader in location order, and `set_source` lays them out again; `list_keys` and `list_uniforms` go; `set` takes exact byte lengths and one key grammar; `Compare` replaces `CompareFunction`; `SamplerOptions` and `TextureOptions` gain fields and `TextureFormat` gains cases; the pool types turn internal; the aliases and deprecated forms that 0.12.6 keeps for old names go in every language, and `MobileTextureInput` becomes `TextureData` on Swift and Kotlin; sizes, regions and colors become arrays, JavaScript records plain objects, and `TextureId` and `TextureUsage` plain numbers; three free functions become methods; parse errors gain fields, and every public error enum and every record FC returns turns `#[non_exhaustive]`; `Shader::new` rejects ambiguous entry points; core fills five magic uniforms; storage roots belong to their shader; GPU objects are freed on last drop; `render` stops blocking, `Renderer::load` becomes optional warm-up and `MaterialMap::texture` takes a `Texture`; neighboring entries merge, so a hand-ordered list can cost more draws than in 0.12; `Pass::add` keeps its objects in that pass only; `Scene` keeps one pass and `Scene::load` turns async; the glTF loader builds a `SceneNode` per glTF node with a `Model` per primitive over meshes the nodes share, and `scene.nodes()` returns the root nodes; `Model::new` takes references and returns a `Result`, and each instance draws at the model's transform times its `model` slot; `Camera` and `Light` stop writing into shaders; `SceneObject` is sealed and moves into core; `SceneLoadError` and `TextureError` stop wrapping decoder errors; `App` moves to the examples; and the glTF, image and KTX2 decoders move behind default features.
 
 ### Before coding starts
 
@@ -227,7 +256,7 @@ Core holds `Renderer`, the targets, `Shader` with `Pipeline`, `Pass`, `Mesh`, `T
 - [ ] Before any wgpu call, FC checks override values and blendable formats, each with a typed error, as it has checked the device's features since 0.12.7. A failed build stays out of the cache, so the next frame reports it again
 - [x] Pipeline creation runs inside error scopes, so wgpu failures return typed errors on native and WebGL2 (0.12.7)
 - [ ] Every public error enum turns `#[non_exhaustive]`, and so does every record FC returns and users never build: the `layout()` records and `HdrInfo`. A patch can then add a variant or a field without breaking callers, and a field it adds carries a uniffi default. No FragmentColor type has the attribute today. The surface that lists no formats then gets its own `InitializationError` variant
-- [ ] `Material`'s `alpha_mode` and `double_sided` become sugar over `set_pipeline`
+- [ ] Each material type's `alpha_mode` and `double_sided` become sugar over `set_pipeline`
 
 ### Textures and samplers
 
@@ -274,7 +303,7 @@ Core holds `Renderer`, the targets, `Shader` with `Pipeline`, `Pass`, `Mesh`, `T
 - [ ] `render` acquires a frame only when some pass draws into it. Since 0.12.6, a render of compute passes alone already skips it
 - [ ] Textures from the create calls finish uploading inside those calls, which wait, so `render` never blocks on them. Today native `render` blocks on `load` first
 - [ ] `Renderer::load` keeps its signature as optional warm-up for any renderable. It creates a missing device and uploads every texture and mesh the renderable draws, with their vertices and instances. Pipelines still build in the first render, since their key holds the target's formats and sample count. `render` uploads whatever `load` skipped with queued writes
-- [ ] The `Material` texture setters stop queuing uploads for `render`. Proposed: they take a `Texture` from `create_texture`
+- [ ] `MaterialMap::texture` stops queuing uploads for `render`. Proposed: it takes a `Texture` from `create_texture`
 
 ### `Buffer`
 
@@ -364,7 +393,7 @@ Today the app fills these names and core fills nothing.
 
 ### The 3D layer
 
-`Model`, `Material`, `AlphaMode`, `Camera` and `Light` stay in `fragmentcolor` under their names, each with a `docs/api` page and examples in every language. The layer calls only the core public API.
+`Model`, the material types of 0.12.8, `AlphaMode`, `Camera` and `Light` stay in `fragmentcolor` under their names, each with a `docs/api` page and examples in every language. The layer calls only the core public API.
 
 - [ ] A `Model` is a mesh, a material, a transform and a visibility flag, with no instance calls. It reaches its instances only through `model.mesh()`
 - [ ] `Model::new(&mesh, &material)` takes both by reference and returns `Result<Model, ModelError>`. It lays out the mesh's slots through `validate_mesh`, and fails with `ModelError::MissingTransform` when the material's shader has no `model` slot. `ModelError` is `#[non_exhaustive]` and lifts into `SceneLoadError` and the binding errors with `#[from]`
@@ -379,7 +408,7 @@ Today the app fills these names and core fills nothing.
 - [ ] `Model` stops writing an instance layout onto the shared `Mesh` and stops queuing `model_entries`
 - [ ] `camera.sort(&models)` returns the visible models: opaque ones grouped by shader and then by vertices, then blended ones far to near by the depth of their bounds' center. It reads blending from `shader.pipeline()`
 - [ ] `Camera` and `Light` stay handles and stop writing into shaders. A pass that keeps them writes them into its `Buffer`s at each render, and `pack()` returns their bytes in the PBR layout for hosts with their own `Buffer`
-- [ ] `Material`'s `alpha_mode` and `double_sided` become sugar over `set_pipeline`, so core reads only `Pipeline` and never names `AlphaMode`
+- [ ] Each material type's `alpha_mode` and `double_sided` become sugar over `set_pipeline`, so core reads only `Pipeline` and never names `AlphaMode`
 - [ ] `Model`, `Camera` and `Light` implement the core `SceneObject` trait with public calls: a model reports its mesh, shader, transform and bounds, a camera its `pack()` bytes, and a light its entry for `lights`
 - [ ] The layer check holds the 3D layer to the core public API and the `SceneObject` seal. Today `src/scene` and `src/scene/material` reach crate internals on 49 lines
 - [ ] Rewrite the `Model` pages, add pages for `add_to`, `sort`, `pack` and `name`, and port `model_pbr_triangle`, `transparent_quads`, `gallery_camera` and `gallery_lighting`
@@ -459,7 +488,7 @@ Skinning splits across the layers, and every call is an addition. The host keeps
 - [ ] Data textures from a `Buffer` (core). A `Buffer` binds to a `texture_2d<f32>` or `texture_2d<u32>` root, and core uploads its bytes. Joint palettes, morph deltas and lookup tables then share one WGSL path on every backend, WebGL2 included, which has no storage buffers. A texture 2048 texels wide, WebGL2's limit in wgpu, holds 512 matrices per line
 - [ ] The skin loader (scene): `JOINTS_0`, `WEIGHTS_0`, inverse binds, skins, clips and morph weights, read into the `joints0` and `weights0` keys. The locked `gltf` 1.4.1 already reads all of them, and the loader skips them today
 - [ ] Playback with no clock or play state (scene): `scene.animations()`, `scene.animate(&clip, seconds)`, which writes the transforms of the `SceneNode`s a clip moves, and `scene.sample(&clip, seconds)`, which returns one TRS record per node for hosts with their own ECS. Keys clamp as the glTF spec says, so the host loops. glTF node animation comes with it and leaves Later
-- [ ] Skinned PBR (3D): its own `Material` constructor that the loader picks, a `mesh/skin` registry snippet, a palette range per skinned `Model`, `model.set_joints(&matrices)`, and skinned bounds for `camera.sort`. Every instance of a model's mesh shares its pose unless a per-instance offset slot points elsewhere
+- [ ] Skinning (3D) as a feature of the mesh and the model, which every material type draws through a `mesh/skin` registry snippet, so no type grows a skinned twin: a palette range per skinned `Model`, `model.set_joints(&matrices)`, and skinned bounds for `camera.sort`. The loader turns it on for a skinned primitive. Every instance of a model's mesh shares its pose unless a per-instance offset slot points elsewhere
 - [ ] Morph targets (3D, scene): deltas in a data texture read by `vertex_index`, applied before skinning
 - [ ] A glTF sample test matrix at fixed times: BoxAnimated, SimpleSkin, RiggedFigure, CesiumMan, Fox, SimpleMorph, MorphStressTest and InterpolationTest, with attribution where a license asks for it. BrainStem, under the Poser EULA, stays out
 
@@ -486,7 +515,6 @@ The Reference scenes goal below holds the detail.
 
 ### More additions
 
-- [ ] Unlit and toon `Material` presets over registry WGSL (3D)
 - [ ] Frustum culling on `Camera`, beside `sort`, which a pass that keeps models runs before it sorts (3D)
 - [ ] Picking, debug lines drawn as quads, and GPU timings, which are optional and coarse on WebGPU and absent on WebGL2
 - [ ] The web fetch and the WebGL2 readback yield reach the browser through `js_sys::global()`, so both work inside a web worker, where `web_sys::window()` is absent
@@ -511,7 +539,7 @@ The feature tracks, further down, land as patches from 0.13.1 on. A track item t
 
 Lighting is the one area where several features share a contract and each would break it: the PBR bindings, the `lights` layout and the bytes `light.pack()` returns, all under WebGL2's 16 sampled textures per stage and 4 bind groups. Shipped one patch at a time, shadows, image-based lighting and area lights would change that contract three times, so 0.14 designs them once, together with the targets and texture shapes they need. A pbrt-v4 subset, rasterized, is its acceptance test, the role the Bevy example plays for 0.13.0. Skinning, sprites and text only add calls, so they ship before it as 0.13.x tracks.
 
-- [ ] **PBR lighting, designed once** (3D). Shadows (directional cascades, spot, point cubes), image-based lighting from `.hdr` and equal-area octahedral maps, area lights through new `LightKind` cases (rectangle, disk, sphere) with LTC shading, and a glass preset, in one binding plan that fits WebGL2 and the clustered lights of 0.12.7. It versions the `Lights` layout if area lights or shadows need more room than the free words it has, and breaks the `light.pack()` bytes, the PBR bindings that `layout()` reports, and `LightKind`, which has three cases and no `#[non_exhaustive]`. The 0.13.x shadow and lighting examples become this API
+- [ ] **PBR lighting, designed once** (3D). Shadows (directional cascades, spot, point cubes), image-based lighting from `.hdr` and equal-area octahedral maps, area lights through new `LightKind` cases (rectangle, disk, sphere) with LTC shading, and glass through transmission settings on `PbrMaterial`, in one binding plan that fits WebGL2 and the clustered lights of 0.12.7. It versions the `Lights` layout if area lights or shadows need more room than the free words it has, and breaks the `light.pack()` bytes, the PBR bindings that `layout()` reports, and `LightKind`, which has three cases and no `#[non_exhaustive]`. The 0.13.x shadow and lighting examples become this API
 - [ ] **Targets with options** (core). Format and sample count per target, such as `Rgba16Float` and `R32Uint`, several color targets per pass (WebGL2 allows 4), and targets that are one layer, face or mip of a texture. A cube-map `Camera` (3D) sits on top, for reflection probes and point-light shadows. It breaks the renderer-wide sample count and the shape of pass targets. The transient MSAA texture then has to survive into a following pass that loads it, a case no target reaches while the sample count stays 1
 - [ ] **Texture shapes and formats** (core) that 0.13.0 leaves out: depth cubes and depth arrays for shadows, and the target, depth-stencil and storage formats the items above need
 - [ ] **Pipeline completion** (core). Stencil with a depth-stencil format, and `Blend::Custom` with a `BlendFactors` record, up from Later. A new `Blend` case breaks an exhaustive `switch` in Swift and `when` in Kotlin, so it waits for a breaking minor
@@ -633,7 +661,13 @@ Settled: the earlier open questions, each on its recommendation, except the per-
 
 Settled before that: one 0.13.0 with every item; `Scene`, `SceneObject`, `Pass::add`, `Renderer::load` and `Model` kept; no public `Batch`; `set_pipeline` with `pipeline()`; override constants through `set`; `add_plugin`; a sync `submit` with `initialize`; the JavaScript throw with `set_source`; magic uniforms; the mobile renames; HDR; the restart of `v0.13.0-dev`; the full package on every platform; the layers with a `build.rs` check; Cargo features for dependencies only, on by default; and loaders that return `Scene`, with no `Asset`. Settled earlier still: `Pipeline` and `Compare`, `Buffer` with write-through `set`, runtime-sized arrays first, core names in Swift and Kotlin with no aliases, plain JavaScript objects when possible, and integrations as platform-specific examples.
 
-A few more questions on `Pipeline`, shared data and the bindings are still open. The ones under Scene nodes set rules the scene work needs, and the Reference scenes goal raises the three under its heading below.
+A few more questions on `Pipeline`, shared data and the bindings are still open. The three under Materials shape the 0.12.8 types, the ones under Scene nodes set rules the scene work needs, and the Reference scenes goal raises the three under its heading below.
+
+### Materials
+
+- **`Material`: an enum or a trait?** Recommended: an enum built with `From`, and no public trait. Why: no binding can implement a Rust trait, a `Shader` already covers a custom look, and a getter needs one type to return either way, as `RenderTarget` shows beside `Target`.
+- **Toon light: bands, a ramp, or both?** Recommended: both, with `bands(n)` by default and `ramp_map()` in charge once set. Why: bands need no asset, and a gradient texture is how three.js and Godot let artists tune the look.
+- **The demo: the walk scene or one model?** Recommended: the walk scene with a style switcher. Why: it reuses the 0.12.7 world and swaps many glTF materials at once, which exercises the loader's mapping and the enum. One model stays the fallback.
 
 ### Scene nodes
 
@@ -651,6 +685,10 @@ A few more questions on `Pipeline`, shared data and the bindings are still open.
 
 Latest moves:
 
+- **New in 0.12.8:** `PbrMaterial`, `UnlitMaterial` and `ToonMaterial`, a `Shader` as the custom material, the `Material` enum, `MaterialMap`, the outline example, one error shape with one Errors page, and the style switcher demo.
+- **Moved to 0.12.8:** the unlit and toon presets from 0.13.x, now types. Skinned PBR leaves the material list in 0.13.x for a feature of the mesh and the model, and the 0.14 glass preset becomes transmission settings on `PbrMaterial`.
+- **Dropped with it:** `TextureSlot`, `Material::custom`, `texture_uv`, `texture_transform` and the five `*_texture` setters.
+- **Opened:** three questions on materials.
 - **Settled:** every earlier open question on its recommendation, except the per-object API, which the instancing design replaced. Then the slot rule and `Texture::write_region`, both on their recommendations. Then where the parts of a model live: one level up, in `SceneNode`, with `scene.nodes()` returning root nodes, cameras and lights in nodes from 0.13.0, against the recommendation to wait, and the mirrored run in the pass.
 - **Scene nodes, new in 0.13.0:** `SceneNode` with 19 calls and `SceneError`, `model.share()`, `Eq` and `Hash` on `Model` and `SceneNode`, cameras and lights placed by their node, the mirrored run with its second pipeline, and the Scene nodes guide. The loader builds a node per glTF node with a model per primitive over shared meshes, and the mirrored-node fix moves from the loader to the pass.
 - **Dropped with them:** the `SceneNode` record with its `instance` index, its place among the plain JavaScript objects and the `#[non_exhaustive]` records, and the loader's one model per mesh and material with an instance per node.
@@ -951,7 +989,7 @@ Higher-level 3D features build on the 3D layer in the main crate and follow the 
 Shaders compose from slugs today, as in `Shader::new("sdf/circle")`. Meshes, materials and models could come by name the same way, so a project, or an agent writing one, asks for a part instead of spelling out its geometry and shading. One call in place of a page of vertices saves tokens, and the program stays short enough to read. The M4 port shows which parts pay off first.
 
 - [ ] Meshes by name, such as `Mesh::new("cube")`, with parameters for size and detail. `Mesh::new()` takes no argument today, so the call shape is decided when the work starts
-- [ ] Procedural materials by name, such as `Material::new("metal")`, `"wood"` and `"water"`, built from registry WGSL and tuned through `set`
+- [ ] Procedural materials by name, registry shaders such as `material/metal`, `material/wood` and `material/water` that a `Model` takes as its material and `set` tunes
 - [ ] Models by name, such as `Model::new("robot")`, assembled from parts that can be configured, and characters with names of their own, such as `Model::new("john_doe")`
 - [ ] Prefabs that combine meshes, materials and shaders into one reusable piece, composable the way registry shaders are
 - [ ] A study of what makes a 3D library easy for agents to drive: the calls and defaults that save the most tokens and still leave full control
