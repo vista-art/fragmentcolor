@@ -26,6 +26,9 @@ pub enum ModelError {
     /// A rotation axis of length 0, which points nowhere to turn around.
     #[error("Model::rotate: axis has length 0, so it has no direction to turn around")]
     ZeroAxis,
+    /// A move whose finite numbers would carry the transform past the `f32` range.
+    #[error("{call} would carry the transform past the f32 range")]
+    Overflow { call: &'static str },
 }
 
 impl From<NotFinite> for ModelError {
@@ -174,9 +177,8 @@ impl Model {
     #[lsp_doc("docs/api/scene/model/translate.md")]
     pub fn translate(&self, offset: [f32; 3]) -> Result<(), ModelError> {
         check_finite("Model::translate", None, &offset)?;
-        let mut state = self.state.write();
-        state.transform = Mat4::from_translation(Vec3::from(offset)) * state.transform;
-        Ok(())
+        let translation = Mat4::from_translation(Vec3::from(offset));
+        self.apply("Model::translate", |transform| translation * transform)
     }
 
     /// Post-multiply by a rotation around the given axis (in local space).
@@ -185,8 +187,7 @@ impl Model {
     #[lsp_doc("docs/api/scene/model/rotate.md")]
     pub fn rotate(&self, axis: [f32; 3], radians: f32) -> Result<(), ModelError> {
         let rotation = build_rotation(axis, radians)?;
-        self.state.write().transform *= rotation;
-        Ok(())
+        self.apply("Model::rotate", |transform| transform * rotation)
     }
 
     /// Post-multiply by a per-axis scale (in local space). Result: the model
@@ -194,7 +195,20 @@ impl Model {
     #[lsp_doc("docs/api/scene/model/scale.md")]
     pub fn scale(&self, factor: [f32; 3]) -> Result<(), ModelError> {
         check_finite("Model::scale", None, &factor)?;
-        self.state.write().transform *= Mat4::from_scale(Vec3::from(factor));
+        let scale = Mat4::from_scale(Vec3::from(factor));
+        self.apply("Model::scale", |transform| transform * scale)
+    }
+}
+
+impl Model {
+    /// Moves the transform by `step`, unless a number of the result leaves the `f32` range.
+    fn apply(&self, call: &'static str, step: impl FnOnce(Mat4) -> Mat4) -> Result<(), ModelError> {
+        let mut state = self.state.write();
+        let moved = step(state.transform);
+        if !moved.is_finite() {
+            return Err(ModelError::Overflow { call });
+        }
+        state.transform = moved;
         Ok(())
     }
 }
@@ -338,6 +352,32 @@ mod tests {
 
     // Story: an axis keeps its direction however short or long it is, so only an axis
     // of length 0 has none, and a very short or long one turns as the unit axis does.
+    // Story: finite moves whose product leaves the f32 range are refused,
+    // and the transform keeps the value it had before the move.
+    #[test]
+    fn moves_past_the_f32_range_are_refused() {
+        let model = Model::new(pbr_triangle_mesh(), pbr_material());
+        model.translate([3.0e38, 0.0, 0.0]).expect("first move");
+        model.scale([1.0e20; 3]).expect("first scale");
+        let before = model.transform();
+
+        let moved = model.translate([3.0e38, 0.0, 0.0]);
+        let scaled = model.scale([1.0e20; 3]);
+
+        let moved = moved.expect_err("a second move overflows").to_string();
+        assert_eq!(
+            moved,
+            "Model::translate would carry the transform past the f32 range"
+        );
+        assert!(matches!(
+            scaled,
+            Err(ModelError::Overflow {
+                call: "Model::scale"
+            })
+        ));
+        assert_eq!(model.transform(), before);
+    }
+
     #[test]
     fn rotate_takes_short_and_long_axes() {
         let unit = Model::new(pbr_triangle_mesh(), pbr_material());

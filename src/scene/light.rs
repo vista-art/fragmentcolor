@@ -55,6 +55,9 @@ pub enum LightError {
     /// A number that isn't finite, such as NaN or an infinity, which `label` names with its call.
     #[error("{label} must be finite, got {value}")]
     NotFinite { label: String, value: f32 },
+    /// A direction of length 0, given to the call it names, which points the light nowhere.
+    #[error("{0}: direction has length 0, so the light points nowhere")]
+    ZeroDirection(String),
 }
 
 impl From<NotFinite> for LightError {
@@ -195,7 +198,7 @@ impl LightObject {
             inner_cone_cos: state.inner_cone_angle.cos(),
             position: state.position.to_array(),
             outer_cone_cos: state.outer_cone_angle.cos(),
-            direction: state.direction.to_array(),
+            direction: aim(state.direction).to_array(),
             color: state.color.to_array(),
         }
     }
@@ -243,9 +246,9 @@ impl LightObject {
         self.update_kinds(&kinds, "set_position", |state| state.position = position)
     }
 
-    /// Points a directional or spot light along `direction`, refusing an item that isn't finite first.
+    /// Points a directional or spot light along `direction`, once `check_direction` takes it.
     fn set_direction(&self, direction: [f32; 3]) -> Result<(), LightError> {
-        check_finite("Light::set_direction", None, &direction)?;
+        check_direction("Light::set_direction", None, direction)?;
         let kinds = [LightKind::Directional, LightKind::Spot];
         let direction = Vec3::from(direction);
         self.update_kinds(&kinds, "set_direction", |state| state.direction = direction)
@@ -487,6 +490,21 @@ impl Light {
     }
 }
 
+/// Refuses a direction with an item that isn't finite, or of length 0, naming `call` and `item`.
+fn check_direction(call: &str, item: Option<&str>, direction: [f32; 3]) -> Result<(), LightError> {
+    check_finite(call, item, &direction)?;
+    match direction == [0.0; 3] {
+        true => Err(LightError::ZeroDirection(call.to_string())),
+        false => Ok(()),
+    }
+}
+
+/// `direction` scaled so its largest item is 1 or -1. A shader's `normalize` takes
+/// that without the underflow a tiny vector such as `[1e-30, 0, 0]` meets there.
+fn aim(direction: Vec3) -> Vec3 {
+    direction / direction.abs().max_element()
+}
+
 /// The vectors a light starts from. A directional light sits at the origin
 /// and a point light points straight down, though neither reads that field.
 struct LightParts {
@@ -507,7 +525,7 @@ impl LightParts {
             check_finite(call, Some("position"), &position)?;
         }
         if let Some(direction) = direction {
-            check_finite(call, Some("direction"), &direction)?;
+            check_direction(call, Some("direction"), direction)?;
         }
         check_finite(call, Some("color"), &color)?;
         Ok(Self {
@@ -556,7 +574,7 @@ impl crate::errors::Classify for LightError {
     fn classify(&self) -> crate::errors::ErrorClass {
         use crate::errors::ErrorClass;
         match self {
-            LightError::NotFinite { .. } => ErrorClass::InvalidInput,
+            LightError::NotFinite { .. } | LightError::ZeroDirection(_) => ErrorClass::InvalidInput,
             LightError::FieldNotApplicable { .. } | LightError::NegativeRange(_) => {
                 ErrorClass::Light
             }
@@ -683,6 +701,35 @@ mod tests {
             point.set_range(-1.0),
             Err(LightError::NegativeRange(_))
         ));
+    }
+
+    // Story: a direction of length 0 points the light nowhere, so the constructors and
+    // `set_direction` refuse it, and a spot light keeps the direction it had.
+    #[test]
+    fn a_direction_of_length_zero_is_refused() {
+        let directional = Light::directional([0.0; 3], [1.0; 3]);
+        let spot = Light::spot([0.0; 3], [0.0, -1.0, 0.0], [1.0; 3]).expect("spot");
+
+        let turned = spot.set_direction([0.0, -0.0, 0.0]);
+
+        let message = directional.expect_err("zero direction").to_string();
+        assert_eq!(
+            message,
+            "Light::directional: direction has length 0, so the light points nowhere"
+        );
+        assert!(matches!(turned, Err(LightError::ZeroDirection(_))));
+        assert_eq!(spot.direction(), Some([0.0, -1.0, 0.0]));
+    }
+
+    // Story: a tiny direction keeps its aim on the GPU, where a shader's `normalize`
+    // of the raw vector would underflow to NaN.
+    #[test]
+    fn a_tiny_direction_packs_finite() {
+        let light = Light::directional([1.0e-30, 0.0, 0.0], [1.0; 3]).expect("light");
+
+        let packed = light.object.to_gpu().direction;
+
+        assert_eq!(packed, [1.0, 0.0, 0.0]);
     }
 
     #[test]

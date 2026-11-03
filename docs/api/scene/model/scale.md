@@ -17,6 +17,11 @@ raises `InvalidInputError`, Swift throws `FragmentColorError` and Kotlin
 throws `FragmentColorException`. A factor of 0 is a valid scale, which
 flattens the Model along that axis.
 
+A scale that would carry a number of the transform past the 32-bit float
+range, such as `[1e20, 1e20, 1e20]` twice, returns `ModelError::Overflow`,
+`Model::scale would carry the transform past the f32 range`, and the Model
+keeps its size. JavaScript and Python raise it as `InvalidInputError`, too.
+
 ## Example
 
 ```rust

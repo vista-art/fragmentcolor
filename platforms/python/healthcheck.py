@@ -821,6 +821,24 @@ def check_scalars_and_pairs():
     else:
         raise AssertionError("Model.rotate with a zero axis should raise InvalidInputError")
     assert model.transform() == turned
+    # A light direction of length 0 points nowhere, and finite moves that carry a transform
+    # past the f32 range are refused, each with Rust's message, as an InvalidInputError.
+    try:
+        Light.directional([0, 0, 0], [1, 1, 1])
+    except InvalidInputError as e:
+        assert str(e) == "Light::directional: direction has length 0, so the light points nowhere", e
+    else:
+        raise AssertionError("Light.directional with a zero direction should raise InvalidInputError")
+    far = Model(Mesh(), Material.pbr())
+    far.translate([3e38, 0, 0])
+    placed = far.transform()
+    try:
+        far.translate([3e38, 0, 0])
+    except InvalidInputError as e:
+        assert str(e) == "Model::translate would carry the transform past the f32 range", e
+    else:
+        raise AssertionError("a translate past the f32 range should raise InvalidInputError")
+    assert far.transform() == placed
     try:
         material.metallic(1e39)
     except InvalidInputError as e:

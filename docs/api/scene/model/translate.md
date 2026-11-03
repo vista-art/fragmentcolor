@@ -13,6 +13,12 @@ fits a 32-bit float, got 1e39`. JavaScript throws an `Error` named
 `InvalidInputError`, Python raises `InvalidInputError`, Swift throws
 `FragmentColorError` and Kotlin throws `FragmentColorException`.
 
+A move of finite numbers that would carry a number of the transform past
+the 32-bit float range, such as two moves of `3e38` along one axis, returns
+`ModelError::Overflow`: `Model::translate would carry the transform past the f32
+range`. The Model keeps its transform, and JavaScript and Python raise it as
+`InvalidInputError`, too.
+
 ## Example
 
 ```rust

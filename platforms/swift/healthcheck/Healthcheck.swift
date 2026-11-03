@@ -477,6 +477,14 @@ final class Healthcheck: ExampleCase {
             ("Model.setTransform: item 0", { try Model(Mesh(), material).setTransform([1e39] + [Double](repeating: 0, count: 15)) }),
             // An axis of length 0 has no direction, which Rust refuses with its own message.
             ("Model::rotate: axis has length 0", { try Model(Mesh(), material).rotate([0, 0, 0] as [Float], 1) }),
+            // A light direction of length 0 points nowhere, and finite moves that carry a
+            // transform past the f32 range are refused, each with Rust's message.
+            ("Light::directional: direction has length 0", { _ = try Light.directional([0, 0, 0] as [Float], [1, 1, 1]) }),
+            ("Model::translate would carry the transform past the f32 range", {
+                let far = Model(Mesh(), material)
+                try far.translate([3e38, 0, 0] as [Float])
+                try far.translate([3e38, 0, 0] as [Float])
+            }),
             ("Vertex: position", { _ = try Vertex([1e39, 0, 0] as [Double]) }),
             ("Vertex: position", { _ = try Vertex([Float.nan, 0]) }),
             ("Vertex.pbr: position", { _ = try Vertex.pbr([0, Double.infinity, 0]) }),

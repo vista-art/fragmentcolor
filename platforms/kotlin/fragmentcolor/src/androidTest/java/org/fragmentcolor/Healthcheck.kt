@@ -349,6 +349,14 @@ class Healthcheck : ExampleCase() {
             "Model.setTransform: item 0" to { Model(Mesh(), material).setTransform(DoubleArray(16) { if (it == 0) 1e39 else 0.0 }) },
             // An axis of length 0 has no direction, which Rust refuses with its own message.
             "Model::rotate: axis has length 0" to { Model(Mesh(), material).rotate(floatArrayOf(0f, 0f, 0f), 1f) },
+            // A light direction of length 0 points nowhere, and finite moves that carry a
+            // transform past the f32 range are refused, each with Rust's message.
+            "Light::directional: direction has length 0" to { Light.directional(listOf(0f, 0f, 0f), listOf(1f, 1f, 1f)) },
+            "Model::translate would carry the transform past the f32 range" to {
+                val far = Model(Mesh(), material)
+                far.translate(floatArrayOf(3e38f, 0f, 0f))
+                far.translate(floatArrayOf(3e38f, 0f, 0f))
+            },
             "Vertex: position" to { Vertex(doubleArrayOf(1e39, 0.0, 0.0)) },
             "Vertex: position" to { Vertex(listOf(Float.NaN, 0f)) },
             "Vertex.pbr: position" to { Vertex.pbr(listOf(0.0, Double.POSITIVE_INFINITY, 0.0)) },

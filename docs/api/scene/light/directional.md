@@ -25,6 +25,11 @@ number that fits a 32-bit float, got 1e39`. JavaScript throws an `Error`
 named `InvalidInputError`, Python raises `InvalidInputError`, Swift throws
 `FragmentColorError` and Kotlin throws `FragmentColorException`.
 
+A `direction` of length 0, such as `[0, 0, 0]`, points the light nowhere
+and returns `LightError::ZeroDirection` in every language: `Light::directional:
+direction has length 0, so the light points nowhere`. JavaScript and
+Python raise it as `InvalidInputError`, too.
+
 ## Example
 
 ```rust

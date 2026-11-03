@@ -12,7 +12,10 @@ names the call and the item, on any kind, and the light keeps the
 direction it had. The other languages also refuse an item past the 32-bit
 float range, such as `1e39`. JavaScript throws an `Error` named
 `InvalidInputError`, Python raises `InvalidInputError`, Swift throws
-`FragmentColorError` and Kotlin throws `FragmentColorException`.
+`FragmentColorError` and Kotlin throws `FragmentColorException`. A
+direction of length 0, such as `[0, 0, 0]`, points the light nowhere and
+returns `LightError::ZeroDirection`, which JavaScript and Python raise as
+`InvalidInputError` too, and the light keeps its direction.
 
 ## Example
 

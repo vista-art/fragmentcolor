@@ -620,6 +620,12 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     named('Model.rotate: radians', () => model.rotate([0, 1, 0], 1e39));
     // An axis of length 0 has no direction, which Rust refuses with its own message.
     named('Model::rotate: axis has length 0', () => model.rotate([0, 0, 0], 1));
+    // A light direction of length 0 points nowhere, and finite moves that carry a
+    // transform past the f32 range are refused, each with Rust's message.
+    named('Light::directional: direction has length 0', () => Light.directional([0, 0, 0], [1, 1, 1]));
+    const far = new Model(new Mesh(), Material.pbr());
+    far.translate([3e38, 0, 0]);
+    named('Model::translate would carry the transform past the f32 range', () => far.translate([3e38, 0, 0]));
     same('a refused rotate', model.transform().map((column) => Array.from(column)).flat(), turned.flat());
     // A float vector is an array or a Float32Array, as a color is.
     named('Light.point: color', () => Light.point([0, 1, 0], new Float64Array([1, 1, 1])));

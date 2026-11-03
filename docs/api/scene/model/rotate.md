@@ -13,7 +13,9 @@ refuse a number past the 32-bit float range, such as `1e39`, with a
 message like `Model.rotate: axis: item 1 must be a finite number that fits
 a 32-bit float, got 1e39`. An axis of length 0, such as `[0, 0, 0]`, has
 no direction to turn around and returns `ModelError::ZeroAxis` in every
-language. Either way the Model keeps its transform. JavaScript throws an
+language. A rotation that would carry a number of the transform past the
+32-bit float range returns `ModelError::Overflow`. Either way the Model
+keeps its transform. JavaScript throws an
 `Error` named `InvalidInputError`, Python raises `InvalidInputError`,
 Swift throws `FragmentColorError` and Kotlin throws
 `FragmentColorException`.
