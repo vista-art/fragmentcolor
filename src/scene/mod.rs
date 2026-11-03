@@ -2,6 +2,7 @@
 //! with `Model`, `Camera`, `Light`, `Material`, the glTF loader and the `SceneObject` trait.
 
 mod camera;
+mod finite;
 mod light;
 mod loader;
 mod material;
@@ -12,6 +13,7 @@ mod scene;
 mod scene_object;
 
 pub use camera::*;
+pub(crate) use finite::{NotFinite, check_finite};
 pub use light::*;
 pub(crate) use light::{GpuLight, LightObject, PassLights, bump_epoch, read_epoch};
 pub use loader::{GltfSource, SceneLoadError, SceneSource};

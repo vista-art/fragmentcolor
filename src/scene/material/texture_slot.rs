@@ -11,8 +11,9 @@ use pyo3::prelude::*;
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
-use super::{Material, MaterialError, check_finite};
+use super::{Material, MaterialError};
 use crate::core::UniformInput;
+use crate::scene::check_finite;
 
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(python, pyclass(eq, eq_int, from_py_object))]

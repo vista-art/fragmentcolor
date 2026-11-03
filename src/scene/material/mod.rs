@@ -33,6 +33,7 @@ use pyo3::prelude::*;
 use wasm_bindgen::prelude::*;
 
 use crate::core::UniformInput;
+use crate::scene::check_finite;
 use crate::texture::{TextureData, TextureMeta, TextureSource};
 use crate::{Shader, TextureInput, UniformData};
 
@@ -343,30 +344,6 @@ impl Material {
             log::warn!("Material setter '{key}' did not apply: {error}");
         }
     }
-}
-
-/// Refuses a number of `values` that isn't finite, naming `call`, then `item`,
-/// then the item's index when `values` holds more than one number.
-pub(crate) fn check_finite(
-    call: &str,
-    item: Option<&str>,
-    values: &[f32],
-) -> Result<(), MaterialError> {
-    let found = values
-        .iter()
-        .enumerate()
-        .find(|(_, value)| !value.is_finite());
-    let Some((index, &value)) = found else {
-        return Ok(());
-    };
-    let mut label = call.to_string();
-    if let Some(item) = item {
-        label = format!("{label}: {item}");
-    }
-    if values.len() > 1 {
-        label = format!("{label}: item {index}");
-    }
-    Err(MaterialError::NotFinite { label, value })
 }
 
 /// Logs a key the Material's shader doesn't declare, which a setter skips.
