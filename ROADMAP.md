@@ -81,12 +81,16 @@ Items found while reviewing 0.12.6, and the checks and error model that 0.13.0 b
 - [x] Render pipelines take the first `@vertex` and `@fragment` entry points, as vertex input reflection and compute do (0.12.6)
 - [x] `pass.set_viewport` takes effect: the pass draws inside the region, clipped to its target (0.12.6)
 - [x] FC resolves override defaults with naga's `process_overrides` before the module reaches wgpu, where naga's WGSL writer printed the placeholder 1 for a `@workgroup_size` that names an override, so the browser ran one thread per workgroup where native ran the default (0.12.7)
+- [x] On Apple GPUs, `render` submits the work up to a compute pass that binds an atomic storage texture and waits for it, since Metal could start later work before the pass's atomics landed (0.12.7)
+- [x] The `Material` number setters return a `MaterialError` for a number that isn't finite or a value the shader can't hold, and a refused call changes nothing (0.12.7)
+- [x] A camera or ambient value a shader can't hold makes `render` return its key's `TypeMismatch` until a value of that key lands (0.12.7)
 - [x] A mesh recounts its instances on every upload, so a mesh whose instance list shrinks stops drawing stale trailing instances (0.12.6)
 - [x] Python raises `FragmentColorError` for renderer and texture errors, as it does for shader errors (0.12.6)
 - [x] `create_target` returns `InitializationError::Error` when the surface reports no formats for the adapter, such as a second canvas on WebGL2 (0.12.6). The case gets its own `InitializationError` variant in 0.13.0, once the error enums are `#[non_exhaustive]`
 - [x] A shader and mesh pair whose models are all hidden draws nothing, where it drew one stray instance from the mesh's own instance buffer (0.12.7)
 - [x] `Scene::passes` lists each pass once, where a member that another member `require`s was listed twice, and every list of passes runs each pass once, after the passes it requires (0.12.7)
 - [x] The glTF loader checks `primitive.mode()`: `Scene.load` fails on a primitive drawn as points or lines, where it read them as triangles, and expands triangle strips and fans into lists (0.12.7)
+- [x] `Scene.load` refuses a glTF position, normal, tangent, UV or color that holds NaN or an infinity with a `SceneLoadError::Invalid` that names the mesh, primitive, accessor and item (0.12.7)
 - [x] Turn on the `gltf` crate's `extras` feature, so `Scene::load` reads files that carry application attributes such as `_ID` (0.12.6). The loader ignores the extras until 0.13.0
 - [x] PBR normals follow the cofactor of the model matrix's upper 3x3, `cross(m1, m2)`, `cross(m2, m0)` and `cross(m0, m1)`, so `Model::scale` with unequal factors lights the way the surfaces face (0.12.7)
 
@@ -208,7 +212,7 @@ Core holds `Renderer`, the targets, `Shader` with `Pipeline`, `Pass`, `Mesh`, `T
 - [ ] JavaScript's `CanvasTarget` alias and Python's `RenderCanvasTarget` alias go
 - [ ] Swift and Kotlin see `TextureData` for `MobileTextureInput`, through a uniffi `name`. `stand_ins` in `scripts/reflect.rs` then drops the pair, so the stand-in rewrite for `TextureData` leaves the transpilers
 - [ ] The Swift and Kotlin `TextureRegion` fields are `x`, `y`, `z`, `width`, `height` and `depth`, the keys JavaScript and Python read
-- [ ] Rust idents put the qualifier first: `MobileTextureRegion` and `MobileTextureData`
+- [x] Rust idents put the qualifier first: `MobileTextureRegion` and `MobileTextureInput` (0.12.7)
 - [ ] The mobile `SceneObjectHandle` becomes Rust `MobileSceneObject`, exported to Swift and Kotlin as `SceneObject`. `PassTarget` leaves with `PassRef`
 
 ### `Pipeline` on `Shader`
@@ -655,7 +659,7 @@ Latest moves:
 - **New in 0.13.x:** the Characters track, with skinned animation and glTF node animation from Later, the 2D layer, `scene.export_triangles`, the Mario walk-through, `integrations/pbrt`, the path tracer integration, unlit and toon presets and frustum culling from Later, depth-only passes, picking, debug lines, GPU timings and the workers fix.
 - **New in 0.14:** PBR lighting with shadow mapping and the glass preset from Later and the area cases of `LightKind`, targets with options with the cube-map `Camera` from Later, texture shapes and formats, stencil from the All bindings list, and `Blend::Custom` from Later.
 - **New goal:** Reference scenes, with M1 to M3.
-- **Landed in 0.12.7:** device checks before every frame, typed GPU errors and error classes in every binding, the number rules, textures freed on drop, sRGB encoding by target, the crate-root layout with conversion traits, the naga features, struct vertex inputs, override defaults on the web, pass lists that run each pass once, and pipelines built inside error scopes.
+- **Landed in 0.12.7:** device checks before every frame, typed GPU errors and error classes in every binding, the number rules, textures freed on drop, sRGB encoding by target, the crate-root layout with conversion traits, the naga features, struct vertex inputs, override defaults on the web, pass lists that run each pass once, the Apple wait for texture atomics, the `Material` setter errors, the glTF NaN check, the mobile names with their qualifier first, and pipelines built inside error scopes.
 - **Moved from 0.12.x:** the transient MSAA case to the 0.14 targets with options, since no target reaches it while the sample count stays 1, and the Apple compute-to-render split to Later, until a test reproduces it. Ranged storage uploads go to 0.12.8.
 - **Landed in 0.12.6:** the exact `[w, h]` `ScreenRegion`, `WindowTarget` in JavaScript and Python, `WindowTarget`, `TextureTarget` and `TextureRegion` in Swift and Kotlin, with aliases for the old names until 0.13.0, uniffi names in reflect, `TextureUsage` flags as JavaScript numbers, vertex and instance attributes typed by the shader, an internal `PassInput`, KTX2 detection by identifier, the `#[lsp_doc]` check on methods, the one-frame JavaScript list render, and, from 0.13.0, JavaScript `Error` objects, the throwing JavaScript `Shader` constructor and the applied viewport.
 
