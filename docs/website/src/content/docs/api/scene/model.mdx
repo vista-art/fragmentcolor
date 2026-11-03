@@ -437,7 +437,9 @@ refuse a number past the 32-bit float range, such as `1e39`, with a
 message like `Model.rotate: axis: item 1 must be a finite number that fits
 a 32-bit float, got 1e39`. An axis of length 0, such as `[0, 0, 0]`, has
 no direction to turn around and returns `ModelError::ZeroAxis` in every
-language. Either way the Model keeps its transform. JavaScript throws an
+language. A rotation that would carry a number of the transform past the
+32-bit float range returns `ModelError::Overflow`. Either way the Model
+keeps its transform. JavaScript throws an
 `Error` named `InvalidInputError`, Python raises `InvalidInputError`,
 Swift throws `FragmentColorError` and Kotlin throws
 `FragmentColorException`.
@@ -569,6 +571,11 @@ languages also refuse a factor past the 32-bit float range, such as
 raises `InvalidInputError`, Swift throws `FragmentColorError` and Kotlin
 throws `FragmentColorException`. A factor of 0 is a valid scale, which
 flattens the Model along that axis.
+
+A scale that would carry a number of the transform past the 32-bit float
+range, such as `[1e20, 1e20, 1e20]` twice, returns `ModelError::Overflow`,
+`Model::scale would carry the transform past the f32 range`, and the Model
+keeps its size. JavaScript and Python raise it as `InvalidInputError`, too.
 
 #### Example
 
@@ -1094,6 +1101,12 @@ with a message like `Model.translate: item 1 must be a finite number that
 fits a 32-bit float, got 1e39`. JavaScript throws an `Error` named
 `InvalidInputError`, Python raises `InvalidInputError`, Swift throws
 `FragmentColorError` and Kotlin throws `FragmentColorException`.
+
+A move of finite numbers that would carry a number of the transform past
+the 32-bit float range, such as two moves of `3e38` along one axis, returns
+`ModelError::Overflow`: `Model::translate would carry the transform past the f32
+range`. The Model keeps its transform, and JavaScript and Python raise it as
+`InvalidInputError`, too.
 
 #### Example
 

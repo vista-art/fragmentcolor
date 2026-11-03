@@ -3499,6 +3499,12 @@ class Model:
         `InvalidInputError`, Python raises `InvalidInputError`, Swift throws
         `FragmentColorError` and Kotlin throws `FragmentColorException`.
 
+        A move of finite numbers that would carry a number of the transform past
+        the 32-bit float range, such as two moves of `3e38` along one axis, returns
+        `ModelError::Overflow`: `Model::translate would carry the transform past the f32
+        range`. The Model keeps its transform, and JavaScript and Python raise it as
+        `InvalidInputError`, too.
+
         Example:
 
         ```python
@@ -3531,7 +3537,9 @@ class Model:
         message like `Model.rotate: axis: item 1 must be a finite number that fits
         a 32-bit float, got 1e39`. An axis of length 0, such as `[0, 0, 0]`, has
         no direction to turn around and returns `ModelError::ZeroAxis` in every
-        language. Either way the Model keeps its transform. JavaScript throws an
+        language. A rotation that would carry a number of the transform past the
+        32-bit float range returns `ModelError::Overflow`. Either way the Model
+        keeps its transform. JavaScript throws an
         `Error` named `InvalidInputError`, Python raises `InvalidInputError`,
         Swift throws `FragmentColorError` and Kotlin throws
         `FragmentColorException`.
@@ -3574,6 +3582,11 @@ class Model:
         raises `InvalidInputError`, Swift throws `FragmentColorError` and Kotlin
         throws `FragmentColorException`. A factor of 0 is a valid scale, which
         flattens the Model along that axis.
+
+        A scale that would carry a number of the transform past the 32-bit float
+        range, such as `[1e20, 1e20, 1e20]` twice, returns `ModelError::Overflow`,
+        `Model::scale would carry the transform past the f32 range`, and the Model
+        keeps its size. JavaScript and Python raise it as `InvalidInputError`, too.
 
         Example:
 
@@ -4072,6 +4085,11 @@ class Light:
         named `InvalidInputError`, Python raises `InvalidInputError`, Swift throws
         `FragmentColorError` and Kotlin throws `FragmentColorException`.
 
+        A `direction` of length 0, such as `[0, 0, 0]`, points the light nowhere
+        and returns `LightError::ZeroDirection` in every language: `Light::directional:
+        direction has length 0, so the light points nowhere`. JavaScript and
+        Python raise it as `InvalidInputError`, too.
+
         Example:
 
         ```python
@@ -4174,6 +4192,11 @@ class Light:
         as `1e39`. JavaScript throws an `Error` named `InvalidInputError`, Python
         raises `InvalidInputError`, Swift throws `FragmentColorError` and Kotlin
         throws `FragmentColorException`.
+
+        A `direction` of length 0, such as `[0, 0, 0]`, points the light nowhere
+        and returns `LightError::ZeroDirection` in every language: `Light::spot:
+        direction has length 0, so the light points nowhere`. JavaScript and
+        Python raise it as `InvalidInputError`, too.
 
         Example:
 
@@ -4424,7 +4447,10 @@ class Light:
         direction it had. The other languages also refuse an item past the 32-bit
         float range, such as `1e39`. JavaScript throws an `Error` named
         `InvalidInputError`, Python raises `InvalidInputError`, Swift throws
-        `FragmentColorError` and Kotlin throws `FragmentColorException`.
+        `FragmentColorError` and Kotlin throws `FragmentColorException`. A
+        direction of length 0, such as `[0, 0, 0]`, points the light nowhere and
+        returns `LightError::ZeroDirection`, which JavaScript and Python raise as
+        `InvalidInputError` too, and the light keeps its direction.
 
         Example:
 
