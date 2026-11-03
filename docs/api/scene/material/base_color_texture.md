@@ -41,8 +41,8 @@ draws in that one `Renderer`.
 The setter checks its input and the slot at once, and a call it refuses
 leaves the slot as it was. Options beside a `Texture` return
 `MaterialError::Texture` with an `InvalidInput` texture error that names the
-call, and so does an input that holds no data, such as Rust's
-`TextureData::Empty`. A slot that a `Material::custom` shader declares as
+call, and so does an input that holds no data: Rust's `TextureData::Empty`,
+or an empty byte list, path or URL in any language. A slot that a `Material::custom` shader declares as
 something other than a texture returns `MaterialError::Shader` with the
 shader's `TypeMismatch`. A slot the shader doesn't declare is skipped with a
 log warning, as the number setters skip a field, and the setter returns the

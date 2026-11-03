@@ -95,6 +95,17 @@ impl TryFrom<TextureInput> for TextureSource {
     /// Moves the input's data into one shared allocation, with no copy.
     fn try_from(input: TextureInput) -> Result<Self, Self::Error> {
         let data = match input.data {
+            TextureData::Bytes(bytes) | TextureData::Ktx2Bytes(bytes) if bytes.is_empty() => {
+                return Err(refuse_empty("byte list"));
+            }
+            TextureData::Path(path) | TextureData::Ktx2Path(path)
+                if path.as_os_str().is_empty() =>
+            {
+                return Err(refuse_empty("path"));
+            }
+            TextureData::Url(url) | TextureData::Ktx2Url(url) if url.is_empty() => {
+                return Err(refuse_empty("URL"));
+            }
             TextureData::Bytes(bytes) => SourceData::Bytes(bytes),
             TextureData::Ktx2Bytes(bytes) => SourceData::Ktx2Bytes(bytes),
             TextureData::Path(path) => SourceData::Path(path),
@@ -116,4 +127,11 @@ impl TryFrom<TextureInput> for TextureSource {
         };
         Ok(Self::new(Arc::new(data), input.options))
     }
+}
+
+/// The refusal of a source whose `form`, such as its byte list, holds nothing to read.
+fn refuse_empty(form: &str) -> TextureError {
+    TextureError::InvalidInput(format!(
+        "a texture source needs data, and it got an empty {form}"
+    ))
 }

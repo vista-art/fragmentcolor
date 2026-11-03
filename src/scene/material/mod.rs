@@ -977,6 +977,32 @@ struct Factors { roughness: f16, metallic: f32 }
         });
     }
 
+    // Story: an empty byte list, path or URL holds no image, so the setter refuses it
+    // at the call, where it failed the next load, and the slot keeps its map.
+    #[test]
+    fn an_empty_source_leaves_the_slot() {
+        let mat = Material::pbr()
+            .base_color_texture(paint([255, 0, 0, 255]))
+            .expect("base color map");
+        let id = read_map(&mat, "base_color_map");
+        let empties = [
+            (TextureData::Bytes(Vec::new()), "byte list"),
+            (TextureData::Ktx2Bytes(Vec::new()), "byte list"),
+            (TextureData::Path("".into()), "path"),
+            (TextureData::Url(String::new()), "URL"),
+        ];
+
+        for (input, form) in empties {
+            let error = mat.base_color_texture(input).expect_err("an empty source");
+
+            let expected = format!(
+                "Invalid texture input: Material::base_color_texture: a texture source needs data, and it got an empty {form}"
+            );
+            assert_eq!(error.to_string(), expected);
+            assert_eq!(read_map(&mat, "base_color_map"), id, "{form}");
+        }
+    }
+
     // Story: an input that holds no data makes no map, so the setter returns an error
     // that names the call, and the slot keeps the map it held.
     #[test]

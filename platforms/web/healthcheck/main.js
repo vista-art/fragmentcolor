@@ -967,6 +967,15 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     same('a slot that refused a texture', numbered.shader().get('base_color_map'), [0.25, 0.5, 0.75, 1]);
     numbered.normalTexture(fromImage);
     numbered.normalTexture(new Uint8Array(redPixel), [1, 1]);
+    // An empty byte list holds no image, so the setter refuses it at the call.
+    try {
+      Material.pbr().baseColorTexture(new Uint8Array(0));
+      fail('Material.baseColorTexture with an empty byte list should throw');
+    } catch (e) {
+      if (e.name !== 'InvalidInputError' || !e.message.endsWith('it got an empty byte list')) {
+        fail(`Material.baseColorTexture with an empty byte list threw ${e.name}: ${e.message}`);
+      }
+    }
 
     // Scene.load takes an ArrayBuffer or a view, and can skip the file's cameras and lights.
     const glb = await (await fetch('/healthcheck/public/model.glb')).arrayBuffer();

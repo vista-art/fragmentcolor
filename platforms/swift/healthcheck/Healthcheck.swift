@@ -671,6 +671,15 @@ final class Healthcheck: ExampleCase {
         try assertEqual(numbered.shader().get("base_color_map"), .vec4([0.25, 0.5, 0.75, 1]), "a slot that refused a texture")
         try numbered.normalTexture(texture)
         try numbered.normalTexture(red, [1, 1])
+        // An empty byte list holds no image, so the setter refuses it at the call.
+        do {
+            _ = try Material.pbr().baseColorTexture(Data())
+            throw HealthcheckError.assertion("baseColorTexture with an empty byte list should throw")
+        } catch let error as FragmentColorError {
+            guard "\(error)".contains("it got an empty byte list") else {
+                throw HealthcheckError.assertion("an empty byte list threw \(error)")
+            }
+        }
         do {
             _ = try Material.pbr().baseColorSource(input: .cloneOf(texture), options: TextureOptions(format: .rgba8Unorm))
             throw HealthcheckError.assertion("baseColorSource with options beside a Texture should throw")

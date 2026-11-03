@@ -1223,6 +1223,13 @@ def check_material_textures(renderer):
     assert list(numbered.shader().get("base_color_map")) == [0.25, 0.5, 0.75, 1.0]
     assert isinstance(numbered.normal_texture(albedo), Material)
     assert isinstance(numbered.normal_texture(red, size=[1, 1]), Material)
+    # An empty byte list holds no image, so the setter refuses it at the call.
+    try:
+        Material.pbr().base_color_texture(b"")
+    except InvalidInputError as e:
+        assert str(e).endswith("a texture source needs data, and it got an empty byte list"), e
+    else:
+        raise AssertionError("Material.base_color_texture(b'') should raise InvalidInputError")
     print("The Material texture setters take create_texture's keywords, and each keyword reaches the upload")
 
 

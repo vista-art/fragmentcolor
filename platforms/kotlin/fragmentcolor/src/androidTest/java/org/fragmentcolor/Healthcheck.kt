@@ -530,6 +530,9 @@ class Healthcheck : ExampleCase() {
         assertEquals(UniformData.Vec4(listOf(0.25f, 0.5f, 0.75f, 1f)), numbered.shader().get("base_color_map"))
         numbered.normalTexture(texture)
         numbered.normalTexture(red, listOf(1u, 1u))
+        // An empty byte list holds no image, so the setter refuses it at the call.
+        val empty = assertFailsWith<FragmentColorException> { Material.pbr().baseColorTexture(ByteArray(0)) }
+        assertTrue(empty.message.orEmpty().contains("it got an empty byte list"), "an empty byte list threw ${empty.message}")
         val options = TextureOptions(format = TextureFormat.RGBA8_UNORM)
         val beside = assertFailsWith<FragmentColorException> {
             Material.pbr().baseColorSource(MobileTextureInput.CloneOf(texture), options)
