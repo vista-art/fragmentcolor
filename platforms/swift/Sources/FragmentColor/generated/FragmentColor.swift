@@ -976,7 +976,7 @@ public protocol LightProtocol: AnyObject, Sendable {
     
     func setDirection(direction: [Float]) throws  -> Light
     
-    func setIntensity(value: Float)  -> Light
+    func setIntensity(value: Float) throws  -> Light
     
     func setPosition(position: [Float]) throws  -> Light
     
@@ -1170,8 +1170,8 @@ open func setDirection(direction: [Float])throws  -> Light  {
 })
 }
     
-open func setIntensity(value: Float) -> Light  {
-    return try!  FfiConverterTypeLight_lift(try! rustCall() {
+open func setIntensity(value: Float)throws  -> Light  {
+    return try  FfiConverterTypeLight_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
         uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_light_setintensity(
             self.uniffiCloneHandle(),
@@ -9651,7 +9651,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_light_setdirection() != 31454) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_light_setintensity() != 10170) {
+    if (uniffi_fragmentcolor_checksum_method_light_setintensity() != 44321) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_light_setposition() != 46497) {

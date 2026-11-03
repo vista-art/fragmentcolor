@@ -2562,6 +2562,15 @@ class Scene:
         that isn't between 0 and π, a `znear` of 0 and a camera node scaled to
         zero. Load with `cameras(false)` to skip the file's cameras.
 
+        A light that the `Light` constructors and setters refuse returns
+        `SceneLoadError::Invalid`, which names the light and its node, whether or
+        not its values break a glTF rule: an intensity, color or cone angle that
+        reads as an infinity in an `f32`, such as `1e39`, or a light whose node is
+        scaled to zero and so has no direction. Load with `lights(false)` to skip
+        the file's lights. A mesh node whose transform reads as an infinity, such
+        as a translation of `1e39`, returns the same error and names the node,
+        since `Model::set_transform` refuses it.
+
         A perspective camera without `zfar` asks for an infinite projection, and
         the loader builds one, so nothing in front of the camera clips however far
         away.
@@ -3108,7 +3117,15 @@ class Scene:
         color lands there, from a later `ambient` call or from `Shader::set`. A
         shader without `lights.ambient` takes nothing.
 
-        Returns a handle to the same Scene (Arc-shared) for chaining.
+        A channel that is NaN or an infinity returns `LightError::NotFinite`,
+        which names the call and the item, `Scene::ambient: item 1 must be finite,
+        got NaN`, and the scene and its shaders keep the color they had. The
+        other languages also refuse a channel past the 32-bit float range, such as
+        `1e39`. JavaScript throws an `Error` named `InvalidInputError`, Python
+        raises `InvalidInputError`, Swift throws `FragmentColorError` and Kotlin
+        throws `FragmentColorException`.
+
+        Returns `Ok` with a handle to the same Scene (Arc-shared) for chaining.
 
         Example:
 
@@ -3435,6 +3452,16 @@ class Model:
         current transform, see
         [Model::transform](https://fragmentcolor.org/api/scene/model#transform).
 
+        A number that is NaN or an infinity returns `ModelError::NotFinite`, which
+        names the call, the column and the item: `Model::set_transform: column 3:
+        item 0 must be finite, got inf`. The Model keeps the transform it had. The
+        other languages also refuse a number past the 32-bit float range, such as
+        `1e39`, with a message like `Model.setTransform: column 3: item 0 must be a
+        finite number that fits a 32-bit float, got 1e39`, or `item 12` for the 16
+        numbers of a flat matrix. JavaScript throws an `Error` named
+        `InvalidInputError`, Python raises `InvalidInputError`, Swift throws
+        `FragmentColorError` and Kotlin throws `FragmentColorException`.
+
         Example:
 
         ```python
@@ -3464,6 +3491,14 @@ class Model:
         Model's current rotation. `translate([1, 0, 0])` always moves one unit
         along the world X axis.
 
+        An item that is NaN or an infinity returns `ModelError::NotFinite`, which
+        names the call and the item, and the Model stays where it was. The other
+        languages also refuse an item past the 32-bit float range, such as `1e39`,
+        with a message like `Model.translate: item 1 must be a finite number that
+        fits a 32-bit float, got 1e39`. JavaScript throws an `Error` named
+        `InvalidInputError`, Python raises `InvalidInputError`, Swift throws
+        `FragmentColorError` and Kotlin throws `FragmentColorException`.
+
         Example:
 
         ```python
@@ -3486,8 +3521,20 @@ class Model:
         Rotate the Model around `axis` (in local space) by `radians`. Post-multiplies
         the current transform by an axis-angle rotation, so a rotated-then-translated
         Model spins in place around its own origin rather than orbiting the world
-        origin. The axis is normalized internally; a zero-length axis is rejected
-        with a logged warning and no change.
+        origin. The axis is normalized internally, so an axis of any length but 0
+        turns the Model the same way.
+
+        An axis item or an angle that is NaN or an infinity returns
+        `ModelError::NotFinite`, which names the call and the item, such as
+        `Model::rotate: radians must be finite, got NaN`. The other languages also
+        refuse a number past the 32-bit float range, such as `1e39`, with a
+        message like `Model.rotate: axis: item 1 must be a finite number that fits
+        a 32-bit float, got 1e39`. An axis of length 0, such as `[0, 0, 0]`, has
+        no direction to turn around and returns `ModelError::ZeroAxis` in every
+        language. Either way the Model keeps its transform. JavaScript throws an
+        `Error` named `InvalidInputError`, Python raises `InvalidInputError`,
+        Swift throws `FragmentColorError` and Kotlin throws
+        `FragmentColorException`.
 
         For pure world-space rotations (e.g. tumbling around a fixed pivot), compose
         the matrix yourself and call [set_transform](https://fragmentcolor.org/api/scene/model#set_transform).
@@ -3519,6 +3566,14 @@ class Model:
         the cheap normal-transform path the default PBR shader uses, so a stretched
         Model will shade slightly off. For a correct non-uniform-scale normal, use
         `Material::custom` with a shader that ships the explicit cofactor matrix.
+
+        A factor that is NaN or an infinity returns `ModelError::NotFinite`, which
+        names the call and the item, and the Model keeps its size. The other
+        languages also refuse a factor past the 32-bit float range, such as
+        `1e39`. JavaScript throws an `Error` named `InvalidInputError`, Python
+        raises `InvalidInputError`, Swift throws `FragmentColorError` and Kotlin
+        throws `FragmentColorException`. A factor of 0 is a valid scale, which
+        flattens the Model along that axis.
 
         Example:
 
@@ -3864,17 +3919,27 @@ class Light:
     The unified surface keeps the public API simple: one type, one
     [`Scene::add`](https://fragmentcolor.org/api/scene/scene#add) method, one
     [`Pass::add`](https://fragmentcolor.org/api/core/pass#add) method, and one
-    binding per platform. Setters fall into two groups:
+    binding per platform. Every setter returns `Result<Self, LightError>` for
+    chaining, and they fall into two groups:
 
     - **Universal**: [`set_color`](https://fragmentcolor.org/api/scene/light#set_color)
       and [`set_intensity`](https://fragmentcolor.org/api/scene/light#set_intensity)
-      apply to every kind and return `Self` for chaining.
+      apply to every kind.
     - **Kind-specific**: [`set_position`](https://fragmentcolor.org/api/scene/light#set_position),
       [`set_direction`](https://fragmentcolor.org/api/scene/light#set_direction),
       [`set_range`](https://fragmentcolor.org/api/scene/light#set_range), and
       [`set_cone_angles`](https://fragmentcolor.org/api/scene/light#set_cone_angles)
-      return `Result<Self, LightError>`. Calling one on the wrong kind returns
-      `LightError::FieldNotApplicable { kind, field }`.
+      apply to the kinds that carry the field. Calling one on the wrong kind
+      returns `LightError::FieldNotApplicable { kind, field }`.
+
+    The constructors and every setter but `set_range` refuse NaN and an
+    infinity with `LightError::NotFinite`, which names the call and the item,
+    and a refused setter leaves the light as it was. The other languages also
+    refuse a number past the 32-bit float range there, such as `1e39`, before
+    the call runs: an `InvalidInputError` in JavaScript and Python,
+    `FragmentColorError` in Swift and `FragmentColorException` in Kotlin.
+    `set_range` reads an infinity as an unlimited range and refuses NaN with
+    `LightError::NegativeRange`.
 
     The matching getters use `Option<T>` for the kind-specific fields:
     [`position`](https://fragmentcolor.org/api/scene/light#position),
@@ -3998,6 +4063,15 @@ class Light:
         [`set_cone_angles`](https://fragmentcolor.org/api/scene/light#set_cone_angles)
         on a directional light returns `LightError::FieldNotApplicable`.
 
+        An item of `direction` or `color` that is NaN or an infinity returns
+        `LightError::NotFinite`, which names the call, the vector and the item:
+        `Light::directional: direction: item 1 must be finite, got NaN`. The other
+        languages also refuse an item past the 32-bit float range, such as `1e39`,
+        with a message like `Light.directional: direction: item 1 must be a finite
+        number that fits a 32-bit float, got 1e39`. JavaScript throws an `Error`
+        named `InvalidInputError`, Python raises `InvalidInputError`, Swift throws
+        `FragmentColorError` and Kotlin throws `FragmentColorException`.
+
         Example:
 
         ```python
@@ -4027,6 +4101,14 @@ class Light:
         [`set_direction`](https://fragmentcolor.org/api/scene/light#set_direction)
         or [`set_cone_angles`](https://fragmentcolor.org/api/scene/light#set_cone_angles)
         on a point light returns `LightError::FieldNotApplicable`.
+
+        An item of `position` or `color` that is NaN or an infinity returns
+        `LightError::NotFinite`, which names the call, the vector and the item,
+        such as `Light::point: position: item 0 must be finite, got inf`. The other
+        languages also refuse an item past the 32-bit float range, such as `1e39`,
+        with the error a color item gets: an `InvalidInputError` in JavaScript and
+        Python, `FragmentColorError` in Swift and `FragmentColorException` in
+        Kotlin.
 
         A point light with a range lights only what lies within it, which lets the
         renderer skip it everywhere else. Without one, every fragment pays for it.
@@ -4083,7 +4165,15 @@ class Light:
 
         A spot light carries every kind-specific field, so every kind-specific
         setter (`set_position`, `set_direction`, `set_range`, `set_cone_angles`)
-        succeeds with `Ok(self)`.
+        applies to it.
+
+        An item of `position`, `direction` or `color` that is NaN or an infinity
+        returns `LightError::NotFinite`, which names the call, the vector and the
+        item, such as `Light::spot: direction: item 2 must be finite, got NaN`.
+        The other languages also refuse an item past the 32-bit float range, such
+        as `1e39`. JavaScript throws an `Error` named `InvalidInputError`, Python
+        raises `InvalidInputError`, Swift throws `FragmentColorError` and Kotlin
+        throws `FragmentColorException`.
 
         Example:
 
@@ -4244,8 +4334,17 @@ class Light:
     def set_color(self, color: npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat]) -> Light:
         """
         Update the linear-RGB color the light emits. Defined for every kind;
-        returns `Self` for chaining. The new value propagates live to every
+        returns `Ok(self)` for chaining. The new value propagates live to every
         shader the Light has already been wired into; no re-attach needed.
+
+        A channel that is NaN or an infinity returns `LightError::NotFinite`,
+        which names the call and the item, and the light keeps the color it had.
+        The other languages also refuse a channel past the 32-bit float range,
+        such as `1e39`, with a message like `Light.setColor: item 0 must be a
+        finite number that fits a 32-bit float, got 1e39`. JavaScript throws an
+        `Error` named `InvalidInputError`, Python raises `InvalidInputError`,
+        Swift throws `FragmentColorError` and Kotlin throws
+        `FragmentColorException`.
 
         Example:
 
@@ -4262,11 +4361,19 @@ class Light:
     def set_intensity(self, value: SupportsFloat) -> Light:
         """
         Update the scalar intensity multiplier. Defined for every kind; returns
-        `Self` for chaining. The shader multiplies the
+        `Ok(self)` for chaining. The shader multiplies the
         [`color`](https://fragmentcolor.org/api/scene/light#color) by this value
         when accumulating, so doubling intensity doubles every channel uniformly.
         The new value propagates live to every shader the Light has already been
         wired into.
+
+        NaN or an infinity returns `LightError::NotFinite`, which names the call,
+        and the light keeps the intensity it had. The other languages also refuse
+        a number past the 32-bit float range, such as `1e39`, with a message like
+        `Light.setIntensity: value must be a finite number that fits a 32-bit
+        float, got 1e39`. JavaScript throws an `Error` named `InvalidInputError`,
+        Python raises `InvalidInputError`, Swift throws `FragmentColorError` and
+        Kotlin throws `FragmentColorException`.
 
         Example:
 
@@ -4287,6 +4394,13 @@ class Light:
         value propagates live to every shader the Light has already been wired
         into; no re-attach needed.
 
+        An item that is NaN or an infinity returns `LightError::NotFinite`, which
+        names the call and the item, on any kind, and the light stays where it
+        was. The other languages also refuse an item past the 32-bit float range,
+        such as `1e39`. JavaScript throws an `Error` named `InvalidInputError`,
+        Python raises `InvalidInputError`, Swift throws `FragmentColorError` and
+        Kotlin throws `FragmentColorException`.
+
         Example:
 
         ```python
@@ -4304,6 +4418,13 @@ class Light:
         "set_direction" })` because point sources radiate omnidirectionally. The
         new value propagates live to every shader the Light has already been
         wired into; no re-attach needed.
+
+        An item that is NaN or an infinity returns `LightError::NotFinite`, which
+        names the call and the item, on any kind, and the light keeps the
+        direction it had. The other languages also refuse an item past the 32-bit
+        float range, such as `1e39`. JavaScript throws an `Error` named
+        `InvalidInputError`, Python raises `InvalidInputError`, Swift throws
+        `FragmentColorError` and Kotlin throws `FragmentColorException`.
 
         Example:
 
@@ -4352,6 +4473,16 @@ class Light:
 
         The new values propagate live to every shader the Light has already
         been wired into; no re-attach needed.
+
+        An angle that is NaN or an infinity returns `LightError::NotFinite`,
+        which names the call and the angle, `Light::set_cone_angles: inner must be
+        finite, got NaN`, on any kind, and the light keeps both angles it had. The
+        other languages also refuse an angle past the 32-bit float range, such as
+        `1e39`, with a message like `Light.setConeAngles: inner_radians must be a
+        finite number that fits a 32-bit float, got 1e39`. JavaScript throws an
+        `Error` named `InvalidInputError`, Python raises `InvalidInputError`,
+        Swift throws `FragmentColorError` and Kotlin throws
+        `FragmentColorException`.
 
         Example:
 

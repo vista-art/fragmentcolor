@@ -1164,7 +1164,7 @@ final class GeneratedExamples: ExampleCase {
         await example("docs/api/scene/light/set_intensity.md") {
             let torch = try Light.spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
 
-            torch.setIntensity(8.0)
+            try torch.setIntensity(8.0)
         }
     }
 
@@ -1715,7 +1715,7 @@ final class GeneratedExamples: ExampleCase {
             // Darken every loaded light to half intensity for a moody pass.
             for light in scene.lights() {
                 let current = light.intensity()
-                light.setIntensity(current * 0.5)
+                try light.setIntensity(current * 0.5)
             }
         }
     }
