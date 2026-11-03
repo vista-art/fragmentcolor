@@ -582,13 +582,13 @@ final class Healthcheck: ExampleCase {
         let forms: [(String, (Material) throws -> Material)] = [
             ("[UInt8] and [w, h]", { try $0.emissiveTexture(red, [1, 1]) }),
             ("[Int] and [w, h]", { try $0.emissiveTexture([255, 0, 0, 255] as [Int], [1, 1]) }),
-            ("Data and a Size", { $0.emissiveTexture(Data(red), one) }),
-            ("[UInt8] and a Size", { $0.emissiveTexture(red, one) }),
+            ("Data and a Size", { try $0.emissiveTexture(Data(red), one) }),
+            ("[UInt8] and a Size", { try $0.emissiveTexture(red, one) }),
             ("[Int] and a Size", { try $0.emissiveTexture([255, 0, 0, 255] as [Int], one) }),
-            ("[UInt8] with R8Unorm options", { $0.emissiveTexture([255] as [UInt8], options) }),
+            ("[UInt8] with R8Unorm options", { try $0.emissiveTexture([255] as [UInt8], options) }),
             ("[Int] with R8Unorm options", { try $0.emissiveTexture([255] as [Int], options) }),
             ("a size and usage", { try $0.emissiveTexture(Data(red), [1, 1], usage: .COPY_SRC) }),
-            ("a Mipmap with options", { $0.emissiveTexture(chain, TextureOptions(format: .rgba, usage: TextureUsage.COPY_SRC.bits)) }),
+            ("a Mipmap with options", { try $0.emissiveTexture(chain, TextureOptions(format: .rgba, usage: TextureUsage.COPY_SRC.bits)) }),
         ]
         for (label, form) in forms {
             let pixel = try await glow(form)
@@ -618,11 +618,11 @@ final class Healthcheck: ExampleCase {
         // options that reach it, from bytes and from a Mipmap.
         let outside = TextureOptions(size: one, format: .rgba, usage: 32)
         let refused: [(String, (Material) throws -> Material)] = [
-            ("baseColorTexture", { $0.baseColorTexture(red, outside) }),
+            ("baseColorTexture", { try $0.baseColorTexture(red, outside) }),
             ("metallicRoughnessTexture", { try $0.metallicRoughnessTexture([255, 0, 0, 255] as [Int], outside) }),
-            ("normalTexture", { $0.normalTexture(Data(red), outside) }),
-            ("occlusionTexture", { $0.occlusionTexture(red, outside) }),
-            ("emissiveTexture", { $0.emissiveTexture(chain, TextureOptions(format: .rgba, usage: 32)) }),
+            ("normalTexture", { try $0.normalTexture(Data(red), outside) }),
+            ("occlusionTexture", { try $0.occlusionTexture(red, outside) }),
+            ("emissiveTexture", { try $0.emissiveTexture(chain, TextureOptions(format: .rgba, usage: 32)) }),
         ]
         for (name, setter) in refused {
             do {
@@ -634,10 +634,51 @@ final class Healthcheck: ExampleCase {
         try assertEqual(byte.size(), one, "createTexture([Int], options)")
         _ = try await renderer.createTexture(red, one)
         _ = try await renderer.createTexture(chain, TextureOptions(format: .rgba, usage: TextureUsage.COPY_SRC.bits))
-        Material.pbr()
+        try Material.pbr()
             .normalTexture(Data(red), .rgba8Unorm)
             .occlusionTexture(Data(red), options)
             .metallicRoughnessTexture("examples/assets/logo.png", .rgba8Unorm)
+    }
+
+    // A slot a custom shader declares as a number refuses a Texture and a source and keeps
+    // its value, a slot the shader doesn't declare is skipped, and a Texture takes no options.
+    func testMaterialTexturesRefuseWhatTheyCannotUse() async throws {
+        let renderer = Renderer()
+        let red: [UInt8] = [255, 0, 0, 255]
+        let texture = try await renderer.createTexture(red, Size(width: 1, height: 1, depth: nil))
+        let numbered = Material.custom(try Shader(source: """
+            @group(0) @binding(0) var<uniform> base_color_map: vec4<f32>;
+            @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+              return vec4<f32>(f32(i), 0.0, 0.0, 1.0);
+            }
+            @fragment fn fs_main() -> @location(0) vec4<f32> { return base_color_map; }
+        """))
+        try numbered.shader().set("base_color_map", [0.25, 0.5, 0.75, 1.0])
+        let refusals: [(String, () throws -> Material)] = [
+            ("a Texture", { try numbered.baseColorTexture(texture) }),
+            ("bytes", { try numbered.baseColorTexture(red, [1, 1]) }),
+        ]
+        for (label, set) in refusals {
+            do {
+                _ = try set()
+                throw HealthcheckError.assertion("baseColorTexture with \(label) on a number should throw")
+            } catch let error as FragmentColorError {
+                guard "\(error)".contains("base_color_map") else {
+                    throw HealthcheckError.assertion("baseColorTexture with \(label) threw \(error)")
+                }
+            }
+        }
+        try assertEqual(numbered.shader().get("base_color_map"), .vec4([0.25, 0.5, 0.75, 1]), "a slot that refused a texture")
+        try numbered.normalTexture(texture)
+        try numbered.normalTexture(red, [1, 1])
+        do {
+            _ = try Material.pbr().baseColorSource(input: .cloneOf(texture), options: TextureOptions(format: .rgba8Unorm))
+            throw HealthcheckError.assertion("baseColorSource with options beside a Texture should throw")
+        } catch let FragmentColorError.Render(message) {
+            guard message.contains("Material::base_color_texture") else {
+                throw HealthcheckError.assertion("options beside a Texture threw \(message)")
+            }
+        }
     }
 
     // A transform reads back as four columns of four, and a nested matrix

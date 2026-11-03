@@ -69,6 +69,7 @@ fun Material.textureTransform(slot: TextureSlot, offset: DoubleArray, scale: Dou
 
 // Each texture setter takes what `Renderer.createTexture` takes, spelled the same way.
 // A Texture binds at once, and every other input uploads when the scene loads, as in Rust.
+// A setter throws for an input it can't use, such as a slot a custom shader declares as a number.
 
 fun Material.baseColorTexture(bytes: ByteArray, usage: TextureUsage? = null): Material =
     baseColorSource(MobileTextureInput.Bytes(bytes), textureOptions(usage = usage))

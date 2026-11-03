@@ -942,6 +942,31 @@ await withModule('platforms.web.healthcheck.parity', async () => {
       throws(`Material.${name} with a fractional size`, () => material[name](new Uint8Array(redPixel), [1.5, 1]));
       throws(`Material.${name} with mipmaps: "yes"`, () => material[name](new Uint8Array(redPixel), { size: [1, 1], mipmaps: 'yes' }));
     }
+    // A slot a custom shader declares as a number refuses a Texture and a source with a
+    // MaterialError and keeps its value, and a slot the shader doesn't declare is skipped.
+    const numbered = Material.custom(new Shader(`
+@group(0) @binding(0) var<uniform> base_color_map: vec4<f32>;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  return vec4<f32>(f32(i), 0.0, 0.0, 1.0);
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> { return base_color_map; }`));
+    numbered.shader().set('base_color_map', [0.25, 0.5, 0.75, 1]);
+    const onNumber = {
+      'a Texture': () => numbered.baseColorTexture(fromImage),
+      'bytes': () => numbered.baseColorTexture(new Uint8Array(redPixel), [1, 1]),
+    };
+    for (const [label, run] of Object.entries(onNumber)) {
+      try { run(); } catch (e) {
+        if (e.name !== 'MaterialError' || !e.message.includes('base_color_map')) {
+          fail(`Material.baseColorTexture with ${label} on a number threw ${e.name}: ${e.message}`);
+        }
+        continue;
+      }
+      fail(`Material.baseColorTexture with ${label} on a number should throw`);
+    }
+    same('a slot that refused a texture', numbered.shader().get('base_color_map'), [0.25, 0.5, 0.75, 1]);
+    numbered.normalTexture(fromImage);
+    numbered.normalTexture(new Uint8Array(redPixel), [1, 1]);
 
     // Scene.load takes an ArrayBuffer or a view, and can skip the file's cameras and lights.
     const glb = await (await fetch('/healthcheck/public/model.glb')).arrayBuffer();

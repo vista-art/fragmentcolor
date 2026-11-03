@@ -24,7 +24,9 @@ const GREEN: [u8; 4] = [0, 255, 0, 255];
 /// A Material whose base color map is a 2x2 image of `color`, given as raw pixels.
 fn build_material(color: [u8; 4]) -> Material {
     let shader = Shader::new(MAPPED).expect("a shader");
-    Material::custom(shader).base_color_texture((color.repeat(4), [2, 2]))
+    Material::custom(shader)
+        .base_color_texture((color.repeat(4), [2, 2]))
+        .expect("base color map")
 }
 
 /// A Renderer and an 8x8 target it made.
@@ -75,7 +77,9 @@ fn loading_in_a_second_renderer_keeps_the_first() {
             .render(material.shader(), &first_target)
             .expect("the first draws");
 
-        material.base_color_texture((GREEN.repeat(4), [2, 2]));
+        material
+            .base_color_texture((GREEN.repeat(4), [2, 2]))
+            .expect("base color map");
         second.load(material.shader()).await.expect("the load");
         first
             .render(material.shader(), &first_target)
@@ -101,7 +105,9 @@ fn a_later_set_wins_in_every_renderer() {
             assert_eq!(read_pixel(target).await, RED);
         }
 
-        material.base_color_texture((GREEN.repeat(4), [2, 2]));
+        material
+            .base_color_texture((GREEN.repeat(4), [2, 2]))
+            .expect("base color map");
 
         for (renderer, target) in [(&first, &first_target), (&second, &second_target)] {
             renderer.render(material.shader(), target).expect("draws");

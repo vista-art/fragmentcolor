@@ -614,7 +614,9 @@ fn material_maps_check_their_textures() {
             .create_depth_texture([4, 4])
             .await
             .expect("depth texture");
-        let material = Material::pbr().base_color_texture(&depth);
+        let material = Material::pbr()
+            .base_color_texture(&depth)
+            .expect("base color map");
 
         let error = refuse(&renderer, &context, &uncaptured, material.shader()).expect("refused");
 

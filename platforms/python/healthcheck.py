@@ -1207,7 +1207,32 @@ def check_material_textures(renderer):
     raises_invalid("create_texture with a format beside a Texture",
                    lambda: renderer.create_texture(albedo, format=TextureFormat.Rgba8Unorm))
     assert renderer.create_texture(albedo).size() == albedo.size()
+
+    # A slot a custom shader declares as a number refuses a Texture and a source with
+    # MaterialError and keeps its value, and a slot the shader doesn't declare is skipped.
+    numbered = Material.custom(Shader(NUMBERED_SHADER))
+    numbered.shader().set("base_color_map", [0.25, 0.5, 0.75, 1.0])
+    for label, call in (("a Texture", lambda: numbered.base_color_texture(albedo)),
+                        ("bytes", lambda: numbered.base_color_texture(red, size=[1, 1]))):
+        try:
+            call()
+        except MaterialError as e:
+            assert "base_color_map" in str(e), e
+        else:
+            raise AssertionError(f"Material.base_color_texture with {label} on a number should raise MaterialError")
+    assert list(numbered.shader().get("base_color_map")) == [0.25, 0.5, 0.75, 1.0]
+    assert isinstance(numbered.normal_texture(albedo), Material)
+    assert isinstance(numbered.normal_texture(red, size=[1, 1]), Material)
     print("The Material texture setters take create_texture's keywords, and each keyword reaches the upload")
+
+
+NUMBERED_SHADER = """
+@group(0) @binding(0) var<uniform> base_color_map: vec4<f32>;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  return vec4f(f32(i), 0., 0., 1.);
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> { return base_color_map; }
+"""
 
 
 MAPPED_SHADER = """

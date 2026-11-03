@@ -148,32 +148,47 @@ impl Material {
 
     #[uniffi::method(name = "baseColorTexture")]
     #[lsp_doc("docs/api/scene/material/base_color_texture.md")]
-    pub fn base_color_texture_mobile(self: Arc<Self>, texture: Arc<Texture>) -> Arc<Self> {
-        Arc::new(self.base_color_texture(&*texture))
+    pub fn base_color_texture_mobile(
+        self: Arc<Self>,
+        texture: Arc<Texture>,
+    ) -> Result<Arc<Self>, FragmentColorError> {
+        Ok(Arc::new(self.base_color_texture(&*texture)?))
     }
 
     #[uniffi::method(name = "metallicRoughnessTexture")]
     #[lsp_doc("docs/api/scene/material/metallic_roughness_texture.md")]
-    pub fn metallic_roughness_texture_mobile(self: Arc<Self>, texture: Arc<Texture>) -> Arc<Self> {
-        Arc::new(self.metallic_roughness_texture(&*texture))
+    pub fn metallic_roughness_texture_mobile(
+        self: Arc<Self>,
+        texture: Arc<Texture>,
+    ) -> Result<Arc<Self>, FragmentColorError> {
+        Ok(Arc::new(self.metallic_roughness_texture(&*texture)?))
     }
 
     #[uniffi::method(name = "normalTexture")]
     #[lsp_doc("docs/api/scene/material/normal_texture.md")]
-    pub fn normal_texture_mobile(self: Arc<Self>, texture: Arc<Texture>) -> Arc<Self> {
-        Arc::new(self.normal_texture(&*texture))
+    pub fn normal_texture_mobile(
+        self: Arc<Self>,
+        texture: Arc<Texture>,
+    ) -> Result<Arc<Self>, FragmentColorError> {
+        Ok(Arc::new(self.normal_texture(&*texture)?))
     }
 
     #[uniffi::method(name = "occlusionTexture")]
     #[lsp_doc("docs/api/scene/material/occlusion_texture.md")]
-    pub fn occlusion_texture_mobile(self: Arc<Self>, texture: Arc<Texture>) -> Arc<Self> {
-        Arc::new(self.occlusion_texture(&*texture))
+    pub fn occlusion_texture_mobile(
+        self: Arc<Self>,
+        texture: Arc<Texture>,
+    ) -> Result<Arc<Self>, FragmentColorError> {
+        Ok(Arc::new(self.occlusion_texture(&*texture)?))
     }
 
     #[uniffi::method(name = "emissiveTexture")]
     #[lsp_doc("docs/api/scene/material/emissive_texture.md")]
-    pub fn emissive_texture_mobile(self: Arc<Self>, texture: Arc<Texture>) -> Arc<Self> {
-        Arc::new(self.emissive_texture(&*texture))
+    pub fn emissive_texture_mobile(
+        self: Arc<Self>,
+        texture: Arc<Texture>,
+    ) -> Result<Arc<Self>, FragmentColorError> {
+        Ok(Arc::new(self.emissive_texture(&*texture)?))
     }
 
     /// The texture input form of `baseColorTexture`, uploaded when the scene loads.
@@ -184,8 +199,10 @@ impl Material {
         self: Arc<Self>,
         input: MobileTextureInput,
         options: Option<TextureOptions>,
-    ) -> Arc<Self> {
-        Arc::new(self.base_color_texture(texture_input(input, options)))
+    ) -> Result<Arc<Self>, FragmentColorError> {
+        Ok(Arc::new(
+            self.base_color_texture(texture_input(input, options))?,
+        ))
     }
 
     /// The texture input form of `metallicRoughnessTexture`, uploaded when the scene loads.
@@ -196,8 +213,10 @@ impl Material {
         self: Arc<Self>,
         input: MobileTextureInput,
         options: Option<TextureOptions>,
-    ) -> Arc<Self> {
-        Arc::new(self.metallic_roughness_texture(texture_input(input, options)))
+    ) -> Result<Arc<Self>, FragmentColorError> {
+        Ok(Arc::new(self.metallic_roughness_texture(texture_input(
+            input, options,
+        ))?))
     }
 
     /// The texture input form of `normalTexture`, uploaded when the scene loads.
@@ -208,8 +227,10 @@ impl Material {
         self: Arc<Self>,
         input: MobileTextureInput,
         options: Option<TextureOptions>,
-    ) -> Arc<Self> {
-        Arc::new(self.normal_texture(texture_input(input, options)))
+    ) -> Result<Arc<Self>, FragmentColorError> {
+        Ok(Arc::new(
+            self.normal_texture(texture_input(input, options))?,
+        ))
     }
 
     /// The texture input form of `occlusionTexture`, uploaded when the scene loads.
@@ -220,8 +241,10 @@ impl Material {
         self: Arc<Self>,
         input: MobileTextureInput,
         options: Option<TextureOptions>,
-    ) -> Arc<Self> {
-        Arc::new(self.occlusion_texture(texture_input(input, options)))
+    ) -> Result<Arc<Self>, FragmentColorError> {
+        Ok(Arc::new(
+            self.occlusion_texture(texture_input(input, options))?,
+        ))
     }
 
     /// The texture input form of `emissiveTexture`, uploaded when the scene loads.
@@ -232,15 +255,21 @@ impl Material {
         self: Arc<Self>,
         input: MobileTextureInput,
         options: Option<TextureOptions>,
-    ) -> Arc<Self> {
-        Arc::new(self.emissive_texture(texture_input(input, options)))
+    ) -> Result<Arc<Self>, FragmentColorError> {
+        Ok(Arc::new(
+            self.emissive_texture(texture_input(input, options))?,
+        ))
     }
 }
 
-/// A value the material can't use reaches Swift and Kotlin as a render error.
+/// A value the material can't use reaches Swift and Kotlin as a render error,
+/// and a texture input as the error `createTexture` throws for it.
 impl From<MaterialError> for FragmentColorError {
     fn from(error: MaterialError) -> Self {
-        FragmentColorError::Render(error.to_string())
+        match error {
+            MaterialError::Texture(error) => error.into(),
+            error => FragmentColorError::Render(error.to_string()),
+        }
     }
 }
 

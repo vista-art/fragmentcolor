@@ -141,7 +141,7 @@ impl Material {
     ) -> PyResult<Self> {
         let keywords = TextureKeywords::new(size, format, mipmaps, sampler, usage);
         let source = py_to_texture_spec(input, keywords, "Material.base_color_texture")?;
-        Ok(self.base_color_texture(source))
+        Ok(self.base_color_texture(source)?)
     }
 
     #[pyo3(
@@ -160,7 +160,7 @@ impl Material {
     ) -> PyResult<Self> {
         let keywords = TextureKeywords::new(size, format, mipmaps, sampler, usage);
         let source = py_to_texture_spec(input, keywords, "Material.metallic_roughness_texture")?;
-        Ok(self.metallic_roughness_texture(source))
+        Ok(self.metallic_roughness_texture(source)?)
     }
 
     #[pyo3(
@@ -179,7 +179,7 @@ impl Material {
     ) -> PyResult<Self> {
         let keywords = TextureKeywords::new(size, format, mipmaps, sampler, usage);
         let source = py_to_texture_spec(input, keywords, "Material.normal_texture")?;
-        Ok(self.normal_texture(source))
+        Ok(self.normal_texture(source)?)
     }
 
     #[pyo3(
@@ -198,7 +198,7 @@ impl Material {
     ) -> PyResult<Self> {
         let keywords = TextureKeywords::new(size, format, mipmaps, sampler, usage);
         let source = py_to_texture_spec(input, keywords, "Material.occlusion_texture")?;
-        Ok(self.occlusion_texture(source))
+        Ok(self.occlusion_texture(source)?)
     }
 
     #[pyo3(
@@ -217,7 +217,7 @@ impl Material {
     ) -> PyResult<Self> {
         let keywords = TextureKeywords::new(size, format, mipmaps, sampler, usage);
         let source = py_to_texture_spec(input, keywords, "Material.emissive_texture")?;
-        Ok(self.emissive_texture(source))
+        Ok(self.emissive_texture(source)?)
     }
 }
 

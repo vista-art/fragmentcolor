@@ -500,6 +500,44 @@ class Healthcheck : ExampleCase() {
         Unit
     }
 
+    // A slot a custom shader declares as a number refuses a Texture and a source and keeps
+    // its value, a slot the shader doesn't declare is skipped, and a Texture takes no options.
+    @Test
+    fun materialTexturesRefuseWhatTheyCannotUse() = runBlocking {
+        val renderer = Renderer()
+        val red = byteArrayOf(0xff.toByte(), 0, 0, 0xff.toByte())
+        val texture = renderer.createTexture(red, Size(width = 1u, height = 1u, depth = null))
+        val numbered = Material.custom(
+            Shader(
+                """
+                @group(0) @binding(0) var<uniform> base_color_map: vec4<f32>;
+                @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+                  return vec4<f32>(f32(i), 0.0, 0.0, 1.0);
+                }
+                @fragment fn fs_main() -> @location(0) vec4<f32> { return base_color_map; }
+                """.trimIndent()
+            )
+        )
+        numbered.shader().set("base_color_map", listOf(0.25f, 0.5f, 0.75f, 1f))
+        val refusals: List<Pair<String, () -> Material>> = listOf(
+            "a Texture" to { numbered.baseColorTexture(texture) },
+            "bytes" to { numbered.baseColorTexture(red, listOf(1u, 1u)) },
+        )
+        for ((label, set) in refusals) {
+            val error = assertFailsWith<FragmentColorException>("baseColorTexture with $label on a number") { set() }
+            assertTrue(error.message.orEmpty().contains("base_color_map"), "baseColorTexture with $label threw ${error.message}")
+        }
+        assertEquals(UniformData.Vec4(listOf(0.25f, 0.5f, 0.75f, 1f)), numbered.shader().get("base_color_map"))
+        numbered.normalTexture(texture)
+        numbered.normalTexture(red, listOf(1u, 1u))
+        val options = TextureOptions(format = TextureFormat.RGBA8_UNORM)
+        val beside = assertFailsWith<FragmentColorException> {
+            Material.pbr().baseColorSource(MobileTextureInput.CloneOf(texture), options)
+        }
+        assertTrue(beside.message.orEmpty().contains("Material::base_color_texture"), "options beside a Texture threw ${beside.message}")
+        Unit
+    }
+
     // Shader.set shapes each Kotlin value to the uniform's declared WGSL type.
     // Setting and reading uniforms touches no GPU, so this runs on any emulator.
     // A transform reads back as four columns of four, and a nested matrix
