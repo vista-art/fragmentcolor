@@ -2,11 +2,22 @@
 
 ## 0.12.7: Device checks and typed errors
 
-A patch release that checks shaders, meshes, textures and passes against the device before the GPU sees them, and returns every failure as a typed error that matches across Rust, JavaScript, Python, Swift and Kotlin. Lights lose their fixed cap, a texture a pass draws into can resize, and each PBR texture slot picks its own UV set. Changes that can break code come last.
+A patch release that checks shaders, meshes, textures and passes against the device before the GPU sees them, and returns every failure as a typed error that matches across Rust, JavaScript, Python, Swift and Kotlin. Lights lose their fixed cap, a texture a pass draws into can resize, and each PBR texture slot picks its own UV set.
+
+### Highlights
+
+- `render` checks shaders, meshes, textures and passes against the device before it takes a frame, and returns what the GPU rejects as a `DeviceError` where it drew nothing without a word.
+- Every error has a class that matches across Rust, JavaScript, Python, Swift and Kotlin.
+- Every binding refuses NaN, infinities and numbers past the 32-bit float range, with an error that names the call and the item.
+- Lights have no fixed cap. A compute pass sorts them into a grid of cells over the camera view.
+- Shaders use `f16`, subgroups, `primitive_index`, texture atomics and `texture_external` slots where the device has them.
+- A texture is freed when the last thing holding it drops, and a texture a pass draws into can resize.
+- PBR encodes sRGB on 8-bit targets, a pass that draws models gets a depth buffer, and each texture slot samples its own UV set through its own transform.
+- Three tutorials and a walkable world demo join the website.
 
 ### Upgrading from 0.12.6
 
-0.12.7 changes code in every language. Cargo's `0.12`, npm's `^0.12.6`, pip's `~=0.12.6` and SwiftPM's `.upToNextMinor(from: "0.12.6")` all pick it up, so pin `0.12.6` exactly until your code follows these groups of changes, which the last section lists one by one:
+0.12.7 changes code in every language. Cargo's `0.12`, npm's `^0.12.6`, pip's `~=0.12.6` and SwiftPM's `.upToNextMinor(from: "0.12.6")` all pick it up, so pin `0.12.6` exactly until your code follows these groups of changes, which "Breaking and behavior changes" lists one by one:
 
 - Calls that can fail say so. `render`, `resize`, `add_shader`, `set_clear_color`, `Shader::from_mesh`, the `Camera` and `Light` constructors, `Scene::ambient`, the `Model` transform calls and every `Material` setter, among others, return a `Result` in Rust, throw in JavaScript and Kotlin, raise in Python and need `try` in Swift. `render` returns what the GPU rejects instead of success.
 - Errors have classes. Python raises a subclass of `FragmentColorError`, such as `InvalidInputError` or `DeviceError`, and a JavaScript error's `name` is that class. The Rust error enums gain variants, so a `match` that lists every variant needs new arms.
@@ -196,6 +207,7 @@ A patch release that checks shaders, meshes, textures and passes against the dev
 
 - Three tutorials join "Hello, million triangles!": "Drawing with distance", "Infinite Fractal Zoom" and "A particle system". Each one runs its shaders live beside the text, with diagrams and annotated captures.
 - The separate playground page redirects to the home page, which runs the same playground. Its demo picker shows a thumbnail of each demo, and a glTF model demo draws a model with depth and water.
+- A walkable world demo joins the playground, with a blog post kept as a draft. The picker shows it once the site loads 0.12.7 from npm, the first release that runs it.
 
 ### Packaging and CI
 
