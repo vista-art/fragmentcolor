@@ -326,6 +326,44 @@ def check_require_graph(renderer):
     print("Pass.require runs the required passes")
 
 
+def counter(name):
+    """A compute shader that adds 1 to the storage root `name` each time it runs."""
+    return Shader(f"""
+@group(0) @binding(0) var<storage, read_write> {name}: array<u32, 1>;
+@compute @workgroup_size(1)
+fn cs_main() {{ {name}[0] += 1u; }}
+""")
+
+
+def check_pass_runs(renderer):
+    """A render runs each pass once, after the passes it requires, from a list,
+    a Scene or the pass itself, as in every other binding."""
+    target = renderer.create_texture_target([1, 1])
+    first_count = counter("first_runs")
+    second_count = counter("second_runs")
+    first = Pass.from_shader("first", first_count)
+    second = Pass.from_shader("second", second_count)
+    second.require(first)
+    scene = Scene()
+    scene.add_pass(first)
+    scene.add_pass(second)
+
+    def runs():
+        first_runs = int.from_bytes(renderer.read_storage(first_count, "first_runs")[:4], "little")
+        second_runs = int.from_bytes(renderer.read_storage(second_count, "second_runs")[:4], "little")
+        return [first_runs, second_runs]
+
+    renderer.render([first, second], target)
+    assert runs() == [1, 1], f"a list ran the passes {runs()} times"
+    renderer.render(scene, target)
+    assert runs() == [2, 2], f"a scene ran the passes {runs()} times"
+    renderer.render([second], target)
+    assert runs() == [3, 3], f"a list without first ran the passes {runs()} times"
+    renderer.render(second, target)
+    assert runs() == [4, 4], f"a pass ran the passes {runs()} times"
+    print("a render runs each pass once, after the passes it requires")
+
+
 SAMPLE_SHADER = """
 @group(0) @binding(0) var source: texture_2d<f32>;
 @group(0) @binding(1) var soft: sampler;
@@ -1623,6 +1661,7 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
     check_mesh_inputs()
     check_mesh_draws(renderer)
     check_require_graph(renderer)
+    check_pass_runs(renderer)
     check_pass_targets(renderer)
     check_shader_refusals(renderer)
     check_texture_atomics(renderer)

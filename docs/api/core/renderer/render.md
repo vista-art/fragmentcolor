@@ -2,7 +2,7 @@
 
 Renders the given object to the given [Target](https://fragmentcolor.org/api/targets/target).
 
-`renderable` can be a `Shader`, a `Pass`, a `Mesh`, a `Scene`, or any iterable of `Pass` (`Vec<Pass>`, `&[Pass]`, `&[&Pass]`). Passes in an iterable are rendered in order.
+`renderable` can be a `Shader`, a `Pass`, a `Mesh`, a `Scene`, or any iterable of `Pass` (`Vec<Pass>`, `&[Pass]`, `&[&Pass]`). Passes in an iterable render in order, each after the passes it [requires](https://fragmentcolor.org/api/core/pass#require). A render runs each pass once, at the first place a list, a `Scene` or a `require` puts it, so with `b.require(&a)`, `render(&vec![a, b])`, `render(&vec![b])` and `render(&b)` all run `a`, then `b`.
 
 A window that is hidden or minimized has no frame to draw on. `render` then returns `RendererError::SurfaceError(SurfaceError::Occluded)`, which Python raises as `OccludedSurfaceError`, a `FragmentColorError`, Swift throws as `FragmentColorError.Occluded` and Kotlin as `FragmentColorException.Occluded`. Skip that frame and draw the next one.
 

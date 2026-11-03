@@ -1369,6 +1369,47 @@ await withModule('platforms.web.healthcheck.device_checks', async () => {
     if (!(image instanceof Uint8Array) || image.length !== 8 * 8 * 4) fail(`getImage returned ${image}`);
 });
 
+// A render runs each pass once, after the passes it requires, from an array, a Scene
+// or the pass itself, as in every other binding. Each pass counts its runs in a storage buffer.
+await withModule('platforms.web.healthcheck.pass_runs', async () => {
+    if (!navigator.gpu || !(await navigator.gpu.requestAdapter())) {
+      return console.log('pass runs: no WebGPU adapter, and WebGL2 runs no compute pass');
+    }
+    const renderer = new Renderer();
+    const target = await renderer.createTextureTarget([1, 1]);
+    const counter = (name) => new Shader(`
+@group(0) @binding(0) var<storage, read_write> ${name}: array<u32, 1>;
+@compute @workgroup_size(1)
+fn cs_main() { ${name}[0] += 1u; }`);
+    const firstCount = counter('first_runs');
+    const secondCount = counter('second_runs');
+    const first = Pass.fromShader('first', firstCount);
+    const second = Pass.fromShader('second', secondCount);
+    second.require(first);
+    const scene = new Scene();
+    scene.addPass(first);
+    scene.addPass(second);
+    const runs = async () => {
+      const firstBytes = await renderer.readStorage(firstCount, 'first_runs');
+      const secondBytes = await renderer.readStorage(secondCount, 'second_runs');
+      const word = (bytes) => new Uint32Array(bytes.buffer, bytes.byteOffset, 1)[0];
+      return [word(firstBytes), word(secondBytes)];
+    };
+    const expect = async (label, want) => {
+      const got = await runs();
+      if (got[0] !== want || got[1] !== want) throw new Error(`${label} ran the passes [${got}] times, want ${want}`);
+    };
+
+    renderer.render([first, second], target);
+    await expect('an array', 1);
+    renderer.render(scene, target);
+    await expect('a scene', 2);
+    renderer.render([second], target);
+    await expect('an array without first', 3);
+    renderer.render(second, target);
+    await expect('a pass', 4);
+});
+
 // The WGSL wgpu writes for the browser drops @size and @align, so FragmentColor hands it
 // WGSL that keeps them: each member reads and writes the bytes its explicit layout gives it.
 await withModule('platforms.web.healthcheck.explicit_layouts', async () => {

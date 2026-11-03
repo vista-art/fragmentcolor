@@ -20,6 +20,7 @@ The graph is validated at build time and does not perform cycle checks at render
 - A pass is the same pass by identity, never by name, so two passes that share a name are two dependencies.
 - Dependencies are stored in insertion order.
 - Traversal is dependencies-first, then the current pass, with deduplication.
+- A render runs each pass once, after the passes it requires, also when a list or a `Scene` holds a pass and the passes it requires.
 - Creation order of passes does not matter.
 
 ## Examples

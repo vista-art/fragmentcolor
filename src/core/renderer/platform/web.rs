@@ -300,8 +300,9 @@ fn read_log_level(value: &JsValue) -> Result<LogLevel, WebError> {
 }
 
 /// What `render`, `load` and `Pass.require` take on the web: a `Shader`, `Pass`,
-/// `Mesh` or `Scene`, or an array of them. An array renders as one frame, each
-/// item's passes in order, and as a dependency it links each item's roots.
+/// `Mesh` or `Scene`, or an array of them. An array renders as one frame, as a Rust
+/// list does: each item's passes in order, each pass once and after the passes it requires.
+/// As a dependency it links each item's roots.
 pub(crate) struct RenderableList(Vec<Box<dyn Renderable>>);
 
 impl RenderableList {
@@ -333,24 +334,15 @@ impl RenderableList {
 
 impl Renderable for RenderableList {
     fn passes(&self) -> Arc<[Arc<PassObject>]> {
-        self.0
-            .iter()
-            .flat_map(|item| item.passes().to_vec())
-            .collect()
+        self.0.passes()
     }
 
     fn roots(&self) -> Arc<[Arc<PassObject>]> {
-        self.0
-            .iter()
-            .flat_map(|item| item.roots().to_vec())
-            .collect()
+        self.0.roots()
     }
 
     fn peek_passes(&self) -> Arc<[Arc<PassObject>]> {
-        self.0
-            .iter()
-            .flat_map(|item| item.peek_passes().to_vec())
-            .collect()
+        self.0.peek_passes()
     }
 }
 

@@ -28,7 +28,9 @@ the rest of FragmentColor follows.
 ## An open, composable pass graph
 
 A `Scene` owns one ordered `Vec<Pass>`. Loaders, builders, and your own code
-all append into the same list, and the renderer walks it in order. No pass is
+all append into the same list, and the renderer walks it in order, running
+each pass once, after the passes it
+[requires](https://fragmentcolor.org/api/core/pass#require). No pass is
 privileged in render order: the default Pass that `scene.add(&model)` targets
 is an ordinary member, slotted in at the point of your first `add`. After
 [`Scene::load`](https://fragmentcolor.org/api/scene/scene#load) the whole

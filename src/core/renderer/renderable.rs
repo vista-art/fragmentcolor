@@ -1,12 +1,14 @@
 //! `Renderable`: anything `Renderer::render` takes.
 
 use crate::PassObject;
+use std::collections::HashSet;
 use std::sync::Arc;
 
 pub trait Renderable {
-    // Return an Arc to a slice of Arc<PassObject> for fast, lock-free iteration.
+    /// The passes a render of this runs, in order. Each pass comes once,
+    /// after every pass it requires, as `deduplicate` leaves a list.
     fn passes(&self) -> Arc<[Arc<PassObject>]>;
-    // Root node(s) of this renderable when used as a dependency. By default, same as passes().
+    /// The passes `Pass::require` links when this is a dependency. By default, `passes`.
     fn roots(&self) -> Arc<[Arc<PassObject>]> {
         self.passes()
     }
@@ -18,13 +20,22 @@ pub trait Renderable {
     }
 }
 
+/// Each pass of `passes` once, at its first place. A list of renderables whose passes
+/// each come after the passes they require keeps that order, with no pass run twice.
+pub(crate) fn deduplicate(
+    passes: impl IntoIterator<Item = Arc<PassObject>>,
+) -> Arc<[Arc<PassObject>]> {
+    let mut seen = HashSet::new();
+    passes
+        .into_iter()
+        .filter(|pass| seen.insert(pass.id))
+        .collect()
+}
+
+/// A list renders its items in order, each pass once and after the passes it requires.
 impl Renderable for Vec<Box<dyn Renderable>> {
     fn passes(&self) -> Arc<[Arc<PassObject>]> {
-        let mut all_passes: Vec<Arc<PassObject>> = Vec::new();
-        for r in self {
-            all_passes.extend_from_slice(&r.passes());
-        }
-        all_passes.into()
+        deduplicate(self.iter().flat_map(|item| item.passes().to_vec()))
     }
 
     fn roots(&self) -> Arc<[Arc<PassObject>]> {
@@ -36,11 +47,7 @@ impl Renderable for Vec<Box<dyn Renderable>> {
     }
 
     fn peek_passes(&self) -> Arc<[Arc<PassObject>]> {
-        let mut all_passes: Vec<Arc<PassObject>> = Vec::new();
-        for item in self {
-            all_passes.extend_from_slice(&item.peek_passes());
-        }
-        all_passes.into()
+        deduplicate(self.iter().flat_map(|item| item.peek_passes().to_vec()))
     }
 }
 

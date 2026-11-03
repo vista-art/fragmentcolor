@@ -262,6 +262,47 @@ final class Healthcheck: ExampleCase {
         try renderer.render(solid, target)
     }
 
+    // A render runs each pass once, after the passes it requires, from a list, a Scene
+    // or the pass itself, as in every other binding. Each pass counts its runs in storage.
+    func testRequiredPassesRunOnce() async throws {
+        let renderer = Renderer()
+        let target = try await renderer.createTextureTarget([1, 1])
+        func counter(_ name: String) throws -> Shader {
+            try Shader(source: """
+                @group(0) @binding(0) var<storage, read_write> \(name): array<u32, 1>;
+                @compute @workgroup_size(1)
+                fn cs_main() { \(name)[0] += 1u; }
+            """)
+        }
+        let firstCount = try counter("first_runs")
+        let secondCount = try counter("second_runs")
+        let first = Pass.fromShader("first", firstCount)
+        let second = Pass.fromShader("second", secondCount)
+        try second.require(first)
+        let scene = Scene()
+        scene.addPass(first)
+        scene.addPass(second)
+        func runs() async throws -> [UInt32] {
+            let firstBytes = try await renderer.readStorage(firstCount, "first_runs")
+            let secondBytes = try await renderer.readStorage(secondCount, "second_runs")
+            let word = { (bytes: Data) in bytes.prefix(4).withUnsafeBytes { $0.loadUnaligned(as: UInt32.self) } }
+            return [UInt32(littleEndian: word(firstBytes)), UInt32(littleEndian: word(secondBytes))]
+        }
+
+        try renderer.render([first, second], target)
+        let afterList = try await runs()
+        try assertEqual(afterList, [1, 1], "a list")
+        try renderer.render(scene, target)
+        let afterScene = try await runs()
+        try assertEqual(afterScene, [2, 2], "a scene")
+        try renderer.render([second], target)
+        let afterSecond = try await runs()
+        try assertEqual(afterSecond, [3, 3], "a list without first")
+        try renderer.render(second, target)
+        let afterPass = try await runs()
+        try assertEqual(afterPass, [4, 4], "a pass")
+    }
+
     // One shader draws meshes with other layouts, and a second Renderer draws them too,
     // where it stopped the app inside wgpu. render refuses indices past the vertices,
     // and addMesh a vertex property named position.

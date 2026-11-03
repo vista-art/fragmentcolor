@@ -38,6 +38,7 @@ use pyo3::prelude::*;
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
+use crate::core::expand_list;
 use crate::scene::{Camera, Light, SceneObject, push_uniform};
 use crate::{Pass, PassError, PassObject, Renderable};
 
@@ -650,12 +651,10 @@ impl Renderable for Scene {
     }
 
     /// The scene's passes, without adding the default camera and light it draws with.
+    /// Each pass comes once, after the passes it requires, as in a list of passes.
     fn peek_passes(&self) -> Arc<[Arc<PassObject>]> {
-        let mut all: Vec<Arc<PassObject>> = Vec::new();
-        for pass in self.inner.passes.read().iter() {
-            all.extend(pass.passes().iter().cloned());
-        }
-        all.into()
+        let passes = self.inner.passes.read();
+        expand_list(passes.iter().map(|pass| &pass.object))
     }
 
     fn roots(&self) -> Arc<[Arc<PassObject>]> {
@@ -707,6 +706,26 @@ mod tests {
         scene.add(&model).expect("add");
         assert!(scene.inner.default_pass.read().is_some());
         assert_eq!(scene.inner.passes.read().len(), 1);
+    }
+
+    // Story: a scene lists each pass once, after the passes it requires,
+    // so a member that another member requires runs once.
+    #[test]
+    fn passes_list_a_required_member_once() {
+        let scene = Scene::new();
+        let first = Pass::new("first");
+        let second = Pass::new("second");
+        second.require(&first).expect("second requires first");
+        scene.add_pass(&first);
+        scene.add_pass(&second);
+
+        let names = |passes: Arc<[Arc<PassObject>]>| -> Vec<String> {
+            passes.iter().map(|pass| pass.name.to_string()).collect()
+        };
+
+        assert_eq!(names(scene.peek_passes()), ["first", "second"]);
+        assert_eq!(names(scene.passes()), ["first", "second"]);
+        assert_eq!(names(scene.roots()), ["first", "second"]);
     }
 
     #[test]
