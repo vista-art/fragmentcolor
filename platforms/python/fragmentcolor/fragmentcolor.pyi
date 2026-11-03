@@ -357,6 +357,9 @@ class Renderer:
         This is the only way to observe what a compute pass *wrote* into a storage
         binding. [`Shader::get`](https://fragmentcolor.org/api/core/shader) returns
         what was last set on the CPU side, so GPU writes don't show up through it.
+        A [`Shader::set`](https://fragmentcolor.org/api/core/shader#set) on any field
+        of the root uploads the whole root from that CPU copy at the next render that
+        binds it, which replaces what a compute pass wrote there.
 
         `read_storage` is `async` because the underlying `map_async` requires an
         awaited callback. It returns a Promise in JS, is `async` in Swift and
@@ -788,6 +791,8 @@ class Shader:
         - A `Texture` created by a `Renderer` binds to a texture uniform, a `texture_external` one included.
         - Raw bytes replace a whole storage-buffer or push-constant root: a byte slice in Rust, a `Uint8Array` in JavaScript, `bytes` (or a `bytearray` or `memoryview`) in Python, `Data` in Swift, or a `ByteArray` in Kotlin. The byte count must equal the root's size, and any other length throws.
 
+        Setting one field of a storage root uploads the whole root from the shader's CPU copy at the next render that binds it, which overwrites everything a compute pass wrote to that root.
+
         Example:
 
         ```python
@@ -1134,7 +1139,7 @@ class Shader:
         ```
         """
     @staticmethod
-    def from_vertex(v: Vertex) -> Shader:
+    def from_vertex(vertex: Vertex) -> Shader:
         """
         Build a basic WGSL shader source from a single Vertex layout.
 
@@ -2541,6 +2546,8 @@ class Scene:
         - an accessor with a count of 0, a type its semantic doesn't take, or a
           byte range outside its buffer view or buffer
         - an attribute with a different element count than `POSITION`
+        - NaN or an infinity in an attribute the loader reads, which the message
+          names with the mesh, the primitive and the item
         - an index past the last vertex
         - a node reached twice, through a cycle or a child with two parents
         - a point or spot light with a negative `range`

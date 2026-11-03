@@ -160,6 +160,8 @@ A file that breaks the glTF rules returns the same error. That covers:
 - an accessor with a count of 0, a type its semantic doesn't take, or a
   byte range outside its buffer view or buffer
 - an attribute with a different element count than `POSITION`
+- NaN or an infinity in an attribute the loader reads, which the message
+  names with the mesh, the primitive and the item
 - an index past the last vertex
 - a node reached twice, through a cycle or a child with two parents
 - a point or spot light with a negative `range`

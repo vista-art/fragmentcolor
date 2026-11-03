@@ -152,7 +152,7 @@ A root that isn't a struct takes its bytes whole through `set`, as a storage roo
 - Subgroup operations need `SUBGROUP` in compute and fragment shaders and `SUBGROUP_VERTEX` in vertex shaders, and `subgroupBarrier` also needs `SUBGROUP_BARRIER`. Vulkan devices with the full set of subgroup operations offer them, as do Metal GPUs of the Apple7, Mac2 and Metal 3 families and DX12 devices with Shader Model 6.0 wave operations. Only Vulkan offers `SUBGROUP_VERTEX`, and DX12 has no `SUBGROUP_BARRIER`.
 - `primitive_index` needs `PRIMITIVE_INDEX`, which DX12, Vulkan devices with geometry shaders, the same Metal GPU families, OpenGL 3.2 and OpenGL ES 3.2 offer.
 
-The browser's WebGPU and WebGL2 offer neither, and native GL offers no subgroups. Write subgroup code in WGSL and leave out `enable subgroups;`, which naga doesn't take yet:
+Neither runs on the web. Chrome's WebGPU offers subgroups, but wgpu 30 doesn't request them for the device it opens there, and WebGL2 has neither. Native GL offers no subgroups. Write subgroup code in WGSL and leave out `enable subgroups;`, which naga doesn't take yet:
 
 ```wgsl
 @group(0) @binding(0) var<storage, read_write> sums: array<u32, 64>;
@@ -856,6 +856,8 @@ The uniform's declared WGSL type decides how the value is read, so a call behave
 - A vector takes exactly as many numbers as it has components. A `mat2x2`, `mat3x3`, or `mat4x4` takes 4, 9, or 16.
 - A `Texture` created by a `Renderer` binds to a texture uniform, a `texture_external` one included.
 - Raw bytes replace a whole storage-buffer or push-constant root: a byte slice in Rust, a `Uint8Array` in JavaScript, `bytes` (or a `bytearray` or `memoryview`) in Python, `Data` in Swift, or a `ByteArray` in Kotlin. The byte count must equal the root's size, and any other length throws.
+
+Setting one field of a storage root uploads the whole root from the shader's CPU copy at the next render that binds it, which overwrites everything a compute pass wrote to that root.
 
 #### Example
 
