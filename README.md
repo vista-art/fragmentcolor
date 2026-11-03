@@ -40,7 +40,7 @@ It runs on Vulkan, Metal, DirectX 12, OpenGL, WebGL2, and WebGPU through [wgpu](
   <img src="docs/media/playground.webp" width="928" alt="The FragmentColor playground: the Cells demo picked from the demo cards, a shader edit that rebuilds the canvas as it is typed, a generated slider that changes a uniform, and the Rust tab showing the same program">
 </p>
 
-In the [playground](https://fragmentcolor.org), the canvas rebuilds as you type, the sliders come from the shader's own uniforms, and every demo shows the same program in all five languages.
+The [playground](https://fragmentcolor.org) is a page built on the same npm package you install. It keeps one `Renderer` and one canvas target for as long as the page is open and hands both to each demo's `setup`, which builds the shaders. Every edit runs `setup` again on the new code, and a build that fails leaves the last good shaders drawing. The sliders read each shader through `shader.listKeys()` and `shader.get(key)`. An engine can hot-reload shaders the same way: keep the renderer and target, create a `Shader` from the new source, and draw it once it compiles.
 
 - **The shader is the source of truth.** Uniforms, textures, samplers, storage buffers, and push constants come from the shader itself. `shader.set("light.color", [1.0, 0.8, 0.6])` writes the field it names.
 - **One API in five languages.** Rust, JavaScript, Python, Swift, and Kotlin share the same calls.

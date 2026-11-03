@@ -23,7 +23,7 @@ It runs on Vulkan, Metal, DirectX 12, OpenGL, WebGL2, and WebGPU through [wgpu](
 - **Passes and compute.** Chain render and compute passes, render into textures, and read the results back.
 - **Native surfaces.** A window on desktop, a `<canvas>` on the web, a `CAMetalLayer` on iOS, and a `Surface` on Android.
 
-In the [playground](/), the canvas rebuilds as you type, the sliders come from the shader's own uniforms, and every demo shows the same program in all five languages.
+The [playground](/) is a page built on the same npm package you install. It keeps one `Renderer` and one canvas target for as long as the page is open and hands both to each demo's `setup`, which builds the shaders. Every edit runs `setup` again on the new code, and a build that fails leaves the last good shaders drawing. The sliders read each shader through `shader.listKeys()` and `shader.get(key)`. An engine can hot-reload shaders the same way: keep the renderer and target, create a `Shader` from the new source, and draw it once it compiles.
 
 The [API Reference](/api) covers every object and method, and the project lives on [GitHub](https://github.com/vista-art/fragmentcolor).
 
