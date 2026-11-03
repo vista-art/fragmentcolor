@@ -186,6 +186,7 @@ A patch release that checks shaders, meshes, textures and passes against the dev
 
 - `wasm-bindgen` is no longer pinned to 0.2.118. The bridge that reads a FragmentColor class from a JavaScript value goes through wasm-bindgen's public `TryFromJsValue`, where it named the internal ABI that 0.2.126 changed, and the `wasm-bindgen`, `js-sys`, `web-sys`, `wasm-bindgen-futures` and `wasm-bindgen-test` family moves in step from 0.2.126. Each class gains a hidden `__fc_share` method that the bridge reads.
 - The `naga` dependency declares the `wgsl-out` feature that FragmentColor writes WGSL with, where it relied on wgpu to turn the feature on.
+- The `naga` dependency also declares `glsl-out`, which builds naga's `process_overrides`, the call that resolves a shader's `override` values before a pipeline reaches wgpu, on every target.
 - `tools/build_ios` and `tools/build_android` pass uniffi no `--config`, and uniffi reads the crate's `uniffi.toml` from the crate root, so it no longer warns that the file looks like an old-style config. The bindings are the same.
 - A Lint workflow runs actionlint over the workflows and `cargo fmt --check` on every pull request and every push to `main`, whatever it changes.
 - Each healthcheck's `paths` filter lists every file the crate compiles in, the shader library and the fixtures included, so a pull request that changes only website pages, posts or tutorials runs none. The Python wheels build on a pull request only when their inputs change.
@@ -193,7 +194,8 @@ A patch release that checks shaders, meshes, textures and passes against the dev
 
 ### Breaking and behavior changes
 
-- JavaScript's `TextureFormat` values from `Depth32Float` on are 3 higher, since `R32Uint`, `R32Sint` and `R32Float` sit after `Rgba32Sint`. Code that names a format, such as `TextureFormat.Depth32Float`, keeps working, and a number stored from 0.12.6 reads another format.
+- `TextureFormat` gains `R32Uint`, `R32Sint` and `R32Float`, so a Rust `match`, a Swift `switch` or a Kotlin `when` that lists every format needs new arms.
+- The number of each `TextureFormat` from `Depth32Float` on is 3 higher, since the three new formats sit after `Rgba32Sint`. That shifts JavaScript's enum values, Python's `int()` of a format, Kotlin's `ordinal` and a Rust `as` cast. Swift's enum holds no number. Code that names a format, such as `TextureFormat.Depth32Float`, keeps working, and a number stored from 0.12.6 reads another format.
 - A plain 2D texture reports its size with no depth, in every language and on every path that makes one: `Texture.size()` and `TextureTarget.size()` give `depth` as `None`, `undefined`, `nil` or `null`, as `WindowTarget.size()` and a `Size` built from `[w, h]` do. An array keeps its layer count and a 3D texture its depth. A texture reported a depth of 1, so its size compared unequal to `Size(w, h)` in Python, Swift and Kotlin.
 - `fragmentcolor::headless_window(size)` is `HeadlessWindow::new(size)`, a constructor, so the public API has no free function.
 - `Renderer.render` refuses, before it takes a frame, a shader or texture uniform the device can't take, with the errors the Shaders notes list. A shader that rendered nothing with a GPU error now returns an error.
