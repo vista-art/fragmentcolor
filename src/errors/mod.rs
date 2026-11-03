@@ -158,7 +158,7 @@ mod tests {
         use crate::ScreenRegionError;
         use crate::ShaderError;
         use crate::SurfaceError;
-        use crate::scene::{LightError, SceneLoadError};
+        use crate::scene::{LightError, ModelError, SceneLoadError};
         use crate::texture::TextureError;
         use crate::{InitializationError, RendererError};
         let text = |value: &str| value.to_string();
@@ -251,6 +251,14 @@ mod tests {
                 "SceneLoadError",
             ),
             (Box::new(LightError::NegativeRange(-1.0)), "LightError"),
+            (
+                Box::new(LightError::NotFinite {
+                    label: text("Light::set_intensity: value"),
+                    value: f32::NAN,
+                }),
+                "InvalidInputError",
+            ),
+            (Box::new(ModelError::ZeroAxis), "InvalidInputError"),
             (Box::new(FragmentColorError::Renderer(limit)), "LimitError"),
         ];
 

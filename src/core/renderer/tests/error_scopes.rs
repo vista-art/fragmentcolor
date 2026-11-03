@@ -322,7 +322,7 @@ fn lights_past_the_cap_acquire_no_frame() {
         let shader = Shader::new(LIT_FULLSCREEN).expect("shader");
         let pass = crate::Pass::from_shader("lit", &shader);
         let lights: Vec<crate::Light> = (0..3)
-            .map(|index| crate::Light::point([index as f32, 0.0, 0.0], [1.0; 3]))
+            .map(|index| crate::Light::point([index as f32, 0.0, 0.0], [1.0; 3]).expect("light"))
             .collect();
         for light in &lights {
             pass.add(light).expect("under the process cap");

@@ -335,6 +335,20 @@ class Healthcheck : ExampleCase() {
             "Material.textureTransform: rotation" to {
                 material.textureTransform(TextureSlot.NORMAL, listOf(0f, 0f), listOf(1f, 1f), Float.NaN)
             },
+            "Light.setIntensity: value" to { Light.point(listOf(0f, 1f, 0f), listOf(1f, 1f, 1f)).setIntensity(Float.NaN) },
+            "Light.setIntensity: value" to { Light.point(listOf(0f, 1f, 0f), listOf(1f, 1f, 1f)).setIntensity(1e39) },
+            "Light.setConeAngles: inner_radians" to {
+                Light.spot(listOf(0f, 1f, 0f), listOf(0f, -1f, 0f), listOf(1f, 1f, 1f)).setConeAngles(Float.POSITIVE_INFINITY, 0.5f)
+            },
+            "Light.setConeAngles: outer_radians" to {
+                Light.spot(listOf(0f, 1f, 0f), listOf(0f, -1f, 0f), listOf(1f, 1f, 1f)).setConeAngles(0.1, Double.NaN)
+            },
+            "Model.rotate: radians" to { Model(Mesh(), material).rotate(floatArrayOf(0f, 1f, 0f), Float.NaN) },
+            "Model.rotate: radians" to { Model(Mesh(), material).rotate(listOf(0.0, 1.0, 0.0), 1e39) },
+            "Model.setTransform: item 0" to { Model(Mesh(), material).setTransform(List(16) { if (it == 0) Float.NaN else 0f }) },
+            "Model.setTransform: item 0" to { Model(Mesh(), material).setTransform(DoubleArray(16) { if (it == 0) 1e39 else 0.0 }) },
+            // An axis of length 0 has no direction, which Rust refuses with its own message.
+            "Model::rotate: axis has length 0" to { Model(Mesh(), material).rotate(floatArrayOf(0f, 0f, 0f), 1f) },
             "Vertex: position" to { Vertex(doubleArrayOf(1e39, 0.0, 0.0)) },
             "Vertex: position" to { Vertex(listOf(Float.NaN, 0f)) },
             "Vertex.pbr: position" to { Vertex.pbr(listOf(0.0, Double.POSITIVE_INFINITY, 0.0)) },
@@ -350,6 +364,15 @@ class Healthcheck : ExampleCase() {
             val error = assertFailsWith<FragmentColorException> { call() }
             assertTrue(error.message.orEmpty().contains(label), "$label threw ${error.message}")
         }
+        // A refused setter or rotate leaves the light and the transform as they were.
+        val dimmer = Light.point(listOf(0f, 1f, 0f), listOf(1f, 1f, 1f)).setIntensity(2.5f)
+        assertFailsWith<FragmentColorException> { dimmer.setIntensity(Double.POSITIVE_INFINITY) }
+        assertEquals(2.5f, dimmer.intensity(), "a refused setIntensity keeps the intensity")
+        val turned = Model(Mesh(), material)
+        turned.rotate(floatArrayOf(0f, 1f, 0f), 0.5f)
+        val before = turned.transform()
+        assertFailsWith<FragmentColorException> { turned.rotate(floatArrayOf(0f, 0f, 0f), 0.5f) }
+        assertEquals(before, turned.transform(), "a refused rotate keeps the transform")
         // A Double item prints the way the shared Rust message prints it.
         val shown = listOf(1e39 to "1e39", -1e39 to "-1e39", Double.NaN to "NaN", Double.POSITIVE_INFINITY to "inf")
         for ((value, text) in shown) {

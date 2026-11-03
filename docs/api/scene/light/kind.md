@@ -12,9 +12,9 @@ glTF scene) to decide which kind-specific setters or getters to call.
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Light, LightKind};
 
-let sun = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
-let bulb = Light::point([0.0, 2.5, 0.0], [1.0, 1.0, 1.0]);
-let torch = Light::spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
+let sun = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])?;
+let bulb = Light::point([0.0, 2.5, 0.0], [1.0, 1.0, 1.0])?;
+let torch = Light::spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0])?;
 # assert_eq!(sun.kind(), LightKind::Directional);
 # assert_eq!(bulb.kind(), LightKind::Point);
 # assert_eq!(torch.kind(), LightKind::Spot);

@@ -57,15 +57,15 @@ fn renders_two_blend_quads_at_different_depths() {
             .alpha_mode(AlphaMode::Blend);
 
         let far_model = Model::new(unit_quad(), far_mat);
-        far_model.translate([0.0, 0.0, -2.0]);
+        far_model.translate([0.0, 0.0, -2.0]).expect("translate");
         let near_model = Model::new(unit_quad(), near_mat);
-        near_model.translate([0.0, 0.0, 0.0]);
+        near_model.translate([0.0, 0.0, 0.0]).expect("translate");
 
         let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0)
             .expect("camera")
             .look_at([0.0, 0.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
             .expect("camera");
-        let sun = Light::directional([0.0, 0.0, -1.0], [1.0, 1.0, 1.0]);
+        let sun = Light::directional([0.0, 0.0, -1.0], [1.0, 1.0, 1.0]).expect("light");
 
         let scene = Scene::new();
         // Add in the WRONG order on purpose (near before far). With proper
@@ -144,7 +144,7 @@ fn cross_shader_blend_sorts_globally() {
         ] {
             for z in zs {
                 let m = Model::new(unit_quad(), mat.clone());
-                m.translate([0.0, 0.0, z]);
+                m.translate([0.0, 0.0, z]).expect("translate");
                 models.push(m);
             }
         }
@@ -153,7 +153,7 @@ fn cross_shader_blend_sorts_globally() {
             .expect("camera")
             .look_at([0.0, 0.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
             .expect("camera");
-        let sun = Light::directional([0.0, 0.0, -1.0], [1.0, 1.0, 1.0]);
+        let sun = Light::directional([0.0, 0.0, -1.0], [1.0, 1.0, 1.0]).expect("light");
 
         let scene = Scene::new();
         // Scramble the insertion order so the test exercises the sort,
@@ -202,15 +202,15 @@ fn opaque_and_blend_in_same_pass_render_without_panic() {
             .alpha_mode(AlphaMode::Blend);
 
         let solid = Model::new(unit_quad(), opaque_mat);
-        solid.translate([0.0, 0.0, -1.0]);
+        solid.translate([0.0, 0.0, -1.0]).expect("translate");
         let glass = Model::new(unit_quad(), blend_mat);
-        glass.translate([0.0, 0.0, 0.0]);
+        glass.translate([0.0, 0.0, 0.0]).expect("translate");
 
         let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0)
             .expect("camera")
             .look_at([0.0, 0.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
             .expect("camera");
-        let sun = Light::directional([0.0, 0.0, -1.0], [1.0, 1.0, 1.0]);
+        let sun = Light::directional([0.0, 0.0, -1.0], [1.0, 1.0, 1.0]).expect("light");
 
         let scene = Scene::new();
         scene

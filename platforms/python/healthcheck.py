@@ -794,13 +794,33 @@ def check_scalars_and_pairs():
         Material.pbr().metallic(True)
     except TypeError as e:
         assert str(e) == "Material.metallic: value must be a number, got bool", e
-    # A Material factor or a UV rotation refuses NaN, an infinity and a number past
-    # the f32 range, as a color item does, and the material keeps its value.
+    # A Material factor, a UV rotation, a light's intensity or cone angle and a rotation
+    # angle refuse NaN, an infinity and a number past the f32 range, as a color item does,
+    # and the object keeps its value.
     material = Material.pbr().metallic(0.25)
+    finite = ("Model.rotate", "Light.set_intensity", "Light.set_cone_angles")
     for name, call in scalars.items():
-        if name.startswith("Material."):
+        if name.startswith("Material.") or name in finite:
             for bad in (float("nan"), float("inf"), 1e39):
                 raises_invalid(f"{name}({bad})", lambda: call(bad))
+    light.set_intensity(2.5)
+    try:
+        light.set_intensity(1e39)
+    except InvalidInputError as e:
+        assert str(e) == "Light.set_intensity: value must be a finite number that fits a 32-bit float, got 1e39", e
+    else:
+        raise AssertionError("Light.set_intensity(1e39) should raise InvalidInputError")
+    assert light.intensity() == 2.5
+    # An axis of length 0 has no direction to turn around: Rust refuses it, and Python
+    # raises its message as an InvalidInputError, with the transform as it was.
+    turned = model.transform()
+    try:
+        model.rotate([0, 0, 0], 0.5)
+    except InvalidInputError as e:
+        assert str(e) == "Model::rotate: axis has length 0, so it has no direction to turn around", e
+    else:
+        raise AssertionError("Model.rotate with a zero axis should raise InvalidInputError")
+    assert model.transform() == turned
     try:
         material.metallic(1e39)
     except InvalidInputError as e:
@@ -941,8 +961,16 @@ def check_vectors():
     model.set_transform(tuple(np.arange(16.0)))
     assert model.transform()[1][0] == 4.0, "a flat matrix fills column after column"
     for label, matrix in (("15 numbers", [0.0] * 15), ("3 columns", identity[:3]),
-                          ("a column of 3", identity[:3] + [[0.0, 0.0, 1.0]]), ("10**400", [10**400] + [0.0] * 15)):
+                          ("a column of 3", identity[:3] + [[0.0, 0.0, 1.0]]), ("10**400", [10**400] + [0.0] * 15),
+                          ("NaN", [float("nan")] + [0.0] * 15), ("1e39", identity[:3] + [[1e39, 0.0, 0.0, 1.0]]),
+                          ("an infinity", np.full((4, 4), np.inf, dtype=np.float32))):
         raises_invalid(f"Model.set_transform with {label}", lambda: model.set_transform(matrix))
+    try:
+        model.set_transform(identity[:3] + [[1e39, 0.0, 0.0, 1.0]])
+    except InvalidInputError as e:
+        expected = "Model.set_transform: column 3: item 0 must be a finite number that fits a 32-bit float, got 1e39"
+        assert str(e) == expected, e
+    assert model.transform()[1][0] == 4.0, "a refused matrix keeps the transform"
     for label, matrix in (("a string", ["1"] + [0.0] * 15), ("a bool", [True] + [0.0] * 15), ("bytes", bytes(16))):
         raises_type(f"Model.set_transform with {label}", lambda: model.set_transform(matrix))
 

@@ -9,6 +9,14 @@ the cheap normal-transform path the default PBR shader uses, so a stretched
 Model will shade slightly off. For a correct non-uniform-scale normal, use
 `Material::custom` with a shader that ships the explicit cofactor matrix.
 
+A factor that is NaN or an infinity returns `ModelError::NotFinite`, which
+names the call and the item, and the Model keeps its size. The other
+languages also refuse a factor past the 32-bit float range, such as
+`1e39`. JavaScript throws an `Error` named `InvalidInputError`, Python
+raises `InvalidInputError`, Swift throws `FragmentColorError` and Kotlin
+throws `FragmentColorException`. A factor of 0 is a valid scale, which
+flattens the Model along that axis.
+
 ## Example
 
 ```rust
@@ -24,7 +32,7 @@ mesh.add_vertices([
 ]);
 
 let model = Model::new(mesh, Material::pbr());
-model.scale([2.0, 2.0, 2.0]);
+model.scale([2.0, 2.0, 2.0])?;
 # Ok(())
 # }
 # fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }

@@ -463,6 +463,20 @@ final class Healthcheck: ExampleCase {
             ("Material.alphaCutoff: value", { _ = try material.alphaCutoff(1e39 as Double) }),
             ("Material.uvTransform: rotation", { _ = try material.uvTransform([0, 0] as [Double], [1, 1], Double.infinity) }),
             ("Material.textureTransform: rotation", { _ = try material.textureTransform(.normal, [0, 0], [1, 1], Float.nan) }),
+            ("Light.setIntensity: value", { _ = try Light.point([0, 1, 0], [1, 1, 1]).setIntensity(Float.nan) }),
+            ("Light.setIntensity: value", { _ = try Light.point([0, 1, 0], [1, 1, 1]).setIntensity(1e39 as Double) }),
+            ("Light.setConeAngles: inner_radians", {
+                _ = try Light.spot([0, 1, 0], [0, -1, 0], [1, 1, 1]).setConeAngles(Float.infinity, 0.5)
+            }),
+            ("Light.setConeAngles: outer_radians", {
+                _ = try Light.spot([0, 1, 0], [0, -1, 0], [1, 1, 1]).setConeAngles(0.1 as Double, Double.nan)
+            }),
+            ("Model.rotate: radians", { try Model(Mesh(), material).rotate([0, 1, 0], Float.nan) }),
+            ("Model.rotate: radians", { try Model(Mesh(), material).rotate([0, 1, 0] as [Double], 1e39) }),
+            ("Model.setTransform: item 0", { try Model(Mesh(), material).setTransform([Float.nan] + [Float](repeating: 0, count: 15)) }),
+            ("Model.setTransform: item 0", { try Model(Mesh(), material).setTransform([1e39] + [Double](repeating: 0, count: 15)) }),
+            // An axis of length 0 has no direction, which Rust refuses with its own message.
+            ("Model::rotate: axis has length 0", { try Model(Mesh(), material).rotate([0, 0, 0] as [Float], 1) }),
             ("Vertex: position", { _ = try Vertex([1e39, 0, 0] as [Double]) }),
             ("Vertex: position", { _ = try Vertex([Float.nan, 0]) }),
             ("Vertex.pbr: position", { _ = try Vertex.pbr([0, Double.infinity, 0]) }),
@@ -484,6 +498,15 @@ final class Healthcheck: ExampleCase {
                 }
             }
         }
+        // A refused setter or rotate leaves the light and the transform as they were.
+        let dimmer = try Light.point([0, 1, 0], [1, 1, 1]).setIntensity(2.5)
+        _ = try? dimmer.setIntensity(Double.infinity)
+        try assertEqual(dimmer.intensity(), 2.5, "a refused setIntensity keeps the intensity")
+        let turned = Model(Mesh(), material)
+        try turned.rotate([0, 1, 0], 0.5)
+        let before = turned.transform()
+        try? turned.rotate([0, 0, 0] as [Float], 0.5)
+        try assertEqual(turned.transform(), before, "a refused rotate keeps the transform")
         // A [Double] item prints the way the shared Rust message prints it.
         let shown: [(Double, String)] = [(1e39, "1e39"), (-1e39, "-1e39"), (.nan, "NaN"), (.infinity, "inf")]
         for (value, text) in shown {

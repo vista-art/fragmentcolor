@@ -53,7 +53,7 @@ fun Light.setColor(color: List<Double>): Light = setColor(readFloats(color, "Lig
 
 fun Light.setColor(color: DoubleArray): Light = setColor(readFloats(color, "Light.setColor"))
 
-fun Light.setIntensity(value: Double): Light = setIntensity(value.toFloat())
+fun Light.setIntensity(value: Double): Light = setIntensity(readFinite(value, "Light.setIntensity: value"))
 
 fun Light.setPosition(position: FloatArray): Light = setPosition(floats(position))
 
@@ -72,4 +72,7 @@ fun Light.setDirection(direction: DoubleArray): Light = setDirection(readFloats(
 fun Light.setRange(value: Double): Light = setRange(value.toFloat())
 
 fun Light.setConeAngles(innerRadians: Double, outerRadians: Double): Light =
-    setConeAngles(innerRadians.toFloat(), outerRadians.toFloat())
+    setConeAngles(
+        readFinite(innerRadians, "Light.setConeAngles: inner_radians"),
+        readFinite(outerRadians, "Light.setConeAngles: outer_radians"),
+    )

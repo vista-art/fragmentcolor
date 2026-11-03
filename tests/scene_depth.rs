@@ -55,7 +55,7 @@ fn square(material: Material, z: f32) -> Model {
         corners.map(|corner| Vertex::pbr(corner).set(Vertex::NORMAL, [0.0, 0.0, 1.0])),
     );
     let model = Model::new(mesh, material);
-    model.translate([0.0, 0.0, z]);
+    model.translate([0.0, 0.0, z]).expect("translate");
     model
 }
 

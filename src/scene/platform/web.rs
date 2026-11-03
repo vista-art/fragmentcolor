@@ -6,8 +6,8 @@ use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
 use crate::bindings::web::{
-    read_bytes, read_count, read_flag, read_float, read_items, read_text, read_unsigned,
-    read_vector,
+    read_bytes, read_count, read_finite, read_flag, read_float, read_floats, read_text,
+    read_unsigned, read_vector,
 };
 use crate::scene::{Camera, GltfSource, Light, LightKind, Model, PassRef, Scene};
 use crate::{Material, Mesh, Pass};
@@ -50,8 +50,7 @@ impl Model {
         )]
         matrix: &JsValue,
     ) -> Result<(), WebError> {
-        self.set_transform(read_matrix(matrix)?);
-        Ok(())
+        Ok(self.set_transform(read_matrix(matrix)?)?)
     }
 
     #[wasm_bindgen(js_name = "translate")]
@@ -61,8 +60,7 @@ impl Model {
         #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] offset: &JsValue,
     ) -> Result<(), WebError> {
         let offset = read_vector::<3>(offset, "Model.translate")?;
-        self.translate(offset);
-        Ok(())
+        Ok(self.translate(offset)?)
     }
 
     #[wasm_bindgen(js_name = "rotate")]
@@ -73,8 +71,8 @@ impl Model {
         #[wasm_bindgen(unchecked_param_type = "number")] radians: &JsValue,
     ) -> Result<(), WebError> {
         let axis = read_vector::<3>(axis, "Model.rotate: axis")?;
-        self.rotate(axis, read_float(radians, "Model.rotate: radians")?);
-        Ok(())
+        let radians = read_finite(radians, "Model.rotate: radians")?;
+        Ok(self.rotate(axis, radians)?)
     }
 
     #[wasm_bindgen(js_name = "scale")]
@@ -84,8 +82,7 @@ impl Model {
         #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] factor: &JsValue,
     ) -> Result<(), WebError> {
         let factor = read_vector::<3>(factor, "Model.scale")?;
-        self.scale(factor);
-        Ok(())
+        Ok(self.scale(factor)?)
     }
 
     #[wasm_bindgen(js_name = "visible")]
@@ -193,7 +190,7 @@ impl Light {
     ) -> Result<Light, WebError> {
         let direction = read_vector::<3>(direction, "Light.directional: direction")?;
         let color = read_vector::<3>(color, "Light.directional: color")?;
-        Ok(Light::directional(direction, color))
+        Ok(Light::directional(direction, color)?)
     }
 
     #[wasm_bindgen(js_name = "point")]
@@ -204,7 +201,7 @@ impl Light {
     ) -> Result<Light, WebError> {
         let position = read_vector::<3>(position, "Light.point: position")?;
         let color = read_vector::<3>(color, "Light.point: color")?;
-        Ok(Light::point(position, color))
+        Ok(Light::point(position, color)?)
     }
 
     #[wasm_bindgen(js_name = "spot")]
@@ -217,7 +214,7 @@ impl Light {
         let position = read_vector::<3>(position, "Light.spot: position")?;
         let direction = read_vector::<3>(direction, "Light.spot: direction")?;
         let color = read_vector::<3>(color, "Light.spot: color")?;
-        Ok(Light::spot(position, direction, color))
+        Ok(Light::spot(position, direction, color)?)
     }
 
     #[wasm_bindgen(js_name = "kind")]
@@ -275,7 +272,7 @@ impl Light {
         #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] color: &JsValue,
     ) -> Result<Light, WebError> {
         let color = read_vector::<3>(color, "Light.setColor")?;
-        Ok(self.set_color(color))
+        Ok(self.set_color(color)?)
     }
 
     #[wasm_bindgen(js_name = "setIntensity")]
@@ -284,7 +281,7 @@ impl Light {
         &self,
         #[wasm_bindgen(unchecked_param_type = "number")] value: &JsValue,
     ) -> Result<Light, WebError> {
-        Ok(self.set_intensity(read_float(value, "Light.setIntensity: value")?))
+        Ok(self.set_intensity(read_finite(value, "Light.setIntensity: value")?)?)
     }
 
     #[wasm_bindgen(js_name = "setPosition")]
@@ -323,8 +320,8 @@ impl Light {
         #[wasm_bindgen(unchecked_param_type = "number")] inner_radians: &JsValue,
         #[wasm_bindgen(unchecked_param_type = "number")] outer_radians: &JsValue,
     ) -> Result<Light, WebError> {
-        let inner = read_float(inner_radians, "Light.setConeAngles: inner_radians")?;
-        let outer = read_float(outer_radians, "Light.setConeAngles: outer_radians")?;
+        let inner = read_finite(inner_radians, "Light.setConeAngles: inner_radians")?;
+        let outer = read_finite(outer_radians, "Light.setConeAngles: outer_radians")?;
         Ok(self.set_cone_angles(inner, outer)?)
     }
 }
@@ -482,7 +479,7 @@ impl Scene {
         #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] color: &JsValue,
     ) -> Result<Scene, WebError> {
         let color = read_vector::<3>(color, "Scene.ambient")?;
-        Ok(self.ambient(color).clone())
+        Ok(self.ambient(color)?.clone())
     }
 
     #[wasm_bindgen(js_name = "models")]
@@ -510,8 +507,6 @@ crate::impl_js_bridge!(Scene, crate::PassError);
 crate::impl_js_bridge!(Model, crate::PassError);
 crate::impl_js_bridge!(Camera, crate::PassError);
 
-/// Reads a column-major 4x4 matrix: 16 numbers, or four columns of four, each list an array
-/// or a `Float32Array` as a float vector is. Any other list, or another count, throws naming the call.
 /// The pass `Scene.addTo` names: its index, or its name.
 fn read_pass_ref(target: &JsValue) -> Result<PassRef, WebError> {
     if let Some(index) = target.as_f64() {
@@ -543,6 +538,9 @@ fn add_object(scene: &Scene, target: PassRef, object: &JsValue) -> Result<(), We
     Ok(())
 }
 
+/// Reads a column-major 4x4 matrix: 16 numbers, or four columns of four, each list an array
+/// or a `Float32Array` as a float vector is, and each number finite and in the `f32` range.
+/// Any other list, count or number throws naming the call, and the column and item it reads.
 fn read_matrix(value: &JsValue) -> Result<[[f32; 4]; 4], WebError> {
     const LABEL: &str = "Model.setTransform";
     let columns = match value.dyn_ref::<js_sys::Array>() {
@@ -563,9 +561,9 @@ fn read_matrix(value: &JsValue) -> Result<[[f32; 4]; 4], WebError> {
     let mut matrix = [[0.0; 4]; 4];
     for (index, (column, slot)) in columns.iter().zip(matrix.iter_mut()).enumerate() {
         let label = format!("{LABEL}: column {index}");
-        let numbers = read_items(column, &label)?;
-        *slot = match <[f64; 4]>::try_from(numbers.as_slice()) {
-            Ok(column) => column.map(|number| number as f32),
+        let numbers = read_floats(column, &label)?;
+        *slot = match <[f32; 4]>::try_from(numbers.as_slice()) {
+            Ok(column) => column,
             Err(_) => {
                 return Err(WebError::new(
                     ErrorClass::InvalidInput,
@@ -587,10 +585,10 @@ fn list_columns(matrix: [[f32; 4]; 4]) -> Vec<js_sys::Float32Array> {
 
 /// A matrix of 16 numbers, column after column.
 fn read_flat_matrix(value: &JsValue, label: &str) -> Result<[[f32; 4]; 4], WebError> {
-    let numbers = read_items(value, label)?;
-    match <[f64; 16]>::try_from(numbers.as_slice()) {
+    let numbers = read_floats(value, label)?;
+    match <[f32; 16]>::try_from(numbers.as_slice()) {
         Ok(flat) => Ok(std::array::from_fn(|column| {
-            std::array::from_fn(|row| flat[column * 4 + row] as f32)
+            std::array::from_fn(|row| flat[column * 4 + row])
         })),
         Err(_) => Err(WebError::new(
             ErrorClass::InvalidInput,

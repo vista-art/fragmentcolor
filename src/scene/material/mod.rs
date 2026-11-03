@@ -616,7 +616,8 @@ struct Factors { roughness: f16, metallic: f32 }
             mat.shader()
                 .set("camera.position", [0.0_f32, 0.0, 1.0])
                 .ok();
-            let light = crate::Light::directional([0.0, 0.0, -1.0], [1.0, 1.0, 1.0]);
+            let light =
+                crate::Light::directional([0.0, 0.0, -1.0], [1.0, 1.0, 1.0]).expect("light");
 
             let mesh = Mesh::new();
             for (pos, uv) in [

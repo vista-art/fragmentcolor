@@ -25,10 +25,13 @@ fn occlusion_on_texcoord_1_reads_uv1() {
         // Arrange: draw the quad where it sits in clip space, lit by a white
         // ambient term alone, so each pixel shows the occlusion it samples.
         let scene = Scene::load(OCCLUSION_UV1).expect("load occlusion_uv1.gltf");
-        scene.no_defaults().ambient([1.0, 1.0, 1.0]);
+        scene
+            .no_defaults()
+            .ambient([1.0, 1.0, 1.0])
+            .expect("ambient");
         // A black light takes the place of the placeholder light.
         scene
-            .add(&Light::directional([0.0, -1.0, 0.0], [0.0; 3]))
+            .add(&Light::directional([0.0, -1.0, 0.0], [0.0; 3]).expect("light"))
             .expect("add a black light");
         let renderer = Renderer::new();
         let target = renderer

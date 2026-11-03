@@ -21,7 +21,15 @@ for parallel-ray illumination see
 
 A spot light carries every kind-specific field, so every kind-specific
 setter (`set_position`, `set_direction`, `set_range`, `set_cone_angles`)
-succeeds with `Ok(self)`.
+applies to it.
+
+An item of `position`, `direction` or `color` that is NaN or an infinity
+returns `LightError::NotFinite`, which names the call, the vector and the
+item, such as `Light::spot: direction: item 2 must be finite, got NaN`.
+The other languages also refuse an item past the 32-bit float range, such
+as `1e39`. JavaScript throws an `Error` named `InvalidInputError`, Python
+raises `InvalidInputError`, Swift throws `FragmentColorError` and Kotlin
+throws `FragmentColorException`.
 
 ## Example
 
@@ -29,8 +37,8 @@ succeeds with `Ok(self)`.
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Light;
 
-let torch = Light::spot([0.0, 1.8, 1.0], [0.0, -0.3, -1.0], [1.0, 0.9, 0.7])
-    .set_intensity(5.0)
+let torch = Light::spot([0.0, 1.8, 1.0], [0.0, -0.3, -1.0], [1.0, 0.9, 0.7])?
+    .set_intensity(5.0)?
     .set_cone_angles(0.15, 0.4)?;
 
 # assert_eq!(torch.position(), Some([0.0, 1.8, 1.0]));

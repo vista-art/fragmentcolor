@@ -39,7 +39,7 @@ use pyo3::prelude::*;
 use wasm_bindgen::prelude::*;
 
 use crate::core::expand_list;
-use crate::scene::{Camera, Light, SceneObject, push_uniform};
+use crate::scene::{Camera, Light, LightError, SceneObject, check_finite, push_uniform};
 use crate::{Pass, PassError, PassObject, Renderable};
 
 #[cfg_attr(wasm, wasm_bindgen)]
@@ -379,16 +379,20 @@ impl Scene {
     }
 
     #[lsp_doc("docs/api/scene/scene/ambient.md")]
-    pub fn ambient(&self, color: [f32; 3]) -> &Self {
+    pub fn ambient(&self, color: [f32; 3]) -> Result<&Self, LightError> {
+        check_finite("Scene::ambient", None, &color)?;
+        self.stamp_ambient(color);
+        Ok(self)
+    }
+
+    /// Keeps `color` for the shaders that join later and writes it on every shader the scene holds.
+    fn stamp_ambient(&self, color: [f32; 3]) {
         *self.inner.ambient.write() = Some(color);
-        // Stamp onto every shader currently in the scene. Future Models
-        // added via `Scene::add` pick the value up from the stash.
         for pass in self.inner.passes.read().iter() {
             for shader in pass.object.shaders.read().iter() {
                 push_uniform(shader, "lights.ambient", &color);
             }
         }
-        self
     }
 
     #[lsp_doc("docs/api/scene/scene/add_pass.md")]
@@ -636,7 +640,7 @@ impl Scene {
                 .default_light
                 .read()
                 .clone()
-                .unwrap_or_else(|| Light::directional([0.0, -0.3, -1.0], [1.0, 1.0, 1.0]));
+                .unwrap_or_else(Light::create_stock);
             let _ = pass.add(&light);
             self.inner.lights.write().push(light);
             *self.inner.has_light.write() = true;
@@ -830,7 +834,7 @@ mod tests {
         let material = Material::pbr();
         let model = Model::new(pbr_triangle_mesh(), material.clone());
         scene.add(&model).expect("add");
-        let light = Light::directional([0.0, -1.0, 0.0], [0.5, 0.0, 0.0]);
+        let light = Light::directional([0.0, -1.0, 0.0], [0.5, 0.0, 0.0]).expect("light");
         scene.add(&light).expect("light");
 
         let _ = scene.passes();
@@ -861,7 +865,7 @@ mod tests {
             .expect("camera")
             .look_at([1.0, 2.0, 3.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
             .expect("camera");
-        let light = Light::directional([0.0, -1.0, 0.0], [1.0, 0.95, 0.9]);
+        let light = Light::directional([0.0, -1.0, 0.0], [1.0, 0.95, 0.9]).expect("light");
 
         scene.add(&model).expect("model");
         scene.add(&camera).expect("camera");
@@ -911,8 +915,8 @@ mod tests {
         // Order matters for callers iterating "the second camera" or
         // pairing models with their loader-order glTF nodes.
         let scene = Scene::new();
-        let first = Light::directional([0.0, -1.0, 0.0], [1.0, 0.0, 0.0]);
-        let second = Light::point([0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+        let first = Light::directional([0.0, -1.0, 0.0], [1.0, 0.0, 0.0]).expect("light");
+        let second = Light::point([0.0, 0.0, 0.0], [0.0, 1.0, 0.0]).expect("light");
         scene.add(&first).expect("first");
         scene.add(&second).expect("second");
         let lights = scene.lights();
@@ -951,10 +955,10 @@ struct Lights { ambient: vec3<f16> }
         let scene = Scene::new();
         scene.add_pass(&pass);
 
-        scene.ambient([70000.0, 0.0, 0.0]);
+        scene.ambient([70000.0, 0.0, 0.0]).expect("ambient");
         let refused = half.object.check_pushes();
         let quiet = plain.object.check_pushes();
-        scene.ambient([0.5, 0.5, 0.5]);
+        scene.ambient([0.5, 0.5, 0.5]).expect("ambient");
         let fitted = half.object.check_pushes();
 
         let message = refused.expect_err("past the f16 range").to_string();
@@ -962,6 +966,26 @@ struct Lights { ambient: vec3<f16> }
         assert!(message.contains(expected), "{message}");
         assert!(quiet.is_ok(), "{quiet:?}");
         assert!(fitted.is_ok(), "{fitted:?}");
+    }
+
+    // Story: an ambient channel that isn't finite is refused, naming the item,
+    // and the scene and its shaders keep the color they had.
+    #[test]
+    fn ambient_refuses_a_channel_that_is_not_finite() {
+        let material = Material::pbr();
+        let scene = Scene::new();
+        scene
+            .add(&Model::new(pbr_triangle_mesh(), material.clone()))
+            .expect("model");
+        scene.ambient([0.5, 0.25, 0.125]).expect("ambient");
+
+        let refused = scene.ambient([0.0, f32::NAN, 0.0]).map(drop);
+
+        let message = refused.expect_err("NaN").to_string();
+        assert_eq!(message, "Scene::ambient: item 1 must be finite, got NaN");
+        let ambient: [f32; 3] = material.shader().get("lights.ambient").expect("read");
+        assert_eq!(ambient, [0.5, 0.25, 0.125]);
+        assert_eq!(*scene.inner.ambient.read(), Some([0.5, 0.25, 0.125]));
     }
 
     #[test]
@@ -1107,7 +1131,7 @@ struct Lights { ambient: vec3<f16> }
     #[test]
     fn an_add_during_a_refused_first_add_stays_in_the_graph() {
         let scene = Scene::new();
-        let light = Light::directional([0.0, -1.0, 0.0], [1.0; 3]);
+        let light = Light::directional([0.0, -1.0, 0.0], [1.0; 3]).expect("light");
         let racing = Racing {
             scene: scene.clone(),
             light: light.clone(),
@@ -1698,7 +1722,7 @@ struct Lights { ambient: vec3<f16> }
         let model = Model::new(pbr_triangle_mesh(), material.clone());
         scene.add(&model).expect("add");
 
-        let custom = Light::directional([0.0, -1.0, 0.0], [0.2, 0.4, 0.6]);
+        let custom = Light::directional([0.0, -1.0, 0.0], [0.2, 0.4, 0.6]).expect("light");
         scene.set_default_light(&custom);
 
         let _ = scene.passes();

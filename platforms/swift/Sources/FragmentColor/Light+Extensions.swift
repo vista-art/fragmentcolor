@@ -58,13 +58,14 @@ extension Light {
         return try setColor(color: readFloats(color, "Light.setColor"))
     }
 
+    // A number setter throws for NaN, an infinity or a `Double` past the `Float` range.
     @discardableResult
-    public func setIntensity(_ value: Float) -> Light {
-        return setIntensity(value: value)
+    public func setIntensity(_ value: Float) throws -> Light {
+        return try setIntensity(value: value)
     }
     @discardableResult
-    public func setIntensity(_ value: Double) -> Light {
-        return setIntensity(value: Float(value))
+    public func setIntensity(_ value: Double) throws -> Light {
+        return try setIntensity(value: readFinite(value, "Light.setIntensity: value"))
     }
 
     @discardableResult
@@ -103,8 +104,8 @@ extension Light {
     @discardableResult
     public func setConeAngles(_ innerRadians: Double, _ outerRadians: Double) throws -> Light {
         return try setConeAngles(
-            innerRadians: Float(innerRadians),
-            outerRadians: Float(outerRadians)
+            innerRadians: readFinite(innerRadians, "Light.setConeAngles: inner_radians"),
+            outerRadians: readFinite(outerRadians, "Light.setConeAngles: outer_radians")
         )
     }
 }

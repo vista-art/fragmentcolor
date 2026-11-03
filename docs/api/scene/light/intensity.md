@@ -13,7 +13,7 @@ to update it.
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Light;
 
-let bright = Light::point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0]).set_intensity(5.0);
+let bright = Light::point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0])?.set_intensity(5.0)?;
 # assert!((bright.intensity() - 5.0).abs() < 1.0e-6);
 # Ok(())
 # }

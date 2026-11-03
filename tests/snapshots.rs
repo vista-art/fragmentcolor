@@ -245,17 +245,22 @@ fn snapshot_clustered_lights() {
             ];
             let height = 0.25 + (index % 3) as f32 * 0.2;
             let position = [column * 0.75 - 5.6, height, row * 0.75 - 5.6];
-            let light = Light::point(position, color).set_intensity(0.6);
+            let light = Light::point(position, color)
+                .expect("light")
+                .set_intensity(0.6)
+                .expect("intensity");
             light.set_range(1.2).expect("range");
             pass.add(&light).expect("point light");
         }
         let spot = Light::spot([0.0, 5.0, -3.0], [0.0, -0.4, -1.0], [1.0, 0.9, 0.7])
+            .expect("light")
             .set_intensity(12.0)
+            .expect("intensity")
             .set_cone_angles(0.2, 0.45)
             .expect("cone");
         spot.set_range(10.0).expect("range");
         pass.add(&spot).expect("spot light");
-        pass.add(&Light::directional([0.3, -1.0, -0.5], [0.15, 0.15, 0.2]))
+        pass.add(&Light::directional([0.3, -1.0, -0.5], [0.15, 0.15, 0.2]).expect("light"))
             .expect("directional light");
 
         let img = render_pass_to_rgba(&pass, size).await;

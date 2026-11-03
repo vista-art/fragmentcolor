@@ -286,7 +286,7 @@ mod tests {
         pass.add(&Model::new(mesh, material))
             .expect("add the model");
         // A black light takes the place of the placeholder light.
-        pass.add(&crate::Light::directional([0.0, -1.0, 0.0], [0.0; 3]))
+        pass.add(&crate::Light::directional([0.0, -1.0, 0.0], [0.0; 3]).expect("light"))
             .expect("add a black light");
         renderer.render(&pass, &target).expect("render");
         target.get_image().await.expect("read back")

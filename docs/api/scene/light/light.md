@@ -12,17 +12,27 @@ headlamps, theater lighting). The kind is set once at construction via
 The unified surface keeps the public API simple: one type, one
 [`Scene::add`](https://fragmentcolor.org/api/scene/scene#add) method, one
 [`Pass::add`](https://fragmentcolor.org/api/core/pass#add) method, and one
-binding per platform. Setters fall into two groups:
+binding per platform. Every setter returns `Result<Self, LightError>` for
+chaining, and they fall into two groups:
 
 - **Universal**: [`set_color`](https://fragmentcolor.org/api/scene/light#set_color)
   and [`set_intensity`](https://fragmentcolor.org/api/scene/light#set_intensity)
-  apply to every kind and return `Self` for chaining.
+  apply to every kind.
 - **Kind-specific**: [`set_position`](https://fragmentcolor.org/api/scene/light#set_position),
   [`set_direction`](https://fragmentcolor.org/api/scene/light#set_direction),
   [`set_range`](https://fragmentcolor.org/api/scene/light#set_range), and
   [`set_cone_angles`](https://fragmentcolor.org/api/scene/light#set_cone_angles)
-  return `Result<Self, LightError>`. Calling one on the wrong kind returns
-  `LightError::FieldNotApplicable { kind, field }`.
+  apply to the kinds that carry the field. Calling one on the wrong kind
+  returns `LightError::FieldNotApplicable { kind, field }`.
+
+The constructors and every setter but `set_range` refuse NaN and an
+infinity with `LightError::NotFinite`, which names the call and the item,
+and a refused setter leaves the light as it was. The other languages also
+refuse a number past the 32-bit float range there, such as `1e39`, before
+the call runs: an `InvalidInputError` in JavaScript and Python,
+`FragmentColorError` in Swift and `FragmentColorException` in Kotlin.
+`set_range` reads an infinity as an unlimited range and refuses NaN with
+`LightError::NegativeRange`.
 
 The matching getters use `Option<T>` for the kind-specific fields:
 [`position`](https://fragmentcolor.org/api/scene/light#position),
@@ -142,11 +152,11 @@ mesh.add_vertices([
 ]);
 let model = Model::new(mesh, Material::pbr());
 
-let sun = Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])
-    .set_intensity(1.5);
-let lamp = Light::point([0.0, 2.5, 0.0], [1.0, 0.95, 0.8]).set_intensity(15.0);
-let torch = Light::spot([0.0, 1.8, 1.0], [0.0, -0.3, -1.0], [1.0, 0.9, 0.7])
-    .set_intensity(5.0)
+let sun = Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])?
+    .set_intensity(1.5)?;
+let lamp = Light::point([0.0, 2.5, 0.0], [1.0, 0.95, 0.8])?.set_intensity(15.0)?;
+let torch = Light::spot([0.0, 1.8, 1.0], [0.0, -0.3, -1.0], [1.0, 0.9, 0.7])?
+    .set_intensity(5.0)?
     .set_cone_angles(0.15, 0.4)?;
 
 let pass = Pass::new("scene");
