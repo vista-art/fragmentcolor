@@ -13,7 +13,7 @@ use naga::{
 };
 use parking_lot::{Mutex, RwLock};
 use std::borrow::Cow;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock};
 
@@ -37,6 +37,7 @@ pub(crate) use uniforms::input::{UniformInput, is_whole_in, refuse_shape};
 
 mod mesh_attach;
 use mesh_attach::Preview;
+mod pushes;
 mod reflection;
 use reflection::{check_samplers, hash, parse_uniforms};
 pub(crate) use reflection::{create_validator, parse_wgsl, validate_module};
@@ -226,6 +227,9 @@ pub(crate) struct ShaderObject {
     /// The mesh the quick view draws with this shader, and the mesh generation that
     /// last passed this shader's checks.
     preview: Mutex<Option<Preview>>,
+    /// The values `push` kept because their keys can't hold them, by key,
+    /// which every render reports until a later push of the key lands.
+    refused: RwLock<BTreeMap<String, UniformInput>>,
 }
 
 impl Drop for ShaderObject {
@@ -335,14 +339,24 @@ impl ShaderObject {
     /// Shapes `input` to `key`'s declared type, as `set_input` does, and writes nothing.
     /// It passes while another thread writes the storage, where `set_input` queues the value unshaped.
     pub(crate) fn check_input(&self, key: &str, input: &UniformInput) -> Result<(), ShaderError> {
+        match self.storage.try_read() {
+            Some(storage) => self.shape_input(&storage, key, input),
+            None => Ok(()),
+        }
+    }
+
+    /// Shapes `input` to `key` in `storage`, or to the ambient term the light roots keep.
+    fn shape_input(
+        &self,
+        storage: &UniformStorage,
+        key: &str,
+        input: &UniformInput,
+    ) -> Result<(), ShaderError> {
         if self.routes_ambient(key) {
             let ambient = UniformData::Vec3(vec![0.0; 3]);
             return input.clone().resolve(key, &ambient).map(drop);
         }
-        match self.storage.try_read() {
-            Some(storage) => input.clone().resolve(key, storage.shape(key)?).map(drop),
-            None => Ok(()),
-        }
+        input.clone().resolve(key, storage.shape(key)?).map(drop)
     }
 
     /// Whether `key` is the ambient term of light roots, which the shader keeps beside its lights.
@@ -520,6 +534,7 @@ impl ShaderObject {
             bound_textures: DashMap::new(),
             texture_writes: Mutex::new(()),
             preview: Mutex::new(None),
+            refused: RwLock::default(),
         };
         // Refuses vertex inputs no mesh can feed, such as two with one name.
         object.reflect_vertex_inputs()?;

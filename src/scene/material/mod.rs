@@ -310,7 +310,7 @@ impl Material {
     fn set_factor(&self, call: &str, key: &str, numbers: &[f32]) -> Result<Self, MaterialError> {
         let item = (numbers.len() == 1).then_some("value");
         check_finite(call, item, numbers)?;
-        self.write(vec![(key.to_string(), build_input(numbers))])?;
+        self.write(vec![(key.to_string(), UniformInput::from(numbers))])?;
         Ok(self.clone())
     }
 
@@ -367,11 +367,6 @@ pub(crate) fn check_finite(
         label = format!("{label}: item {index}");
     }
     Err(MaterialError::NotFinite { label, value })
-}
-
-/// The numbers a uniform write takes, as a binding hands them over.
-pub(crate) fn build_input(numbers: &[f32]) -> UniformInput {
-    UniformInput::Numbers(numbers.iter().map(|&number| number.into()).collect())
 }
 
 /// Logs a key the Material's shader doesn't declare, which a setter skips.

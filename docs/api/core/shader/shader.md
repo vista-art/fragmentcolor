@@ -214,6 +214,8 @@ fn fs_main() -> @location(0) vec4<f32> {
 
 `set` takes plain numbers for an `f16` key, as it does for an `f32` one, and rounds each to the nearest `f16`. NaN, infinities and numbers past ±65504 that don't round back to it throw, and the key keeps its value. `get` returns the rounded value as `f32` numbers in every language, so `0.1` reads back as `0.0999755859375`. Past 2048, an `f16` skips some whole numbers, as an `f32` does past 2^24, and rounding one raises no error.
 
+A `Camera` or `Scene::ambient` value that an `f16` field can't hold leaves the field as it was, and `Renderer::render` returns the same error until a later value fits.
+
 A vertex input declared as `f16` or `vec4<f16>` reads the mesh's 32-bit floats, which the GPU converts, so one mesh feeds `f32` and `f16` shaders alike. An attach error names the type the shader declares, such as `vec2<f16>`.
 
 Values take WGSL's `f16` layout: 2 bytes for each component, a `vec3<f16>` aligned to 8 bytes, and the columns of a `mat3x3<f16>` 8 bytes apart. A root such as `var<uniform> gain: f16` spans 2 bytes, and `Renderer::read_storage` returns exactly as many bytes as a storage root spans. Immediate data can't hold `f16`, which `Shader::new` refuses.

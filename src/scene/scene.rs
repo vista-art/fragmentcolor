@@ -324,7 +324,7 @@ impl Scene {
         // will pick it up.
         if let Some(amb) = *self.inner.ambient.read() {
             for shader in pass.object.shaders.read().iter() {
-                push_uniform(shader, "lights.ambient", amb);
+                push_uniform(shader, "lights.ambient", &amb);
             }
         }
         Ok(())
@@ -384,7 +384,7 @@ impl Scene {
         // added via `Scene::add` pick the value up from the stash.
         for pass in self.inner.passes.read().iter() {
             for shader in pass.object.shaders.read().iter() {
-                push_uniform(shader, "lights.ambient", color);
+                push_uniform(shader, "lights.ambient", &color);
             }
         }
         self
@@ -899,6 +899,50 @@ mod tests {
         let lights = scene.lights();
         assert_eq!(lights[0].color(), [1.0, 0.0, 0.0]);
         assert_eq!(lights[1].color(), [0.0, 1.0, 0.0]);
+    }
+
+    // Story: an ambient color past the range of a shader's f16 ambient stays as that
+    // shader's refusal, which a later ambient that fits clears. A shader without the
+    // key refuses nothing.
+    #[test]
+    fn an_ambient_a_shader_cannot_hold_stays_refused() {
+        let half = crate::Shader::new(
+            "enable f16;
+struct Lights { ambient: vec3<f16> }
+@group(0) @binding(0) var<uniform> lights: Lights;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  return vec4<f32>(f32(i), 0.0, 0.0, 1.0);
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> {
+  return vec4<f32>(vec3<f32>(lights.ambient), 1.0);
+}",
+        )
+        .expect("shader");
+        let plain = crate::Shader::new(
+            "
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  return vec4<f32>(f32(i), 0.0, 0.0, 1.0);
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }",
+        )
+        .expect("shader");
+        let pass = Pass::new("ambient");
+        pass.add_shader(&half).expect("shader");
+        pass.add_shader(&plain).expect("shader");
+        let scene = Scene::new();
+        scene.add_pass(&pass);
+
+        scene.ambient([70000.0, 0.0, 0.0]);
+        let refused = half.object.check_pushes();
+        let quiet = plain.object.check_pushes();
+        scene.ambient([0.5, 0.5, 0.5]);
+        let fitted = half.object.check_pushes();
+
+        let message = refused.expect_err("past the f16 range").to_string();
+        let expected = "lights.ambient: expected vec3<f16>, got 70000";
+        assert!(message.contains(expected), "{message}");
+        assert!(quiet.is_ok(), "{quiet:?}");
+        assert!(fitted.is_ok(), "{fitted:?}");
     }
 
     #[test]

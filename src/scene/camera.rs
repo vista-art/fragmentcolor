@@ -499,8 +499,8 @@ impl Camera {
         let mut attached = self.object.attached.write();
         attached.retain(|weak| {
             if let Some(shader) = weak.upgrade() {
-                push_uniform(&shader, "camera.view_proj", view_proj);
-                push_uniform(&shader, "camera.position", position);
+                push_uniform(&shader, "camera.view_proj", view_proj.as_flattened());
+                push_uniform(&shader, "camera.position", &position);
                 true
             } else {
                 false
@@ -536,8 +536,8 @@ impl SceneObject for Camera {
         {
             let mut attached = self.object.attached.write();
             for s in shaders {
-                push_uniform(&s, "camera.view_proj", view_proj);
-                push_uniform(&s, "camera.position", position);
+                push_uniform(&s, "camera.view_proj", view_proj.as_flattened());
+                push_uniform(&s, "camera.position", &position);
                 attached.push(Arc::downgrade(&s));
             }
         }
@@ -561,8 +561,12 @@ impl SceneObject for Camera {
     }
 
     fn apply_to_shader(&self, shader: &Shader) {
-        push_uniform(&shader.object, "camera.view_proj", self.view_proj());
-        push_uniform(&shader.object, "camera.position", self.position());
+        push_uniform(
+            &shader.object,
+            "camera.view_proj",
+            self.view_proj().as_flattened(),
+        );
+        push_uniform(&shader.object, "camera.position", &self.position());
         self.object
             .attached
             .write()
@@ -878,6 +882,63 @@ struct Camera { view_proj: mat4x4<f16>, position: vec3<f16> };
         let moved: Vec<f32> = shader.get("camera.view_proj").expect("view_proj");
         assert_eq!(moved, round(&camera.view_proj().concat()));
         assert_ne!(moved, attached);
+    }
+
+    // Story: a camera position a shader's whole-number slot can't hold fails each render
+    // with the slot's error, and the render draws again once the camera moves to whole
+    // numbers. A shader on the pass without the camera's keys takes nothing and stays quiet.
+    #[test]
+    fn render_reports_a_camera_value_the_shader_refuses() {
+        pollster::block_on(async move {
+            let renderer = crate::Renderer::new();
+            let target = renderer
+                .create_texture_target([4, 4])
+                .await
+                .expect("texture target");
+            let whole = Shader::new(
+                "struct Camera { view_proj: mat4x4<f32>, position: vec3<i32> }
+@group(0) @binding(0) var<uniform> camera: Camera;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>, 3>(vec2f(-1.0, -1.0), vec2f(3.0, -1.0), vec2f(-1.0, 3.0));
+  return camera.view_proj * vec4<f32>(p[i], 0.0, 1.0);
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> {
+  return vec4<f32>(vec3<f32>(camera.position), 1.0);
+}",
+            )
+            .expect("shader");
+            let plain = Shader::new(
+                "
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  return vec4<f32>(f32(i), 0.0, 0.0, 1.0);
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }",
+            )
+            .expect("shader");
+            let pass = crate::Pass::new("camera");
+            pass.add_shader(&whole).expect("shader");
+            pass.add_shader(&plain).expect("shader");
+            let up = [0.0, 1.0, 0.0];
+            let camera = Camera::perspective(1.0, 1.0, 0.1, 100.0)
+                .expect("camera")
+                .look_at([0.5, 0.0, 5.0], [0.0, 0.0, 0.0], up)
+                .expect("camera");
+            pass.add(&camera).expect("camera");
+
+            let refused = renderer.render(&pass, &target);
+            let again = renderer.render(&pass, &target);
+            camera
+                .look_at([0.0, 0.0, 5.0], [0.0, 0.0, 0.0], up)
+                .expect("camera");
+            let drawn = renderer.render(&pass, &target);
+
+            let message = refused.expect_err("a fraction").to_string();
+            let expected = "camera.position: expected vec3<i32>, got 0.5";
+            assert!(message.contains(expected), "{message}");
+            assert!(again.is_err(), "the second render drew");
+            drawn.expect("the camera moved to whole numbers");
+            assert!(plain.object.check_pushes().is_ok());
+        });
     }
 
     #[test]

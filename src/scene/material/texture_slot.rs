@@ -11,7 +11,7 @@ use pyo3::prelude::*;
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
-use super::{Material, MaterialError, build_input, check_finite};
+use super::{Material, MaterialError, check_finite};
 use crate::core::UniformInput;
 
 #[cfg_attr(wasm, wasm_bindgen)]
@@ -82,11 +82,17 @@ impl TextureSlot {
     /// The three writes of `transform` into this slot's `material.uv` entry.
     fn build_transform(self, transform: UvTransform) -> [(String, UniformInput); 3] {
         [
-            (self.format_key("offset"), build_input(&transform.offset)),
-            (self.format_key("scale"), build_input(&transform.scale)),
+            (
+                self.format_key("offset"),
+                UniformInput::from(transform.offset.as_slice()),
+            ),
+            (
+                self.format_key("scale"),
+                UniformInput::from(transform.scale.as_slice()),
+            ),
             (
                 self.format_key("rotation"),
-                build_input(&[transform.rotation]),
+                UniformInput::from([transform.rotation].as_slice()),
             ),
         ]
     }

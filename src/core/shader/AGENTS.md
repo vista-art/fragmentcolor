@@ -30,6 +30,7 @@ Creation checks (`Shader::wgsl`, which every constructor reaches)
 - Raw bytes for a storage or immediate root must be exactly its size (`UniformInput::resolve`, `set_storage_bytes`, `set_push_bytes`).
 - Every value reaches the storage through `set_input`, so `UniformInput::resolve` shapes and checks it. `ShaderObject::set`, which `Shader::set` and the internal callers (Camera, Scene, Material) reach, turns a `UniformData` into a `UniformInput` first, and refuses one with no loose form (`refuse_shape`): a whole struct takes its fields, an array its elements, a buffer root its bytes, and a sampler binds automatically.
 - Array elements get no keys of their own; `locate_key` resolves `u.items[2].v` by walking the shape.
+- `push` (`pushes.rs`) writes a value an attached object keeps in step, such as a camera's matrix, which `scene::push_uniform` hands it. A key the shader doesn't declare is skipped. A value its key can't hold stays in `refused`, and `check_pushes` shapes it again on every render (`plan_shader`, `plan_compute`) and returns the key's error until a later push of the key lands. A direct `set` of the key doesn't clear it.
 
 Reflection & mapping
 - Vertex input mapping order (`mesh_attach.rs` and `Renderer::vertex_buffer_layouts` follow the same one):

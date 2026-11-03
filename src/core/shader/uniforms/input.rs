@@ -66,6 +66,13 @@ impl UniformInput {
     }
 }
 
+/// Numbers a Rust caller holds as `f32`, such as a matrix's entries, as a binding hands them over.
+impl From<&[f32]> for UniformInput {
+    fn from(numbers: &[f32]) -> Self {
+        Self::Numbers(numbers.iter().map(|&number| number.into()).collect())
+    }
+}
+
 /// Lets typed Rust values take the same path as the bindings.
 /// Shapes with no loose form, such as a struct or a sampler, come back as the error.
 impl TryFrom<UniformData> for UniformInput {
