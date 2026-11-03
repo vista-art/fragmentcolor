@@ -34,6 +34,21 @@ jobs:
       - name: Workflows
         run: ${{ steps.actionlint.outputs.executable }} -color
 
+      # A Mac runs the tools with bash 3.2, which in a UTF-8 locale reads a non-ASCII
+      # byte right after an unbraced $NAME as part of the name. Shellcheck misses it.
+      - name: Shell scripts
+        run: |
+          set -euo pipefail
+          # shellcheck disable=SC2016 # Perl expands the variables in its own program.
+          git ls-files -z -- fc tools '*.sh' | xargs -0 perl -ne '
+            $sh = /^#!.*\b(ba)?sh\b/ || $ARGV =~ /\.sh$/ if $. == 1;
+            if ($sh && /\$[A-Za-z_][A-Za-z0-9_]*[^\x00-\x7F]/) {
+              print "::error file=$ARGV,line=$.::Brace the variable before the non-ASCII character, as in \${PORT}…\n";
+              $bad = 1;
+            }
+            close ARGV if eof;
+            END { exit 1 if $bad }'
+
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:

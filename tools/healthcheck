@@ -383,9 +383,9 @@ run_web() {
   mkdir -p "$hc_pkg"
   rsync -a --delete "$pkg_dir/" "$hc_pkg/" 2>/dev/null || cp -a "$pkg_dir/." "$hc_pkg/"
 
-  # Diagnostic markers — when CI hangs we lose all stderr otherwise; these
-  # let us see exactly which step stalled. Lightweight echo, no perf hit.
-  echo "[run_web] static server starting on port $PORT…"
+  # A CI run that hangs loses its stderr.
+  # These markers show the step that stalled.
+  echo "[run_web] static server starting on port ${PORT}…"
 
   # Start static server and run Playwright against it
   local pid
