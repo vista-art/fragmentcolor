@@ -1155,7 +1155,8 @@ shaders that join later via `Scene::add`.
 A shader whose `lights.ambient` can't hold the color, such as an `f16`
 ambient and a channel past ±65504, keeps the color it had, and
 `Renderer::render` returns the shader's `ShaderError::TypeMismatch` until a
-later `ambient` call fits. A shader without `lights.ambient` takes nothing.
+color lands there, from a later `ambient` call or from `Shader::set`. A
+shader without `lights.ambient` takes nothing.
 
 Returns a handle to the same Scene (Arc-shared) for chaining.
 

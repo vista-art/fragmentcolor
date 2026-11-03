@@ -432,7 +432,7 @@ class Renderer:
 
         `render` also returns what the GPU rejects. When a pipeline fails to build or a frame's commands fail, it returns a [DeviceError](https://fragmentcolor.org/api/errors/deviceerror), `RendererError::DeviceError` in Rust. Its `kind` tells validation errors, internal errors such as a shader the backend compiler refuses, and running out of memory apart, and its `label` names the step that failed: the render pipeline, the compute pipeline, the light binning pipeline, the frame, or a bind group or texture view inside the frame. When one error causes another, `render` returns the first. In Rust, Python, Swift and Kotlin, a pipeline that failed is never kept, and the next frame builds it again and returns the same error.
 
-        A frame that fails is still presented. wgpu clears an image that no valid command drew into, so after a GPU error the window usually shows a cleared frame. On Apple GPUs the renderer submits the commands recorded so far before each compute pass that follows another compute pass. When a pass after that point fails, what the earlier passes drew stays on the image. After a compute pass whose shader writes a storage texture with texture atomics, `render` also waits for the GPU to finish that pass before it records the next one, so a readback, a later pass and the next `render` all see its counts. A shader without its mesh, an instance count past the mesh's instances, a mesh the device's limits or its own checks refuse, a shader or texture the device checks refuse, a target from another `Renderer`, a pass target that is missing, a viewport past the device's 2D limit, and a pass whose own target or compute dispatch fails its checks fail before `render` takes a frame, and the window keeps its last image.
+        A frame that fails is still presented. wgpu clears an image that no valid command drew into, so after a GPU error the window usually shows a cleared frame. On Apple GPUs the renderer submits the commands recorded so far before each compute pass that follows another compute pass. When a pass after that point fails, what the earlier passes drew stays on the image. On Apple GPUs, after a compute pass whose shader binds a storage texture with atomic access, `render` also submits the commands recorded so far and waits for the GPU to finish them before it records the next pass, so a readback, a later pass and the next `render` all see the pass's counts. A shader without its mesh, an instance count past the mesh's instances, a mesh the device's limits or its own checks refuse, a shader or texture the device checks refuse, a target from another `Renderer`, a pass target that is missing, a viewport past the device's 2D limit, and a pass whose own target or compute dispatch fails its checks fail before `render` takes a frame, and the window keeps its last image.
 
         JavaScript gets the GPU's errors late, because WebGPU reports them after `render` has returned. Each error logs a `console.error` when it lands, and the next `render` still throws the first one, as an `Error` named `DeviceError`, with `kind`, `label` and `detail` properties, before doing any work. `load`, `readTexture`, `readStorage`, and `getImage` on a `Texture` or `TextureTarget` wait for the frames before them to report, so they throw a frame's error even when called right after it. A call that waits throws only the error of a frame rendered before it began: the error of a frame rendered while it waits, even one rendered in the same task right after the call, stays for the next call. Only the first error to land throws, and only once; the ones that land after it, before a call takes it, only log. The label names the render pipeline, the compute pipeline, the light binning pipeline or the frame. A pipeline that failed stays in the cache until its error lands, and a frame that draws with it before then reports a frame error. Once the error lands, the pipeline leaves the cache. In a loop that renders each frame, the next `render` throws the error before doing any work, and the one after it builds the pipeline again and reports the same error.
 
@@ -3105,7 +3105,8 @@ class Scene:
         A shader whose `lights.ambient` can't hold the color, such as an `f16`
         ambient and a channel past ±65504, keeps the color it had, and
         `Renderer::render` returns the shader's `ShaderError::TypeMismatch` until a
-        later `ambient` call fits. A shader without `lights.ambient` takes nothing.
+        color lands there, from a later `ambient` call or from `Shader::set`. A
+        shader without `lights.ambient` takes nothing.
 
         Returns a handle to the same Scene (Arc-shared) for chaining.
 
@@ -3641,10 +3642,12 @@ class Camera:
     `FragmentColorException` in Kotlin.
 
     A shader whose `camera.view_proj` or `camera.position` can't hold the
-    Camera's value, such as an `f16` position past ±65504, keeps the value it
-    had, and `Renderer::render` returns the shader's `ShaderError::TypeMismatch`
-    until the Camera moves to a value the field holds. A shader that declares
-    neither key takes nothing from the Camera, with no error.
+    Camera's value, such as an `f16` position past ±65504 or a `vec4<f32>`
+    position for the Camera's three numbers, keeps the value it had.
+    `Renderer::render` returns the shader's `ShaderError::TypeMismatch` until a
+    value of that key lands, from the Camera or from `Shader::set`. A shader
+    that declares neither key, such as one whose `camera` is a plain
+    `mat4x4<f32>`, takes nothing from the Camera, with no error.
 
     The Camera is the user's domain, not the Material's: a Material is "what the
     surface looks like under any light from any viewpoint", a Camera is "which
