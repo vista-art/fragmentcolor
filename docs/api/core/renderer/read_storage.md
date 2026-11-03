@@ -8,6 +8,9 @@ the bytes.
 This is the only way to observe what a compute pass *wrote* into a storage
 binding. [`Shader::get`](https://fragmentcolor.org/api/core/shader) returns
 what was last set on the CPU side, so GPU writes don't show up through it.
+A [`Shader::set`](https://fragmentcolor.org/api/core/shader#set) on any field
+of the root uploads the whole root from that CPU copy at the next render that
+binds it, which replaces what a compute pass wrote there.
 
 `read_storage` is `async` because the underlying `map_async` requires an
 awaited callback. It returns a Promise in JS, is `async` in Swift and
