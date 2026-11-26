@@ -33,6 +33,11 @@ extension Model {
         self.init(mesh: mesh, material: .pbr(material))
     }
 
+    /// A Model that draws `mesh` with an UnlitMaterial, which the generated initializer takes as `.unlit`.
+    public convenience init(_ mesh: Mesh, _ material: UnlitMaterial) {
+        self.init(mesh: mesh, material: .unlit(material))
+    }
+
     /// A Model that draws `mesh` with a Shader of your own, which the generated initializer takes as `.custom`.
     public convenience init(_ mesh: Mesh, _ material: Shader) {
         self.init(mesh: mesh, material: .custom(material))

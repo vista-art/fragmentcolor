@@ -2,7 +2,7 @@
 
 Construct a `Model` from a `Mesh` and a
 [Material](https://fragmentcolor.org/api/scene/material): a `PbrMaterial`,
-or a `Shader` of your own. Both arguments are taken by value; the Model owns
+an `UnlitMaterial`, or a `Shader` of your own. Both arguments are taken by value; the Model owns
 them. The transform starts at the 4×4 identity
 matrix. The renderer reads it at draw time and passes it to the vertex stage
 as the `model_0` to `model_3` instance attributes, the four columns of a

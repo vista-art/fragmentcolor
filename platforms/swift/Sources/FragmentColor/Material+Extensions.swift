@@ -3,7 +3,7 @@
 //  FragmentColor
 //
 //  Unlabeled-argument overloads for the uniffi-generated material API:
-//  PbrMaterial and the MaterialMap its map calls return.
+//  PbrMaterial, UnlitMaterial and the MaterialMap their map calls return.
 //  Mirrors the spelling used by the JS / Python bindings so doc examples
 //  read identically across every platform.
 //
@@ -108,6 +108,39 @@ extension PbrMaterial {
             scale: readFloats(scale, "PbrMaterial.uvTransform: scale"),
             rotation: readFinite(rotation, "PbrMaterial.uvTransform: rotation")
         )
+    }
+}
+
+extension UnlitMaterial {
+    // MARK: - Setters, spelled as on PbrMaterial.
+
+    @discardableResult
+    public func alphaCutoff(_ value: Float) throws -> UnlitMaterial {
+        return try alphaCutoff(value: value)
+    }
+    @discardableResult
+    public func alphaCutoff(_ value: Double) throws -> UnlitMaterial {
+        return try alphaCutoff(value: readFinite(value, "UnlitMaterial.alphaCutoff: value"))
+    }
+
+    @discardableResult
+    public func doubleSided(_ value: Bool) -> UnlitMaterial {
+        return doubleSided(value: value)
+    }
+
+    @discardableResult
+    public func baseColor(_ color: [Float]) throws -> UnlitMaterial {
+        return try baseColor(color: color)
+    }
+    @discardableResult
+    @_disfavoredOverload
+    public func baseColor(_ color: [Double]) throws -> UnlitMaterial {
+        return try baseColor(color: readFloats(color, "UnlitMaterial.baseColor"))
+    }
+
+    @discardableResult
+    public func alphaMode(_ mode: AlphaMode) -> UnlitMaterial {
+        return alphaMode(mode: mode)
     }
 }
 

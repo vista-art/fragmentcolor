@@ -183,11 +183,11 @@ ktx2 = "0.5"
 # Read-only glTF 2.0 / GLB loader. `import` is the default file-I/O surface
 # (`gltf::import` / `import_slice`); `utils` adds the typed accessors that
 # decode `u8`/`u16` indices and tightly-packed vertex attributes; the
-# `KHR_lights_punctual` extension is opt-in. `extras` accepts application
+# `KHR_lights_punctual` and `KHR_materials_unlit` extensions are opt-in. `extras` accepts application
 # attributes such as `_ID`, which gltf-json rejects without it. `extensions`
 # keeps the raw extension JSON, the only way to reach `KHR_texture_transform`
 # on normal and occlusion textures.
-gltf = { version = "1", features = ["KHR_lights_punctual", "KHR_texture_transform", "extensions", "extras"] }
+gltf = { version = "1", features = ["KHR_lights_punctual", "KHR_materials_unlit", "KHR_texture_transform", "extensions", "extras"] }
 
 # Python FFI (optional)
 pyo3 = { version = "0.29.3", features = ["abi3-py39"], optional = true }

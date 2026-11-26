@@ -28,7 +28,7 @@ use pyo3::prelude::*;
 use wasm_bindgen::prelude::*;
 
 use crate::core::UniformInput;
-use crate::scene::material::{LIGHT, write_values};
+use crate::scene::material::{LIGHT, LINEAR_TO_SRGB, MESH_TRANSFORM, write_values};
 use crate::scene::{MapSlot, UvSet, UvTransform, check_finite};
 use crate::{AlphaMode, MaterialError, MaterialMap, Shader};
 
@@ -43,25 +43,11 @@ const PBR_MAIN: &str = include_str!("pbr_main.wgsl");
 /// The light roots and the loops that read them.
 const PBR_LIGHTS: &str = include_str!("pbr_lights.wgsl");
 
-/// The registry snippets the built-in PBR shader composes from, baked in
-/// directly rather than resolved through the shader registry. They power the
-/// engine's own `PbrMaterial::new()`, so they must be present on every platform
-/// regardless of which `shaders-<category>` features the consumer enabled,
-/// including the slim web build (`--no-default-features`), whose synchronous
-/// constructor cannot fetch them over the network. Embedding the three files
-/// (a few KB) keeps `PbrMaterial::new()` infallible and offline everywhere
-/// without dragging the rest of the registry into the wasm bundle.
-const MESH_TRANSFORM: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/docs/website/public/shaders/mesh/transform.wgsl"
-));
+/// The `material/pbr` registry snippet, baked in directly rather than resolved through the
+/// shader registry, as `MESH_TRANSFORM` and `LINEAR_TO_SRGB` are (see `scene::material`).
 const MATERIAL_PBR: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/docs/website/public/shaders/material/pbr.wgsl"
-));
-const LINEAR_TO_SRGB: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/docs/website/public/shaders/color/linear_to_srgb.wgsl"
 ));
 
 #[cfg_attr(wasm, wasm_bindgen)]
@@ -276,7 +262,7 @@ impl PbrMaterial {
 impl PbrMaterial {
     /// The handle to the map in `slot`.
     pub(crate) fn map(&self, slot: MapSlot) -> MaterialMap {
-        MaterialMap::new(self.shader.clone(), slot)
+        MaterialMap::new(self.shader.clone(), slot, "PbrMaterial")
     }
 
     /// Writes the factor under `key` from `numbers`, all of them finite, as `call` takes it.

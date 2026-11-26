@@ -26,17 +26,18 @@ a `Renderer`, with an error that names the image.
 
 The loader reads static glTF: mesh primitives (`POSITION`, `NORMAL`,
 `TEXCOORD_0`, `TEXCOORD_1`, `COLOR_0`, `TANGENT` and indices), PBR-MR
-materials with all five maps as `PbrMaterial`s, per-node transforms flattened into
+materials with all five maps as `PbrMaterial`s, materials with
+`KHR_materials_unlit` as `UnlitMaterial`s, per-node transforms flattened into
 Model matrices, glTF camera nodes, and `KHR_lights_punctual` lights.
-Animation, skinning, morph targets, and material extensions beyond PBR-MR
-and `KHR_texture_transform` are out of scope; they parse cleanly and the
-loader ignores them.
+Animation, skinning, morph targets, and material extensions beyond PBR-MR,
+`KHR_materials_unlit` and `KHR_texture_transform` are out of scope; they parse
+cleanly and the loader ignores them.
 
 Each map samples the UV set its `texCoord` names, through its own
 `KHR_texture_transform`. The extension's `texCoord`, when it has one, wins
 over the texture's. A primitive without `TEXCOORD_1` takes its `TEXCOORD_0`
 values as `UV1`, so a map on set 1 samples the same UVs as set 0 there.
-The PBR material samples two UV sets, so a texture that names `TEXCOORD_2`
+Both material types sample two UV sets, so a texture that names `TEXCOORD_2`
 or above returns `SceneLoadError::Invalid`, naming the texture, such as
 `occlusionTexture`.
 

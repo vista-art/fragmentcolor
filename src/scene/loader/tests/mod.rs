@@ -943,6 +943,40 @@ fn load_reads_a_null_texture_transform_as_none_on_every_slot() {
     assert_eq!(read_slot(material, 2), (1, [0.0, 0.0], [1.0, 1.0], 0.0));
 }
 
+// Story: a glTF material with KHR_materials_unlit loads as an UnlitMaterial with its base
+// color factor and texture, its alpha settings and doubleSided. One without the extension
+// still loads as a PbrMaterial.
+#[test]
+fn load_reads_khr_materials_unlit_as_an_unlit_material() {
+    let materials = quote(&[
+        "'materials':[{'pbrMetallicRoughness':{'baseColorFactor':[0.25,0.5,0.75,0.5],",
+        "'baseColorTexture':{'index':0,'texCoord':1,",
+        "'extensions':{'KHR_texture_transform':{'scale':[2.0,2.0]}}},'metallicFactor':0.0},",
+        "'alphaMode':'MASK','alphaCutoff':0.25,'doubleSided':true,",
+        "'extensions':{'KHR_materials_unlit':{}}}]",
+    ]);
+    let scene = load_textured(&materials).expect("load");
+    let models = scene.models();
+    let Material::Unlit(material) = models[0].material() else {
+        panic!("expected an UnlitMaterial, got {:?}", models[0].material());
+    };
+    let shader = material.shader();
+    let base: [f32; 4] = shader.get("material.base_color").expect("base color");
+    let cutoff: f32 = shader.get("material.alpha_cutoff").expect("cutoff");
+    assert_eq!((base, cutoff), ([0.25, 0.5, 0.75, 0.5], 0.25));
+    assert_eq!(*shader.object.alpha_mode.read(), crate::AlphaMode::Mask);
+    assert!(*shader.object.double_sided.read());
+    assert!(shader.object.has_map("base_color_map"));
+    assert_eq!(
+        read_slot(models[0].material(), 0),
+        (1, [0.0, 0.0], [2.0, 2.0], 0.0)
+    );
+
+    let lit = quote(&["'materials':[{'pbrMetallicRoughness':{'baseColorTexture':{'index':0}}}]"]);
+    let scene = load_textured(&lit).expect("load");
+    assert!(matches!(scene.models()[0].material(), Material::Pbr(_)));
+}
+
 // Story: a texture transform whose number reads as an infinity in a 32-bit float,
 // such as an offset of 1e39, fails the load with an error that names the part.
 #[test]

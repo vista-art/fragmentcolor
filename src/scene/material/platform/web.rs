@@ -4,26 +4,31 @@ use wasm_bindgen::prelude::*;
 
 use crate::bindings::web::{describe, read_unsigned};
 use crate::errors::{ErrorClass, WebError};
-use crate::{AlphaMode, Material, PbrMaterial, Shader};
+use crate::{AlphaMode, Material, PbrMaterial, Shader, UnlitMaterial};
 
-/// The material a JS value holds: a `PbrMaterial` or a `Shader`, as `label` takes it.
+/// The material a JS value holds: a `PbrMaterial`, an `UnlitMaterial` or a `Shader`,
+/// as `label` takes it.
 pub(crate) fn read_material(value: &JsValue, label: &str) -> Result<Material, WebError> {
     if let Ok(material) = PbrMaterial::try_from(value) {
+        return Ok(material.into());
+    }
+    if let Ok(material) = UnlitMaterial::try_from(value) {
         return Ok(material.into());
     }
     if let Ok(shader) = Shader::try_from(value) {
         return Ok(shader.into());
     }
     Err(WebError::type_error(&format!(
-        "{label}: expected a PbrMaterial or a Shader, got {}",
+        "{label}: expected a PbrMaterial, an UnlitMaterial or a Shader, got {}",
         describe(value)
     )))
 }
 
-/// The object a JS caller holds for `material`: the `PbrMaterial` or the `Shader` itself.
+/// The object a JS caller holds for `material`: the material object or the `Shader` itself.
 pub(crate) fn write_material(material: &Material) -> JsValue {
     match material {
         Material::Pbr(material) => material.clone().into(),
+        Material::Unlit(material) => material.clone().into(),
         Material::Custom(shader) => shader.clone().into(),
     }
 }

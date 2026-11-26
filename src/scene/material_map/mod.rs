@@ -26,20 +26,26 @@ mod platform;
 pub struct MaterialMap {
     shader: Shader,
     slot: MapSlot,
+    /// The type of the material this map belongs to, as errors name the call.
+    owner: &'static str,
 }
 
 crate::impl_fc_kind!(MaterialMap, "MaterialMap");
 
 impl MaterialMap {
-    /// The handle to the map in `slot` of the material that draws with `shader`.
-    pub(crate) fn new(shader: Shader, slot: MapSlot) -> Self {
-        Self { shader, slot }
+    /// The handle to the map in `slot` of the `owner` material that draws with `shader`.
+    pub(crate) fn new(shader: Shader, slot: MapSlot, owner: &'static str) -> Self {
+        Self {
+            shader,
+            slot,
+            owner,
+        }
     }
 
     #[lsp_doc("docs/api/scene/material_map/texture.md")]
     pub fn texture(&self, source: impl Into<TextureInput>) -> Result<Self, MaterialError> {
         let input = source.into();
-        let call = self.slot.name_call("texture");
+        let call = self.name_call("texture");
         input.check_options(&call)?;
         match &input.data {
             TextureData::CloneOf(texture) => self.bind_texture(texture)?,
@@ -54,7 +60,7 @@ impl MaterialMap {
     #[lsp_doc("docs/api/scene/material_map/uv.md")]
     pub fn uv(&self, set: u32) -> Result<Self, MaterialError> {
         let set = UvSet::try_from(set).map_err(|_| MaterialError::UvSet {
-            call: self.slot.name_call("uv"),
+            call: self.name_call("uv"),
             set,
         })?;
         write_values(&self.shader, vec![self.slot.build_set(set)])?;
@@ -69,13 +75,23 @@ impl MaterialMap {
         rotation: f32,
     ) -> Result<Self, MaterialError> {
         let transform = UvTransform::new(offset, scale, rotation);
-        let transform = transform.check(&self.slot.name_call("transform"))?;
+        let transform = transform.check(&self.name_call("transform"))?;
         write_values(&self.shader, self.slot.build_transform(transform).into())?;
         Ok(self.clone())
     }
 }
 
 impl MaterialMap {
+    /// The slot this map fills.
+    pub(crate) fn slot(&self) -> MapSlot {
+        self.slot
+    }
+
+    /// The name of `method` on this map, as errors name the call.
+    fn name_call(&self, method: &str) -> String {
+        format!("{}::{}().{method}", self.owner, self.slot.pick_key())
+    }
+
     /// Sets the UV set and the transform this map samples with, or neither.
     pub(crate) fn set_uv(&self, set: UvSet, transform: UvTransform) -> Result<(), MaterialError> {
         let mut values = vec![self.slot.build_set(set)];
@@ -99,7 +115,8 @@ impl MaterialMap {
     }
 }
 
-/// The maps of the built-in PBR shader, in the order its `material.uv` array keeps them.
+/// The maps of the built-in shaders, in the order their `material.uv` arrays keep them.
+/// The unlit shader has the first one only.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum MapSlot {
     BaseColor,
@@ -118,12 +135,7 @@ impl MapSlot {
         Self::Emissive,
     ];
 
-    /// The name of `method` on this slot's map, as errors name the call.
-    pub(crate) fn name_call(self, method: &str) -> String {
-        format!("PbrMaterial::{}().{method}", self.pick_key())
-    }
-
-    /// The uniform the built-in PBR shader reads this slot's map from,
+    /// The uniform the built-in shaders read this slot's map from,
     /// which is also the name of the material call that returns the map.
     pub(crate) fn pick_key(self) -> &'static str {
         match self {

@@ -13,6 +13,7 @@ mod platform;
 #[allow(clippy::module_inception)]
 mod scene;
 mod scene_object;
+mod unlit_material;
 
 pub use camera::*;
 pub(crate) use finite::{NotFinite, check_finite};
@@ -28,4 +29,5 @@ pub use model::*;
 pub use pbr_material::PbrMaterial;
 pub use scene::{PassRef, Scene};
 pub use scene_object::SceneObject;
+pub use unlit_material::UnlitMaterial;
 pub(crate) use scene_object::push_uniform;

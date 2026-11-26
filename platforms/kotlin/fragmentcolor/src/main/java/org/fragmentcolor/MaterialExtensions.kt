@@ -48,6 +48,16 @@ fun PbrMaterial.uvTransform(offset: DoubleArray, scale: DoubleArray, rotation: D
         readFinite(rotation, "PbrMaterial.uvTransform: rotation"),
     )
 
+fun UnlitMaterial.alphaCutoff(value: Double): UnlitMaterial =
+    alphaCutoff(readFinite(value, "UnlitMaterial.alphaCutoff: value"))
+
+fun UnlitMaterial.baseColor(color: FloatArray): UnlitMaterial = baseColor(color.toList())
+
+@JvmName("baseColorDoubles")
+fun UnlitMaterial.baseColor(color: List<Double>): UnlitMaterial = baseColor(readFloats(color, "UnlitMaterial.baseColor"))
+
+fun UnlitMaterial.baseColor(color: DoubleArray): UnlitMaterial = baseColor(readFloats(color, "UnlitMaterial.baseColor"))
+
 fun MaterialMap.transform(offset: FloatArray, scale: FloatArray, rotation: Float): MaterialMap =
     transform(offset.toList(), scale.toList(), rotation)
 

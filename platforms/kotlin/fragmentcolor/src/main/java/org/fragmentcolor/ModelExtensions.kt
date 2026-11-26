@@ -8,6 +8,9 @@ package org.fragmentcolor
 /** A Model that draws `mesh` with a PbrMaterial, which the generated constructor takes as `Material.Pbr`. */
 fun Model(mesh: Mesh, material: PbrMaterial): Model = Model(mesh, Material.Pbr(material))
 
+/** A Model that draws `mesh` with an UnlitMaterial, which the generated constructor takes as `Material.Unlit`. */
+fun Model(mesh: Mesh, material: UnlitMaterial): Model = Model(mesh, Material.Unlit(material))
+
 /** A Model that draws `mesh` with a Shader of your own, which the generated constructor takes as `Material.Custom`. */
 fun Model(mesh: Mesh, material: Shader): Model = Model(mesh, Material.Custom(material))
 

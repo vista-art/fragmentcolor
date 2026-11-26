@@ -7,6 +7,7 @@ the rest are the things you put inside it.
 - Model
 - Material
 - PbrMaterial
+- UnlitMaterial
 - MaterialMap
 - Camera
 - Light

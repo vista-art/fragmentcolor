@@ -354,7 +354,7 @@ fn visit_node(
             let material = match cache.materials.get(&key) {
                 Some(material) => material.clone(),
                 None => {
-                    let material = Material::from(build_material(&primitive.material(), images)?);
+                    let material = build_material(&primitive.material(), images)?;
                     cache.materials.insert(key, material.clone());
                     material
                 }
