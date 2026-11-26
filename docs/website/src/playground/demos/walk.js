@@ -1,5 +1,5 @@
 // A small valley you walk through, built from the scene layer: Scene, Model,
-// Mesh, Material, Camera and Light. A sky pass draws first, and the
+// Mesh, PbrMaterial, Camera and Light. A sky pass draws first, and the
 // valley draws over it.
 
 import { formatValue } from "../codegen.js";
@@ -66,7 +66,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 }
 `;
 
-const PROGRAM = /* js */ `import { AlphaMode, Camera, Light, Material, Mesh, Model, Pass, Scene, Shader, Vertex } from "fragmentcolor";
+const PROGRAM = /* js */ `import { AlphaMode, Camera, Light, Mesh, Model, Pass, PbrMaterial, Scene, Shader, Vertex } from "fragmentcolor";
 import SKY_SOURCE from "./sky.wgsl?raw";
 
 const LIBRARY = ["color/linear_to_srgb"];
@@ -108,14 +108,14 @@ export async function setup(renderer, target) {
   scene.addPass(Pass.fromShader("sky", sky)).addPass(world);
   const add = (object) => scene.addTo("world", object);
 
-  add(new Model(ground(), Material.pbr().roughness(0.95)));
-  const water = Material.pbr().baseColor([0.02, 0.08, 0.1, 0.8]).roughness(0.08).alphaMode(AlphaMode.Blend);
+  add(new Model(ground(), new PbrMaterial().roughness(0.95)));
+  const water = new PbrMaterial().baseColor([0.02, 0.08, 0.1, 0.8]).roughness(0.08).alphaMode(AlphaMode.Blend);
   add(new Model(square(SIZE, WATER), water));
 
   // Trees and rocks share one mesh each, so each kind draws in one call.
   const obstacles = [];
   const tree = pine();
-  const bark = Material.pbr().roughness(0.8);
+  const bark = new PbrMaterial().roughness(0.8);
   for (let i = 0; obstacles.length < TREES && i < TREES * 8; i++) {
     const [x, z] = spot(i, SIZE * 0.42);
     if (height(x, z) < WATER + 0.5 || height(x, z) > 5 || Math.hypot(x, z) < 6) continue;
@@ -124,7 +124,7 @@ export async function setup(renderer, target) {
     obstacles.push([x, z, 0.35 * scale]);
   }
   const rock = boulder();
-  const stone = Material.pbr().roughness(0.7);
+  const stone = new PbrMaterial().roughness(0.7);
   for (let i = 0; i < ROCKS; i++) {
     const [x, z] = spot(i + 5000, SIZE * 0.45);
     const scale = 0.4 + random(i, 4) * 0.9;
@@ -136,7 +136,7 @@ export async function setup(renderer, target) {
   // Grass grows in meadows on the gentle slopes between the water and the rocks,
   // thicker where two slow waves meet. Its three kinds of tuft share one material.
   const kinds = [tuft(9, 0.55, LUSH), tuft(6, 0.85, DRY), tuft(12, 0.3, SHORT)];
-  const grass = Material.pbr().roughness(0.85);
+  const grass = new PbrMaterial().roughness(0.85);
   for (let i = 0; i < GRASS; i++) {
     const [x, z] = spot(i + 9000, SIZE * 0.4);
     const floor = height(x, z);
@@ -152,8 +152,8 @@ export async function setup(renderer, target) {
 
   // Lamps ring the clearing where the walk starts. Each one carries a point light.
   const post = column([0.02, 0.018, 0.016, 1]);
-  const metal = Material.pbr().metallic(0.6).roughness(0.4);
-  const bulb = Material.pbr().baseColor([1, 0.85, 0.6, 1]);
+  const metal = new PbrMaterial().metallic(0.6).roughness(0.4);
+  const bulb = new PbrMaterial().baseColor([1, 0.85, 0.6, 1]);
   const lamps = [];
   for (let i = 0; i < LAMPS; i++) {
     const angle = (i / LAMPS) * TAU;
@@ -433,9 +433,10 @@ const VALUES = {
   "sky.night": [0.002, 0.004, 0.012],
 };
 
-// From 0.12.7, Material::pbr encodes its colors for display and lights the unevenly scaled rocks the way they face,
-// and a pass that draws models gets a depth buffer of its own.
-const NEEDS = "Needs FragmentColor 0.12.7 or later.";
+// From 0.12.8, PbrMaterial is the material type: Material.pbr() is gone. Since 0.12.7 it encodes its colors
+// for display and lights the unevenly scaled rocks the way they face, and a pass that draws models gets a
+// depth buffer of its own.
+const NEEDS = "Needs FragmentColor 0.12.8 or later.";
 
 function quote(text) {
   return JSON.stringify(String(text));
@@ -468,7 +469,7 @@ use std::error::Error;
 use std::f32::consts::TAU;
 
 use fragmentcolor::{
-    AlphaMode, Camera, Light, Material, Mesh, Model, Pass, Renderer, Scene, Shader, Target, Vertex,
+    AlphaMode, Camera, Light, Mesh, Model, Pass, PbrMaterial, Renderer, Scene, Shader, Target, Vertex,
 };
 
 const SKY_SOURCE: &str = include_str!("sky.wgsl");
@@ -539,7 +540,7 @@ struct State {
     sun: Light,
     moon: Light,
     lamps: Vec<Light>,
-    bulb: Material,
+    bulb: PbrMaterial,
     camera: Camera,
     obstacles: Vec<[f32; 3]>,
     size: [u32; 2],
@@ -561,17 +562,17 @@ ${setCalls("rust", "sky", sky, { after: "?;" })}
     let scene = Scene::new();
     scene.add_pass(&Pass::from_shader("sky", &sky)).add_pass(&world);
 
-    scene.add_to("world", &Model::new(ground(), Material::pbr().roughness(0.95)))?;
-    let water = Material::pbr()
-        .base_color([0.02, 0.08, 0.1, 0.8])
-        .roughness(0.08)
+    scene.add_to("world", &Model::new(ground(), PbrMaterial::new().roughness(0.95)?))?;
+    let water = PbrMaterial::new()
+        .base_color([0.02, 0.08, 0.1, 0.8])?
+        .roughness(0.08)?
         .alpha_mode(AlphaMode::Blend);
     scene.add_to("world", &Model::new(square(SIZE, WATER), water))?;
 
     // Trees and rocks share one mesh each, so each kind draws in one call.
     let mut obstacles = Vec::new();
     let tree = pine();
-    let bark = Material::pbr().roughness(0.8);
+    let bark = PbrMaterial::new().roughness(0.8)?;
     for index in 0..(TREES * 8) as u32 {
         if obstacles.len() == TREES {
             break;
@@ -583,25 +584,25 @@ ${setCalls("rust", "sky", sky, { after: "?;" })}
         }
         let scale = 0.7 + random(index, 2) * 0.7;
         let turn = random(index, 3) * TAU;
-        scene.add_to("world", &place(&tree, &bark, [x, floor - 0.1, z], turn, [scale; 3]))?;
+        scene.add_to("world", &place(&tree, &bark, [x, floor - 0.1, z], turn, [scale; 3])?)?;
         obstacles.push([x, z, 0.35 * scale]);
     }
     let rock = boulder();
-    let stone = Material::pbr().roughness(0.7);
+    let stone = PbrMaterial::new().roughness(0.7)?;
     for index in 0..ROCKS {
         let [x, z] = spot(index + 5000, SIZE * 0.45);
         let scale = 0.4 + random(index, 4) * 0.9;
         let stretch = [scale * (1.0 + random(index, 5)), scale * 0.7, scale];
         let position = [x, height(x, z) - 0.15 * scale, z];
         let turn = random(index, 6) * TAU;
-        scene.add_to("world", &place(&rock, &stone, position, turn, stretch))?;
+        scene.add_to("world", &place(&rock, &stone, position, turn, stretch)?)?;
         obstacles.push([x, z, scale]);
     }
 
     // Grass grows in meadows on the gentle slopes between the water and the rocks,
     // thicker where two slow waves meet. Its three kinds of tuft share one material.
     let kinds = [tuft(9, 0.55, LUSH), tuft(6, 0.85, DRY), tuft(12, 0.3, SHORT)];
-    let grass = Material::pbr().roughness(0.85);
+    let grass = PbrMaterial::new().roughness(0.85)?;
     for index in 0..GRASS {
         let [x, z] = spot(index + 9000, SIZE * 0.4);
         let floor = height(x, z);
@@ -621,28 +622,28 @@ ${setCalls("rust", "sky", sky, { after: "?;" })}
         let size = 0.7 + random(index, 11) * 0.6;
         let stretch = [size, size * (0.8 + random(index, 14) * 0.5), size];
         let turn = random(index, 12) * TAU;
-        scene.add_to("world", &place(&kinds[kind], &grass, [x, floor - 0.02, z], turn, stretch))?;
+        scene.add_to("world", &place(&kinds[kind], &grass, [x, floor - 0.02, z], turn, stretch)?)?;
     }
 
     // Lamps ring the clearing where the walk starts. Each one carries a point light.
     let post = column([0.02, 0.018, 0.016, 1.0]);
-    let metal = Material::pbr().metallic(0.6).roughness(0.4);
-    let bulb = Material::pbr().base_color([1.0, 0.85, 0.6, 1.0]);
+    let metal = PbrMaterial::new().metallic(0.6)?.roughness(0.4)?;
+    let bulb = PbrMaterial::new().base_color([1.0, 0.85, 0.6, 1.0])?;
     let mut lamps = Vec::new();
     for index in 0..LAMPS {
         let angle = index as f32 / LAMPS as f32 * TAU;
         let (x, z) = (angle.cos() * 5.0, angle.sin() * 5.0);
         let y = height(x, z);
-        scene.add_to("world", &place(&post, &metal, [x, y, z], 0.0, [0.12, 2.6, 0.12]))?;
-        scene.add_to("world", &place(&post, &bulb, [x, y + 2.6, z], 0.785, [0.32; 3]))?;
-        let lamp = Light::point([x, y + 2.75, z], [1.0, 0.72, 0.42]).set_range(14.0)?;
+        scene.add_to("world", &place(&post, &metal, [x, y, z], 0.0, [0.12, 2.6, 0.12])?)?;
+        scene.add_to("world", &place(&post, &bulb, [x, y + 2.6, z], 0.785, [0.32; 3])?)?;
+        let lamp = Light::point([x, y + 2.75, z], [1.0, 0.72, 0.42])?.set_range(14.0)?;
         scene.add_to("world", &lamp)?;
         lamps.push(lamp);
         obstacles.push([x, z, 0.3]);
     }
 
-    let sun = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
-    let moon = Light::directional([0.3, -1.0, 0.5], [0.45, 0.55, 0.85]);
+    let sun = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])?;
+    let moon = Light::directional([0.3, -1.0, 0.5], [0.45, 0.55, 0.85])?;
     let camera = Camera::perspective(FOV, 1.0, 0.05, 200.0)?;
     scene
         .add_to("world", &sun)?
@@ -777,14 +778,14 @@ fn light(state: &State) -> Result<(), Box<dyn Error>> {
     state
         .sun
         .set_direction(sun.map(|value| -value))?
-        .set_color(warm)
-        .set_intensity(3.2 * day);
-    state.moon.set_intensity(0.35 * (1.0 - day));
-    state.scene.ambient(mix([0.025, 0.03, 0.06], [0.28, 0.32, 0.4], day));
+        .set_color(warm)?
+        .set_intensity(3.2 * day)?;
+    state.moon.set_intensity(0.35 * (1.0 - day))?;
+    state.scene.ambient(mix([0.025, 0.03, 0.06], [0.28, 0.32, 0.4], day))?;
     for lamp in &state.lamps {
-        lamp.set_intensity(5.0 * (1.0 - day));
+        lamp.set_intensity(5.0 * (1.0 - day))?;
     }
-    state.bulb.emissive(mix([0.3, 0.24, 0.14], [1.2, 0.75, 0.3], 1.0 - day));
+    state.bulb.emissive(mix([0.3, 0.24, 0.14], [1.2, 0.75, 0.3], 1.0 - day))?;
     state.sky.set("sky.sun", sun)?;
     state.sky.set("sky.day", day)?;
     Ok(())
@@ -982,12 +983,18 @@ fn face_normal([first, second, third]: &[Point; 3]) -> Point {
     normalize(cross(minus(*second, *first), minus(*third, *first)))
 }
 
-fn place(mesh: &Mesh, material: &Material, position: Point, turn: f32, scale: Point) -> Model {
+fn place(
+    mesh: &Mesh,
+    material: &PbrMaterial,
+    position: Point,
+    turn: f32,
+    scale: Point,
+) -> Result<Model, Box<dyn Error>> {
     let model = Model::new(mesh.clone(), material.clone());
-    model.translate(position);
-    model.rotate([0.0, 1.0, 0.0], turn);
-    model.scale(scale);
-    model
+    model.translate(position)?;
+    model.rotate([0.0, 1.0, 0.0], turn)?;
+    model.scale(scale)?;
+    Ok(model)
 }
 
 /// The same pseudo-random numbers in every language: a 32-bit integer hash.
@@ -1038,7 +1045,7 @@ import math
 from pathlib import Path
 from types import SimpleNamespace
 
-from fragmentcolor import AlphaMode, Camera, Light, Material, Mesh, Model, Pass, Scene, Shader, Vertex
+from fragmentcolor import AlphaMode, Camera, Light, Mesh, Model, Pass, PbrMaterial, Scene, Shader, Vertex
 
 ${wrap("", "LIBRARY = [", library.map(quote), "]", 88)}
 SKY_SOURCE = Path(__file__).with_name("sky.wgsl").read_text()
@@ -1081,14 +1088,14 @@ ${setCalls("python", "sky", sky)}
     scene = Scene()
     scene.add_pass(Pass.from_shader("sky", sky)).add_pass(world)
 
-    scene.add_to("world", Model(ground(), Material.pbr().roughness(0.95)))
-    water = Material.pbr().base_color([0.02, 0.08, 0.1, 0.8]).roughness(0.08).alpha_mode(AlphaMode.Blend)
+    scene.add_to("world", Model(ground(), PbrMaterial().roughness(0.95)))
+    water = PbrMaterial().base_color([0.02, 0.08, 0.1, 0.8]).roughness(0.08).alpha_mode(AlphaMode.Blend)
     scene.add_to("world", Model(square(SIZE, WATER), water))
 
     # Trees and rocks share one mesh each, so each kind draws in one call.
     obstacles = []
     tree = pine()
-    bark = Material.pbr().roughness(0.8)
+    bark = PbrMaterial().roughness(0.8)
     for index in range(TREES * 8):
         if len(obstacles) == TREES:
             break
@@ -1101,7 +1108,7 @@ ${setCalls("python", "sky", sky)}
         scene.add_to("world", place(tree, bark, [x, floor - 0.1, z], turn, [scale, scale, scale]))
         obstacles.append([x, z, 0.35 * scale])
     rock = boulder()
-    stone = Material.pbr().roughness(0.7)
+    stone = PbrMaterial().roughness(0.7)
     for index in range(ROCKS):
         x, z = spot(index + 5000, SIZE * 0.45)
         scale = 0.4 + random(index, 4) * 0.9
@@ -1113,7 +1120,7 @@ ${setCalls("python", "sky", sky)}
     # Grass grows in meadows on the gentle slopes between the water and the rocks,
     # thicker where two slow waves meet. Its three kinds of tuft share one material.
     kinds = [tuft(9, 0.55, LUSH), tuft(6, 0.85, DRY), tuft(12, 0.3, SHORT)]
-    grass = Material.pbr().roughness(0.85)
+    grass = PbrMaterial().roughness(0.85)
     for index in range(GRASS):
         x, z = spot(index + 9000, SIZE * 0.4)
         floor = height(x, z)
@@ -1130,8 +1137,8 @@ ${setCalls("python", "sky", sky)}
 
     # Lamps ring the clearing where the walk starts. Each one carries a point light.
     post = column([0.02, 0.018, 0.016, 1.0])
-    metal = Material.pbr().metallic(0.6).roughness(0.4)
-    bulb = Material.pbr().base_color([1.0, 0.85, 0.6, 1.0])
+    metal = PbrMaterial().metallic(0.6).roughness(0.4)
+    bulb = PbrMaterial().base_color([1.0, 0.85, 0.6, 1.0])
     lamps = []
     for index in range(LAMPS):
         angle = index / LAMPS * math.tau
@@ -1515,7 +1522,7 @@ struct State {
     let sun: Light
     let moon: Light
     let lamps: [Light]
-    let bulb: Material
+    let bulb: PbrMaterial
     let camera: Camera
     let obstacles: [[Float]]
     var size: [UInt32] = [0, 0]
@@ -1538,14 +1545,14 @@ ${setCalls("swift", "sky", sky, { before: "try " })}
     let scene = Scene()
     scene.addPass(Pass.fromShader("sky", sky)).addPass(world)
 
-    try scene.addTo("world", Model(ground(), Material.pbr().roughness(0.95)))
-    let glass = try Material.pbr().baseColor([0.02, 0.08, 0.1, 0.8]).roughness(0.08).alphaMode(.blend)
+    try scene.addTo("world", Model(ground(), PbrMaterial().roughness(0.95)))
+    let glass = try PbrMaterial().baseColor([0.02, 0.08, 0.1, 0.8]).roughness(0.08).alphaMode(.blend)
     try scene.addTo("world", Model(square(valleySize, water), glass))
 
     // Trees and rocks share one mesh each, so each kind draws in one call.
     var obstacles: [[Float]] = []
     let tree = try pine()
-    let bark = Material.pbr().roughness(0.8)
+    let bark = try PbrMaterial().roughness(0.8)
     for index in 0..<UInt32(treeCount * 8) where obstacles.count < treeCount {
         let (x, z) = spot(index, valleySize * 0.42)
         let floor = height(x, z)
@@ -1558,7 +1565,7 @@ ${setCalls("swift", "sky", sky, { before: "try " })}
         obstacles.append([x, z, 0.35 * scale])
     }
     let rock = try boulder()
-    let stone = Material.pbr().roughness(0.7)
+    let stone = try PbrMaterial().roughness(0.7)
     for index in 0..<rockCount {
         let (x, z) = spot(index + 5000, valleySize * 0.45)
         let scale = 0.4 + random(index, 4) * 0.9
@@ -1571,7 +1578,7 @@ ${setCalls("swift", "sky", sky, { before: "try " })}
     // Grass grows in meadows on the gentle slopes between the water and the rocks,
     // thicker where two slow waves meet. Its three kinds of tuft share one material.
     let kinds = try [tuft(9, 0.55, lushColors), tuft(6, 0.85, dryColors), tuft(12, 0.3, shortColors)]
-    let grass = Material.pbr().roughness(0.85)
+    let grass = try PbrMaterial().roughness(0.85)
     for index in 0..<grassSpots {
         let (x, z) = spot(index + 9000, valleySize * 0.4)
         let floor = height(x, z)
@@ -1590,8 +1597,8 @@ ${setCalls("swift", "sky", sky, { before: "try " })}
 
     // Lamps ring the clearing where the walk starts. Each one carries a point light.
     let post = try column([0.02, 0.018, 0.016, 1])
-    let metal = Material.pbr().metallic(0.6).roughness(0.4)
-    let bulb = try Material.pbr().baseColor([1, 0.85, 0.6, 1])
+    let metal = try PbrMaterial().metallic(0.6).roughness(0.4)
+    let bulb = try PbrMaterial().baseColor([1, 0.85, 0.6, 1])
     var lamps: [Light] = []
     for index in 0..<lampCount {
         let angle = Float(index) / Float(lampCount) * tau
@@ -1875,7 +1882,7 @@ func faceNormal(_ corners: [[Float]]) -> [Float] {
     normalize(cross(minus(corners[1], corners[0]), minus(corners[2], corners[0])))
 }
 
-func place(_ mesh: Mesh, _ material: Material, _ position: [Float], _ turn: Float, _ scale: [Float]) throws -> Model {
+func place(_ mesh: Mesh, _ material: PbrMaterial, _ position: [Float], _ turn: Float, _ scale: [Float]) throws -> Model {
     let model = Model(mesh, material)
     try model.translate(position)
     try model.rotate([0, 1, 0], turn)
@@ -1996,7 +2003,7 @@ class State(
     val sun: Light,
     val moon: Light,
     val lamps: List<Light>,
-    val bulb: Material,
+    val bulb: PbrMaterial,
     val camera: Camera,
     val obstacles: List<List<Float>>,
 ) {
@@ -2020,14 +2027,14 @@ ${setCalls("kotlin", "sky", sky)}
     val scene = Scene()
     scene.addPass(Pass.fromShader("sky", sky)).addPass(world)
 
-    scene.addTo("world", Model(ground(), Material.pbr().roughness(0.95f)))
-    val water = Material.pbr().baseColor(listOf(0.02f, 0.08f, 0.1f, 0.8f)).roughness(0.08f).alphaMode(AlphaMode.BLEND)
+    scene.addTo("world", Model(ground(), PbrMaterial().roughness(0.95f)))
+    val water = PbrMaterial().baseColor(listOf(0.02f, 0.08f, 0.1f, 0.8f)).roughness(0.08f).alphaMode(AlphaMode.BLEND)
     scene.addTo("world", Model(square(SIZE, WATER), water))
 
     // Trees and rocks share one mesh each, so each kind draws in one call.
     val obstacles = mutableListOf<List<Float>>()
     val tree = pine()
-    val bark = Material.pbr().roughness(0.8f)
+    val bark = PbrMaterial().roughness(0.8f)
     for (index in 0u until (TREES * 8).toUInt()) {
         if (obstacles.size == TREES) break
         val (x, z) = spot(index, SIZE * 0.42f)
@@ -2038,7 +2045,7 @@ ${setCalls("kotlin", "sky", sky)}
         obstacles.add(listOf(x, z, 0.35f * scale))
     }
     val rock = boulder()
-    val stone = Material.pbr().roughness(0.7f)
+    val stone = PbrMaterial().roughness(0.7f)
     for (index in 0u until ROCKS) {
         val (x, z) = spot(index + 5000u, SIZE * 0.45f)
         val scale = 0.4f + random(index, 4u) * 0.9f
@@ -2051,7 +2058,7 @@ ${setCalls("kotlin", "sky", sky)}
     // Grass grows in meadows on the gentle slopes between the water and the rocks,
     // thicker where two slow waves meet. Its three kinds of tuft share one material.
     val kinds = listOf(tuft(9u, 0.55f, LUSH), tuft(6u, 0.85f, DRY), tuft(12u, 0.3f, SHORT))
-    val grass = Material.pbr().roughness(0.85f)
+    val grass = PbrMaterial().roughness(0.85f)
     for (index in 0u until GRASS) {
         val (x, z) = spot(index + 9000u, SIZE * 0.4f)
         val floor = height(x, z)
@@ -2068,8 +2075,8 @@ ${setCalls("kotlin", "sky", sky)}
 
     // Lamps ring the clearing where the walk starts. Each one carries a point light.
     val post = column(listOf(0.02f, 0.018f, 0.016f, 1f))
-    val metal = Material.pbr().metallic(0.6f).roughness(0.4f)
-    val bulb = Material.pbr().baseColor(listOf(1f, 0.85f, 0.6f, 1f))
+    val metal = PbrMaterial().metallic(0.6f).roughness(0.4f)
+    val bulb = PbrMaterial().baseColor(listOf(1f, 0.85f, 0.6f, 1f))
     val lamps = mutableListOf<Light>()
     for (index in 0u until LAMPS) {
         val angle = index.toFloat() / LAMPS.toFloat() * TAU
@@ -2346,7 +2353,7 @@ private fun facets(triangles: List<Triangle>): Mesh {
 private fun faceNormal(corners: List<List<Float>>): List<Float> =
     normalize(cross(minus(corners[1], corners[0]), minus(corners[2], corners[0])))
 
-private fun place(mesh: Mesh, material: Material, position: List<Float>, turn: Float, scale: List<Float>): Model {
+private fun place(mesh: Mesh, material: PbrMaterial, position: List<Float>, turn: Float, scale: List<Float>): Model {
     val model = Model(mesh, material)
     model.translate(position)
     model.rotate(listOf(0f, 1f, 0f), turn)
@@ -2395,9 +2402,9 @@ export default {
   id: "walk",
   title: "Walkable world",
   summary:
-    "A small valley built from Scene, Model, Material, Camera and Light, from afternoon into night. Click it, then walk with WASD or the arrow keys and drag to look. Space jumps. On a phone, the stick walks and a drag looks.",
+    "A small valley built from Scene, Model, PbrMaterial, Camera and Light, from afternoon into night. Click it, then walk with WASD or the arrow keys and drag to look. Space jumps. On a phone, the stick walks and a drag looks.",
   kind: "scene",
-  needs: "0.12.7",
+  needs: "0.12.8",
   gestures: true,
   keys: true,
   category: "3D",
