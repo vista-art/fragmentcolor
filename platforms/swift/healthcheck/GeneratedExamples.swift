@@ -556,7 +556,7 @@ final class GeneratedExamples: ExampleCase {
 
             """)
 
-            let solid = shader.doubleSided(false)
+            let leaf = shader.doubleSided(true)
         }
     }
 

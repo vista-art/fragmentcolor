@@ -511,7 +511,7 @@ class GeneratedExamples : ExampleCase() {
 
         """)
 
-        val solid = shader.doubleSided(false)
+        val leaf = shader.doubleSided(true)
     }
 
     @Test

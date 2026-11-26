@@ -14,4 +14,4 @@ fn fs_main() -> @location(0) vec4<f32> {
 
 `);
 
-const solid = shader.doubleSided(false);
+const leaf = shader.doubleSided(true);

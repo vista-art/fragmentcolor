@@ -13,4 +13,4 @@ fn fs_main() -> @location(0) vec4<f32> {
 
 """)
 
-let solid = shader.doubleSided(false)
+let leaf = shader.doubleSided(true)
