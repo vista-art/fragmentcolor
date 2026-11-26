@@ -1,5 +1,5 @@
 import init, {
-  Renderer, Shader, Pass, Mesh, Vertex, Instance, Scene, Model, Material, Camera, Light, Mipmap,
+  Renderer, Shader, Pass, Mesh, Vertex, Instance, Scene, Model, PbrMaterial, MaterialMap, Camera, Light, Mipmap,
   TextureFormat, TextureUsage, ErrorKind, LightKind, LogLevel,
 } from "fragmentcolor";
 import * as fc from "fragmentcolor";
@@ -537,7 +537,7 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     // Builder methods return the receiver.
     const mesh = new Mesh();
     mesh.addVertices([Vertex.pbr([0.0, 0.5, 0.0]), Vertex.pbr([-0.5, -0.5, 0.0]), Vertex.pbr([0.5, -0.5, 0.0])]);
-    const model = new Model(mesh, Material.pbr());
+    const model = new Model(mesh, new PbrMaterial());
     const camera = Camera.perspective(1.047, 1.0, 0.1, 100.0);
     const built = new Scene().add(model).add(camera).ambient([0.1, 0.1, 0.1]).noDefaultLight();
     if (built.models().length !== 1) fail('chained Scene.add lost the model');
@@ -549,12 +549,12 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     throws('Mesh.setInstanceCount(-1)', () => mesh.setInstanceCount(-1));
     throws('Mesh.setIndices([0.5])', () => mesh.setIndices([0.5]));
     throws('Pass.setComputeDispatch(-1, 1, 1)', () => first.setComputeDispatch(-1, 1, 1));
-    const occlusion = fc.TextureSlot.Occlusion;
-    throws('Material.textureUv(Occlusion, 1.5)', () => Material.pbr().textureUv(occlusion, 1.5));
-    throws('Material.textureUv(Occlusion, -1)', () => Material.pbr().textureUv(occlusion, -1));
+    const occlusion = () => new PbrMaterial().occlusionMap();
+    throws('MaterialMap.uv(1.5)', () => occlusion().uv(1.5));
+    throws('MaterialMap.uv(-1)', () => occlusion().uv(-1));
     // A UV set past 1 is a whole number, but no texture can sample it.
-    throws('Material.textureUv(Occlusion, 2)', () => Material.pbr().textureUv(occlusion, 2));
-    if (!(Material.pbr().textureUv(occlusion, 1) instanceof Material)) fail('textureUv should return the material');
+    throws('MaterialMap.uv(2)', () => occlusion().uv(2));
+    if (!(occlusion().uv(1) instanceof MaterialMap)) fail('MaterialMap.uv should return the map');
 
     // Size fields take only the numbers the constructor takes, and ScreenRegion has no setters.
     const extent = new fc.Size(64, 64);
@@ -597,16 +597,14 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     named('Model.translate', () => model.translate([0, 1e39, 0]));
     named('Model.rotate: axis', () => model.rotate([0, NaN, 0], 1));
     named('Camera.lookAt: up', () => camera.lookAt([0, 0, 5], [0, 0, 0], [0, 1e39, 0]));
-    named('Material.baseColor', () => Material.pbr().baseColor([1, 1, NaN, 1]));
-    named('Material.uvTransform: offset', () => Material.pbr().uvTransform([1e39, 0], [1, 1], 0));
-    named('Material.textureTransform: scale',
-      () => Material.pbr().textureTransform(occlusion, [0, 0], [Infinity, 1], 0));
-    // A Material factor or a UV rotation follows the same rule.
-    named('Material.metallic: value', () => Material.pbr().metallic(NaN));
-    named('Material.alphaCutoff: value', () => Material.pbr().alphaCutoff(1e39));
-    named('Material.uvTransform: rotation', () => Material.pbr().uvTransform([0, 0], [1, 1], Infinity));
-    named('Material.textureTransform: rotation',
-      () => Material.pbr().textureTransform(occlusion, [0, 0], [1, 1], -Infinity));
+    named('PbrMaterial.baseColor', () => new PbrMaterial().baseColor([1, 1, NaN, 1]));
+    named('PbrMaterial.uvTransform: offset', () => new PbrMaterial().uvTransform([1e39, 0], [1, 1], 0));
+    named('MaterialMap.transform: scale', () => occlusion().transform([0, 0], [Infinity, 1], 0));
+    // A material factor or a UV rotation follows the same rule.
+    named('PbrMaterial.metallic: value', () => new PbrMaterial().metallic(NaN));
+    named('PbrMaterial.alphaCutoff: value', () => new PbrMaterial().alphaCutoff(1e39));
+    named('PbrMaterial.uvTransform: rotation', () => new PbrMaterial().uvTransform([0, 0], [1, 1], Infinity));
+    named('MaterialMap.transform: rotation', () => occlusion().transform([0, 0], [1, 1], -Infinity));
     // So does a light's intensity or cone angle, and a rotation angle,
     // and a refused call leaves the light and the transform as they were.
     const dimmer = Light.point([0, 1, 0], [1, 1, 1]).setIntensity(2.5);
@@ -623,7 +621,7 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     // A light direction of length 0 points nowhere, and finite moves that carry a
     // transform past the f32 range are refused, each with Rust's message.
     named('Light::directional: direction has length 0', () => Light.directional([0, 0, 0], [1, 1, 1]));
-    const far = new Model(new Mesh(), Material.pbr());
+    const far = new Model(new Mesh(), new PbrMaterial());
     far.translate([3e38, 0, 0]);
     named('Model::translate would carry the transform past the f32 range', () => far.translate([3e38, 0, 0]));
     same('a refused rotate', model.transform().map((column) => Array.from(column)).flat(), turned.flat());
@@ -694,7 +692,7 @@ await withModule('platforms.web.healthcheck.parity', async () => {
       ["Pass.add('nope')", () => first.add('nope'), 'TypeError'],
       ["Pass.addShader('nope')", () => first.addShader('nope'), 'TypeError'],
       ['Scene.addPass(1)', () => new fc.Scene().addPass(1), 'TypeError'],
-      ['Material.custom({})', () => Material.custom({}), 'TypeError'],
+      ['new Model(mesh, {})', () => new Model(mesh, {}), 'TypeError'],
       ['new Model(mesh, 42)', () => new Model(mesh, 42), 'TypeError'],
       ['new Shader(42)', () => new Shader(42), 'TypeError'],
       ['Shader.fetch(42)', () => Shader.fetch(42), 'TypeError'],
@@ -717,7 +715,7 @@ await withModule('platforms.web.healthcheck.parity', async () => {
       ["Texture.resize({ width: 'a', height: 2 })", () => writable.resize({ width: 'a', height: 2 }), 'TypeError'],
       ["readTexture('x')", () => renderer.readTexture('x'), 'TypeError'],
       ["unregisterTexture('a')", () => renderer.unregisterTexture('a'), 'TypeError'],
-      ['Material.metallic(null)', () => Material.pbr().metallic(null), 'TypeError'],
+      ['PbrMaterial.metallic(null)', () => new PbrMaterial().metallic(null), 'TypeError'],
       ["Model.setVisible('yes')", () => model.setVisible('yes'), 'TypeError'],
       ["Camera.setAspect('wide')", () => camera.setAspect('wide'), 'TypeError'],
       ["Light.setIntensity('x')", () => Light.point([0, 1, 0], [1, 1, 1]).setIntensity('x'), 'TypeError'],
@@ -872,17 +870,18 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     await rejects('createTexture options with width and format', () =>
       renderer.createTexture(new Uint8Array(4), { width: 1, height: 1, format: TextureFormat.Rgba8Unorm }));
 
-    // Material texture setters take what createTexture takes, and each option reaches the upload.
-    Material.pbr().baseColorTexture(fromImage);
+    // MaterialMap.texture takes what createTexture takes, and each option reaches the upload.
+    new PbrMaterial().baseColorMap().texture(fromImage);
     const flat = [[0, 0], [0, 0], [0, 0]];
     const glow = async (setTexture, uvs = flat) => {
       // A black surface lit only by its emissive map, over the whole target.
       const surface = new Mesh();
       surface.addVertices([[-1, -1, 0], [3, -1, 0], [-1, 3, 0]]
         .map((corner, i) => Vertex.pbr(corner).set(Vertex.NORMAL, [0, 0, 1]).set(Vertex.UV0, uvs[i])));
-      const material = Material.pbr().baseColor([0, 0, 0, 1]).emissive([1, 1, 1]);
+      const material = new PbrMaterial().baseColor([0, 0, 0, 1]).emissive([1, 1, 1]);
       const glowing = new Pass('glow');
-      glowing.add(new Model(surface, setTexture(material)));
+      setTexture(material);
+      glowing.add(new Model(surface, material));
       const frame = await renderer.createTextureTarget([4, 4]);
       await renderer.load(glowing);
       renderer.render(glowing, frame);
@@ -891,33 +890,33 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     const isRed = ([r, g, b]) => r > 200 && g < 40 && b < 40;
     const redPixel = [255, 0, 0, 255];
     const forms = {
-      'a bare size': (m) => m.emissiveTexture(new Uint8Array(redPixel), [1, 1]),
-      '{ size }': (m) => m.emissiveTexture(redPixel, { size: [1, 1] }),
+      'a bare size': (m) => m.emissiveMap().texture(new Uint8Array(redPixel), [1, 1]),
+      '{ size }': (m) => m.emissiveMap().texture(redPixel, { size: [1, 1] }),
       '{ size, format: R8Unorm }': (m) =>
-        m.emissiveTexture(new Uint8Array([255]), { size: [1, 1], format: TextureFormat.R8Unorm }),
-      'an ImageData': (m) => m.emissiveTexture(new ImageData(new Uint8ClampedArray(redPixel), 1, 1)),
+        m.emissiveMap().texture(new Uint8Array([255]), { size: [1, 1], format: TextureFormat.R8Unorm }),
+      'an ImageData': (m) => m.emissiveMap().texture(new ImageData(new Uint8ClampedArray(redPixel), 1, 1)),
     };
     for (const [label, form] of Object.entries(forms)) {
       const pixel = await glow(form);
-      if (!isRed(pixel)) fail(`emissiveTexture with ${label} drew [${pixel}]`);
+      if (!isRed(pixel)) fail(`MaterialMap.texture with ${label} drew [${pixel}]`);
     }
     // Each option changes what draws, so an option the setter drops fails here.
     const gray = new Uint8Array([128, 128, 128, 255]);
-    const linear = await glow((m) => m.emissiveTexture(gray, { size: [1, 1], format: TextureFormat.Rgba8Unorm }));
-    const srgb = await glow((m) => m.emissiveTexture(gray, [1, 1]));
+    const linear = await glow((m) => m.emissiveMap().texture(gray, { size: [1, 1], format: TextureFormat.Rgba8Unorm }));
+    const srgb = await glow((m) => m.emissiveMap().texture(gray, [1, 1]));
     if (linear[0] < srgb[0] + 30) fail(`format: Rgba8Unorm drew [${linear}], the sRGB default [${srgb}]`);
     const pair = new Uint8Array([...redPixel, 0, 255, 0, 255]);
-    const shift = (m, offset) => m.textureTransform(fc.TextureSlot.Emissive, [offset, 0], [1, 1], 0);
-    const wrapped = await glow((m) => shift(m, 1.25).emissiveTexture(pair, { size: [2, 1], sampler: { repeatX: true } }));
-    const clamped = await glow((m) => shift(m, 1.25).emissiveTexture(pair, [2, 1]));
+    const shift = (m, offset) => m.emissiveMap().transform([offset, 0], [1, 1], 0);
+    const wrapped = await glow((m) => shift(m, 1.25).texture(pair, { size: [2, 1], sampler: { repeatX: true } }));
+    const clamped = await glow((m) => shift(m, 1.25).texture(pair, [2, 1]));
     if (!isRed(wrapped)) fail(`sampler: { repeatX: true } drew [${wrapped}] past the edge`);
     if (clamped[1] < 200 || clamped[0] > 40) fail(`the clamped default drew [${clamped}] past the edge`);
     // 16 texels to a pixel: a mip chain samples its 1x1 level, a mix of red and green.
     const dense = [[0, 0], [64, 0], [0, 64]];
     const repeat = { repeatX: true };
-    const chained = await glow((m) => shift(m, 0.25).emissiveTexture(pair, { size: [2, 1], sampler: repeat }), dense);
+    const chained = await glow((m) => shift(m, 0.25).texture(pair, { size: [2, 1], sampler: repeat }), dense);
     const single = await glow((m) =>
-      shift(m, 0.25).emissiveTexture(pair, { size: [2, 1], sampler: repeat, mipmaps: false }), dense);
+      shift(m, 0.25).texture(pair, { size: [2, 1], sampler: repeat, mipmaps: false }), dense);
     if (!isRed(single)) fail(`mipmaps: false drew [${single}]`);
     if (chained[1] < 60) fail(`the default mip chain drew [${chained}]`);
     const refusesBesideTexture = (name, run) => {
@@ -932,48 +931,25 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     if (besideTexture?.name !== 'InvalidInputError' || !besideTexture.message.includes('Renderer.createTexture')) {
       fail(`createTexture with a format beside a Texture gave ${besideTexture}`);
     }
-    for (const name of ['baseColorTexture', 'metallicRoughnessTexture', 'normalTexture', 'occlusionTexture', 'emissiveTexture']) {
-      const material = Material.pbr();
-      material[name](new Uint8Array(redPixel), { size: [1, 1], format: TextureFormat.Rgba8Unorm, mipmaps: false });
-      material[name](fromImage);
+    for (const name of ['baseColorMap', 'metallicRoughnessMap', 'normalMap', 'occlusionMap', 'emissiveMap']) {
+      const map = new PbrMaterial()[name]();
+      map.texture(new Uint8Array(redPixel), { size: [1, 1], format: TextureFormat.Rgba8Unorm, mipmaps: false });
+      map.texture(fromImage);
       // 32 is outside the five TextureUsage flags, so the upload at load refuses it.
-      await rejects(`Material.${name} with usage 32`, () => glow((m) => m[name](redPixel, { size: [1, 1], usage: 32 })));
-      refusesBesideTexture(`Material.${name}`, () => material[name](fromImage, { sampler: { repeatX: true } }));
-      throws(`Material.${name} with a fractional size`, () => material[name](new Uint8Array(redPixel), [1.5, 1]));
-      throws(`Material.${name} with mipmaps: "yes"`, () => material[name](new Uint8Array(redPixel), { size: [1, 1], mipmaps: 'yes' }));
+      await rejects(`PbrMaterial.${name}().texture with usage 32`,
+        () => glow((m) => m[name]().texture(redPixel, { size: [1, 1], usage: 32 })));
+      refusesBesideTexture('MaterialMap.texture', () => map.texture(fromImage, { sampler: { repeatX: true } }));
+      throws(`PbrMaterial.${name}().texture with a fractional size`, () => map.texture(new Uint8Array(redPixel), [1.5, 1]));
+      throws(`PbrMaterial.${name}().texture with mipmaps: "yes"`,
+        () => map.texture(new Uint8Array(redPixel), { size: [1, 1], mipmaps: 'yes' }));
     }
-    // A slot a custom shader declares as a number refuses a Texture and a source with a
-    // MaterialError and keeps its value, and a slot the shader doesn't declare is skipped.
-    const numbered = Material.custom(new Shader(`
-@group(0) @binding(0) var<uniform> base_color_map: vec4<f32>;
-@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
-  return vec4<f32>(f32(i), 0.0, 0.0, 1.0);
-}
-@fragment fn fs_main() -> @location(0) vec4<f32> { return base_color_map; }`));
-    numbered.shader().set('base_color_map', [0.25, 0.5, 0.75, 1]);
-    const onNumber = {
-      'a Texture': () => numbered.baseColorTexture(fromImage),
-      'bytes': () => numbered.baseColorTexture(new Uint8Array(redPixel), [1, 1]),
-    };
-    for (const [label, run] of Object.entries(onNumber)) {
-      try { run(); } catch (e) {
-        if (e.name !== 'MaterialError' || !e.message.includes('base_color_map')) {
-          fail(`Material.baseColorTexture with ${label} on a number threw ${e.name}: ${e.message}`);
-        }
-        continue;
-      }
-      fail(`Material.baseColorTexture with ${label} on a number should throw`);
-    }
-    same('a slot that refused a texture', numbered.shader().get('base_color_map'), [0.25, 0.5, 0.75, 1]);
-    numbered.normalTexture(fromImage);
-    numbered.normalTexture(new Uint8Array(redPixel), [1, 1]);
-    // An empty byte list holds no image, so the setter refuses it at the call.
+    // An empty byte list holds no image, so the map refuses it at the call.
     try {
-      Material.pbr().baseColorTexture(new Uint8Array(0));
-      fail('Material.baseColorTexture with an empty byte list should throw');
+      new PbrMaterial().baseColorMap().texture(new Uint8Array(0));
+      fail('MaterialMap.texture with an empty byte list should throw');
     } catch (e) {
       if (e.name !== 'InvalidInputError' || !e.message.endsWith('it got an empty byte list')) {
-        fail(`Material.baseColorTexture with an empty byte list threw ${e.name}: ${e.message}`);
+        fail(`MaterialMap.texture with an empty byte list threw ${e.name}: ${e.message}`);
       }
     }
 
@@ -1037,11 +1013,10 @@ struct Data { items: array<vec4<f32>, 2> };
     throws('Mipmap.level(1.5)', () => chain.level(1.5));
     throws('Mipmap.level(NaN)', () => chain.level(NaN));
     throws('Mipmap.build without a format', () => Mipmap.build(new Uint8Array(4 * 4 * 4), undefined, [4, 4]));
-    throws('Material.alphaMode(undefined)', () => Material.pbr().alphaMode(undefined));
-    throws('Material.alphaMode(0.5)', () => Material.pbr().alphaMode(0.5));
-    throws('Material.textureUv(undefined, 0)', () => Material.pbr().textureUv(undefined, 0));
-    throws('Material.textureTransform(5, ...)', () =>
-      Material.pbr().textureTransform(5, [0, 0], [1, 1], 0));
+    throws('PbrMaterial.alphaMode(undefined)', () => new PbrMaterial().alphaMode(undefined));
+    throws('PbrMaterial.alphaMode(0.5)', () => new PbrMaterial().alphaMode(0.5));
+    throws('Shader.alphaMode(3)', () => Shader.default().alphaMode(3));
+    throws('MaterialMap.uv(undefined)', () => new PbrMaterial().normalMap().uv(undefined));
     await rejects('createStorageTexture with a format string', () =>
       renderer.createStorageTexture([4, 4], 'rgba8unorm'));
     await rejects('createStorageTexture with usage 32', () =>
@@ -1116,7 +1091,7 @@ await withModule('platforms.web.healthcheck.pass_checks', async () => {
 }
 @fragment fn fs_main() -> @location(0) f32 { return 0.5; }
 `);
-    Material.custom(single).alphaMode(fc.AlphaMode.Blend);
+    single.alphaMode(fc.AlphaMode.Blend);
     const blend = Pass.fromShader('blend', single);
     blend.setTarget(red);
     refuses('a one-channel output blended', 'reads an alpha channel', () => renderer.render(blend, target));
@@ -1218,76 +1193,64 @@ struct VOut { @builtin(position) pos: vec4<f32>, @location(0) color: vec4<f32> }
     await target.getImage();
 });
 
-// One Material map draws with every Renderer that awaits load, each from a copy of its own.
-// A set made before a load runs wins. Before load, a map draws its PBR default where the
-// default fits the slot and throws, asking for load, where it doesn't. A freed Renderer
-// leaves the others drawing.
+// One PbrMaterial map draws with every Renderer that awaits load, each from a copy of its own.
+// A set made before a load runs wins. Before load, a map draws its PBR default. A freed
+// Renderer leaves the others drawing. The crate tests cover an integer map, which only a
+// shader of FragmentColor's own can bind as a map.
 await withModule('platforms.web.healthcheck.material_maps', async () => {
     const fail = (message) => { throw new Error(message); };
-    const mapped = (texel, value) => Material.custom(new Shader(`
-@group(0) @binding(0) var base_color_map: texture_2d<${texel}>;
-@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
-  let p = array<vec2<f32>, 3>(vec2f(-1.0, -1.0), vec2f(3.0, -1.0), vec2f(-1.0, 3.0));
-  return vec4<f32>(p[i], 0.0, 1.0);
-}
-@fragment fn fs_main() -> @location(0) vec4<f32> { let t = textureLoad(base_color_map, vec2<i32>(0), 0); return ${value}; }
-`));
+    // A black surface lit only by its emissive map, over the whole target.
+    const material = new PbrMaterial().baseColor([0, 0, 0, 1]).emissive([1, 1, 1]);
+    const surface = new Mesh();
+    surface.addVertices([[-1, -1, 0], [3, -1, 0], [-1, 3, 0]]
+      .map((corner) => Vertex.pbr(corner).set(Vertex.NORMAL, [0, 0, 1]).set(Vertex.UV0, [0, 0])));
+    const pass = new Pass('mapped');
+    pass.add(new Model(surface, material));
     const open = async () => {
       const renderer = new Renderer();
       return [renderer, await renderer.createTextureTarget([4, 4])];
     };
     const reads = async (label, target, expected) => {
       const pixel = Array.from((await target.getImage()).slice(0, 4));
-      if (pixel.join() !== expected.join()) fail(`${label} drew [${pixel}], not [${expected}]`);
+      if (pixel.some((channel, i) => Math.abs(channel - expected[i]) > 2)) {
+        fail(`${label} drew [${pixel}], not [${expected}]`);
+      }
     };
     const red = [255, 0, 0, 255];
     const blue = [0, 0, 255, 255];
 
-    const material = mapped('f32', 't').baseColorTexture(new Uint8Array(red), [1, 1]);
-    const shader = material.shader();
+    material.emissiveMap().texture(new Uint8Array(red), [1, 1]);
     const [first, firstTarget] = await open();
     const [second, secondTarget] = await open();
-    await first.load(shader);
-    await second.load(shader);
-    first.render(shader, firstTarget);
-    second.render(shader, secondTarget);
+    await first.load(pass);
+    await second.load(pass);
+    first.render(pass, firstTarget);
+    second.render(pass, secondTarget);
     await reads('the first Renderer', firstTarget, red);
     await reads('the second Renderer', secondTarget, red);
 
     // `load` starts on a later microtask, so this set lands before the load collects its maps.
     // The crate tests cover a set that lands during an upload.
-    const loading = first.load(shader);
-    material.baseColorTexture(new Uint8Array(blue), [1, 1]);
+    const loading = first.load(pass);
+    material.emissiveMap().texture(new Uint8Array(blue), [1, 1]);
     await loading;
-    await second.load(shader);
-    first.render(shader, firstTarget);
-    second.render(shader, secondTarget);
+    await second.load(pass);
+    first.render(pass, firstTarget);
+    second.render(pass, secondTarget);
     await reads('the first Renderer after a set before its load ran', firstTarget, blue);
     await reads('the second Renderer after the set', secondTarget, blue);
 
+    // The emissive default is white, so the surface glows white until the map loads.
     const [third, thirdTarget] = await open();
-    third.render(shader, thirdTarget);
+    third.render(pass, thirdTarget);
     await reads('a Renderer that has not loaded the map', thirdTarget, [255, 255, 255, 255]);
-    await third.load(shader);
-    third.render(shader, thirdTarget);
+    await third.load(pass);
+    third.render(pass, thirdTarget);
     await reads('that Renderer after load', thirdTarget, blue);
-
-    // The 1x1 default can't fill an integer slot, so before load the render throws.
-    const integer = mapped('u32', 'vec4<f32>(t) / 255.0').baseColorTexture(
-      new Uint8Array(new Uint32Array(red).buffer),
-      { size: [1, 1], format: TextureFormat.Rgba32Uint, mipmaps: false });
-    let early = null;
-    try { third.render(integer.shader(), thirdTarget); } catch (e) { early = e; }
-    if (!(early instanceof Error) || !early.message.includes('load')) {
-      fail(`an integer map before load threw ${early?.message ?? 'nothing'}`);
-    }
-    await third.load(integer.shader());
-    third.render(integer.shader(), thirdTarget);
-    await reads('an integer map after load', thirdTarget, red);
 
     first.free();
     firstTarget.free();
-    second.render(shader, secondTarget);
+    second.render(pass, secondTarget);
     await reads('the second Renderer after the first was freed', secondTarget, blue);
 });
 
@@ -1708,7 +1671,7 @@ await withModule('platforms.web.healthcheck.lights.clustered', async () => {
         floor.addVertex(Vertex.pbr([x, 0.0, z]).set('normal', [0.0, 1.0, 0.0]));
       }
       const pass = new Pass('1100 lights');
-      pass.add(new Model(floor, Material.pbr()));
+      pass.add(new Model(floor, new PbrMaterial()));
       pass.add(Camera.perspective(1.0, 1.0, 0.1, 100.0)
         .lookAt([0.0, 6.0, 8.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]));
       for (let index = 0; index < 1100; index++) {
