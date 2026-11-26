@@ -37,7 +37,9 @@ the scene's ambient light fills its shadows. It takes the vertex layout
 `PbrMaterial` takes, so a
 [`Vertex::pbr`](/api/geometry/vertex#pbr) mesh, or
 a mesh the glTF loader built, draws with any of the three. An outline is
-not a material setting: it needs a draw of its own.
+not a material setting: it needs a draw of its own. The `toon_outline`
+example in `examples/rust` draws one as a pass after the scene, from the
+depth and normals an earlier pass draws.
 
 A material draws on a [Mesh](/api/geometry/mesh)
 through a [Model](/api/scene/model). `Model::new`
