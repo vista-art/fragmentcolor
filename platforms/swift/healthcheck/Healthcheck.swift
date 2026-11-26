@@ -666,6 +666,79 @@ final class Healthcheck: ExampleCase {
         }
     }
 
+    // A triangle over the whole target, drawn with `model` and lit by `light`,
+    // read back at the pixel (1, 1) of a 4x4 target.
+    private func drawOver(_ model: Model, _ light: Light) async throws -> [UInt8] {
+        let renderer = Renderer()
+        let pass = Pass("material")
+        try pass.add(model)
+        try pass.add(light)
+        let target = try await renderer.createTextureTarget([4, 4])
+        try renderer.render(pass, target)
+        let image = Array(try await target.getImage())
+        return Array(image[20..<24])
+    }
+
+    private func fullTarget() throws -> Mesh {
+        let mesh = Mesh()
+        for corner in [[-1, -1, 0], [3, -1, 0], [-1, 3, 0]] as [[Float]] {
+            mesh.addVertex(try Vertex.pbr(corner))
+        }
+        return mesh
+    }
+
+    // An UnlitMaterial draws its base color times its map with no lighting,
+    // and a Model hands it back in the `.unlit` case.
+    func testUnlitMaterialDrawsWithNoLighting() async throws {
+        let material = try UnlitMaterial().baseColor([1, 1, 0.5, 1]).doubleSided(true)
+        _ = try material.baseColorMap().texture([0, 255, 255, 255] as [UInt8], [1, 1])
+        let model = Model(try fullTarget(), material)
+        guard case .unlit = model.material() else {
+            throw HealthcheckError.assertion("Model.material() returned \(model.material()), not .unlit")
+        }
+        // A black light would darken a PbrMaterial, and leaves an unlit one as it is.
+        let pixel = try await drawOver(model, try Light.directional([0, 0, -1] as [Float], [0, 0, 0]))
+        // Linear 0.5 encodes as sRGB 188 on the 8-bit target.
+        guard pixel[0] == 0 && pixel[1] == 255 && abs(Int(pixel[2]) - 188) <= 1 else {
+            throw HealthcheckError.assertion("an UnlitMaterial drew \(pixel), not [0, 255, 188]")
+        }
+    }
+
+    // A ToonMaterial lights in bands from the lights a PbrMaterial reads, a Model
+    // hands it back in the `.toon` case, and it refuses 0 bands and a UV set on its ramp.
+    func testToonMaterialLightsInBands() async throws {
+        let material = try ToonMaterial().bands(3).doubleSided(true)
+        let shader = material.shader()
+        try shader.set("camera.position", [0, 0, 1] as [Float])
+        try shader.set("lights.ambient", [0, 0, 0] as [Float])
+        let model = Model(try fullTarget(), material)
+        guard case .toon(let held) = model.material() else {
+            throw HealthcheckError.assertion("Model.material() returned \(model.material()), not .toon")
+        }
+        // Rays at the cosine 0.6 to the face's normal, with a color that cancels the shader's 1/pi.
+        let pi = Float.pi
+        let pixel = try await drawOver(model, try Light.directional([-0.8, 0, -0.6] as [Float], [pi, pi, pi]))
+        // Three bands light the face at 2/3, which encodes as sRGB 213 on the 8-bit target.
+        guard pixel.prefix(3).allSatisfy({ abs(Int($0) - 213) <= 2 }) else {
+            throw HealthcheckError.assertion("three bands drew \(pixel), not 213 in each channel")
+        }
+        // The case holds the ToonMaterial, so the refusals run on the one it hands back.
+        let refusals: [(String, () throws -> Void)] = [
+            ("ToonMaterial::bands", { _ = try held.bands(0) }),
+            ("ToonMaterial::ramp_map().uv", { _ = try held.rampMap().uv(0) }),
+        ]
+        for (label, call) in refusals {
+            do {
+                try call()
+                throw HealthcheckError.assertion("\(label) should throw")
+            } catch let FragmentColorError.Render(message) {
+                guard message.contains(label) else {
+                    throw HealthcheckError.assertion("\(label) threw '\(message)', which doesn't name the call")
+                }
+            }
+        }
+    }
+
     // A transform reads back as four columns of four, and a nested matrix
     // of any other shape throws and names the column.
     func testMatricesAreColumns() throws {

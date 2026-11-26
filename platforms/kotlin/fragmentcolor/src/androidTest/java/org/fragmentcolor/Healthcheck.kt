@@ -6,6 +6,7 @@ import kotlin.math.abs
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -522,6 +523,66 @@ class Healthcheck : ExampleCase() {
             "options beside a Texture threw ${beside.message}",
         )
         Unit
+    }
+
+    // A triangle over the whole target, drawn with `model` and lit by `light`,
+    // read back at the pixel (1, 1) of a 4x4 target.
+    private suspend fun drawOver(model: Model, light: Light): List<Int> {
+        val renderer = Renderer()
+        val pass = Pass("material")
+        pass.add(model)
+        pass.add(light)
+        val target = renderer.createTextureTarget(listOf(4u, 4u))
+        renderer.render(pass, target)
+        return target.getImage().drop(20).take(4).map { it.toInt() and 0xff }
+    }
+
+    private fun fullTarget(): Mesh {
+        val mesh = Mesh()
+        for (corner in listOf(listOf(-1f, -1f, 0f), listOf(3f, -1f, 0f), listOf(-1f, 3f, 0f))) {
+            mesh.addVertex(Vertex.pbr(corner))
+        }
+        return mesh
+    }
+
+    // An UnlitMaterial draws its base color times its map with no lighting,
+    // and a Model hands it back in Material.Unlit.
+    @Test
+    fun unlitMaterialDrawsWithNoLighting() = runBlocking {
+        val material = UnlitMaterial().baseColor(listOf(1f, 1f, 0.5f, 1f)).doubleSided(true)
+        material.baseColorMap().texture(byteArrayOf(0, 0xff.toByte(), 0xff.toByte(), 0xff.toByte()), listOf(1u, 1u))
+        val model = Model(fullTarget(), material)
+        assertIs<Material.Unlit>(model.material())
+        // A black light would darken a PbrMaterial, and leaves an unlit one as it is.
+        val (red, green, blue) = drawOver(model, Light.directional(listOf(0f, 0f, -1f), listOf(0f, 0f, 0f)))
+        // Linear 0.5 encodes as sRGB 188 on the 8-bit target.
+        assertTrue(red == 0 && green == 255 && abs(blue - 188) <= 1, "an UnlitMaterial drew [$red, $green, $blue]")
+    }
+
+    // A ToonMaterial lights in bands from the lights a PbrMaterial reads, a Model hands it
+    // back in Material.Toon, and it refuses 0 bands and a UV set on its ramp.
+    @Test
+    fun toonMaterialLightsInBands() = runBlocking {
+        val material = ToonMaterial().bands(3u).doubleSided(true)
+        val shader = material.shader()
+        shader.set("camera.position", listOf(0f, 0f, 1f))
+        shader.set("lights.ambient", listOf(0f, 0f, 0f))
+        val model = Model(fullTarget(), material)
+        val held = assertIs<Material.Toon>(model.material()).material
+        // Rays at the cosine 0.6 to the face's normal, with a color that cancels the shader's 1/pi.
+        val pi = Math.PI.toFloat()
+        val pixel = drawOver(model, Light.directional(listOf(-0.8f, 0f, -0.6f), listOf(pi, pi, pi)))
+        // Three bands light the face at 2/3, which encodes as sRGB 213 on the 8-bit target.
+        assertTrue(pixel.take(3).all { abs(it - 213) <= 2 }, "three bands drew $pixel")
+        // The case holds the ToonMaterial, so the refusals run on the one it hands back.
+        val refusals: List<Pair<String, () -> Unit>> = listOf(
+            "ToonMaterial::bands" to { held.bands(0u) },
+            "ToonMaterial::ramp_map().uv" to { held.rampMap().uv(0u) },
+        )
+        for ((label, call) in refusals) {
+            val error = assertFailsWith<FragmentColorException.Render>(label) { call() }
+            assertTrue(error.toString().contains(label), "$label threw '$error', which doesn't name the call")
+        }
     }
 
     // Shader.set shapes each Kotlin value to the uniform's declared WGSL type.
