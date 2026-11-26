@@ -94,6 +94,22 @@ jobs:
       - name: Lint
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
+      # TEMPORARY: find where the library tests crash on the runner. Remove once fixed.
+      - name: Diagnose library test crash
+        continue-on-error: true
+        env:
+          WGPU_DEBUG: "0"
+        run: |
+          sudo apt-get install -y -qq gdb
+          BIN=$(cargo test --lib --no-run --message-format=json 2>/dev/null | jq -r 'select(.executable != null and (.target.kind | index("lib"))) | .executable' | tail -1)
+          echo "test binary: $BIN"
+          for attempt in 1 2 3; do
+            echo "gdb attempt $attempt"
+            gdb -q -batch -ex "set pagination off" -ex "handle SIGPIPE nostop noprint" -ex run -ex "bt 40" -ex "info threads" --args "$BIN" --test-threads=4 > gdb.log 2>&1 || true
+            grep -v -E '^\[(New Thread|Thread .* exited)' gdb.log | grep -v ' \.\.\. ok$' | tail -150
+            grep -q "SIGSEGV" gdb.log && break
+          done
+
       # The tests open many devices at once, from parallel threads. Vulkan loaders before
       # 1.4.345 look a device up for vkSetDebugUtilsObjectNameEXT under a different lock than
       # the one vkDestroyDevice holds, so naming an object while another thread drops its
