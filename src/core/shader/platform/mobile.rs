@@ -16,11 +16,11 @@ use std::sync::Arc;
 
 use lsp_doc::lsp_doc;
 
-use crate::Shader;
 use crate::UniformData;
 use crate::core::shader::UniformInput;
 use crate::errors::platform::mobile::FragmentColorError;
 use crate::texture::TextureId;
+use crate::{AlphaMode, Shader};
 use crate::{Mesh, Vertex};
 
 /// A `Shader.set` value as Swift and Kotlin hand it over.
@@ -153,7 +153,7 @@ impl Shader {
 
     #[uniffi::method(name = "alphaMode")]
     #[lsp_doc("docs/api/core/shader/alpha_mode.md")]
-    pub fn alpha_mode_mobile(self: Arc<Self>, mode: crate::AlphaMode) -> Arc<Self> {
+    pub fn alpha_mode_mobile(self: Arc<Self>, mode: AlphaMode) -> Arc<Self> {
         Arc::new(self.alpha_mode(mode))
     }
 

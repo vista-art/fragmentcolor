@@ -12,14 +12,14 @@ use crate::scene::{
     Camera, CameraError, Light, LightError, LightKind, Model, ModelError, PassRef, Scene,
     SceneLoadError,
 };
-use crate::{Mesh, Pass};
+use crate::{Material, Mesh, Pass};
 
 #[pymethods]
 impl Model {
     #[new]
     #[lsp_doc("docs/api/scene/model/new.md")]
     pub fn new_py(mesh: Mesh, material: PyMaterial) -> Self {
-        Model::new(mesh, crate::Material::from(material))
+        Model::new(mesh, Material::from(material))
     }
 
     #[pyo3(name = "mesh")]

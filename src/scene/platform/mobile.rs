@@ -10,7 +10,7 @@ use crate::scene::material::platform::mobile::MobileMaterial;
 use crate::scene::{
     Camera, CameraError, GltfSource, Light, LightError, LightKind, Model, ModelError, Scene,
 };
-use crate::{Mesh, Pass};
+use crate::{Material, Mesh, Pass};
 
 /// Mobile-marshallable target for [`Scene::add_to`]: a pass index or a pass
 /// name. Uniffi can't marshal `impl Into<PassRef>`, so Swift / Kotlin pick a
@@ -53,7 +53,7 @@ impl Model {
     #[uniffi::constructor(name = "new")]
     #[lsp_doc("docs/api/scene/model/new.md")]
     pub fn new_mobile(mesh: Arc<Mesh>, material: MobileMaterial) -> Arc<Self> {
-        Arc::new(Model::new((*mesh).clone(), crate::Material::from(material)))
+        Arc::new(Model::new((*mesh).clone(), Material::from(material)))
     }
 
     #[uniffi::method(name = "mesh")]

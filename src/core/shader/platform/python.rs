@@ -1,7 +1,7 @@
 #![cfg(python)]
 
 use crate::core::shader::{UniformInput, lsp_doc};
-use crate::{Shader, ShaderError, UniformData};
+use crate::{AlphaMode, Shader, ShaderError, UniformData};
 use pyo3::prelude::*;
 use pyo3::types::{PyAnyMethods, PyByteArray, PyBytes, PyMemoryView};
 
@@ -95,7 +95,7 @@ impl Shader {
 
     #[pyo3(name = "alpha_mode")]
     #[lsp_doc("docs/api/core/shader/alpha_mode.md")]
-    pub fn alpha_mode_py(&self, mode: crate::AlphaMode) -> Self {
+    pub fn alpha_mode_py(&self, mode: AlphaMode) -> Self {
         self.alpha_mode(mode)
     }
 

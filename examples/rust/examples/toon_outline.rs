@@ -53,7 +53,7 @@ struct Stage {
 
 /// Builds the three passes and the shapes, for a target of `size` pixels.
 /// `scale` is the display's scale factor, which widens the lines to match.
-async fn stage(renderer: &Renderer, size: [u32; 2], scale: f32) -> Result<Stage, AppError> {
+async fn build_stage(renderer: &Renderer, size: [u32; 2], scale: f32) -> Result<Stage, AppError> {
     // The normals pass draws into these, and the outline pass reads them.
     let depth = renderer.create_depth_texture(size).await?;
     let normals = renderer.create_texture_target(size).await?.texture();
@@ -88,7 +88,7 @@ async fn stage(renderer: &Renderer, size: [u32; 2], scale: f32) -> Result<Stage,
     // registry snippet turns a normal by the model's transform.
     let normal = Shader::new(["mesh/transform", NORMALS].as_slice())?;
 
-    let box_mesh = cube();
+    let box_mesh = make_cube();
     let floor = ToonMaterial::new().base_color([0.78, 0.72, 0.62, 1.0])?;
     add_shape(
         &scene,
@@ -117,7 +117,7 @@ async fn stage(renderer: &Renderer, size: [u32; 2], scale: f32) -> Result<Stage,
     add_shape(
         &scene,
         &normal,
-        &sphere(32, 16),
+        &make_sphere(32, 16),
         ball,
         [-1.6, 1.0, -0.2],
         0.0,
@@ -130,7 +130,7 @@ async fn stage(renderer: &Renderer, size: [u32; 2], scale: f32) -> Result<Stage,
     add_shape(
         &scene,
         &normal,
-        &torus(0.8, 0.3),
+        &make_torus(0.8, 0.3),
         ring,
         [0.4, 0.3, 1.8],
         0.0,
@@ -199,7 +199,7 @@ async fn setup(app: &App, windows: Vec<Arc<Window>>) -> SetupResult {
 
     let size = window.inner_size();
     let size = [size.width.max(1), size.height.max(1)];
-    let stage = stage(renderer, size, window.scale_factor() as f32).await?;
+    let stage = build_stage(renderer, size, window.scale_factor() as f32).await?;
     app.add_state(
         "viewer",
         Viewer {
@@ -261,11 +261,11 @@ fn resize(app: &App, size: &PhysicalSize<u32>) {
 }
 
 /// Draws one frame into a texture and saves it as a PNG at `path`.
-async fn still(path: &str) -> Result<(), AppError> {
+async fn save_still(path: &str) -> Result<(), AppError> {
     let size = [960, 640];
     let renderer = Renderer::new();
     let target = renderer.create_texture_target(size).await?;
-    let stage = stage(&renderer, size, 1.0).await?;
+    let stage = build_stage(&renderer, size, 1.0).await?;
     orbit(&stage.camera, 0.9)?;
     renderer.render(&stage.scene, &target)?;
 
@@ -283,7 +283,7 @@ fn main() -> Result<(), AppError> {
     if let [_, flag, path] = args.as_slice()
         && flag == "--png"
     {
-        return pollster::block_on(still(path));
+        return pollster::block_on(save_still(path));
     }
 
     let mut app = App::new(Renderer::new());
@@ -297,7 +297,7 @@ fn main() -> Result<(), AppError> {
 
 /// A mesh from vertices given as a position and a normal, and the triangles
 /// that index them, each counterclockwise seen from the side it faces.
-fn mesh(vertices: Vec<([f32; 3], [f32; 3])>, indices: Vec<u32>) -> Mesh {
+fn build_mesh(vertices: Vec<([f32; 3], [f32; 3])>, indices: Vec<u32>) -> Mesh {
     let mesh = Mesh::new();
     mesh.add_vertices(
         vertices
@@ -309,7 +309,7 @@ fn mesh(vertices: Vec<([f32; 3], [f32; 3])>, indices: Vec<u32>) -> Mesh {
 }
 
 /// A cube one unit wide around the origin, with a flat normal on each face.
-fn cube() -> Mesh {
+fn make_cube() -> Mesh {
     // Each face's normal, then two directions along it whose cross product is the normal.
     let faces: [[[f32; 3]; 3]; 6] = [
         [[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]],
@@ -329,11 +329,11 @@ fn cube() -> Mesh {
         }
         indices.extend([0, 1, 2, 0, 2, 3].map(|i| first + i));
     }
-    mesh(vertices, indices)
+    build_mesh(vertices, indices)
 }
 
 /// A sphere of radius 1, in `rings` from pole to pole and `segments` around.
-fn sphere(segments: u32, rings: u32) -> Mesh {
+fn make_sphere(segments: u32, rings: u32) -> Mesh {
     let mut vertices = Vec::new();
     for ring in 0..=rings {
         let polar = PI * ring as f32 / rings as f32;
@@ -347,12 +347,12 @@ fn sphere(segments: u32, rings: u32) -> Mesh {
             vertices.push((normal, normal));
         }
     }
-    mesh(vertices, grid(segments, rings))
+    build_mesh(vertices, list_grid(segments, rings))
 }
 
 /// A ring lying flat around the vertical axis: `radius` to the middle of its
 /// tube, whose own radius is `tube`.
-fn torus(radius: f32, tube: f32) -> Mesh {
+fn make_torus(radius: f32, tube: f32) -> Mesh {
     let (around, across) = (48, 16);
     let mut vertices = Vec::new();
     for step in 0..=across {
@@ -370,12 +370,12 @@ fn torus(radius: f32, tube: f32) -> Mesh {
             vertices.push((position, normal));
         }
     }
-    mesh(vertices, grid(around, across))
+    build_mesh(vertices, list_grid(around, across))
 }
 
 /// The triangles of a grid of `columns` by `rows` quads, whose vertices run
 /// along each row and repeat the first column at the end.
-fn grid(columns: u32, rows: u32) -> Vec<u32> {
+fn list_grid(columns: u32, rows: u32) -> Vec<u32> {
     let row = columns + 1;
     let mut indices = Vec::new();
     for y in 0..rows {
