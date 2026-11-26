@@ -96,6 +96,9 @@ impl ToonMaterial {
         ];
         let _ = self.shader.set("camera.view_proj", identity);
         let _ = self.shader.set("camera.position", [0.0_f32, 0.0, 0.0]);
+        // A white light from straight above lights a fresh material until the
+        // first Light reaches it, as on PbrMaterial.
+        self.shader.object.set_placeholder();
         let _ = self.shader.set("lights.ambient", [0.03_f32, 0.03, 0.03]);
     }
 

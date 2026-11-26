@@ -157,13 +157,15 @@ fn vs_main(
 }
 
 @fragment
-fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
+fn fs_main(in: VsOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f32> {
   let uv = slot_uv(material.uv[0], in.uv0, in.uv1);
   let base = material.base_color * textureSample(base_color_map, base_color_sampler, uv) * in.vertex_color;
   if (material.alpha_mode_flag == 1u && base.a < material.alpha_cutoff) {
     discard;
   }
-  let n = normalize(in.world_normal);
+  // A back face, drawn when the material is double-sided, faces away from its
+  // normal, so it lights, bands and takes the rim as the side the camera sees.
+  let n = normalize(in.world_normal) * select(-1.0, 1.0, front);
   let v = normalize(camera.position - in.world);
   let lit = accumulate_lights(in.world, n, v, Surface(base.rgb));
   // The scene's ambient light, tinted by the albedo, as on PbrMaterial.

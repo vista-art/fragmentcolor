@@ -29,6 +29,27 @@ fn quad() -> Mesh {
     mesh
 }
 
+/// The quad's back: the same corners wound the other way, with a normal along -z,
+/// as the far side of a sheet whose front faces away from the camera.
+fn back_quad() -> Mesh {
+    let top_left = [-1.0, 1.0, 0.0];
+    let top_right = [1.0, 1.0, 0.0];
+    let bottom_left = [-1.0, -1.0, 0.0];
+    let bottom_right = [1.0, -1.0, 0.0];
+    let mesh = Mesh::new();
+    for position in [
+        top_left,
+        bottom_right,
+        bottom_left,
+        top_left,
+        top_right,
+        bottom_right,
+    ] {
+        mesh.add_vertex(Vertex::pbr(position).set(Vertex::NORMAL, [0.0_f32, 0.0, -1.0]));
+    }
+    mesh
+}
+
 /// A toon material seen from `[0, 0, 1]`, in front of the quad, with no ambient light,
 /// so each test reads its direct light alone.
 fn build_material() -> ToonMaterial {
@@ -52,8 +73,18 @@ fn light_at(ndl: f32) -> Light {
 /// the RGBA of its center pixel. A light lights the shaders it reached until its last
 /// holder drops, so the light drops here, and the next draw takes only its own.
 async fn draw_center(renderer: &Renderer, material: &ToonMaterial, light: Light) -> [u8; 4] {
+    draw_mesh_center(renderer, quad(), material, light).await
+}
+
+/// Draws `mesh` with `material` under `light`, as `draw_center` draws the quad.
+async fn draw_mesh_center(
+    renderer: &Renderer,
+    mesh: Mesh,
+    material: &ToonMaterial,
+    light: Light,
+) -> [u8; 4] {
     let pass = Pass::new("toon");
-    pass.add(&Model::new(quad(), material))
+    pass.add(&Model::new(mesh, material))
         .expect("add the model");
     pass.add(&light).expect("add the light");
     let target = renderer
@@ -312,5 +343,71 @@ fn rim_marks_faces_seen_edge_on() {
 
         assert_eq!(head_on, [0, 0, 0, 255]);
         assert_eq!(edge_on, [0, 0, 255, 255]);
+    });
+}
+
+// Story: a double-sided toon sheet seen from behind lights, bands and takes the rim as
+// the side the camera sees, since its normal flips on the back face. Unflipped, the
+// back would sit in the darkest band and fill with the rim's color.
+#[test]
+fn a_back_face_lights_as_the_side_the_camera_sees() {
+    pollster::block_on(async {
+        let renderer = Renderer::new();
+        let white = build_material().double_sided(true);
+        let rimmed = build_material()
+            .double_sided(true)
+            .base_color([0.0, 0.0, 0.0, 1.0])
+            .expect("base color")
+            .rim([0.0, 0.0, 1.0])
+            .expect("rim");
+
+        let lit = draw_mesh_center(&renderer, back_quad(), &white, light_at(1.0)).await;
+        let rim = draw_mesh_center(&renderer, back_quad(), &rimmed, light_at(1.0)).await;
+
+        assert_eq!(
+            lit,
+            [255, 255, 255, 255],
+            "the light reaches the side the camera sees"
+        );
+        assert_eq!(rim, [0, 0, 0, 255], "the back seen head on shows no rim");
+    });
+}
+
+// Story: on a pass with no Light, the placeholder light from above lights a toon model,
+// as it lights a PbrMaterial, so a fresh material doesn't draw near black.
+#[test]
+fn the_placeholder_lights_a_model_with_no_light() {
+    pollster::block_on(async {
+        let renderer = Renderer::new();
+        let material = build_material();
+        // The quad's corners, facing up, toward the placeholder that shines straight down.
+        let facing_up = Mesh::new();
+        for position in [
+            [-1.0, 1.0, 0.0],
+            [-1.0, -1.0, 0.0],
+            [1.0, -1.0, 0.0],
+            [-1.0, 1.0, 0.0],
+            [1.0, -1.0, 0.0],
+            [1.0, 1.0, 0.0],
+        ] {
+            facing_up.add_vertex(Vertex::pbr(position).set(Vertex::NORMAL, [0.0_f32, 1.0, 0.0]));
+        }
+        let pass = Pass::new("toon");
+        pass.add(&Model::new(facing_up, &material))
+            .expect("add the model");
+        let target = renderer
+            .create_texture_target([SIZE, SIZE])
+            .await
+            .expect("texture target");
+
+        renderer.render(&pass, &target).expect("render");
+
+        let image = target.get_image().await.expect("read back");
+        let start = (((SIZE / 2) * SIZE + SIZE / 2) * 4) as usize;
+        assert!(
+            image[start] > 100,
+            "lit by the placeholder, red {}",
+            image[start]
+        );
     });
 }

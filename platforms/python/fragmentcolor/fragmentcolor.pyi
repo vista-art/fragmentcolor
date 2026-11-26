@@ -360,9 +360,13 @@ class Renderer:
         binding. [`Shader::get`](https://fragmentcolor.org/api/core/shader) returns
         what was last set on the CPU side, so GPU writes don't show up through it.
         A [`Shader::set`](https://fragmentcolor.org/api/core/shader#set) on a field
-        or an item of the root uploads only those bytes at the next render that binds
-        it, so the rest of the root keeps what a compute pass wrote there. Raw bytes
-        on the root replace all of it.
+        or an item of the root uploads only the 4-byte words that hold it at the next
+        render that binds it, so the rest of the root keeps what a compute pass wrote
+        there. Setting one `f16` also writes the `f16` that shares its word, from the
+        shader's copy. The whole root goes up, over what the pass wrote, when raw bytes
+        replace it, when the render creates the buffer or recreates it at a new size,
+        as two shaders that declare the root at different sizes make it do, and when
+        another Renderer uploaded changes this one hadn't seen.
 
         `read_storage` is `async` because the underlying `map_async` requires an
         awaited callback. It returns a Promise in JS, is `async` in Swift and
@@ -794,7 +798,7 @@ class Shader:
         - A `Texture` created by a `Renderer` binds to a texture uniform, a `texture_external` one included.
         - Raw bytes replace a whole storage-buffer or push-constant root: a byte slice in Rust, a `Uint8Array` in JavaScript, `bytes` (or a `bytearray` or `memoryview`) in Python, `Data` in Swift, or a `ByteArray` in Kotlin. The byte count must equal the root's size, and any other length throws.
 
-        Setting a field or an item of a storage root uploads only its bytes at the next render that binds the root, so the rest of the root keeps what a compute pass wrote there. Uploads cover whole 4-byte words, so setting one `f16` also writes the `f16` that shares its word, from the shader's copy. Raw bytes on the root upload all of it.
+        Setting a field or an item of a storage root uploads only its bytes at the next render that binds the root, so the rest of the root keeps what a compute pass wrote there. Uploads cover whole 4-byte words, so setting one `f16` also writes the `f16` that shares its word, from the shader's copy. Raw bytes on the root upload all of it, and so does a render that creates the root's buffer, or one on a second Renderer that missed changes another Renderer uploaded.
 
         Example:
 
@@ -5660,6 +5664,11 @@ class ToonMaterial:
         | `camera.view_proj`        | identity 4×4   |
         | `camera.position`         | `[0, 0, 0]`    |
         | `lights.ambient`          | `[0.03; 3]`    |
+        | placeholder light         | white, directional, pointing down `[0, -1, 0]` |
+
+        The placeholder light lights a fresh material until the first
+        [Light](https://fragmentcolor.org/api/scene/light) reaches its shader,
+        and returns once no Light does, as on `PbrMaterial`.
 
         Example:
 

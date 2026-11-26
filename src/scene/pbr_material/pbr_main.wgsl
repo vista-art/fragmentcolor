@@ -155,7 +155,7 @@ fn vs_main(
 }
 
 @fragment
-fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
+fn fs_main(in: VsOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f32> {
   // Each slot samples its own UV set through its own transform.
   let base_color_uv = slot_uv(material.uv[0], in.uv0, in.uv1);
   let metallic_roughness_uv = slot_uv(material.uv[1], in.uv0, in.uv1);
@@ -197,11 +197,17 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
   // collapses to the geometric `N`, so unset maps don't perturb shading.
   // glTF spec: `B = cross(N, T) * tangent.w` (handedness preserved
   // through model transform + the `tangent.w` sign).
+  // A back face, drawn when the material is double-sided, faces away from its
+  // normal, so the whole frame flips, as glTF asks, and it lights as the side
+  // the camera sees.
   let n_sample = textureSample(normal_map, pbr_sampler, normal_uv).xyz * 2.0 - 1.0;
   let tn = vec3<f32>(n_sample.xy * material.normal_scale, n_sample.z);
-  let n = normalize(in.world_normal);
-  let t = normalize(in.world_tangent.xyz);
-  let b = cross(n, t) * in.world_tangent.w;
+  let facing = select(-1.0, 1.0, front);
+  let outward = normalize(in.world_normal);
+  let along = normalize(in.world_tangent.xyz);
+  let n = outward * facing;
+  let t = along * facing;
+  let b = cross(outward, along) * in.world_tangent.w * facing;
   let world_normal = normalize(t * tn.x + b * tn.y + n * tn.z);
 
   // Occlusion. glTF reads only the red channel; blend toward `1.0` by the

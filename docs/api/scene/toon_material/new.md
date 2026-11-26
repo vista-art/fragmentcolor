@@ -39,6 +39,11 @@ light times the albedo, and the rim, and encodes the result as sRGB on the
 | `camera.view_proj`        | identity 4×4   |
 | `camera.position`         | `[0, 0, 0]`    |
 | `lights.ambient`          | `[0.03; 3]`    |
+| placeholder light         | white, directional, pointing down `[0, -1, 0]` |
+
+The placeholder light lights a fresh material until the first
+[Light](https://fragmentcolor.org/api/scene/light) reaches its shader,
+and returns once no Light does, as on `PbrMaterial`.
 
 ## Example
 
