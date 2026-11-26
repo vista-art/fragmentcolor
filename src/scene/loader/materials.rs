@@ -223,6 +223,8 @@ fn name_slot(slot: MapSlot) -> &'static str {
         MapSlot::Normal => "normalTexture",
         MapSlot::Occlusion => "occlusionTexture",
         MapSlot::Emissive => "emissiveTexture",
+        // glTF has no toon ramp, so the loader never fills one.
+        MapSlot::Ramp => "ramp",
     }
 }
 

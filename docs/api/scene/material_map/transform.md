@@ -37,6 +37,10 @@ finite number that fits a 32-bit float, got 1e39`. JavaScript throws an
 Swift throws `FragmentColorError` and Kotlin throws
 `FragmentColorException`.
 
+[`ToonMaterial::ramp_map`](https://fragmentcolor.org/api/scene/toonmaterial#ramp_map)
+reads the light level in place of the mesh's UVs, so its `transform` returns
+`MaterialError::NoUv`, which names the call, and changes nothing.
+
 ## Example
 
 ```rust

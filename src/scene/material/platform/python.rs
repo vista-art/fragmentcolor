@@ -2,7 +2,7 @@
 
 use pyo3::prelude::*;
 
-use crate::{Material, MaterialError, PbrMaterial, Shader, UnlitMaterial};
+use crate::{Material, MaterialError, PbrMaterial, Shader, ToonMaterial, UnlitMaterial};
 
 /// A material from Python, or one handed back: the material object itself,
 /// since Python has no `Material` class.
@@ -10,6 +10,7 @@ use crate::{Material, MaterialError, PbrMaterial, Shader, UnlitMaterial};
 pub enum PyMaterial {
     Pbr(PbrMaterial),
     Unlit(UnlitMaterial),
+    Toon(ToonMaterial),
     Custom(Shader),
 }
 
@@ -18,6 +19,7 @@ impl From<PyMaterial> for Material {
         match material {
             PyMaterial::Pbr(material) => material.into(),
             PyMaterial::Unlit(material) => material.into(),
+            PyMaterial::Toon(material) => material.into(),
             PyMaterial::Custom(shader) => shader.into(),
         }
     }
@@ -28,6 +30,7 @@ impl From<&Material> for PyMaterial {
         match material {
             Material::Pbr(material) => Self::Pbr(material.clone()),
             Material::Unlit(material) => Self::Unlit(material.clone()),
+            Material::Toon(material) => Self::Toon(material.clone()),
             Material::Custom(shader) => Self::Custom(shader.clone()),
         }
     }

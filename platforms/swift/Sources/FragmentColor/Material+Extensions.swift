@@ -3,7 +3,8 @@
 //  FragmentColor
 //
 //  Unlabeled-argument overloads for the uniffi-generated material API:
-//  PbrMaterial, UnlitMaterial and the MaterialMap their map calls return.
+//  PbrMaterial, UnlitMaterial, ToonMaterial and the MaterialMap their map
+//  calls return.
 //  Mirrors the spelling used by the JS / Python bindings so doc examples
 //  read identically across every platform.
 //
@@ -140,6 +141,82 @@ extension UnlitMaterial {
 
     @discardableResult
     public func alphaMode(_ mode: AlphaMode) -> UnlitMaterial {
+        return alphaMode(mode: mode)
+    }
+}
+
+extension ToonMaterial {
+    // MARK: - Setters, spelled as on PbrMaterial where the two share one.
+
+    @discardableResult
+    public func alphaCutoff(_ value: Float) throws -> ToonMaterial {
+        return try alphaCutoff(value: value)
+    }
+    @discardableResult
+    public func alphaCutoff(_ value: Double) throws -> ToonMaterial {
+        return try alphaCutoff(value: readFinite(value, "ToonMaterial.alphaCutoff: value"))
+    }
+
+    @discardableResult
+    public func highlightSize(_ value: Float) throws -> ToonMaterial {
+        return try highlightSize(value: value)
+    }
+    @discardableResult
+    public func highlightSize(_ value: Double) throws -> ToonMaterial {
+        return try highlightSize(value: readFinite(value, "ToonMaterial.highlightSize: value"))
+    }
+
+    @discardableResult
+    public func rimWidth(_ value: Float) throws -> ToonMaterial {
+        return try rimWidth(value: value)
+    }
+    @discardableResult
+    public func rimWidth(_ value: Double) throws -> ToonMaterial {
+        return try rimWidth(value: readFinite(value, "ToonMaterial.rimWidth: value"))
+    }
+
+    @discardableResult
+    public func bands(_ count: UInt32) throws -> ToonMaterial {
+        return try bands(count: count)
+    }
+
+    @discardableResult
+    public func doubleSided(_ value: Bool) -> ToonMaterial {
+        return doubleSided(value: value)
+    }
+
+    @discardableResult
+    public func baseColor(_ color: [Float]) throws -> ToonMaterial {
+        return try baseColor(color: color)
+    }
+    @discardableResult
+    @_disfavoredOverload
+    public func baseColor(_ color: [Double]) throws -> ToonMaterial {
+        return try baseColor(color: readFloats(color, "ToonMaterial.baseColor"))
+    }
+
+    @discardableResult
+    public func highlight(_ color: [Float]) throws -> ToonMaterial {
+        return try highlight(color: color)
+    }
+    @discardableResult
+    @_disfavoredOverload
+    public func highlight(_ color: [Double]) throws -> ToonMaterial {
+        return try highlight(color: readFloats(color, "ToonMaterial.highlight"))
+    }
+
+    @discardableResult
+    public func rim(_ color: [Float]) throws -> ToonMaterial {
+        return try rim(color: color)
+    }
+    @discardableResult
+    @_disfavoredOverload
+    public func rim(_ color: [Double]) throws -> ToonMaterial {
+        return try rim(color: readFloats(color, "ToonMaterial.rim"))
+    }
+
+    @discardableResult
+    public func alphaMode(_ mode: AlphaMode) -> ToonMaterial {
         return alphaMode(mode: mode)
     }
 }

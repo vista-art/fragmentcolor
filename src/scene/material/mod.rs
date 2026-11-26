@@ -8,7 +8,7 @@
 use lsp_doc::lsp_doc;
 
 use crate::core::UniformInput;
-use crate::{PbrMaterial, Shader, ShaderError, UnlitMaterial};
+use crate::{PbrMaterial, Shader, ShaderError, ToonMaterial, UnlitMaterial};
 
 mod alpha_mode;
 pub use alpha_mode::AlphaMode;
@@ -27,11 +27,11 @@ pub(crate) const LIGHT_LOOPS: &str = include_str!("light_loops.wgsl");
 
 /// The registry snippets the built-in material shaders compose from, baked in
 /// directly rather than resolved through the shader registry. They power the
-/// engine's own `PbrMaterial::new()` and `UnlitMaterial::new()`, so they must be
-/// present on every platform regardless of which `shaders-<category>` features the
-/// consumer enabled, including the slim web build (`--no-default-features`), whose
-/// synchronous constructors cannot fetch them over the network. Embedding the files
-/// (a few KB) keeps both constructors infallible and offline everywhere without
+/// engine's own `PbrMaterial::new()`, `UnlitMaterial::new()` and `ToonMaterial::new()`,
+/// so they must be present on every platform regardless of which `shaders-<category>`
+/// features the consumer enabled, including the slim web build (`--no-default-features`),
+/// whose synchronous constructors cannot fetch them over the network. Embedding the files
+/// (a few KB) keeps the constructors infallible and offline everywhere without
 /// dragging the rest of the registry into the wasm bundle.
 pub(crate) const MESH_TRANSFORM: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -51,6 +51,8 @@ pub enum Material {
     Pbr(PbrMaterial),
     /// A base color times its map, with no lighting, as glTF's `KHR_materials_unlit`.
     Unlit(UnlitMaterial),
+    /// Cel shading: diffuse light in bands or from a ramp, a hard highlight and a rim.
+    Toon(ToonMaterial),
     /// A shader of your own. The renderer fills the `camera`, `lights` and `model`
     /// slots it declares, and it sets its other values with `Shader::set`.
     Custom(Shader),
@@ -62,6 +64,7 @@ impl Material {
         match self {
             Material::Pbr(material) => material.shader(),
             Material::Unlit(material) => material.shader(),
+            Material::Toon(material) => material.shader(),
             Material::Custom(shader) => shader,
         }
     }
@@ -94,6 +97,18 @@ impl From<UnlitMaterial> for Material {
 impl From<&UnlitMaterial> for Material {
     fn from(material: &UnlitMaterial) -> Self {
         Material::Unlit(material.clone())
+    }
+}
+
+impl From<ToonMaterial> for Material {
+    fn from(material: ToonMaterial) -> Self {
+        Material::Toon(material)
+    }
+}
+
+impl From<&ToonMaterial> for Material {
+    fn from(material: &ToonMaterial) -> Self {
+        Material::Toon(material.clone())
     }
 }
 

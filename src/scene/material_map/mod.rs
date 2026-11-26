@@ -59,6 +59,7 @@ impl MaterialMap {
 
     #[lsp_doc("docs/api/scene/material_map/uv.md")]
     pub fn uv(&self, set: u32) -> Result<Self, MaterialError> {
+        self.check_uv("uv")?;
         let set = UvSet::try_from(set).map_err(|_| MaterialError::UvSet {
             call: self.name_call("uv"),
             set,
@@ -74,6 +75,7 @@ impl MaterialMap {
         scale: [f32; 2],
         rotation: f32,
     ) -> Result<Self, MaterialError> {
+        self.check_uv("transform")?;
         let transform = UvTransform::new(offset, scale, rotation);
         let transform = transform.check(&self.name_call("transform"))?;
         write_values(&self.shader, self.slot.build_transform(transform).into())?;
@@ -90,6 +92,16 @@ impl MaterialMap {
     /// The name of `method` on this map, as errors name the call.
     fn name_call(&self, method: &str) -> String {
         format!("{}::{}().{method}", self.owner, self.slot.pick_key())
+    }
+
+    /// Refuses `method`, `uv` or `transform`, on a map that samples no mesh UVs.
+    fn check_uv(&self, method: &str) -> Result<(), MaterialError> {
+        if self.slot.reads_uv() {
+            return Ok(());
+        }
+        Err(MaterialError::NoUv {
+            call: self.name_call(method),
+        })
     }
 
     /// Sets the UV set and the transform this map samples with, or neither.
@@ -115,8 +127,9 @@ impl MaterialMap {
     }
 }
 
-/// The maps of the built-in shaders, in the order their `material.uv` arrays keep them.
-/// The unlit shader has the first one only.
+/// The maps of the built-in shaders. The PBR maps come in the order the `material.uv` arrays
+/// keep them, and the unlit and toon shaders have the first one. The toon shader's ramp,
+/// last, reads the light level in place of the mesh's UVs, so it has no `material.uv` entry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum MapSlot {
     BaseColor,
@@ -124,9 +137,11 @@ pub(crate) enum MapSlot {
     Normal,
     Occlusion,
     Emissive,
+    Ramp,
 }
 
 impl MapSlot {
+    /// The five maps of the PBR shader.
     pub(crate) const ALL: [Self; 5] = [
         Self::BaseColor,
         Self::MetallicRoughness,
@@ -144,14 +159,20 @@ impl MapSlot {
             Self::Normal => "normal_map",
             Self::Occlusion => "occlusion_map",
             Self::Emissive => "emissive_map",
+            Self::Ramp => "ramp_map",
         }
     }
 
+    /// Whether the map samples the mesh's UVs, which every map but the toon ramp does.
+    fn reads_uv(self) -> bool {
+        self != Self::Ramp
+    }
+
     /// The format a map in this slot takes when the caller picks none,
-    /// sRGB for the two color maps and linear for the three that hold data.
+    /// sRGB for the three color maps and linear for the three that hold data.
     pub(crate) fn pick_format(self) -> crate::TextureFormat {
         match self {
-            Self::BaseColor | Self::Emissive => crate::TextureFormat::Rgba8UnormSrgb,
+            Self::BaseColor | Self::Emissive | Self::Ramp => crate::TextureFormat::Rgba8UnormSrgb,
             Self::MetallicRoughness | Self::Normal | Self::Occlusion => {
                 crate::TextureFormat::Rgba8Unorm
             }

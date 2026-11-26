@@ -14,6 +14,10 @@ is a count like any other: JavaScript throws for a fraction or a negative
 number, and Python takes an `int`, raising `TypeError` for a float and
 `InvalidInputError` for an int below 0 or past `2**32 - 1`.
 
+[`ToonMaterial::ramp_map`](https://fragmentcolor.org/api/scene/toonmaterial#ramp_map)
+reads the light level in place of the mesh's UVs, so its `uv` returns
+`MaterialError::NoUv`, which names the call, and changes nothing.
+
 The PBR shader reads `UV1` from every vertex, and a mesh whose vertices
 lack it fails to attach with an error that names `uv1`. `Vertex::pbr`
 seeds `UV1` at `[0, 0]`, so a map on set 1 reads that one point until

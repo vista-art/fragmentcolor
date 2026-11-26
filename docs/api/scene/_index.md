@@ -8,6 +8,7 @@ the rest are the things you put inside it.
 - Material
 - PbrMaterial
 - UnlitMaterial
+- ToonMaterial
 - MaterialMap
 - Camera
 - Light

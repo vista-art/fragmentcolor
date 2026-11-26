@@ -5,9 +5,9 @@ with: the same handle `Model::new` took, so a setter on it changes every
 Model that draws with that material.
 
 In Rust it returns `&Material`, the enum with a variant per material type,
-such as `Material::Pbr(PbrMaterial)`, `Material::Unlit(UnlitMaterial)` or
+such as `Material::Pbr(PbrMaterial)`, `Material::Toon(ToonMaterial)` or
 `Material::Custom(Shader)`. JavaScript and Python return the material object
-itself, a `PbrMaterial`, an `UnlitMaterial` or a `Shader`. Swift and Kotlin return the `Material` enum, which holds the
+itself, a `PbrMaterial`, an `UnlitMaterial`, a `ToonMaterial` or a `Shader`. Swift and Kotlin return the `Material` enum, which holds the
 object.
 
 To give a Model a look of its own, build a fresh material, such as a new

@@ -58,6 +58,35 @@ fun UnlitMaterial.baseColor(color: List<Double>): UnlitMaterial = baseColor(read
 
 fun UnlitMaterial.baseColor(color: DoubleArray): UnlitMaterial = baseColor(readFloats(color, "UnlitMaterial.baseColor"))
 
+fun ToonMaterial.alphaCutoff(value: Double): ToonMaterial =
+    alphaCutoff(readFinite(value, "ToonMaterial.alphaCutoff: value"))
+
+fun ToonMaterial.highlightSize(value: Double): ToonMaterial =
+    highlightSize(readFinite(value, "ToonMaterial.highlightSize: value"))
+
+fun ToonMaterial.rimWidth(value: Double): ToonMaterial = rimWidth(readFinite(value, "ToonMaterial.rimWidth: value"))
+
+fun ToonMaterial.baseColor(color: FloatArray): ToonMaterial = baseColor(color.toList())
+
+@JvmName("baseColorDoubles")
+fun ToonMaterial.baseColor(color: List<Double>): ToonMaterial = baseColor(readFloats(color, "ToonMaterial.baseColor"))
+
+fun ToonMaterial.baseColor(color: DoubleArray): ToonMaterial = baseColor(readFloats(color, "ToonMaterial.baseColor"))
+
+fun ToonMaterial.highlight(color: FloatArray): ToonMaterial = highlight(color.toList())
+
+@JvmName("highlightDoubles")
+fun ToonMaterial.highlight(color: List<Double>): ToonMaterial = highlight(readFloats(color, "ToonMaterial.highlight"))
+
+fun ToonMaterial.highlight(color: DoubleArray): ToonMaterial = highlight(readFloats(color, "ToonMaterial.highlight"))
+
+fun ToonMaterial.rim(color: FloatArray): ToonMaterial = rim(color.toList())
+
+@JvmName("rimDoubles")
+fun ToonMaterial.rim(color: List<Double>): ToonMaterial = rim(readFloats(color, "ToonMaterial.rim"))
+
+fun ToonMaterial.rim(color: DoubleArray): ToonMaterial = rim(readFloats(color, "ToonMaterial.rim"))
+
 fun MaterialMap.transform(offset: FloatArray, scale: FloatArray, rotation: Float): MaterialMap =
     transform(offset.toList(), scale.toList(), rotation)
 

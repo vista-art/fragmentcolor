@@ -22,7 +22,8 @@ pub(crate) struct PbrDefaults {
 }
 
 impl PbrDefaults {
-    /// Whether `uniform_name` is a PBR map slot, which takes a default when no texture is set.
+    /// Whether `uniform_name` is a map slot of a built-in material shader, PBR, unlit or toon,
+    /// which takes a default when no texture is set.
     pub(in crate::core::renderer) fn has_slot(uniform_name: &str) -> bool {
         matches!(
             uniform_name,
@@ -31,6 +32,7 @@ impl PbrDefaults {
                 | "normal_map"
                 | "occlusion_map"
                 | "emissive_map"
+                | "ramp_map"
         )
     }
 
@@ -41,6 +43,8 @@ impl PbrDefaults {
             "normal_map" => Some(&self.normal),
             "occlusion_map" => Some(&self.occlusion),
             "emissive_map" => Some(&self.emissive),
+            // The toon shader reads a ramp one texel wide as no ramp, whatever its color.
+            "ramp_map" => Some(&self.base_color),
             _ => None,
         }
     }

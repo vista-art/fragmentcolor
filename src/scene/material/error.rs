@@ -11,6 +11,15 @@ pub enum MaterialError {
     /// A UV set other than 0 or 1, which `call` names, such as `PbrMaterial::normal_map().uv`.
     #[error("{call} takes UV set 0 or 1, got {set}")]
     UvSet { call: String, set: u32 },
+    /// A map that samples no mesh UVs, such as `ToonMaterial::ramp_map()`, given a UV set or
+    /// a transform by `call`.
+    #[error(
+        "{call}: the map reads the light level, not the mesh's UVs, so it takes no UV set or transform"
+    )]
+    NoUv { call: String },
+    /// A band count of 0, which `call` names, such as `ToonMaterial::bands`.
+    #[error("{call} takes 1 band or more, got {count}")]
+    Bands { call: String, count: u32 },
     /// A number that isn't finite, such as NaN or an infinity, which `label` names with its call.
     #[error("{label} must be finite, got {value}")]
     NotFinite { label: String, value: f32 },

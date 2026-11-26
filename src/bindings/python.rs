@@ -51,6 +51,7 @@ pub fn fragmentcolor(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<crate::scene::LightKind>()?;
     m.add_class::<crate::PbrMaterial>()?;
     m.add_class::<crate::UnlitMaterial>()?;
+    m.add_class::<crate::ToonMaterial>()?;
     m.add_class::<crate::MaterialMap>()?;
     m.add_class::<crate::AlphaMode>()?;
 

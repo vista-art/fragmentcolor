@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use crate::errors::platform::mobile::FragmentColorError;
-use crate::{Material, MaterialError, PbrMaterial, Shader, UnlitMaterial};
+use crate::{Material, MaterialError, PbrMaterial, Shader, ToonMaterial, UnlitMaterial};
 
 /// What a `Model` draws with, as Swift and Kotlin see it: an enum that holds the
 /// material object. Uniffi marshals objects as `Arc`s, which the Rust `Material`
@@ -13,6 +13,7 @@ use crate::{Material, MaterialError, PbrMaterial, Shader, UnlitMaterial};
 pub enum MobileMaterial {
     Pbr(Arc<PbrMaterial>),
     Unlit(Arc<UnlitMaterial>),
+    Toon(Arc<ToonMaterial>),
     Custom(Arc<Shader>),
 }
 
@@ -21,6 +22,7 @@ impl From<MobileMaterial> for Material {
         match material {
             MobileMaterial::Pbr(material) => (*material).clone().into(),
             MobileMaterial::Unlit(material) => (*material).clone().into(),
+            MobileMaterial::Toon(material) => (*material).clone().into(),
             MobileMaterial::Custom(shader) => (*shader).clone().into(),
         }
     }
@@ -31,6 +33,7 @@ impl From<&Material> for MobileMaterial {
         match material {
             Material::Pbr(material) => Self::Pbr(Arc::new(material.clone())),
             Material::Unlit(material) => Self::Unlit(Arc::new(material.clone())),
+            Material::Toon(material) => Self::Toon(Arc::new(material.clone())),
             Material::Custom(shader) => Self::Custom(Arc::new(shader.clone())),
         }
     }

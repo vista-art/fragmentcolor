@@ -13,6 +13,7 @@ mod platform;
 #[allow(clippy::module_inception)]
 mod scene;
 mod scene_object;
+mod toon_material;
 mod unlit_material;
 
 pub use camera::*;
@@ -30,4 +31,5 @@ pub use pbr_material::PbrMaterial;
 pub use scene::{PassRef, Scene};
 pub use scene_object::SceneObject;
 pub(crate) use scene_object::push_uniform;
+pub use toon_material::ToonMaterial;
 pub use unlit_material::UnlitMaterial;

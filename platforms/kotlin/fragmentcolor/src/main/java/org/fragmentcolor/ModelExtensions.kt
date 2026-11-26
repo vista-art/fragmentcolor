@@ -11,6 +11,9 @@ fun Model(mesh: Mesh, material: PbrMaterial): Model = Model(mesh, Material.Pbr(m
 /** A Model that draws `mesh` with an UnlitMaterial, which the generated constructor takes as `Material.Unlit`. */
 fun Model(mesh: Mesh, material: UnlitMaterial): Model = Model(mesh, Material.Unlit(material))
 
+/** A Model that draws `mesh` with a ToonMaterial, which the generated constructor takes as `Material.Toon`. */
+fun Model(mesh: Mesh, material: ToonMaterial): Model = Model(mesh, Material.Toon(material))
+
 /** A Model that draws `mesh` with a Shader of your own, which the generated constructor takes as `Material.Custom`. */
 fun Model(mesh: Mesh, material: Shader): Model = Model(mesh, Material.Custom(material))
 
