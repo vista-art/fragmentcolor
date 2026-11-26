@@ -8,4 +8,4 @@ mr_map_bytes = [
     0, 220, 60, 255,
 ]
 material = PbrMaterial()
-map = material.metallic_roughness_map().texture((mr_map_bytes, [2, 2]))
+map = material.metallic_roughness_map().texture(mr_map_bytes, size=[2, 2])

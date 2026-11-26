@@ -1502,7 +1502,7 @@ fn a_plain_shader_draws_a_model_mesh() {
             .create_texture_target([SIDE, SIDE])
             .await
             .expect("texture target");
-        let model = strip(&red_glow(), -1.0, -0.2);
+        let model = strip(red_glow(), -1.0, -0.2);
         let pass = Pass::new("models");
         pass.set_clear_color(BLUE).expect("set clear color");
         pass.add(&model).expect("add model");
@@ -1547,7 +1547,7 @@ fn model_columns_without_a_model_error() {
             .create_texture_target([SIDE, SIDE])
             .await
             .expect("texture target");
-        let model = strip(&red_glow(), -1.0, -0.2);
+        let model = strip(red_glow(), -1.0, -0.2);
         let pass = Pass::new("models");
         pass.add(&model).expect("add model");
 
@@ -1707,8 +1707,8 @@ fn an_empty_index_list_draws_nothing() {
             .create_texture_target([SIDE, SIDE])
             .await
             .expect("texture target");
-        let opaque = strip(&red_glow(), -1.0, 1.0);
-        let blended = strip(&red_glow().alpha_mode(crate::AlphaMode::Blend), -1.0, 1.0);
+        let opaque = strip(red_glow(), -1.0, 1.0);
+        let blended = strip(red_glow().alpha_mode(crate::AlphaMode::Blend), -1.0, 1.0);
         let mut images = Vec::new();
         for model in [opaque, blended] {
             model.mesh().set_indices(Vec::new());
@@ -1861,7 +1861,7 @@ fn the_blend_phase_draws_the_planned_buffers() {
             .create_texture_target([SIDE, SIDE])
             .await
             .expect("texture target");
-        let model = strip(&red_glow().alpha_mode(crate::AlphaMode::Blend), -1.0, 1.0);
+        let model = strip(red_glow().alpha_mode(crate::AlphaMode::Blend), -1.0, 1.0);
         let pass = Pass::new("blended");
         pass.set_clear_color(BLUE).expect("set clear color");
         pass.add(&model).expect("add model");
