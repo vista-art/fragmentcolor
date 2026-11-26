@@ -17,7 +17,7 @@ let bulb = try Light.point([0.0, 0.5, 1.0], [1.0, 0.95, 0.8]).setIntensity(15.0)
 try bulb.setRange(3.0)
 
 let pass = Pass("lamp")
-try pass.add(Model(wall, Material.pbr()))
+try pass.add(Model(wall, PbrMaterial()))
 try pass.add(camera)
 try pass.add(bulb)
 try renderer.render(pass, target)

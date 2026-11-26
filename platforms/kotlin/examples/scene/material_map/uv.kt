@@ -1,0 +1,8 @@
+import org.fragmentcolor.*
+
+val mesh = Mesh()
+mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)).set(Vertex.UV1, listOf(0.25f, 0.75f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)).set(Vertex.UV1, listOf(0.0f, 0.5f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f)).set(Vertex.UV1, listOf(0.5f, 0.5f))))
+
+// The occlusion map follows the second UV layout.
+val material = PbrMaterial()
+val map = material.occlusionMap().uv(1u)

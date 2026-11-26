@@ -1250,76 +1250,22 @@ public func FfiConverterTypeLight_lower(_ value: Light) -> UInt64 {
 
 
 
-public protocol MaterialProtocol: AnyObject, Sendable {
-    
-    func alphaCutoff(value: Float) throws  -> Material
-    
-    func alphaMode(mode: AlphaMode)  -> Material
-    
-    func baseColor(color: [Float]) throws  -> Material
+public protocol MaterialMapProtocol: AnyObject, Sendable {
     
     /**
-     * The texture input form of `baseColorTexture`, uploaded when the scene loads.
-     * Swift and Kotlin reach it through the `baseColorTexture` overloads, which match `createTexture`.
+     * The texture input form of `texture`, uploaded when the scene loads.
+     * Swift and Kotlin reach it through the `texture` overloads, which match `createTexture`.
      */
-    func baseColorSource(input: MobileTextureInput, options: TextureOptions?) throws  -> Material
+    func source(input: MobileTextureInput, options: TextureOptions?) throws  -> MaterialMap
     
-    func baseColorTexture(texture: Texture) throws  -> Material
+    func texture(texture: Texture) throws  -> MaterialMap
     
-    func doubleSided(value: Bool)  -> Material
+    func transform(offset: [Float], scale: [Float], rotation: Float) throws  -> MaterialMap
     
-    func emissive(factor: [Float]) throws  -> Material
-    
-    /**
-     * The texture input form of `emissiveTexture`, uploaded when the scene loads.
-     * Swift and Kotlin reach it through the `emissiveTexture` overloads, which match `createTexture`.
-     */
-    func emissiveSource(input: MobileTextureInput, options: TextureOptions?) throws  -> Material
-    
-    func emissiveTexture(texture: Texture) throws  -> Material
-    
-    func metallic(value: Float) throws  -> Material
-    
-    /**
-     * The texture input form of `metallicRoughnessTexture`, uploaded when the scene loads.
-     * Swift and Kotlin reach it through the `metallicRoughnessTexture` overloads, which match `createTexture`.
-     */
-    func metallicRoughnessSource(input: MobileTextureInput, options: TextureOptions?) throws  -> Material
-    
-    func metallicRoughnessTexture(texture: Texture) throws  -> Material
-    
-    func normalScale(value: Float) throws  -> Material
-    
-    /**
-     * The texture input form of `normalTexture`, uploaded when the scene loads.
-     * Swift and Kotlin reach it through the `normalTexture` overloads, which match `createTexture`.
-     */
-    func normalSource(input: MobileTextureInput, options: TextureOptions?) throws  -> Material
-    
-    func normalTexture(texture: Texture) throws  -> Material
-    
-    /**
-     * The texture input form of `occlusionTexture`, uploaded when the scene loads.
-     * Swift and Kotlin reach it through the `occlusionTexture` overloads, which match `createTexture`.
-     */
-    func occlusionSource(input: MobileTextureInput, options: TextureOptions?) throws  -> Material
-    
-    func occlusionStrength(value: Float) throws  -> Material
-    
-    func occlusionTexture(texture: Texture) throws  -> Material
-    
-    func roughness(value: Float) throws  -> Material
-    
-    func shader()  -> Shader
-    
-    func textureTransform(slot: TextureSlot, offset: [Float], scale: [Float], rotation: Float) throws  -> Material
-    
-    func textureUv(slot: TextureSlot, set: UInt32) throws  -> Material
-    
-    func uvTransform(offset: [Float], scale: [Float], rotation: Float) throws  -> Material
+    func uv(set: UInt32) throws  -> MaterialMap
     
 }
-open class Material: MaterialProtocol, @unchecked Sendable {
+open class MaterialMap: MaterialMapProtocol, @unchecked Sendable {
     fileprivate let handle: UInt64
 
     /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
@@ -1356,7 +1302,7 @@ open class Material: MaterialProtocol, @unchecked Sendable {
     @_documentation(visibility: private)
 #endif
     public func uniffiCloneHandle() -> UInt64 {
-        return try! rustCall { uniffi_fragmentcolor_fn_clone_material(self.handle, $0) }
+        return try! rustCall { uniffi_fragmentcolor_fn_clone_materialmap(self.handle, $0) }
     }
     // No primary constructor declared for this class.
 
@@ -1366,67 +1312,20 @@ open class Material: MaterialProtocol, @unchecked Sendable {
             return
         }
 
-        try! rustCall { uniffi_fragmentcolor_fn_free_material(handle, $0) }
+        try! rustCall { uniffi_fragmentcolor_fn_free_materialmap(handle, $0) }
     }
 
     
-public static func custom(shader: Shader) -> Material  {
-    return try!  FfiConverterTypeMaterial_lift(try! rustCall() {
-        uniffiCallStatus in
-    uniffi_fragmentcolor_fn_constructor_material_custom(
-        FfiConverterTypeShader_lower(shader),uniffiCallStatus
-    )
-})
-}
-    
-public static func pbr() -> Material  {
-    return try!  FfiConverterTypeMaterial_lift(try! rustCall() {
-        uniffiCallStatus in
-    uniffi_fragmentcolor_fn_constructor_material_pbr(uniffiCallStatus
-    )
-})
-}
-    
 
     
-open func alphaCutoff(value: Float)throws  -> Material  {
-    return try  FfiConverterTypeMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
-        uniffiCallStatus in
-    uniffi_fragmentcolor_fn_method_material_alphacutoff(
-            self.uniffiCloneHandle(),
-        FfiConverterFloat.lower(value),uniffiCallStatus
-    )
-})
-}
-    
-open func alphaMode(mode: AlphaMode) -> Material  {
-    return try!  FfiConverterTypeMaterial_lift(try! rustCall() {
-        uniffiCallStatus in
-    uniffi_fragmentcolor_fn_method_material_alphamode(
-            self.uniffiCloneHandle(),
-        FfiConverterTypeAlphaMode_lower(mode),uniffiCallStatus
-    )
-})
-}
-    
-open func baseColor(color: [Float])throws  -> Material  {
-    return try  FfiConverterTypeMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
-        uniffiCallStatus in
-    uniffi_fragmentcolor_fn_method_material_basecolor(
-            self.uniffiCloneHandle(),
-        FfiConverterSequenceFloat.lower(color),uniffiCallStatus
-    )
-})
-}
-    
     /**
-     * The texture input form of `baseColorTexture`, uploaded when the scene loads.
-     * Swift and Kotlin reach it through the `baseColorTexture` overloads, which match `createTexture`.
+     * The texture input form of `texture`, uploaded when the scene loads.
+     * Swift and Kotlin reach it through the `texture` overloads, which match `createTexture`.
      */
-open func baseColorSource(input: MobileTextureInput, options: TextureOptions? = nil)throws  -> Material  {
-    return try  FfiConverterTypeMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+open func source(input: MobileTextureInput, options: TextureOptions? = nil)throws  -> MaterialMap  {
+    return try  FfiConverterTypeMaterialMap_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
         uniffiCallStatus in
-    uniffi_fragmentcolor_fn_method_material_basecolorsource(
+    uniffi_fragmentcolor_fn_method_materialmap_source(
             self.uniffiCloneHandle(),
         FfiConverterTypeMobileTextureInput_lower(input),
         FfiConverterOptionTypeTextureOptions.lower(options),uniffiCallStatus
@@ -1434,191 +1333,21 @@ open func baseColorSource(input: MobileTextureInput, options: TextureOptions? = 
 })
 }
     
-open func baseColorTexture(texture: Texture)throws  -> Material  {
-    return try  FfiConverterTypeMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+open func texture(texture: Texture)throws  -> MaterialMap  {
+    return try  FfiConverterTypeMaterialMap_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
         uniffiCallStatus in
-    uniffi_fragmentcolor_fn_method_material_basecolortexture(
+    uniffi_fragmentcolor_fn_method_materialmap_texture(
             self.uniffiCloneHandle(),
         FfiConverterTypeTexture_lower(texture),uniffiCallStatus
     )
 })
 }
     
-open func doubleSided(value: Bool) -> Material  {
-    return try!  FfiConverterTypeMaterial_lift(try! rustCall() {
+open func transform(offset: [Float], scale: [Float], rotation: Float)throws  -> MaterialMap  {
+    return try  FfiConverterTypeMaterialMap_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
         uniffiCallStatus in
-    uniffi_fragmentcolor_fn_method_material_doublesided(
+    uniffi_fragmentcolor_fn_method_materialmap_transform(
             self.uniffiCloneHandle(),
-        FfiConverterBool.lower(value),uniffiCallStatus
-    )
-})
-}
-    
-open func emissive(factor: [Float])throws  -> Material  {
-    return try  FfiConverterTypeMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
-        uniffiCallStatus in
-    uniffi_fragmentcolor_fn_method_material_emissive(
-            self.uniffiCloneHandle(),
-        FfiConverterSequenceFloat.lower(factor),uniffiCallStatus
-    )
-})
-}
-    
-    /**
-     * The texture input form of `emissiveTexture`, uploaded when the scene loads.
-     * Swift and Kotlin reach it through the `emissiveTexture` overloads, which match `createTexture`.
-     */
-open func emissiveSource(input: MobileTextureInput, options: TextureOptions? = nil)throws  -> Material  {
-    return try  FfiConverterTypeMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
-        uniffiCallStatus in
-    uniffi_fragmentcolor_fn_method_material_emissivesource(
-            self.uniffiCloneHandle(),
-        FfiConverterTypeMobileTextureInput_lower(input),
-        FfiConverterOptionTypeTextureOptions.lower(options),uniffiCallStatus
-    )
-})
-}
-    
-open func emissiveTexture(texture: Texture)throws  -> Material  {
-    return try  FfiConverterTypeMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
-        uniffiCallStatus in
-    uniffi_fragmentcolor_fn_method_material_emissivetexture(
-            self.uniffiCloneHandle(),
-        FfiConverterTypeTexture_lower(texture),uniffiCallStatus
-    )
-})
-}
-    
-open func metallic(value: Float)throws  -> Material  {
-    return try  FfiConverterTypeMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
-        uniffiCallStatus in
-    uniffi_fragmentcolor_fn_method_material_metallic(
-            self.uniffiCloneHandle(),
-        FfiConverterFloat.lower(value),uniffiCallStatus
-    )
-})
-}
-    
-    /**
-     * The texture input form of `metallicRoughnessTexture`, uploaded when the scene loads.
-     * Swift and Kotlin reach it through the `metallicRoughnessTexture` overloads, which match `createTexture`.
-     */
-open func metallicRoughnessSource(input: MobileTextureInput, options: TextureOptions? = nil)throws  -> Material  {
-    return try  FfiConverterTypeMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
-        uniffiCallStatus in
-    uniffi_fragmentcolor_fn_method_material_metallicroughnesssource(
-            self.uniffiCloneHandle(),
-        FfiConverterTypeMobileTextureInput_lower(input),
-        FfiConverterOptionTypeTextureOptions.lower(options),uniffiCallStatus
-    )
-})
-}
-    
-open func metallicRoughnessTexture(texture: Texture)throws  -> Material  {
-    return try  FfiConverterTypeMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
-        uniffiCallStatus in
-    uniffi_fragmentcolor_fn_method_material_metallicroughnesstexture(
-            self.uniffiCloneHandle(),
-        FfiConverterTypeTexture_lower(texture),uniffiCallStatus
-    )
-})
-}
-    
-open func normalScale(value: Float)throws  -> Material  {
-    return try  FfiConverterTypeMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
-        uniffiCallStatus in
-    uniffi_fragmentcolor_fn_method_material_normalscale(
-            self.uniffiCloneHandle(),
-        FfiConverterFloat.lower(value),uniffiCallStatus
-    )
-})
-}
-    
-    /**
-     * The texture input form of `normalTexture`, uploaded when the scene loads.
-     * Swift and Kotlin reach it through the `normalTexture` overloads, which match `createTexture`.
-     */
-open func normalSource(input: MobileTextureInput, options: TextureOptions? = nil)throws  -> Material  {
-    return try  FfiConverterTypeMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
-        uniffiCallStatus in
-    uniffi_fragmentcolor_fn_method_material_normalsource(
-            self.uniffiCloneHandle(),
-        FfiConverterTypeMobileTextureInput_lower(input),
-        FfiConverterOptionTypeTextureOptions.lower(options),uniffiCallStatus
-    )
-})
-}
-    
-open func normalTexture(texture: Texture)throws  -> Material  {
-    return try  FfiConverterTypeMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
-        uniffiCallStatus in
-    uniffi_fragmentcolor_fn_method_material_normaltexture(
-            self.uniffiCloneHandle(),
-        FfiConverterTypeTexture_lower(texture),uniffiCallStatus
-    )
-})
-}
-    
-    /**
-     * The texture input form of `occlusionTexture`, uploaded when the scene loads.
-     * Swift and Kotlin reach it through the `occlusionTexture` overloads, which match `createTexture`.
-     */
-open func occlusionSource(input: MobileTextureInput, options: TextureOptions? = nil)throws  -> Material  {
-    return try  FfiConverterTypeMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
-        uniffiCallStatus in
-    uniffi_fragmentcolor_fn_method_material_occlusionsource(
-            self.uniffiCloneHandle(),
-        FfiConverterTypeMobileTextureInput_lower(input),
-        FfiConverterOptionTypeTextureOptions.lower(options),uniffiCallStatus
-    )
-})
-}
-    
-open func occlusionStrength(value: Float)throws  -> Material  {
-    return try  FfiConverterTypeMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
-        uniffiCallStatus in
-    uniffi_fragmentcolor_fn_method_material_occlusionstrength(
-            self.uniffiCloneHandle(),
-        FfiConverterFloat.lower(value),uniffiCallStatus
-    )
-})
-}
-    
-open func occlusionTexture(texture: Texture)throws  -> Material  {
-    return try  FfiConverterTypeMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
-        uniffiCallStatus in
-    uniffi_fragmentcolor_fn_method_material_occlusiontexture(
-            self.uniffiCloneHandle(),
-        FfiConverterTypeTexture_lower(texture),uniffiCallStatus
-    )
-})
-}
-    
-open func roughness(value: Float)throws  -> Material  {
-    return try  FfiConverterTypeMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
-        uniffiCallStatus in
-    uniffi_fragmentcolor_fn_method_material_roughness(
-            self.uniffiCloneHandle(),
-        FfiConverterFloat.lower(value),uniffiCallStatus
-    )
-})
-}
-    
-open func shader() -> Shader  {
-    return try!  FfiConverterTypeShader_lift(try! rustCall() {
-        uniffiCallStatus in
-    uniffi_fragmentcolor_fn_method_material_shader(
-            self.uniffiCloneHandle(),uniffiCallStatus
-    )
-})
-}
-    
-open func textureTransform(slot: TextureSlot, offset: [Float], scale: [Float], rotation: Float)throws  -> Material  {
-    return try  FfiConverterTypeMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
-        uniffiCallStatus in
-    uniffi_fragmentcolor_fn_method_material_texturetransform(
-            self.uniffiCloneHandle(),
-        FfiConverterTypeTextureSlot_lower(slot),
         FfiConverterSequenceFloat.lower(offset),
         FfiConverterSequenceFloat.lower(scale),
         FfiConverterFloat.lower(rotation),uniffiCallStatus
@@ -1626,25 +1355,12 @@ open func textureTransform(slot: TextureSlot, offset: [Float], scale: [Float], r
 })
 }
     
-open func textureUv(slot: TextureSlot, set: UInt32)throws  -> Material  {
-    return try  FfiConverterTypeMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+open func uv(set: UInt32)throws  -> MaterialMap  {
+    return try  FfiConverterTypeMaterialMap_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
         uniffiCallStatus in
-    uniffi_fragmentcolor_fn_method_material_textureuv(
+    uniffi_fragmentcolor_fn_method_materialmap_uv(
             self.uniffiCloneHandle(),
-        FfiConverterTypeTextureSlot_lower(slot),
         FfiConverterUInt32.lower(set),uniffiCallStatus
-    )
-})
-}
-    
-open func uvTransform(offset: [Float], scale: [Float], rotation: Float)throws  -> Material  {
-    return try  FfiConverterTypeMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
-        uniffiCallStatus in
-    uniffi_fragmentcolor_fn_method_material_uvtransform(
-            self.uniffiCloneHandle(),
-        FfiConverterSequenceFloat.lower(offset),
-        FfiConverterSequenceFloat.lower(scale),
-        FfiConverterFloat.lower(rotation),uniffiCallStatus
     )
 })
 }
@@ -1657,24 +1373,24 @@ open func uvTransform(offset: [Float], scale: [Float], rotation: Float)throws  -
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public struct FfiConverterTypeMaterial: FfiConverter {
+public struct FfiConverterTypeMaterialMap: FfiConverter {
     typealias FfiType = UInt64
-    typealias SwiftType = Material
+    typealias SwiftType = MaterialMap
 
-    public static func lift(_ handle: UInt64) throws -> Material {
-        return Material(unsafeFromHandle: handle)
+    public static func lift(_ handle: UInt64) throws -> MaterialMap {
+        return MaterialMap(unsafeFromHandle: handle)
     }
 
-    public static func lower(_ value: Material) -> UInt64 {
+    public static func lower(_ value: MaterialMap) -> UInt64 {
         return value.uniffiCloneHandle()
     }
 
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Material {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MaterialMap {
         let handle: UInt64 = try readInt(&buf)
         return try lift(handle)
     }
 
-    public static func write(_ value: Material, into buf: inout [UInt8]) {
+    public static func write(_ value: MaterialMap, into buf: inout [UInt8]) {
         writeInt(&buf, lower(value))
     }
 }
@@ -1683,15 +1399,15 @@ public struct FfiConverterTypeMaterial: FfiConverter {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public func FfiConverterTypeMaterial_lift(_ handle: UInt64) throws -> Material {
-    return try FfiConverterTypeMaterial.lift(handle)
+public func FfiConverterTypeMaterialMap_lift(_ handle: UInt64) throws -> MaterialMap {
+    return try FfiConverterTypeMaterialMap.lift(handle)
 }
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public func FfiConverterTypeMaterial_lower(_ value: Material) -> UInt64 {
-    return FfiConverterTypeMaterial.lower(value)
+public func FfiConverterTypeMaterialMap_lower(_ value: MaterialMap) -> UInt64 {
+    return FfiConverterTypeMaterialMap.lower(value)
 }
 
 
@@ -2813,6 +2529,308 @@ public func FfiConverterTypePass_lower(_ value: Pass) -> UInt64 {
 
 
 
+public protocol PbrMaterialProtocol: AnyObject, Sendable {
+    
+    func alphaCutoff(value: Float) throws  -> PbrMaterial
+    
+    func alphaMode(mode: AlphaMode)  -> PbrMaterial
+    
+    func baseColor(color: [Float]) throws  -> PbrMaterial
+    
+    func baseColorMap()  -> MaterialMap
+    
+    func doubleSided(value: Bool)  -> PbrMaterial
+    
+    func emissive(factor: [Float]) throws  -> PbrMaterial
+    
+    func emissiveMap()  -> MaterialMap
+    
+    func metallic(value: Float) throws  -> PbrMaterial
+    
+    func metallicRoughnessMap()  -> MaterialMap
+    
+    func normalMap()  -> MaterialMap
+    
+    func normalScale(value: Float) throws  -> PbrMaterial
+    
+    func occlusionMap()  -> MaterialMap
+    
+    func occlusionStrength(value: Float) throws  -> PbrMaterial
+    
+    func roughness(value: Float) throws  -> PbrMaterial
+    
+    func shader()  -> Shader
+    
+    func uvTransform(offset: [Float], scale: [Float], rotation: Float) throws  -> PbrMaterial
+    
+}
+open class PbrMaterial: PbrMaterialProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_fragmentcolor_fn_clone_pbrmaterial(self.handle, $0) }
+    }
+public convenience init() {
+    let handle =
+        try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_constructor_pbrmaterial_new(uniffiCallStatus
+    )
+}
+    self.init(unsafeFromHandle: handle)
+}
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_fragmentcolor_fn_free_pbrmaterial(handle, $0) }
+    }
+
+    
+
+    
+open func alphaCutoff(value: Float)throws  -> PbrMaterial  {
+    return try  FfiConverterTypePbrMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_pbrmaterial_alphacutoff(
+            self.uniffiCloneHandle(),
+        FfiConverterFloat.lower(value),uniffiCallStatus
+    )
+})
+}
+    
+open func alphaMode(mode: AlphaMode) -> PbrMaterial  {
+    return try!  FfiConverterTypePbrMaterial_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_pbrmaterial_alphamode(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeAlphaMode_lower(mode),uniffiCallStatus
+    )
+})
+}
+    
+open func baseColor(color: [Float])throws  -> PbrMaterial  {
+    return try  FfiConverterTypePbrMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_pbrmaterial_basecolor(
+            self.uniffiCloneHandle(),
+        FfiConverterSequenceFloat.lower(color),uniffiCallStatus
+    )
+})
+}
+    
+open func baseColorMap() -> MaterialMap  {
+    return try!  FfiConverterTypeMaterialMap_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_pbrmaterial_basecolormap(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func doubleSided(value: Bool) -> PbrMaterial  {
+    return try!  FfiConverterTypePbrMaterial_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_pbrmaterial_doublesided(
+            self.uniffiCloneHandle(),
+        FfiConverterBool.lower(value),uniffiCallStatus
+    )
+})
+}
+    
+open func emissive(factor: [Float])throws  -> PbrMaterial  {
+    return try  FfiConverterTypePbrMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_pbrmaterial_emissive(
+            self.uniffiCloneHandle(),
+        FfiConverterSequenceFloat.lower(factor),uniffiCallStatus
+    )
+})
+}
+    
+open func emissiveMap() -> MaterialMap  {
+    return try!  FfiConverterTypeMaterialMap_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_pbrmaterial_emissivemap(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func metallic(value: Float)throws  -> PbrMaterial  {
+    return try  FfiConverterTypePbrMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_pbrmaterial_metallic(
+            self.uniffiCloneHandle(),
+        FfiConverterFloat.lower(value),uniffiCallStatus
+    )
+})
+}
+    
+open func metallicRoughnessMap() -> MaterialMap  {
+    return try!  FfiConverterTypeMaterialMap_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_pbrmaterial_metallicroughnessmap(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func normalMap() -> MaterialMap  {
+    return try!  FfiConverterTypeMaterialMap_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_pbrmaterial_normalmap(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func normalScale(value: Float)throws  -> PbrMaterial  {
+    return try  FfiConverterTypePbrMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_pbrmaterial_normalscale(
+            self.uniffiCloneHandle(),
+        FfiConverterFloat.lower(value),uniffiCallStatus
+    )
+})
+}
+    
+open func occlusionMap() -> MaterialMap  {
+    return try!  FfiConverterTypeMaterialMap_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_pbrmaterial_occlusionmap(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func occlusionStrength(value: Float)throws  -> PbrMaterial  {
+    return try  FfiConverterTypePbrMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_pbrmaterial_occlusionstrength(
+            self.uniffiCloneHandle(),
+        FfiConverterFloat.lower(value),uniffiCallStatus
+    )
+})
+}
+    
+open func roughness(value: Float)throws  -> PbrMaterial  {
+    return try  FfiConverterTypePbrMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_pbrmaterial_roughness(
+            self.uniffiCloneHandle(),
+        FfiConverterFloat.lower(value),uniffiCallStatus
+    )
+})
+}
+    
+open func shader() -> Shader  {
+    return try!  FfiConverterTypeShader_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_pbrmaterial_shader(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func uvTransform(offset: [Float], scale: [Float], rotation: Float)throws  -> PbrMaterial  {
+    return try  FfiConverterTypePbrMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_pbrmaterial_uvtransform(
+            self.uniffiCloneHandle(),
+        FfiConverterSequenceFloat.lower(offset),
+        FfiConverterSequenceFloat.lower(scale),
+        FfiConverterFloat.lower(rotation),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePbrMaterial: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = PbrMaterial
+
+    public static func lift(_ handle: UInt64) throws -> PbrMaterial {
+        return PbrMaterial(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: PbrMaterial) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PbrMaterial {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: PbrMaterial, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePbrMaterial_lift(_ handle: UInt64) throws -> PbrMaterial {
+    return try FfiConverterTypePbrMaterial.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePbrMaterial_lower(_ value: PbrMaterial) -> UInt64 {
+    return FfiConverterTypePbrMaterial.lower(value)
+}
+
+
+
+
+
+
 public protocol QuadProtocol: AnyObject, Sendable {
     
     /**
@@ -3713,10 +3731,14 @@ public protocol ShaderProtocol: AnyObject, Sendable {
      */
     func addMesh(mesh: Mesh) throws 
     
+    func alphaMode(mode: AlphaMode)  -> Shader
+    
     /**
      * Detach all meshes from this shader.
      */
     func clearMeshes() 
+    
+    func doubleSided(value: Bool)  -> Shader
     
     /**
      * Async fetch constructor: resolve each part of `input` (URL, slug, file
@@ -3914,6 +3936,16 @@ open func addMesh(mesh: Mesh)throws   {try rustCallWithError(FfiConverterTypeFra
 }
 }
     
+open func alphaMode(mode: AlphaMode) -> Shader  {
+    return try!  FfiConverterTypeShader_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_shader_alphamode(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeAlphaMode_lower(mode),uniffiCallStatus
+    )
+})
+}
+    
     /**
      * Detach all meshes from this shader.
      */
@@ -3923,6 +3955,16 @@ open func clearMeshes()  {try! rustCall() {
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 }
+}
+    
+open func doubleSided(value: Bool) -> Shader  {
+    return try!  FfiConverterTypeShader_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_shader_doublesided(
+            self.uniffiCloneHandle(),
+        FfiConverterBool.lower(value),uniffiCallStatus
+    )
+})
 }
     
     /**
@@ -6638,6 +6680,83 @@ public func FfiConverterTypeLogLevel_lower(_ value: LogLevel) -> RustBuffer {
 
 
 /**
+ * What a `Model` draws with, as Swift and Kotlin see it: an enum that holds the
+ * material object. Uniffi marshals objects as `Arc`s, which the Rust `Material`
+ * holds by value, so this mirror carries the same cases under the same name.
+ */
+
+public enum Material {
+    
+    case pbr(PbrMaterial
+    )
+    case custom(Shader
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension Material: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMaterial: FfiConverterRustBuffer {
+    typealias SwiftType = Material
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Material {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .pbr(try FfiConverterTypePbrMaterial.read(from: &buf)
+        )
+        
+        case 2: return .custom(try FfiConverterTypeShader.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: Material, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case let .pbr(v1):
+            writeInt(&buf, Int32(1))
+            FfiConverterTypePbrMaterial.write(v1, into: &buf)
+            
+        
+        case let .custom(v1):
+            writeInt(&buf, Int32(2))
+            FfiConverterTypeShader.write(v1, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMaterial_lift(_ buf: RustBuffer) throws -> Material {
+    return try FfiConverterTypeMaterial.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMaterial_lower(_ value: Material) -> RustBuffer {
+    return FfiConverterTypeMaterial.lower(value)
+}
+
+
+
+/**
  * Uniffi mirror of [`TextureData`], which it converts into.
  *
  * It leaves out `Empty`. Paths travel as `String`, handles as `Arc`.
@@ -7705,108 +7824,6 @@ public func FfiConverterTypeTextureScalarKind_lift(_ buf: RustBuffer) throws -> 
 #endif
 public func FfiConverterTypeTextureScalarKind_lower(_ value: TextureScalarKind) -> RustBuffer {
     return FfiConverterTypeTextureScalarKind.lower(value)
-}
-
-
-
-
-public enum TextureSlot: Equatable, Hashable {
-    
-    /**
-     * The base color map, set by `base_color_texture`.
-     */
-    case baseColor
-    /**
-     * The metallic-roughness map, set by `metallic_roughness_texture`.
-     */
-    case metallicRoughness
-    /**
-     * The normal map, set by `normal_texture`.
-     */
-    case normal
-    /**
-     * The occlusion map, set by `occlusion_texture`.
-     */
-    case occlusion
-    /**
-     * The emissive map, set by `emissive_texture`.
-     */
-    case emissive
-
-
-
-
-
-}
-
-#if compiler(>=6)
-extension TextureSlot: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeTextureSlot: FfiConverterRustBuffer {
-    typealias SwiftType = TextureSlot
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TextureSlot {
-        let variant: Int32 = try readInt(&buf)
-        switch variant {
-        
-        case 1: return .baseColor
-        
-        case 2: return .metallicRoughness
-        
-        case 3: return .normal
-        
-        case 4: return .occlusion
-        
-        case 5: return .emissive
-        
-        default: throw UniffiInternalError.unexpectedEnumCase
-        }
-    }
-
-    public static func write(_ value: TextureSlot, into buf: inout [UInt8]) {
-        switch value {
-        
-        
-        case .baseColor:
-            writeInt(&buf, Int32(1))
-        
-        
-        case .metallicRoughness:
-            writeInt(&buf, Int32(2))
-        
-        
-        case .normal:
-            writeInt(&buf, Int32(3))
-        
-        
-        case .occlusion:
-            writeInt(&buf, Int32(4))
-        
-        
-        case .emissive:
-            writeInt(&buf, Int32(5))
-        
-        }
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeTextureSlot_lift(_ buf: RustBuffer) throws -> TextureSlot {
-    return try FfiConverterTypeTextureSlot.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeTextureSlot_lower(_ value: TextureSlot) -> RustBuffer {
-    return FfiConverterTypeTextureSlot.lower(value)
 }
 
 
@@ -9537,7 +9554,13 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_shader_addmesh() != 1493) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_fragmentcolor_checksum_method_shader_alphamode() != 38513) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_fragmentcolor_checksum_method_shader_clearmeshes() != 55933) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_shader_doublesided() != 12321) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_shader_fetch() != 20169) {
@@ -9660,76 +9683,19 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_light_setrange() != 31032) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_material_alphacutoff() != 34284) {
+    if (uniffi_fragmentcolor_checksum_method_materialmap_source() != 7449) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_material_alphamode() != 6741) {
+    if (uniffi_fragmentcolor_checksum_method_materialmap_texture() != 1737) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_material_basecolor() != 39350) {
+    if (uniffi_fragmentcolor_checksum_method_materialmap_transform() != 46618) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_material_basecolorsource() != 39073) {
+    if (uniffi_fragmentcolor_checksum_method_materialmap_uv() != 38390) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_material_basecolortexture() != 36312) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_material_doublesided() != 4795) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_material_emissive() != 16987) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_material_emissivesource() != 50402) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_material_emissivetexture() != 53906) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_material_metallic() != 48955) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_material_metallicroughnesssource() != 64755) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_material_metallicroughnesstexture() != 12836) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_material_normalscale() != 29790) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_material_normalsource() != 51447) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_material_normaltexture() != 22765) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_material_occlusionsource() != 25558) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_material_occlusionstrength() != 40961) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_material_occlusiontexture() != 22112) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_material_roughness() != 58115) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_material_shader() != 47089) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_material_texturetransform() != 48020) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_material_textureuv() != 42648) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_material_uvtransform() != 57334) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_model_material() != 8864) {
+    if (uniffi_fragmentcolor_checksum_method_model_material() != 14993) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_model_mesh() != 40171) {
@@ -9754,6 +9720,54 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_model_visible() != 27855) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_pbrmaterial_alphacutoff() != 58159) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_pbrmaterial_alphamode() != 45304) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_pbrmaterial_basecolor() != 28634) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_pbrmaterial_basecolormap() != 2135) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_pbrmaterial_doublesided() != 27480) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_pbrmaterial_emissive() != 38591) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_pbrmaterial_emissivemap() != 5447) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_pbrmaterial_metallic() != 45883) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_pbrmaterial_metallicroughnessmap() != 22995) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_pbrmaterial_normalmap() != 43973) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_pbrmaterial_normalscale() != 47985) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_pbrmaterial_occlusionmap() != 5931) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_pbrmaterial_occlusionstrength() != 53955) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_pbrmaterial_roughness() != 59754) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_pbrmaterial_shader() != 5975) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_pbrmaterial_uvtransform() != 62355) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_scene_add() != 29801) {
@@ -9933,13 +9947,10 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_constructor_light_spot() != 42725) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_constructor_material_custom() != 61628) {
+    if (uniffi_fragmentcolor_checksum_constructor_model_new() != 13923) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_constructor_material_pbr() != 11068) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_constructor_model_new() != 48420) {
+    if (uniffi_fragmentcolor_checksum_constructor_pbrmaterial_new() != 63415) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_constructor_scene_load() != 50350) {

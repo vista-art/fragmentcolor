@@ -2619,6 +2619,316 @@ lang="kotlin"
 
 ---
 
+### Shader::alpha_mode \{#alpha_mode\}
+
+Set how the renderer treats the alpha channel this shader writes. It takes an `AlphaMode`
+and returns the shader, so calls can chain.
+
+- `AlphaMode::Opaque` (the default): blending is off and depth writes are on.
+- `AlphaMode::Mask`: the pipeline is the opaque one. Your fragment shader does the cut-out
+  itself, with `discard`.
+- `AlphaMode::Blend`: depth writes turn off and the color target over-blends with
+  `SrcAlpha / OneMinusSrcAlpha`. The renderer draws blended Models on a Pass back to front
+  from the Pass camera, after every opaque draw.
+
+Use it on a Shader you pass to `Model::new` as the material, and on any Shader you draw on
+its own. A [PbrMaterial](/api/scene/pbrmaterial) sets the same
+state for its built-in shader through
+[PbrMaterial::alpha_mode](/api/scene/pbrmaterial#alpha_mode).
+
+Blending needs a color target that blends and a shader that writes a `vec4`. A format that
+never blends, such as an integer one, and an output without alpha return
+`PassError::InvalidColorTarget`.
+
+This is pipeline state. The renderer keeps one pipeline per shader, alpha mode and
+face setting, so a change builds a pipeline once and reuses it from then on.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::{AlphaMode, Shader};
+
+let shader = Shader::new(r#"
+@vertex
+fn vs_main(@location(0) position: vec3<f32>) -> @builtin(position) vec4<f32> {
+    return vec4<f32>(position, 1.0);
+}
+
+@fragment
+fn fs_main() -> @location(0) vec4<f32> {
+    return vec4<f32>(0.6, 0.8, 1.0, 0.25);
+}
+"#)?;
+
+let glass = shader.alpha_mode(AlphaMode::Blend);
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { AlphaMode, Shader } from "fragmentcolor";
+
+const shader = new Shader(\`
+
+@vertex
+fn vs_main(@location(0) position: vec3<f32>) -> @builtin(position) vec4<f32> {
+    return vec4<f32>(position, 1.0);
+}
+
+@fragment
+fn fs_main() -> @location(0) vec4<f32> {
+    return vec4<f32>(0.6, 0.8, 1.0, 0.25);
+}
+
+\`);
+
+const glass = shader.alphaMode(AlphaMode.Blend);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import AlphaMode, Shader
+
+shader = Shader("""
+@vertex
+fn vs_main(@location(0) position: vec3<f32>) -> @builtin(position) vec4<f32> {
+    return vec4<f32>(position, 1.0);
+}
+
+@fragment
+fn fs_main() -> @location(0) vec4<f32> {
+    return vec4<f32>(0.6, 0.8, 1.0, 0.25);
+}
+
+""")
+
+glass = shader.alpha_mode(AlphaMode.Blend)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let shader = try Shader("""
+@vertex
+fn vs_main(@location(0) position: vec3<f32>) -> @builtin(position) vec4<f32> {
+    return vec4<f32>(position, 1.0);
+}
+
+@fragment
+fn fs_main() -> @location(0) vec4<f32> {
+    return vec4<f32>(0.6, 0.8, 1.0, 0.25);
+}
+
+""")
+
+let glass = shader.alphaMode(AlphaMode.blend)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val shader = Shader("""
+@vertex
+fn vs_main(@location(0) position: vec3<f32>) -> @builtin(position) vec4<f32> {
+    return vec4<f32>(position, 1.0);
+}
+
+@fragment
+fn fs_main() -> @location(0) vec4<f32> {
+    return vec4<f32>(0.6, 0.8, 1.0, 0.25);
+}
+
+""")
+
+val glass = shader.alphaMode(AlphaMode.BLEND)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Shader::double_sided \{#double_sided\}
+
+Choose whether the renderer draws the back faces of this shader's triangles. It takes a
+boolean and returns the shader, so calls can chain.
+
+A Shader draws both faces by default (`true`), which suits a fullscreen pass and flat
+shapes whose winding nobody checked. Pass `false` to cull back faces, with
+counter-clockwise winding as the front, as a closed mesh wants: the culled faces cost
+no fragment work.
+
+Use it on a Shader you pass to `Model::new` as the material, and on any Shader you draw on
+its own. A [PbrMaterial](/api/scene/pbrmaterial) culls by default,
+and sets the same state for its built-in shader through
+[PbrMaterial::double_sided](/api/scene/pbrmaterial#double_sided).
+
+This is pipeline state. The renderer keeps one pipeline per shader, alpha mode and
+face setting, so a change builds a pipeline once and reuses it from then on.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::Shader;
+
+let shader = Shader::new(r#"
+@vertex
+fn vs_main(@location(0) position: vec3<f32>) -> @builtin(position) vec4<f32> {
+    return vec4<f32>(position, 1.0);
+}
+
+@fragment
+fn fs_main() -> @location(0) vec4<f32> {
+    return vec4<f32>(1.0, 0.5, 0.2, 1.0);
+}
+"#)?;
+
+let solid = shader.double_sided(false);
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Shader } from "fragmentcolor";
+
+const shader = new Shader(\`
+
+@vertex
+fn vs_main(@location(0) position: vec3<f32>) -> @builtin(position) vec4<f32> {
+    return vec4<f32>(position, 1.0);
+}
+
+@fragment
+fn fs_main() -> @location(0) vec4<f32> {
+    return vec4<f32>(1.0, 0.5, 0.2, 1.0);
+}
+
+\`);
+
+const solid = shader.doubleSided(false);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Shader
+
+shader = Shader("""
+@vertex
+fn vs_main(@location(0) position: vec3<f32>) -> @builtin(position) vec4<f32> {
+    return vec4<f32>(position, 1.0);
+}
+
+@fragment
+fn fs_main() -> @location(0) vec4<f32> {
+    return vec4<f32>(1.0, 0.5, 0.2, 1.0);
+}
+
+""")
+
+solid = shader.double_sided(False)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let shader = try Shader("""
+@vertex
+fn vs_main(@location(0) position: vec3<f32>) -> @builtin(position) vec4<f32> {
+    return vec4<f32>(position, 1.0);
+}
+
+@fragment
+fn fs_main() -> @location(0) vec4<f32> {
+    return vec4<f32>(1.0, 0.5, 0.2, 1.0);
+}
+
+""")
+
+let solid = shader.doubleSided(false)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val shader = Shader("""
+@vertex
+fn vs_main(@location(0) position: vec3<f32>) -> @builtin(position) vec4<f32> {
+    return vec4<f32>(position, 1.0);
+}
+
+@fragment
+fn fs_main() -> @location(0) vec4<f32> {
+    return vec4<f32>(1.0, 0.5, 0.2, 1.0);
+}
+
+""")
+
+val solid = shader.doubleSided(false)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
 ### Shader::default() \{#default\}
 
 Creates a new [Shader](/api/core/shader) from the default shader source.

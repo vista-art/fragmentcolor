@@ -17,9 +17,9 @@ A `Model` pairs a [Mesh](/api/geometry/mesh) with a
 content; the Material handles shading, the Mesh handles geometry, the Model
 handles "where in the world".
 
-Each `Model::new` takes ownership of the Material it's given. Cloning the
-Material before passing it in is cheap: `Material::clone` shares the handle
-and copies nothing. The per-Model transform is *not* a Material uniform. The
+Each `Model::new` takes ownership of the material it's given. Cloning the
+material before passing it in is cheap: a clone shares the handle and copies
+nothing. The per-Model transform is *not* a material uniform. The
 renderer reads it at draw time and feeds it to the vertex stage as four
 `vec4<f32>` instance attributes, `model_0` to `model_3`, the columns of a
 `mat4x4<f32>`. The PBR shader reads them at locations 3 to 6.
@@ -33,7 +33,7 @@ their order matters.
 For the fan-out case (one Material, many positioned items), the pattern is:
 
 ```text
-template = Material::pbr().base_color(...)
+template = PbrMaterial::new().base_color(...)
 for each item:
   model = Model::new(item.mesh, template.clone())
   model.set_transform(item.matrix)
@@ -55,17 +55,18 @@ again.
 
 ### Model::material \{#material\}
 
-Borrow the Material handle the Model owns. The Material wraps a Shader;
-reach through `model.material().shader()` if you need direct uniform
-manipulation (camera state, custom uniforms not exposed by Material's
-setters).
+The [Material](/api/scene/material) the Model draws
+with: the same handle `Model::new` took, so a setter on it changes every
+Model that draws with that material.
 
-Note: `Material::clone` is a shallow Arc-share, so the handle stored on this
-Model points at the same underlying shader state as whatever Material was
-passed to `Model::new`. Mutations made through `model.material()` are
-visible to every other Model that received the same source handle (and vice
-versa). To detach a Model's appearance, construct a fresh `Material::pbr()`
-or `Material::custom()` rather than cloning.
+In Rust it returns `&Material`, the enum with a variant per material type,
+such as `Material::Pbr(PbrMaterial)` or `Material::Custom(Shader)`.
+JavaScript and Python return the material object itself, a `PbrMaterial` or
+a `Shader`. Swift and Kotlin return the `Material` enum, which holds the
+object.
+
+To give a Model a look of its own, build a fresh material, such as a new
+`PbrMaterial::new()`, rather than cloning one.
 
 #### Example
 
@@ -74,7 +75,7 @@ or `Material::custom()` rather than cloning.
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::{Material, Mesh, Model, Vertex};
+use fragmentcolor::{Mesh, Model, PbrMaterial, Vertex};
 
 let mesh = Mesh::new();
 mesh.add_vertices([
@@ -83,8 +84,8 @@ mesh.add_vertices([
     Vertex::pbr([0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]),
 ]);
 
-let model = Model::new(mesh, Material::pbr());
-model.material().shader().set("camera.position", [0.0, 0.0, 5.0])?;
+let model = Model::new(mesh, PbrMaterial::new());
+let material = model.material();
 `}
 lang="rust"
 />
@@ -94,13 +95,13 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Material, Mesh, Model, Vertex } from "fragmentcolor";
+import { Mesh, Model, PbrMaterial, Vertex } from "fragmentcolor";
 
 const mesh = new Mesh();
 mesh.addVertices([ Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]), Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]), ]);
 
-const model = new Model(mesh, Material.pbr());
-model.material().shader().set("camera.position", [0.0, 0.0, 5.0]);
+const model = new Model(mesh, new PbrMaterial());
+const material = model.material();
 `}
 lang="js"
 />
@@ -110,7 +111,7 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Material, Mesh, Model, Vertex
+from fragmentcolor import Mesh, Model, PbrMaterial, Vertex
 
 mesh = Mesh()
 mesh.add_vertices([
@@ -119,8 +120,8 @@ mesh.add_vertices([
     Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
 ])
 
-model = Model(mesh, Material.pbr())
-model.material().shader().set("camera.position", [0.0, 0.0, 5.0])
+model = Model(mesh, PbrMaterial())
+material = model.material()
 `}
 lang="python"
 />
@@ -139,8 +140,8 @@ mesh.addVertices([
     try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
 ])
 
-let model = Model(mesh, Material.pbr())
-try model.material().shader().set("camera.position", [0.0, 0.0, 5.0])
+let model = Model(mesh, PbrMaterial())
+let material = model.material()
 `}
 lang="swift"
 />
@@ -155,8 +156,8 @@ import org.fragmentcolor.*
 val mesh = Mesh()
 mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
 
-val model = Model(mesh, Material.pbr())
-model.material().shader().set("camera.position", listOf(0.0f, 0.0f, 5.0f))
+val model = Model(mesh, PbrMaterial())
+val material = model.material()
 `}
 lang="kotlin"
 />
@@ -181,7 +182,7 @@ handle.
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::{Material, Mesh, Model, Vertex};
+use fragmentcolor::{Mesh, Model, PbrMaterial, Vertex};
 
 let mesh = Mesh::new();
 mesh.add_vertices([
@@ -190,7 +191,7 @@ mesh.add_vertices([
     Vertex::pbr([0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]),
 ]);
 
-let model = Model::new(mesh, Material::pbr());
+let model = Model::new(mesh, PbrMaterial::new());
 // A second triangle joins the first through the Model.
 model.mesh().add_vertices([
     Vertex::pbr([0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]),
@@ -206,12 +207,12 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Material, Mesh, Model, Vertex } from "fragmentcolor";
+import { Mesh, Model, PbrMaterial, Vertex } from "fragmentcolor";
 
 const mesh = new Mesh();
 mesh.addVertices([ Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]), Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]), ]);
 
-const model = new Model(mesh, Material.pbr());
+const model = new Model(mesh, new PbrMaterial());
 // A second triangle joins the first through the Model.
 model.mesh().addVertices([ Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]), Vertex.pbr([0.5, 0.5, 0.0]).set(Vertex.UV0, [1.0, 1.0]), Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), ]);
 `}
@@ -223,7 +224,7 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Material, Mesh, Model, Vertex
+from fragmentcolor import Mesh, Model, PbrMaterial, Vertex
 
 mesh = Mesh()
 mesh.add_vertices([
@@ -232,7 +233,7 @@ mesh.add_vertices([
     Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
 ])
 
-model = Model(mesh, Material.pbr())
+model = Model(mesh, PbrMaterial())
 # A second triangle joins the first through the Model.
 model.mesh().add_vertices([
     Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
@@ -257,7 +258,7 @@ mesh.addVertices([
     try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
 ])
 
-let model = Model(mesh, Material.pbr())
+let model = Model(mesh, PbrMaterial())
 // A second triangle joins the first through the Model.
 model.mesh().addVertices([
     try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
@@ -278,7 +279,7 @@ import org.fragmentcolor.*
 val mesh = Mesh()
 mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
 
-val model = Model(mesh, Material.pbr())
+val model = Model(mesh, PbrMaterial())
 // A second triangle joins the first through the Model.
 model.mesh().addVertices(listOf(Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f)), Vertex.pbr(listOf(0.5f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 1.0f)), Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f))))
 `}
@@ -294,20 +295,22 @@ lang="kotlin"
 
 ### Model::new \{#new\}
 
-Construct a `Model` from a `Mesh` and a `Material`. Both arguments are taken
-by value; the Model owns them. The transform starts at the 4×4 identity
+Construct a `Model` from a `Mesh` and a
+[Material](/api/scene/material): a `PbrMaterial`,
+or a `Shader` of your own. Both arguments are taken by value; the Model owns
+them. The transform starts at the 4×4 identity
 matrix. The renderer reads it at draw time and passes it to the vertex stage
 as the `model_0` to `model_3` instance attributes, the four columns of a
 `mat4x4<f32>`.
 
-If you want several Models that share a look, clone the Material before each
-`Model::new`. `Material::clone` shares the handle and copies nothing, so the
+If you want several Models that share a look, clone the material before each
+`Model::new`. A material clone shares the handle and copies nothing, so the
 Models share one bind-group setup, and Models whose meshes lay out their
 vertices alike share one pipeline. The transform belongs to
-the Model, not to the Material's Shader or the Mesh, so Models can share
-both. Models with the same Material and Mesh draw in one instanced call.
+the Model, not to the material's shader or the Mesh, so Models can share
+both. Models with the same material and Mesh draw in one instanced call.
 
-`Material::pbr` reads six attributes from every vertex: a 3D position
+`PbrMaterial` reads six attributes from every vertex: a 3D position
 (`vec3`), `normal` (`vec3`), `uv0` (`vec2`), `color0` (`vec4`), `uv1`
 (`vec2`) and `tangent` (`vec4`). Each input finds its attribute by name,
 then by the location
@@ -321,8 +324,8 @@ input's location when that attribute has the wrong type: a vertex that sets
 only `uv0` fails on `uv0`, which sits where `normal` is read. `Vertex::pbr`
 sets all five after the position to neutral values, and `.set(...)`
 replaces the ones your mesh has data for. The `model_0` to `model_3`
-columns come from the Model, not the mesh. Custom shaders via
-`Material::custom(...)` can use any layout.
+columns come from the Model, not the mesh. A `Shader` of your own can use
+any layout.
 
 #### Example
 
@@ -331,7 +334,7 @@ columns come from the Model, not the mesh. Custom shaders via
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::{Material, Mesh, Model, Vertex};
+use fragmentcolor::{Mesh, Model, PbrMaterial, Vertex};
 
 let mesh = Mesh::new();
 mesh.add_vertices([
@@ -340,7 +343,7 @@ mesh.add_vertices([
     Vertex::pbr([0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]),
 ]);
 
-let model = Model::new(mesh, Material::pbr());
+let model = Model::new(mesh, PbrMaterial::new());
 `}
 lang="rust"
 />
@@ -350,12 +353,12 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Material, Mesh, Model, Vertex } from "fragmentcolor";
+import { Mesh, Model, PbrMaterial, Vertex } from "fragmentcolor";
 
 const mesh = new Mesh();
 mesh.addVertices([ Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]), Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]), ]);
 
-const model = new Model(mesh, Material.pbr());
+const model = new Model(mesh, new PbrMaterial());
 
 `}
 lang="js"
@@ -366,7 +369,7 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Material, Mesh, Model, Vertex
+from fragmentcolor import Mesh, Model, PbrMaterial, Vertex
 
 mesh = Mesh()
 mesh.add_vertices([
@@ -375,7 +378,7 @@ mesh.add_vertices([
     Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
 ])
 
-model = Model(mesh, Material.pbr())
+model = Model(mesh, PbrMaterial())
 
 `}
 lang="python"
@@ -395,7 +398,7 @@ mesh.addVertices([
     try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
 ])
 
-let model = Model(mesh, Material.pbr())
+let model = Model(mesh, PbrMaterial())
 `}
 lang="swift"
 />
@@ -410,7 +413,7 @@ import org.fragmentcolor.*
 val mesh = Mesh()
 mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
 
-val model = Model(mesh, Material.pbr())
+val model = Model(mesh, PbrMaterial())
 `}
 lang="kotlin"
 />
@@ -454,7 +457,7 @@ the matrix yourself and call [set_transform](/api/scene/model#set_transform).
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::{Material, Mesh, Model, Renderer, Vertex};
+use fragmentcolor::{Mesh, Model, PbrMaterial, Renderer, Vertex};
 
 let renderer = Renderer::new();
 let mesh = Mesh::new();
@@ -464,7 +467,7 @@ mesh.add_vertices([
     Vertex::pbr([0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]),
 ]);
 
-let model = Model::new(mesh, Material::pbr());
+let model = Model::new(mesh, PbrMaterial::new());
 model.rotate([0.0, 1.0, 0.0], 1.571)?; // 90° around Y
 `}
 lang="rust"
@@ -475,13 +478,13 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Material, Mesh, Model, Renderer, Vertex } from "fragmentcolor";
+import { Mesh, Model, PbrMaterial, Renderer, Vertex } from "fragmentcolor";
 
 const renderer = new Renderer();
 const mesh = new Mesh();
 mesh.addVertices([ Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]), Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]), ]);
 
-const model = new Model(mesh, Material.pbr());
+const model = new Model(mesh, new PbrMaterial());
 model.rotate([0.0, 1.0, 0.0], 1.571); // 90° around Y
 `}
 lang="js"
@@ -492,7 +495,7 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Material, Mesh, Model, Renderer, Vertex
+from fragmentcolor import Mesh, Model, PbrMaterial, Renderer, Vertex
 
 renderer = Renderer()
 mesh = Mesh()
@@ -502,7 +505,7 @@ mesh.add_vertices([
     Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
 ])
 
-model = Model(mesh, Material.pbr())
+model = Model(mesh, PbrMaterial())
 model.rotate([0.0, 1.0, 0.0], 1.571) # 90° around Y
 `}
 lang="python"
@@ -523,7 +526,7 @@ mesh.addVertices([
     try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
 ])
 
-let model = Model(mesh, Material.pbr())
+let model = Model(mesh, PbrMaterial())
 try model.rotate([0.0, 1.0, 0.0], 1.571) // 90° around Y
 `}
 lang="swift"
@@ -540,7 +543,7 @@ val renderer = Renderer()
 val mesh = Mesh()
 mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
 
-val model = Model(mesh, Material.pbr())
+val model = Model(mesh, PbrMaterial())
 model.rotate(listOf(0.0f, 1.0f, 0.0f), 1.571f) // 90° around Y
 `}
 lang="kotlin"
@@ -561,8 +564,8 @@ its own origin without sliding through space.
 
 Use uniform scales (`[s, s, s]`) when possible. Non-uniform scale breaks
 the cheap normal-transform path the default PBR shader uses, so a stretched
-Model will shade slightly off. For a correct non-uniform-scale normal, use
-`Material::custom` with a shader that ships the explicit cofactor matrix.
+Model will shade slightly off. For a correct non-uniform-scale normal, draw
+with a `Shader` of your own that ships the explicit cofactor matrix.
 
 A factor that is NaN or an infinity returns `ModelError::NotFinite`, which
 names the call and the item, and the Model keeps its size. The other
@@ -584,7 +587,7 @@ keeps its size. JavaScript and Python raise it as `InvalidInputError`, too.
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::{Material, Mesh, Model, Renderer, Vertex};
+use fragmentcolor::{Mesh, Model, PbrMaterial, Renderer, Vertex};
 
 let renderer = Renderer::new();
 let mesh = Mesh::new();
@@ -594,7 +597,7 @@ mesh.add_vertices([
     Vertex::pbr([0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]),
 ]);
 
-let model = Model::new(mesh, Material::pbr());
+let model = Model::new(mesh, PbrMaterial::new());
 model.scale([2.0, 2.0, 2.0])?;
 `}
 lang="rust"
@@ -605,13 +608,13 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Material, Mesh, Model, Renderer, Vertex } from "fragmentcolor";
+import { Mesh, Model, PbrMaterial, Renderer, Vertex } from "fragmentcolor";
 
 const renderer = new Renderer();
 const mesh = new Mesh();
 mesh.addVertices([ Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]), Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]), ]);
 
-const model = new Model(mesh, Material.pbr());
+const model = new Model(mesh, new PbrMaterial());
 model.scale([2.0, 2.0, 2.0]);
 `}
 lang="js"
@@ -622,7 +625,7 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Material, Mesh, Model, Renderer, Vertex
+from fragmentcolor import Mesh, Model, PbrMaterial, Renderer, Vertex
 
 renderer = Renderer()
 mesh = Mesh()
@@ -632,7 +635,7 @@ mesh.add_vertices([
     Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
 ])
 
-model = Model(mesh, Material.pbr())
+model = Model(mesh, PbrMaterial())
 model.scale([2.0, 2.0, 2.0])
 `}
 lang="python"
@@ -653,7 +656,7 @@ mesh.addVertices([
     try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
 ])
 
-let model = Model(mesh, Material.pbr())
+let model = Model(mesh, PbrMaterial())
 try model.scale([2.0, 2.0, 2.0])
 `}
 lang="swift"
@@ -670,7 +673,7 @@ val renderer = Renderer()
 val mesh = Mesh()
 mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
 
-val model = Model(mesh, Material.pbr())
+val model = Model(mesh, PbrMaterial())
 model.scale(listOf(2.0f, 2.0f, 2.0f))
 `}
 lang="kotlin"
@@ -712,7 +715,7 @@ numbers of a flat matrix. JavaScript throws an `Error` named
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::{Material, Mesh, Model, Renderer, Vertex};
+use fragmentcolor::{Mesh, Model, PbrMaterial, Renderer, Vertex};
 
 let renderer = Renderer::new();
 let mesh = Mesh::new();
@@ -722,7 +725,7 @@ mesh.add_vertices([
     Vertex::pbr([0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]),
 ]);
 
-let model = Model::new(mesh, Material::pbr());
+let model = Model::new(mesh, PbrMaterial::new());
 model.set_transform([
     [2.0, 0.0, 0.0, 0.0],
     [0.0, 2.0, 0.0, 0.0],
@@ -738,13 +741,13 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Material, Mesh, Model, Renderer, Vertex } from "fragmentcolor";
+import { Mesh, Model, PbrMaterial, Renderer, Vertex } from "fragmentcolor";
 
 const renderer = new Renderer();
 const mesh = new Mesh();
 mesh.addVertices([ Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]), Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]), ]);
 
-const model = new Model(mesh, Material.pbr());
+const model = new Model(mesh, new PbrMaterial());
 model.setTransform([ [2.0, 0.0, 0.0, 0.0], [0.0, 2.0, 0.0, 0.0], [0.0, 0.0, 2.0, 0.0], [3.0, 0.0, 0.0, 1.0], ]);
 `}
 lang="js"
@@ -755,7 +758,7 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Material, Mesh, Model, Renderer, Vertex
+from fragmentcolor import Mesh, Model, PbrMaterial, Renderer, Vertex
 
 renderer = Renderer()
 mesh = Mesh()
@@ -765,7 +768,7 @@ mesh.add_vertices([
     Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
 ])
 
-model = Model(mesh, Material.pbr())
+model = Model(mesh, PbrMaterial())
 model.set_transform([
     [2.0, 0.0, 0.0, 0.0],
     [0.0, 2.0, 0.0, 0.0],
@@ -791,7 +794,7 @@ mesh.addVertices([
     try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
 ])
 
-let model = Model(mesh, Material.pbr())
+let model = Model(mesh, PbrMaterial())
 try model.setTransform([
     [2.0, 0.0, 0.0, 0.0],
     [0.0, 2.0, 0.0, 0.0],
@@ -813,7 +816,7 @@ val renderer = Renderer()
 val mesh = Mesh()
 mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
 
-val model = Model(mesh, Material.pbr())
+val model = Model(mesh, PbrMaterial())
 model.setTransform(listOf(2.0f, 0.0f, 0.0f, 0.0f, 0.0f, 2.0f, 0.0f, 0.0f, 0.0f, 0.0f, 2.0f, 0.0f, 3.0f, 0.0f, 0.0f, 1.0f))
 `}
 lang="kotlin"
@@ -859,7 +862,7 @@ Typical uses:
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::{Material, Mesh, Model, Vertex};
+use fragmentcolor::{Mesh, Model, PbrMaterial, Vertex};
 
 let mesh = Mesh::new();
 mesh.add_vertices([
@@ -867,7 +870,7 @@ mesh.add_vertices([
     Vertex::pbr([-0.5, -0.5, 0.0]),
     Vertex::pbr([0.5, -0.5, 0.0]),
 ]);
-let detail = Model::new(mesh, Material::pbr());
+let detail = Model::new(mesh, PbrMaterial::new());
 
 // Far from the camera, hide the detail Model.
 detail.set_visible(false);
@@ -882,11 +885,11 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Material, Mesh, Model, Vertex } from "fragmentcolor";
+import { Mesh, Model, PbrMaterial, Vertex } from "fragmentcolor";
 
 const mesh = new Mesh();
 mesh.addVertices([ Vertex.pbr([0.0, 0.5, 0.0]), Vertex.pbr([-0.5, -0.5, 0.0]), Vertex.pbr([0.5, -0.5, 0.0]), ]);
-const detail = new Model(mesh, Material.pbr());
+const detail = new Model(mesh, new PbrMaterial());
 
 // Far from the camera, hide the detail Model.
 detail.setVisible(false);
@@ -901,7 +904,7 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Material, Mesh, Model, Vertex
+from fragmentcolor import Mesh, Model, PbrMaterial, Vertex
 
 mesh = Mesh()
 mesh.add_vertices([
@@ -909,7 +912,7 @@ mesh.add_vertices([
     Vertex.pbr([-0.5, -0.5, 0.0]),
     Vertex.pbr([0.5, -0.5, 0.0]),
 ])
-detail = Model(mesh, Material.pbr())
+detail = Model(mesh, PbrMaterial())
 
 # Far from the camera, hide the detail Model.
 detail.set_visible(False)
@@ -932,7 +935,7 @@ mesh.addVertices([
     try Vertex.pbr([-0.5, -0.5, 0.0]),
     try Vertex.pbr([0.5, -0.5, 0.0]),
 ])
-let detail = Model(mesh, Material.pbr())
+let detail = Model(mesh, PbrMaterial())
 
 // Far from the camera, hide the detail Model.
 detail.setVisible(false)
@@ -951,7 +954,7 @@ import org.fragmentcolor.*
 
 val mesh = Mesh()
 mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f))))
-val detail = Model(mesh, Material.pbr())
+val detail = Model(mesh, PbrMaterial())
 
 // Far from the camera, hide the detail Model.
 detail.setVisible(false)
@@ -988,7 +991,7 @@ side is `transform` and the write side is `set_transform`.
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::{Material, Mesh, Model, Renderer, Vertex};
+use fragmentcolor::{Mesh, Model, PbrMaterial, Renderer, Vertex};
 
 let renderer = Renderer::new();
 let mesh = Mesh::new();
@@ -998,7 +1001,7 @@ mesh.add_vertices([
     Vertex::pbr([0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]),
 ]);
 
-let model = Model::new(mesh, Material::pbr());
+let model = Model::new(mesh, PbrMaterial::new());
 let identity = model.transform();
 `}
 lang="rust"
@@ -1009,13 +1012,13 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Material, Mesh, Model, Renderer, Vertex } from "fragmentcolor";
+import { Mesh, Model, PbrMaterial, Renderer, Vertex } from "fragmentcolor";
 
 const renderer = new Renderer();
 const mesh = new Mesh();
 mesh.addVertices([ Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]), Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]), ]);
 
-const model = new Model(mesh, Material.pbr());
+const model = new Model(mesh, new PbrMaterial());
 const identity = model.transform();
 `}
 lang="js"
@@ -1026,7 +1029,7 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Material, Mesh, Model, Renderer, Vertex
+from fragmentcolor import Mesh, Model, PbrMaterial, Renderer, Vertex
 
 renderer = Renderer()
 mesh = Mesh()
@@ -1036,7 +1039,7 @@ mesh.add_vertices([
     Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
 ])
 
-model = Model(mesh, Material.pbr())
+model = Model(mesh, PbrMaterial())
 identity = model.transform()
 `}
 lang="python"
@@ -1057,7 +1060,7 @@ mesh.addVertices([
     try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
 ])
 
-let model = Model(mesh, Material.pbr())
+let model = Model(mesh, PbrMaterial())
 let identity = model.transform()
 `}
 lang="swift"
@@ -1074,7 +1077,7 @@ val renderer = Renderer()
 val mesh = Mesh()
 mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
 
-val model = Model(mesh, Material.pbr())
+val model = Model(mesh, PbrMaterial())
 val identity = model.transform()
 `}
 lang="kotlin"
@@ -1115,7 +1118,7 @@ range`. The Model keeps its transform, and JavaScript and Python raise it as
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::{Material, Mesh, Model, Renderer, Vertex};
+use fragmentcolor::{Mesh, Model, PbrMaterial, Renderer, Vertex};
 
 let renderer = Renderer::new();
 let mesh = Mesh::new();
@@ -1125,7 +1128,7 @@ mesh.add_vertices([
     Vertex::pbr([0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]),
 ]);
 
-let model = Model::new(mesh, Material::pbr());
+let model = Model::new(mesh, PbrMaterial::new());
 model.translate([5.0, 0.0, -2.0])?;
 `}
 lang="rust"
@@ -1136,13 +1139,13 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Material, Mesh, Model, Renderer, Vertex } from "fragmentcolor";
+import { Mesh, Model, PbrMaterial, Renderer, Vertex } from "fragmentcolor";
 
 const renderer = new Renderer();
 const mesh = new Mesh();
 mesh.addVertices([ Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]), Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]), ]);
 
-const model = new Model(mesh, Material.pbr());
+const model = new Model(mesh, new PbrMaterial());
 model.translate([5.0, 0.0, -2.0]);
 
 `}
@@ -1154,7 +1157,7 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Material, Mesh, Model, Renderer, Vertex
+from fragmentcolor import Mesh, Model, PbrMaterial, Renderer, Vertex
 
 renderer = Renderer()
 mesh = Mesh()
@@ -1164,7 +1167,7 @@ mesh.add_vertices([
     Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
 ])
 
-model = Model(mesh, Material.pbr())
+model = Model(mesh, PbrMaterial())
 model.translate([5.0, 0.0, -2.0])
 
 `}
@@ -1186,7 +1189,7 @@ mesh.addVertices([
     try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
 ])
 
-let model = Model(mesh, Material.pbr())
+let model = Model(mesh, PbrMaterial())
 try model.translate([5.0, 0.0, -2.0])
 `}
 lang="swift"
@@ -1203,7 +1206,7 @@ val renderer = Renderer()
 val mesh = Mesh()
 mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
 
-val model = Model(mesh, Material.pbr())
+val model = Model(mesh, PbrMaterial())
 model.translate(listOf(5.0f, 0.0f, -2.0f))
 `}
 lang="kotlin"
@@ -1232,7 +1235,7 @@ rebuild.
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::{Material, Mesh, Model, Vertex};
+use fragmentcolor::{Mesh, Model, PbrMaterial, Vertex};
 
 let mesh = Mesh::new();
 mesh.add_vertices([
@@ -1240,7 +1243,7 @@ mesh.add_vertices([
     Vertex::pbr([-0.5, -0.5, 0.0]),
     Vertex::pbr([0.5, -0.5, 0.0]),
 ]);
-let model = Model::new(mesh, Material::pbr());
+let model = Model::new(mesh, PbrMaterial::new());
 
 // Models start visible; toggle with \`set_visible\`.
 let visible_now = model.visible();
@@ -1253,11 +1256,11 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Material, Mesh, Model, Vertex } from "fragmentcolor";
+import { Mesh, Model, PbrMaterial, Vertex } from "fragmentcolor";
 
 const mesh = new Mesh();
 mesh.addVertices([ Vertex.pbr([0.0, 0.5, 0.0]), Vertex.pbr([-0.5, -0.5, 0.0]), Vertex.pbr([0.5, -0.5, 0.0]), ]);
-const model = new Model(mesh, Material.pbr());
+const model = new Model(mesh, new PbrMaterial());
 
 // Models start visible; toggle with \`set_visible\`.
 const visible_now = model.visible();
@@ -1270,7 +1273,7 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Material, Mesh, Model, Vertex
+from fragmentcolor import Mesh, Model, PbrMaterial, Vertex
 
 mesh = Mesh()
 mesh.add_vertices([
@@ -1278,7 +1281,7 @@ mesh.add_vertices([
     Vertex.pbr([-0.5, -0.5, 0.0]),
     Vertex.pbr([0.5, -0.5, 0.0]),
 ])
-model = Model(mesh, Material.pbr())
+model = Model(mesh, PbrMaterial())
 
 # Models start visible; toggle with \`set_visible\`.
 visible_now = model.visible()
@@ -1299,7 +1302,7 @@ mesh.addVertices([
     try Vertex.pbr([-0.5, -0.5, 0.0]),
     try Vertex.pbr([0.5, -0.5, 0.0]),
 ])
-let model = Model(mesh, Material.pbr())
+let model = Model(mesh, PbrMaterial())
 
 // Models start visible; toggle with \`set_visible\`.
 let visible_now = model.visible()
@@ -1316,7 +1319,7 @@ import org.fragmentcolor.*
 
 val mesh = Mesh()
 mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f))))
-val model = Model(mesh, Material.pbr())
+val model = Model(mesh, PbrMaterial())
 
 // Models start visible; toggle with \`set_visible\`.
 val visible_now = model.visible()

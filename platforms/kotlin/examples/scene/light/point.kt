@@ -12,7 +12,7 @@ val bulb = Light.point(listOf(0.0f, 0.5f, 1.0f), listOf(1.0f, 0.95f, 0.8f)).setI
 bulb.setRange(3.0f)
 
 val pass = Pass("lamp")
-pass.add(Model(wall, Material.pbr()))
+pass.add(Model(wall, PbrMaterial()))
 pass.add(camera)
 pass.add(bulb)
 renderer.render(pass, target)

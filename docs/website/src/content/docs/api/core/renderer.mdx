@@ -769,11 +769,11 @@ lang="kotlin"
 
 ### Renderer::load \{#load\}
 
-Uploads into this `Renderer` every Material map of a renderable that it
-lacks, or holds from an older set. Material's texture setters
-(`base_color_texture`, `metallic_roughness_texture`, …) take an
-already-uploaded [`Texture`](/api/texture/texture)
-or a source: bytes, a path, a URL or a `Mipmap`. The Material keeps a source
+Uploads into this `Renderer` every material map of a renderable that it
+lacks, or holds from an older set.
+[`MaterialMap::texture`](/api/scene/materialmap#texture)
+takes an already-uploaded [`Texture`](/api/texture/texture)
+or a source: bytes, a path, a URL or a `Mipmap`. The material keeps a source
 as a map with one texture id. `load` walks every Shader the renderable visits
 and decodes each map this `Renderer` needs into a copy of its own, under that id.
 
@@ -783,12 +783,11 @@ the first failure, as does every later `load` and every native `render`,
 until the source is fixed or replaced. The latest setter call for a map
 wins, even one made while `load` is uploading the older source. That older
 upload stands in, so this `Renderer` always holds a copy, until the next
-`load` uploads the latest. A slot the shader doesn't declare never becomes a map, since
-the setter logs a warning and leaves the Material as it was.
+`load` uploads the latest.
 
-Each `Renderer` holds copies of its own. One Material draws with every
+Each `Renderer` holds copies of its own. One material draws with every
 `Renderer` that loads it, and a copy goes when its `Renderer` or the
-Material drops. A map set again draws its old copy until this `Renderer`
+material drops. A map set again draws its old copy until this `Renderer`
 loads the new one.
 
 On native targets, [`Renderer::render`](/api/core/renderer#render)
@@ -819,7 +818,7 @@ report their GPU errors, and throws the first one, as
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::{Material, Mesh, Model, Renderer, Scene, Vertex};
+use fragmentcolor::{Mesh, Model, PbrMaterial, Renderer, Scene, Vertex};
 
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([64, 64]).await?;
@@ -832,7 +831,8 @@ mesh.add_vertices([
 ]);
 
 // The material keeps the encoded image as a map.
-let material = Material::pbr().base_color_texture(&image)?;
+let material = PbrMaterial::new();
+material.base_color_map().texture(&image)?;
 let model = Model::new(mesh, material);
 let scene = Scene::new();
 scene.add(&model)?;
@@ -855,7 +855,7 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Material, Mesh, Model, Renderer, Scene, Vertex } from "fragmentcolor";
+import { Mesh, Model, PbrMaterial, Renderer, Scene, Vertex } from "fragmentcolor";
 const image = new Uint8Array(await (await fetch("/healthcheck/public/favicon.png")).arrayBuffer());
 
 const renderer = new Renderer();
@@ -865,7 +865,8 @@ const mesh = new Mesh();
 mesh.addVertices([ Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]), Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]), ]);
 
 // The material keeps the encoded image as a map.
-const material = Material.pbr().baseColorTexture(image);
+const material = new PbrMaterial();
+material.baseColorMap().texture(image);
 const model = new Model(mesh, material);
 const scene = new Scene();
 scene.add(model);
@@ -888,7 +889,7 @@ lang="js" meta="collapse={2-2}"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Material, Mesh, Model, Renderer, Scene, Vertex
+from fragmentcolor import Mesh, Model, PbrMaterial, Renderer, Scene, Vertex
 image = open("examples/assets/logo.png", "rb").read()
 
 renderer = Renderer()
@@ -902,7 +903,8 @@ mesh.add_vertices([
 ])
 
 # The material keeps the encoded image as a map.
-material = Material.pbr().base_color_texture(image)
+material = PbrMaterial()
+material.base_color_map().texture(image)
 model = Model(mesh, material)
 scene = Scene()
 scene.add(model)
@@ -940,7 +942,8 @@ mesh.addVertices([
 ])
 
 // The material keeps the encoded image as a map.
-let material = try Material.pbr().baseColorTexture(image)
+let material = PbrMaterial()
+try material.baseColorMap().texture(image)
 let model = Model(mesh, material)
 let scene = Scene()
 try scene.add(model)
@@ -973,7 +976,8 @@ val mesh = Mesh()
 mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
 
 // The material keeps the encoded image as a map.
-val material = Material.pbr().baseColorTexture(image)
+val material = PbrMaterial()
+material.baseColorMap().texture(image)
 val model = Model(mesh, material)
 val scene = Scene()
 scene.add(model)
