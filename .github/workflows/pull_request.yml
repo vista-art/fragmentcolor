@@ -94,6 +94,15 @@ jobs:
       - name: Lint
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
+      # TEMPORARY: find where the library tests crash on the runner. Remove once fixed.
+      - name: Diagnose library test crash
+        continue-on-error: true
+        run: |
+          sudo apt-get install -y -qq gdb
+          BIN=$(cargo test --lib --no-run --message-format=json 2>/dev/null | jq -r 'select(.executable != null and (.target.kind | index("lib"))) | .executable' | tail -1)
+          echo "test binary: $BIN"
+          gdb -q -batch -ex "set pagination off" -ex "handle SIGPIPE nostop noprint" -ex run -ex "bt 40" -ex "info threads" --args "$BIN" --test-threads=4 2>&1 | grep -v -E '^\[(New Thread|Thread .* exited)' | tail -150
+
       - name: Tests
         run: cargo test
 
