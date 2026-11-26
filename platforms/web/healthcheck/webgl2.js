@@ -2,7 +2,7 @@
 // module runs, so the engine must pick the GL backend. Uniform blocks and
 // immediate roots whose WGSL size is not a multiple of 16 bytes bind padded.
 import init, {
-  Camera, Light, Material, Mesh, Model, Pass, Renderer, Shader, Vertex,
+  Camera, Light, Mesh, Model, Pass, PbrMaterial, Renderer, Shader, Vertex,
 } from "fragmentcolor";
 
 console.log("[webgl2] boot; navigator.gpu:", typeof navigator.gpu);
@@ -148,7 +148,7 @@ try {
   const camera = Camera.perspective(1.0, 1.0, 0.1, 10.0)
     .lookAt([0.0, 0.0, 3.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
   const pass = new Pass("light cap");
-  pass.add(new Model(quad, Material.pbr()));
+  pass.add(new Model(quad, new PbrMaterial()));
   pass.add(camera);
 
   let added = 0;

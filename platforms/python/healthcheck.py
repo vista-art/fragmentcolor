@@ -21,13 +21,14 @@ from fragmentcolor import (
     LimitError,
     LogLevel,
     MalformedImageError,
-    Material,
     MaterialError,
+    MaterialMap,
     Mesh,
     OccludedSurfaceError,
     Mipmap,
     Model,
     Pass,
+    PbrMaterial,
     RenderCanvasTarget,
     Renderer,
     SamplerOptions,
@@ -37,7 +38,6 @@ from fragmentcolor import (
     Shader,
     Size,
     TextureFormat,
-    TextureSlot,
     TextureUsage,
     Quad,
     Vertex,
@@ -585,7 +585,7 @@ def check_pass_targets(renderer):
     cover = Mesh()
     cover.add_vertices([Vertex.pbr(corner) for corner in ([-1.0, -1.0, 0.0], [3.0, -1.0, 0.0], [-1.0, 3.0, 0.0])])
     scene = Scene()
-    scene.add(Model(cover, Material.pbr()))
+    scene.add(Model(cover, PbrMaterial()))
     refuses("a Scene render into another Renderer's target", "another Renderer",
             lambda: Renderer().render(scene, target))
     assert not scene.cameras() and not scene.lights(), "the refused render added defaults"
@@ -636,8 +636,9 @@ def check_number_errors(renderer):
     chain = Mipmap.build(bytes(4 * 4 * 4), TextureFormat.Rgba8Unorm, [4, 4])
     texture = renderer.create_texture(bytes(4 * 4 * 4), size=[4, 4])
     target = renderer.create_texture_target([4, 4])
-    model = Model(Mesh(), Material.pbr())
-    material = Material.pbr()
+    model = Model(Mesh(), PbrMaterial())
+    material = PbrMaterial()
+    occlusion = material.occlusion_map()
     calls = {
         "Pass.set_compute_dispatch": lambda n: rpass.set_compute_dispatch(n, 1, 1),
         "Pass.set_viewport": lambda n: rpass.set_viewport([0, 0, n, 4]),
@@ -654,7 +655,7 @@ def check_number_errors(renderer):
         "create_texture_target": lambda n: renderer.create_texture_target({"width": n, "height": 4}),
         "ScreenRegion": lambda n: ScreenRegion((0, 0), (n, 4)),
         "ScreenRegion origin": lambda n: ScreenRegion((n, 0), (4, 4)),
-        "Material.texture_uv": lambda n: material.texture_uv(TextureSlot.Occlusion, n),
+        "MaterialMap.uv": lambda n: occlusion.uv(n),
     }
     # An int of any size outside 0 to 2**32 - 1 is a value error, never OverflowError.
     for name, call in calls.items():
@@ -680,7 +681,7 @@ def check_number_errors(renderer):
         "Renderer.create_storage_texture": lambda data: renderer.create_storage_texture([1, 2], TextureFormat.Rgba, data),
         "Texture.write": lambda data: pixels.write(data),
         "Mipmap.build": lambda data: Mipmap.build(data, TextureFormat.Rgba, [1, 2]),
-        "Material.base_color_texture": lambda data: Material.pbr().base_color_texture(data, size=[1, 2]),
+        "MaterialMap.texture": lambda data: PbrMaterial().base_color_map().texture(data, size=[1, 2]),
     }
     for name, call in byte_calls.items():
         for bad in (300, -1, 2**64):
@@ -699,22 +700,22 @@ def check_number_errors(renderer):
 
     # A UV set past 1 fits a u32, but no texture can sample it.
     assert issubclass(MaterialError, FragmentColorError) and issubclass(MaterialError, ValueError)
-    raises(MaterialError, "Material.texture_uv(2)", lambda: material.texture_uv(TextureSlot.Occlusion, 2))
-    assert isinstance(material.texture_uv(TextureSlot.Occlusion, np.uint32(1)), Material)
+    raises(MaterialError, "MaterialMap.uv(2)", lambda: occlusion.uv(2))
+    assert isinstance(occlusion.uv(np.uint32(1)), MaterialMap)
 
     # An offset or scale takes two numbers. Another count is a value error, and a string the wrong type.
     transforms = {
-        "Material.texture_transform offset": lambda v: material.texture_transform(TextureSlot.Normal, v, [1.0, 1.0], 0.0),
-        "Material.texture_transform scale": lambda v: material.texture_transform(TextureSlot.Normal, [0.0, 0.0], v, 0.0),
-        "Material.uv_transform offset": lambda v: material.uv_transform(v, [1.0, 1.0], 0.0),
-        "Material.uv_transform scale": lambda v: material.uv_transform([0.0, 0.0], v, 0.0),
+        "MaterialMap.transform offset": lambda v: material.normal_map().transform(v, [1.0, 1.0], 0.0),
+        "MaterialMap.transform scale": lambda v: material.normal_map().transform([0.0, 0.0], v, 0.0),
+        "PbrMaterial.uv_transform offset": lambda v: material.uv_transform(v, [1.0, 1.0], 0.0),
+        "PbrMaterial.uv_transform scale": lambda v: material.uv_transform([0.0, 0.0], v, 0.0),
     }
     for name, apply in transforms.items():
         raises(InvalidInputError, f"{name} with 3 numbers", lambda: apply([0.0, 0.0, 0.0]))
         raises(TypeError, f"{name} with a string", lambda: apply("ab"))
         for bad in (float("nan"), float("inf"), 1e39):
             raises(InvalidInputError, f"{name} with {bad}", lambda: apply([bad, 1.0]))
-        assert isinstance(apply(np.array([0.5, 2.0])), Material)
+        assert isinstance(apply(np.array([0.5, 2.0])), (PbrMaterial, MaterialMap))
 
     size = Size(4, 2)
     for field in ("width", "height", "depth"):
@@ -767,16 +768,16 @@ def check_empty_regions():
 def check_scalars_and_pairs():
     """A bool is no float, and an origin or a size is any sequence of two ints, as in JavaScript."""
     light = Light.point([0, 1, 0], [1, 1, 1])
-    model = Model(Mesh(), Material.pbr())
+    model = Model(Mesh(), PbrMaterial())
     camera = Camera.perspective(1.0, 1.0, 0.1, 10.0)
     scalars = {
-        "Material.metallic": lambda v: Material.pbr().metallic(v),
-        "Material.roughness": lambda v: Material.pbr().roughness(v),
-        "Material.normal_scale": lambda v: Material.pbr().normal_scale(v),
-        "Material.occlusion_strength": lambda v: Material.pbr().occlusion_strength(v),
-        "Material.alpha_cutoff": lambda v: Material.pbr().alpha_cutoff(v),
-        "Material.uv_transform": lambda v: Material.pbr().uv_transform([0, 0], [1, 1], v),
-        "Material.texture_transform": lambda v: Material.pbr().texture_transform(TextureSlot.Normal, [0, 0], [1, 1], v),
+        "PbrMaterial.metallic": lambda v: PbrMaterial().metallic(v),
+        "PbrMaterial.roughness": lambda v: PbrMaterial().roughness(v),
+        "PbrMaterial.normal_scale": lambda v: PbrMaterial().normal_scale(v),
+        "PbrMaterial.occlusion_strength": lambda v: PbrMaterial().occlusion_strength(v),
+        "PbrMaterial.alpha_cutoff": lambda v: PbrMaterial().alpha_cutoff(v),
+        "PbrMaterial.uv_transform": lambda v: PbrMaterial().uv_transform([0, 0], [1, 1], v),
+        "MaterialMap.transform": lambda v: PbrMaterial().normal_map().transform([0, 0], [1, 1], v),
         "Model.rotate": lambda v: model.rotate([0, 1, 0], v),
         "Camera.perspective": lambda v: Camera.perspective(v, 1.0, 0.1, 10.0),
         "Camera.orthographic": lambda v: Camera.orthographic(v, 1.0, -1.0, 1.0, 0.1, 10.0),
@@ -791,16 +792,16 @@ def check_scalars_and_pairs():
         raises_type(f"{name}('1')", lambda: call("1"))
         call(np.float32(0.5))
     try:
-        Material.pbr().metallic(True)
+        PbrMaterial().metallic(True)
     except TypeError as e:
-        assert str(e) == "Material.metallic: value must be a number, got bool", e
-    # A Material factor, a UV rotation, a light's intensity or cone angle and a rotation
+        assert str(e) == "PbrMaterial.metallic: value must be a number, got bool", e
+    # A material factor, a UV rotation, a light's intensity or cone angle and a rotation
     # angle refuse NaN, an infinity and a number past the f32 range, as a color item does,
     # and the object keeps its value.
-    material = Material.pbr().metallic(0.25)
+    material = PbrMaterial().metallic(0.25)
     finite = ("Model.rotate", "Light.set_intensity", "Light.set_cone_angles")
     for name, call in scalars.items():
-        if name.startswith("Material.") or name in finite:
+        if name.startswith(("PbrMaterial.", "MaterialMap.")) or name in finite:
             for bad in (float("nan"), float("inf"), 1e39):
                 raises_invalid(f"{name}({bad})", lambda: call(bad))
     light.set_intensity(2.5)
@@ -829,7 +830,7 @@ def check_scalars_and_pairs():
         assert str(e) == "Light::directional: direction has length 0, so the light points nowhere", e
     else:
         raise AssertionError("Light.directional with a zero direction should raise InvalidInputError")
-    far = Model(Mesh(), Material.pbr())
+    far = Model(Mesh(), PbrMaterial())
     far.translate([3e38, 0, 0])
     placed = far.transform()
     try:
@@ -842,9 +843,9 @@ def check_scalars_and_pairs():
     try:
         material.metallic(1e39)
     except InvalidInputError as e:
-        assert str(e) == "Material.metallic: value must be a finite number that fits a 32-bit float, got 1e39", e
+        assert str(e) == "PbrMaterial.metallic: value must be a finite number that fits a 32-bit float, got 1e39", e
     else:
-        raise AssertionError("Material.metallic(1e39) should raise InvalidInputError")
+        raise AssertionError("PbrMaterial.metallic(1e39) should raise InvalidInputError")
     assert material.shader().get("material.metallic") == 0.25
 
     assert ScreenRegion([1, 2], [32, 16]) == ScreenRegion((1, 2), (32, 16))
@@ -907,13 +908,13 @@ def raises_type(label, call):
 
 def check_colors(renderer):
     """Every color setter takes a number sequence, refuses bytes and bools, and refuses a channel past float range."""
-    rpass, light, scene, material = Pass("colors"), Light.point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0]), Scene(), Material.pbr()
+    rpass, light, scene, material = Pass("colors"), Light.point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0]), Scene(), PbrMaterial()
     setters = {
         "Pass.set_clear_color": (rpass.set_clear_color, 4),
         "Light.set_color": (light.set_color, 3),
         "Scene.ambient": (scene.ambient, 3),
-        "Material.base_color": (material.base_color, 4),
-        "Material.emissive": (material.emissive, 3),
+        "PbrMaterial.base_color": (material.base_color, 4),
+        "PbrMaterial.emissive": (material.emissive, 3),
         "Light.point": (lambda color: Light.point([0.0, 0.0, 0.0], color), 3),
         "Light.directional": (lambda color: Light.directional([0.0, -1.0, 0.0], color), 3),
         "Light.spot": (lambda color: Light.spot([0.0, 1.0, 0.0], [0.0, -1.0, 0.0], color), 3),
@@ -941,7 +942,7 @@ def check_colors(renderer):
 
 def check_vectors():
     """Every position, direction, axis and scale takes three numbers the way a color takes its channels."""
-    light, model, camera = Light.point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0]), Model(Mesh(), Material.pbr()), Camera.perspective(1.0, 1.0, 0.1, 100.0)
+    light, model, camera = Light.point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0]), Model(Mesh(), PbrMaterial()), Camera.perspective(1.0, 1.0, 0.1, 100.0)
     vectors = {
         "Light.point: position": lambda v: Light.point(v, [1.0, 1.0, 1.0]),
         "Light.directional: direction": lambda v: Light.directional(v, [1.0, 1.0, 1.0]),
@@ -1125,7 +1126,7 @@ def check_texture_inputs(renderer):
 
 
 def check_material_textures(renderer):
-    """The Material texture setters take create_texture's keywords, and each keyword reaches the upload."""
+    """MaterialMap.texture takes create_texture's keywords, and each keyword reaches the upload."""
     corners = ([-1.0, -1.0, 0.0], [3.0, -1.0, 0.0], [-1.0, 3.0, 0.0])
     flat = ([0.0, 0.0], [0.0, 0.0], [0.0, 0.0])
 
@@ -1136,9 +1137,10 @@ def check_material_textures(renderer):
             Vertex.pbr(corner).set(Vertex.NORMAL, [0.0, 0.0, 1.0]).set(Vertex.UV0, uv)
             for corner, uv in zip(corners, uvs)
         ])
-        material = Material.pbr().base_color([0.0, 0.0, 0.0, 1.0]).emissive([1.0, 1.0, 1.0])
+        material = PbrMaterial().base_color([0.0, 0.0, 0.0, 1.0]).emissive([1.0, 1.0, 1.0])
+        set_texture(material)
         rpass = Pass("glow")
-        rpass.add(Model(mesh, set_texture(material)))
+        rpass.add(Model(mesh, material))
         target = renderer.create_texture_target([4, 4])
         renderer.render(rpass, target)
         return [int(channel) for channel in target.get_image()[0, 0]]
@@ -1148,131 +1150,110 @@ def check_material_textures(renderer):
 
     red = [255, 0, 0, 255]
     forms = {
-        "size=[1, 1]": lambda m: m.emissive_texture(red, size=[1, 1]),
-        "input= and size=": lambda m: m.emissive_texture(input=red, size=[1, 1]),
-        "a positional size": lambda m: m.emissive_texture(bytes(red), [1, 1]),
-        "a Size": lambda m: m.emissive_texture(bytearray(red), size=Size(1, 1)),
-        "format=R8Unorm": lambda m: m.emissive_texture(bytes([255]), size=[1, 1], format=TextureFormat.R8Unorm),
-        "an ndarray": lambda m: m.emissive_texture(np.array([[red]], dtype=np.uint8)),
+        "size=[1, 1]": lambda m: m.emissive_map().texture(red, size=[1, 1]),
+        "input= and size=": lambda m: m.emissive_map().texture(input=red, size=[1, 1]),
+        "a positional size": lambda m: m.emissive_map().texture(bytes(red), [1, 1]),
+        "a Size": lambda m: m.emissive_map().texture(bytearray(red), size=Size(1, 1)),
+        "format=R8Unorm": lambda m: m.emissive_map().texture(bytes([255]), size=[1, 1], format=TextureFormat.R8Unorm),
+        "an ndarray": lambda m: m.emissive_map().texture(np.array([[red]], dtype=np.uint8)),
     }
     for label, form in forms.items():
         pixel = glow(form)
-        assert is_red(pixel), f"emissive_texture with {label} drew {pixel}"
+        assert is_red(pixel), f"MaterialMap.texture with {label} drew {pixel}"
 
     # Each keyword changes what draws, so a keyword the setter drops fails here.
     gray = [128, 128, 128, 255]
-    linear = glow(lambda m: m.emissive_texture(gray, size=[1, 1], format=TextureFormat.Rgba8Unorm))
-    srgb = glow(lambda m: m.emissive_texture(gray, size=[1, 1]))
+    linear = glow(lambda m: m.emissive_map().texture(gray, size=[1, 1], format=TextureFormat.Rgba8Unorm))
+    srgb = glow(lambda m: m.emissive_map().texture(gray, size=[1, 1]))
     assert linear[0] > srgb[0] + 30, f"format=Rgba8Unorm drew {linear}, the sRGB default {srgb}"
     pair = red + [0, 255, 0, 255]
 
     def shift(m, offset):
-        return m.texture_transform(TextureSlot.Emissive, [offset, 0.0], [1.0, 1.0], 0.0)
+        return m.emissive_map().transform([offset, 0.0], [1.0, 1.0], 0.0)
 
     repeat = SamplerOptions(repeat_x=True)
-    wrapped = glow(lambda m: shift(m, 1.25).emissive_texture(pair, size=[2, 1], sampler=repeat))
-    clamped = glow(lambda m: shift(m, 1.25).emissive_texture(pair, size=[2, 1]))
+    wrapped = glow(lambda m: shift(m, 1.25).texture(pair, size=[2, 1], sampler=repeat))
+    clamped = glow(lambda m: shift(m, 1.25).texture(pair, size=[2, 1]))
     assert is_red(wrapped), f"sampler=repeat_x drew {wrapped} past the edge"
     assert clamped[1] > 200 and clamped[0] < 40, f"the clamped default drew {clamped} past the edge"
     # 16 texels to a pixel: a mip chain samples its 1x1 level, a mix of red and green.
     wide = ([0.0, 0.0], [64.0, 0.0], [0.0, 64.0])
-    chained = glow(lambda m: shift(m, 0.25).emissive_texture(pair, size=[2, 1], sampler=repeat), wide)
-    single = glow(lambda m: shift(m, 0.25).emissive_texture(pair, size=[2, 1], sampler=repeat, mipmaps=False), wide)
+    chained = glow(lambda m: shift(m, 0.25).texture(pair, size=[2, 1], sampler=repeat), wide)
+    single = glow(lambda m: shift(m, 0.25).texture(pair, size=[2, 1], sampler=repeat, mipmaps=False), wide)
     assert is_red(single), f"mipmaps=False drew {single}"
     assert chained[1] > 60, f"the default mip chain drew {chained}"
 
-    setters = ("base_color_texture", "metallic_roughness_texture", "normal_texture",
-               "occlusion_texture", "emissive_texture")
+    maps = ("base_color_map", "metallic_roughness_map", "normal_map", "occlusion_map", "emissive_map")
     albedo = renderer.create_texture(red, size=[1, 1])
-    for name in setters:
-        setter = getattr(Material.pbr(), name)
+    for name in maps:
+        setter = getattr(PbrMaterial(), name)().texture
+        label = f"PbrMaterial.{name}().texture"
         setter(red, size=[1, 1], format=TextureFormat.Rgba8Unorm, mipmaps=False, usage=TextureUsage.COPY_SRC)
         setter(albedo)
         # 32 is outside the five TextureUsage flags, so the upload at render refuses it.
-        raises_invalid(f"Material.{name} with usage 32",
-                       lambda: glow(lambda m: getattr(m, name)(red, size=[1, 1], usage=32)))
-        raises_invalid(f"Material.{name} with an ndarray of another size",
+        raises_invalid(f"{label} with usage 32",
+                       lambda: glow(lambda m: getattr(m, name)().texture(red, size=[1, 1], usage=32)))
+        raises_invalid(f"{label} with an ndarray of another size",
                        lambda: setter(np.zeros((2, 2, 4), dtype=np.uint8), size=[1, 1]))
-        raises_invalid(f"Material.{name} with a size beside a Texture", lambda: setter(albedo, size=[1, 1]))
-        raises_invalid(f"Material.{name} with a sampler beside a Texture",
+        raises_invalid(f"{label} with a size beside a Texture", lambda: setter(albedo, size=[1, 1]))
+        raises_invalid(f"{label} with a sampler beside a Texture",
                        lambda: setter(albedo, sampler=SamplerOptions(repeat_x=True)))
         try:
             setter(albedo, usage=TextureUsage.COPY_SRC)
         except InvalidInputError as e:
-            assert f"Material.{name}" in str(e), f"usage beside a Texture raised {e}"
+            assert "MaterialMap.texture" in str(e), f"usage beside a Texture raised {e}"
         else:
-            raise AssertionError(f"Material.{name} with usage beside a Texture should raise InvalidInputError")
-        raises_type(f"Material.{name} with a float size", lambda: setter(red, size=[1.0, 1.0]))
-        raises_type(f"Material.{name} with a string format", lambda: setter(red, format="rgba"))
+            raise AssertionError(f"{label} with usage beside a Texture should raise InvalidInputError")
+        raises_type(f"{label} with a float size", lambda: setter(red, size=[1.0, 1.0]))
+        raises_type(f"{label} with a string format", lambda: setter(red, format="rgba"))
     raises_invalid("create_texture with a format beside a Texture",
                    lambda: renderer.create_texture(albedo, format=TextureFormat.Rgba8Unorm))
     assert renderer.create_texture(albedo).size() == albedo.size()
 
-    # A slot a custom shader declares as a number refuses a Texture and a source with
-    # MaterialError and keeps its value, and a slot the shader doesn't declare is skipped.
-    numbered = Material.custom(Shader(NUMBERED_SHADER))
-    numbered.shader().set("base_color_map", [0.25, 0.5, 0.75, 1.0])
-    for label, call in (("a Texture", lambda: numbered.base_color_texture(albedo)),
-                        ("bytes", lambda: numbered.base_color_texture(red, size=[1, 1]))):
-        try:
-            call()
-        except MaterialError as e:
-            assert "base_color_map" in str(e), e
-        else:
-            raise AssertionError(f"Material.base_color_texture with {label} on a number should raise MaterialError")
-    assert list(numbered.shader().get("base_color_map")) == [0.25, 0.5, 0.75, 1.0]
-    assert isinstance(numbered.normal_texture(albedo), Material)
-    assert isinstance(numbered.normal_texture(red, size=[1, 1]), Material)
-    # An empty byte list holds no image, so the setter refuses it at the call.
+    # An empty byte list holds no image, so the map refuses it at the call.
     try:
-        Material.pbr().base_color_texture(b"")
+        PbrMaterial().base_color_map().texture(b"")
     except InvalidInputError as e:
         assert str(e).endswith("a texture source needs data, and it got an empty byte list"), e
     else:
-        raise AssertionError("Material.base_color_texture(b'') should raise InvalidInputError")
-    print("The Material texture setters take create_texture's keywords, and each keyword reaches the upload")
-
-
-NUMBERED_SHADER = """
-@group(0) @binding(0) var<uniform> base_color_map: vec4<f32>;
-@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
-  return vec4f(f32(i), 0., 0., 1.);
-}
-@fragment fn fs_main() -> @location(0) vec4<f32> { return base_color_map; }
-"""
-
-
-MAPPED_SHADER = """
-@group(0) @binding(0) var base_color_map: texture_2d<f32>;
-@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
-  let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
-  return vec4f(p[i], 0., 1.);
-}
-@fragment fn fs_main() -> @location(0) vec4<f32> { return textureLoad(base_color_map, vec2<i32>(0), 0); }
-"""
+        raise AssertionError("MaterialMap.texture(b'') should raise InvalidInputError")
+    print("MaterialMap.texture takes create_texture's keywords, and each keyword reaches the upload")
 
 
 def check_material_maps():
-    """One Material map draws in two Renderers, and the second draws after the first is gone."""
+    """One PbrMaterial map draws in two Renderers, and the second draws after the first is gone."""
     import gc
 
     red = np.array([[[255, 0, 0, 255]]], dtype=np.uint8)
-    material = Material.custom(Shader(MAPPED_SHADER)).base_color_texture(red)
+    # A black surface lit only by its red emissive map, over the whole target.
+    material = PbrMaterial().base_color([0.0, 0.0, 0.0, 1.0]).emissive([1.0, 1.0, 1.0])
+    material.emissive_map().texture(red)
+    mesh = Mesh()
+    mesh.add_vertices([
+        Vertex.pbr(corner).set(Vertex.NORMAL, [0.0, 0.0, 1.0]).set(Vertex.UV0, [0.0, 0.0])
+        for corner in ([-1.0, -1.0, 0.0], [3.0, -1.0, 0.0], [-1.0, 3.0, 0.0])
+    ])
+    rpass = Pass("mapped")
+    rpass.add(Model(mesh, material))
+
+    def is_red(pixel):
+        return pixel[0] > 200 and pixel[1] < 40 and pixel[2] < 40
+
     first = Renderer()
     first_target = first.create_texture_target([4, 4])
     second = Renderer()
     second_target = second.create_texture_target([4, 4])
     for label, renderer, target in (("first", first, first_target), ("second", second, second_target)):
-        renderer.render(material.shader(), target)
+        renderer.render(rpass, target)
         pixel = target.get_image()[0, 0].tolist()
-        assert pixel == [255, 0, 0, 255], f"the {label} Renderer drew {pixel}"
+        assert is_red(pixel), f"the {label} Renderer drew {pixel}"
 
     del first, first_target
     gc.collect()
-    second.render(material.shader(), second_target)
+    second.render(rpass, second_target)
     pixel = second_target.get_image()[0, 0].tolist()
-    assert pixel == [255, 0, 0, 255], f"the second Renderer drew {pixel} after the first was gone"
-    print("One Material map draws in two Renderers, each from a copy of its own")
+    assert is_red(pixel), f"the second Renderer drew {pixel} after the first was gone"
+    print("One PbrMaterial map draws in two Renderers, each from a copy of its own")
 
 
 def check_invalid_textures(renderer):
