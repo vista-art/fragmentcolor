@@ -60,6 +60,7 @@ Bind groups & alignment
 - Uniforms: align to `device.limits().min_uniform_buffer_offset_alignment`.
 - Uniform and storage pools rewind once per `render`, never per pass. `queue.write_buffer` applies at submit, so passes that share a submit need distinct offsets.
 - Storage roots: each binds its persistent buffer from offset 0. wgpu writes, copies, maps and binds storage in 4-byte words, and an `f16` root can span 2 or 6 bytes, so uniform writes, persistent storage buffers, their bindings and `min_binding_size`, and storage readbacks round a root's size up to a multiple of `COPY_BUFFER_ALIGNMENT` (`pools::align_size`), with zeros after the root's bytes (`pools::pad_bytes`). `BufferLocation::size` and the storage registry keep the root's own size, and `read_storage` returns exactly that many bytes.
+- A persistent storage buffer takes the root's whole CPU copy only when `storage_buffer` creates it. After that it takes only the ranges `UniformStorage::storage_changes` lists, each widened to whole 4-byte words, so a compute pass's writes outside what the app `set` survive. Never upload a whole root for a field's `set`: that overwrote compute state before 0.12.8.
 - Push constants: prefer native push constants when the adapter supports them; fall back to a per-root uniform buffer otherwise (single source of truth in `PushMode`, decided by `layout::plan_push` for render and compute alike).
 
 Lights (`lights/mod.rs`, `lights/grid.rs`, `lights/binning.wgsl`)

@@ -1,7 +1,8 @@
 //! `UniformStorage`: the CPU bytes of every uniform,
 //! storage and immediate root, and the keys that address them.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
+use std::ops::Range;
 
 use crate::ShaderError;
 
@@ -16,8 +17,9 @@ pub(crate) struct UniformStorage {
     pub(crate) uniforms: HashMap<String, (u32, u32, Uniform)>, // (offset, size, original data)
     // CPU-side blobs for storage buffers: root name -> raw bytes
     pub(crate) storage_blobs: HashMap<String, Vec<u8>>,
-    // Track which storage roots have been modified on CPU since last GPU upload
-    pub(crate) storage_dirty: HashSet<String>,
+    // The byte ranges of each storage root set on the CPU since its last GPU upload,
+    // sorted, apart and aligned for `write_buffer`.
+    storage_changes: HashMap<String, Vec<Range<usize>>>,
     // CPU-side blobs for push constants: root name -> raw bytes
     pub(crate) push_blobs: HashMap<String, Vec<u8>>,
 }
@@ -29,7 +31,7 @@ impl UniformStorage {
             uniform_bytes: Vec::new(),
             uniforms: HashMap::new(),
             storage_blobs: HashMap::new(),
-            storage_dirty: HashSet::new(),
+            storage_changes: HashMap::new(),
             push_blobs: HashMap::new(),
         };
 
@@ -214,7 +216,8 @@ impl UniformStorage {
             .get_mut(root)
             .ok_or_else(|| ShaderError::UniformNotFound(root.into()))?;
         replace_blob(root, blob, bytes)?;
-        self.storage_dirty.insert(root.to_string());
+        let len = blob.len();
+        mark_storage(&mut self.storage_changes, root, 0..len);
         Ok(())
     }
 
@@ -308,8 +311,8 @@ impl UniformStorage {
                                     *b = 0;
                                 }
                             }
-                            // Mark dirty
-                            self.storage_dirty.insert(root.to_string());
+                            let len = blob.len();
+                            mark_storage(&mut self.storage_changes, root, 0..len);
                         }
                     }
                     _ => {
@@ -319,8 +322,7 @@ impl UniformStorage {
                         let end = start.saturating_add(data.len());
                         if end <= blob.len() {
                             blob[start..end].copy_from_slice(&data);
-                            // Mark dirty for nested update as well
-                            self.storage_dirty.insert(root.to_string());
+                            mark_storage(&mut self.storage_changes, root, start..end);
                         }
                     }
                 }
@@ -380,7 +382,7 @@ impl UniformStorage {
                 _ => return Err(ShaderError::InvalidKey(key.into())),
             }
             if blob == Blob::Storage {
-                self.storage_dirty.insert(root);
+                mark_storage(&mut self.storage_changes, &root, start..end);
             }
             Ok(())
         }
@@ -491,12 +493,16 @@ impl UniformStorage {
         source.get(start..end)
     }
 
-    // ----- Storage dirty helpers (crate-private) -----
-    pub(crate) fn is_storage_dirty(&self, root: &str) -> bool {
-        self.storage_dirty.contains(root)
+    /// The byte ranges of the storage root `root` set since its last upload, sorted and apart.
+    /// Each starts and ends on a 4-byte word, so the last one can reach past a root
+    /// whose size isn't a multiple of 4, into the padding of its GPU buffer.
+    pub(crate) fn storage_changes(&self, root: &str) -> &[Range<usize>] {
+        self.storage_changes.get(root).map_or(&[], Vec::as_slice)
     }
-    pub(crate) fn clear_storage_dirty(&mut self, root: &str) {
-        self.storage_dirty.remove(root);
+
+    /// Forgets the changes of the storage root `root` once they are uploaded.
+    pub(crate) fn clear_storage_changes(&mut self, root: &str) {
+        self.storage_changes.remove(root);
     }
     /// True iff the shader's source declared a top-level storage binding
     /// named `root` (i.e. there is a CPU-side blob for it).
@@ -519,6 +525,27 @@ fn reserve(bytes: &mut Vec<u8>, name: &str, size: usize) -> Result<(), ShaderErr
 fn allocate_zeros(name: &str, span: u32) -> Result<Vec<u8>, ShaderError> {
     reserve(&mut Vec::new(), name, span as usize)?;
     Ok(vec![0u8; span as usize])
+}
+
+/// Records in `changes` that the bytes in `range` of the storage root `root` changed on the CPU.
+/// The range widens to whole 4-byte words, which is what `write_buffer` takes,
+/// and joins any range it overlaps or touches, so the list stays sorted and apart.
+fn mark_storage(changes: &mut HashMap<String, Vec<Range<usize>>>, root: &str, range: Range<usize>) {
+    let start = range.start & !3;
+    let end = range.end.saturating_add(3) & !3;
+    if start >= end {
+        return;
+    }
+    let ranges = changes.entry(root.to_string()).or_default();
+    // The ranges this one overlaps or touches sit between `first` and `last`.
+    let first = ranges.partition_point(|r| r.end < start);
+    let last = ranges.partition_point(|r| r.start <= end);
+    let merged = match ranges.get(first..last) {
+        Some([head, .., tail]) => head.start.min(start)..tail.end.max(end),
+        Some([one]) => one.start.min(start)..one.end.max(end),
+        _ => start..end,
+    };
+    ranges.splice(first..last, [merged]);
 }
 
 /// Copies `bytes` over `blob`, refusing any other length.
@@ -691,4 +718,49 @@ fn locate<'a>(
     }
 
     Ok((ofs, cur))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The changes left after marking each `(start, end)` in order, as `(start, end)` pairs.
+    fn marked(ranges: &[(usize, usize)]) -> Vec<(usize, usize)> {
+        let mut changes = HashMap::new();
+        for &(start, end) in ranges {
+            mark_storage(&mut changes, "root", start..end);
+        }
+        changes
+            .remove("root")
+            .unwrap_or_default()
+            .into_iter()
+            .map(|range| (range.start, range.end))
+            .collect()
+    }
+
+    // Story: Each change widens to whole 4-byte words, as write_buffer takes them.
+    #[test]
+    fn changes_widen_to_whole_words() {
+        assert_eq!(
+            marked(&[(2, 4)]),
+            [(0, 4)],
+            "a 2-byte f16 in the second half"
+        );
+        assert_eq!(marked(&[(5, 10)]), [(4, 12)], "bytes that cross a word");
+        assert_eq!(marked(&[(8, 8)]), [], "nothing");
+    }
+
+    // Story: Changes that overlap or touch join, and the others stay apart and sorted.
+    #[test]
+    fn changes_join_when_they_meet() {
+        assert_eq!(marked(&[(16, 20), (0, 4)]), [(0, 4), (16, 20)], "apart");
+        assert_eq!(marked(&[(0, 4), (4, 8), (8, 12)]), [(0, 12)], "in order");
+        assert_eq!(marked(&[(0, 4), (8, 12), (4, 8)]), [(0, 12)], "gap filled");
+        assert_eq!(
+            marked(&[(0, 4), (8, 12), (16, 20), (6, 18)]),
+            [(0, 20)],
+            "one change over several"
+        );
+        assert_eq!(marked(&[(4, 12), (6, 8)]), [(4, 12)], "inside another");
+    }
 }
