@@ -1,5 +1,5 @@
 import init, {
-  Renderer, Shader, Pass, Mesh, Vertex, Instance, Scene, Model, PbrMaterial, MaterialMap, Camera, Light, Mipmap,
+  Renderer, Shader, Pass, Mesh, Vertex, Instance, Scene, Model, PbrMaterial, UnlitMaterial, MaterialMap, Camera, Light, Mipmap,
   TextureFormat, TextureUsage, ErrorKind, LightKind, LogLevel,
 } from "fragmentcolor";
 import * as fc from "fragmentcolor";
@@ -603,6 +603,8 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     // A material factor or a UV rotation follows the same rule.
     named('PbrMaterial.metallic: value', () => new PbrMaterial().metallic(NaN));
     named('PbrMaterial.alphaCutoff: value', () => new PbrMaterial().alphaCutoff(1e39));
+    named('UnlitMaterial.baseColor', () => new UnlitMaterial().baseColor([1, NaN, 1, 1]));
+    named('UnlitMaterial.alphaCutoff: value', () => new UnlitMaterial().alphaCutoff(Infinity));
     named('PbrMaterial.uvTransform: rotation', () => new PbrMaterial().uvTransform([0, 0], [1, 1], Infinity));
     named('MaterialMap.transform: rotation', () => occlusion().transform([0, 0], [1, 1], -Infinity));
     // So does a light's intensity or cone angle, and a rotation angle,
@@ -1015,6 +1017,7 @@ struct Data { items: array<vec4<f32>, 2> };
     throws('Mipmap.build without a format', () => Mipmap.build(new Uint8Array(4 * 4 * 4), undefined, [4, 4]));
     throws('PbrMaterial.alphaMode(undefined)', () => new PbrMaterial().alphaMode(undefined));
     throws('PbrMaterial.alphaMode(0.5)', () => new PbrMaterial().alphaMode(0.5));
+    throws('UnlitMaterial.alphaMode(3)', () => new UnlitMaterial().alphaMode(3));
     throws('Shader.alphaMode(3)', () => Shader.default().alphaMode(3));
     throws('MaterialMap.uv(undefined)', () => new PbrMaterial().normalMap().uv(undefined));
     await rejects('createStorageTexture with a format string', () =>
@@ -1252,6 +1255,32 @@ await withModule('platforms.web.healthcheck.material_maps', async () => {
     firstTarget.free();
     second.render(pass, secondTarget);
     await reads('the second Renderer after the first was freed', secondTarget, blue);
+});
+
+// An UnlitMaterial draws its base color times its map with no lighting, and a Model
+// hands the same object back.
+await withModule('platforms.web.healthcheck.unlit_material', async () => {
+    const fail = (message) => { throw new Error(message); };
+    const material = new UnlitMaterial().baseColor([1, 1, 0.5, 1]).doubleSided(true);
+    material.baseColorMap().texture(new Uint8Array([0, 255, 255, 255]), [1, 1]);
+    const surface = new Mesh();
+    surface.addVertices([[-1, -1, 0], [3, -1, 0], [-1, 3, 0]].map((corner) => Vertex.pbr(corner)));
+    const model = new Model(surface, material);
+    if (!(model.material() instanceof UnlitMaterial)) fail('Model.material lost the UnlitMaterial');
+    const pass = new Pass('unlit');
+    pass.add(model);
+    // A black light would darken a PbrMaterial, and leaves an unlit one as it is.
+    pass.add(Light.directional([0, 0, -1], [0, 0, 0]));
+    const renderer = new Renderer();
+    const target = await renderer.createTextureTarget([4, 4]);
+    await renderer.load(pass);
+    renderer.render(pass, target);
+    const pixel = Array.from((await target.getImage()).slice(0, 3));
+    // Linear 0.5 encodes as sRGB 188 on the 8-bit target.
+    const expected = [0, 255, 188];
+    if (pixel.some((channel, i) => Math.abs(channel - expected[i]) > 2)) {
+      fail(`an UnlitMaterial drew [${pixel}], not [${expected}]`);
+    }
 });
 
 // A shader the device can't run, or a texture its slot can't take, throws from render

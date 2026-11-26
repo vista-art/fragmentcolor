@@ -40,6 +40,7 @@ from fragmentcolor import (
     TextureFormat,
     TextureUsage,
     Quad,
+    UnlitMaterial,
     Vertex,
     WindowTarget,
 )
@@ -776,6 +777,7 @@ def check_scalars_and_pairs():
         "PbrMaterial.normal_scale": lambda v: PbrMaterial().normal_scale(v),
         "PbrMaterial.occlusion_strength": lambda v: PbrMaterial().occlusion_strength(v),
         "PbrMaterial.alpha_cutoff": lambda v: PbrMaterial().alpha_cutoff(v),
+        "UnlitMaterial.alpha_cutoff": lambda v: UnlitMaterial().alpha_cutoff(v),
         "PbrMaterial.uv_transform": lambda v: PbrMaterial().uv_transform([0, 0], [1, 1], v),
         "MaterialMap.transform": lambda v: PbrMaterial().normal_map().transform([0, 0], [1, 1], v),
         "Model.rotate": lambda v: model.rotate([0, 1, 0], v),
@@ -801,7 +803,7 @@ def check_scalars_and_pairs():
     material = PbrMaterial().metallic(0.25)
     finite = ("Model.rotate", "Light.set_intensity", "Light.set_cone_angles")
     for name, call in scalars.items():
-        if name.startswith(("PbrMaterial.", "MaterialMap.")) or name in finite:
+        if name.startswith(("PbrMaterial.", "UnlitMaterial.", "MaterialMap.")) or name in finite:
             for bad in (float("nan"), float("inf"), 1e39):
                 raises_invalid(f"{name}({bad})", lambda: call(bad))
     light.set_intensity(2.5)
@@ -915,6 +917,7 @@ def check_colors(renderer):
         "Scene.ambient": (scene.ambient, 3),
         "PbrMaterial.base_color": (material.base_color, 4),
         "PbrMaterial.emissive": (material.emissive, 3),
+        "UnlitMaterial.base_color": (UnlitMaterial().base_color, 4),
         "Light.point": (lambda color: Light.point([0.0, 0.0, 0.0], color), 3),
         "Light.directional": (lambda color: Light.directional([0.0, -1.0, 0.0], color), 3),
         "Light.spot": (lambda color: Light.spot([0.0, 1.0, 0.0], [0.0, -1.0, 0.0], color), 3),
@@ -1254,6 +1257,26 @@ def check_material_maps():
     pixel = second_target.get_image()[0, 0].tolist()
     assert is_red(pixel), f"the second Renderer drew {pixel} after the first was gone"
     print("One PbrMaterial map draws in two Renderers, each from a copy of its own")
+
+
+def check_unlit_material(renderer):
+    """An UnlitMaterial draws its base color times its map with no lighting, and a Model hands it back."""
+    material = UnlitMaterial().base_color([1.0, 1.0, 0.5, 1.0]).double_sided(True)
+    material.base_color_map().texture(np.array([[[0, 255, 255, 255]]], dtype=np.uint8))
+    mesh = Mesh()
+    mesh.add_vertices([Vertex.pbr(corner) for corner in ([-1.0, -1.0, 0.0], [3.0, -1.0, 0.0], [-1.0, 3.0, 0.0])])
+    model = Model(mesh, material)
+    assert isinstance(model.material(), UnlitMaterial), type(model.material())
+    rpass = Pass("unlit")
+    rpass.add(model)
+    # A black light would darken a PbrMaterial, and leaves an unlit one as it is.
+    rpass.add(Light.directional([0.0, 0.0, -1.0], [0.0, 0.0, 0.0]))
+    target = renderer.create_texture_target([4, 4])
+    renderer.render(rpass, target)
+    red, green, blue, _ = target.get_image()[1, 1].tolist()
+    # Linear 0.5 encodes as sRGB 188 on the 8-bit target.
+    assert red == 0 and green == 255 and abs(blue - 188) <= 1, (red, green, blue)
+    print("An UnlitMaterial draws its base color times its map, with no lighting")
 
 
 def check_invalid_textures(renderer):
@@ -1743,6 +1766,7 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
     check_texture_inputs(renderer)
     check_material_textures(renderer)
     check_material_maps()
+    check_unlit_material(renderer)
     check_invalid_textures(renderer)
     check_scene_errors()
     check_stub()
