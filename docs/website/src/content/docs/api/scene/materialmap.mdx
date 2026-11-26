@@ -1,0 +1,614 @@
+---
+title: MaterialMap
+description: "One texture map of a material: the texture it samples, the vertex UV set it reads, and the UV transform it applies, the way glTF's `textureInfo` and [`KHR_texture_transform`](https://github.com/KhronosGroup/glTF/tree/main/extensions/2.0/Khronos/KHR_texture_transform) describe a map."
+category: scene
+categoryLabel: Scene
+sidebar:
+  order: 4
+---
+
+import { Code, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
+
+## Description
+
+One texture map of a material: the texture it samples, the vertex UV set it
+reads, and the UV transform it applies, the way glTF's `textureInfo` and
+[`KHR_texture_transform`](https://github.com/KhronosGroup/glTF/tree/main/extensions/2.0/Khronos/KHR_texture_transform)
+describe a map.
+
+A material hands out one handle per map, such as
+[`PbrMaterial::base_color_map`](/api/scene/pbrmaterial#base_color_map)
+or [`PbrMaterial::normal_map`](/api/scene/pbrmaterial#normal_map).
+You don't build a `MaterialMap` yourself. Each setter writes into the
+material the map came from and returns the map, so the calls chain:
+
+- [`texture`](/api/scene/materialmap#texture) sets
+  the texture, from a `Texture` or from any input `Renderer::create_texture`
+  takes.
+- [`uv`](/api/scene/materialmap#uv) picks the UV set,
+  `0` or `1`.
+- [`transform`](/api/scene/materialmap#transform)
+  scales, rotates and offsets the UVs.
+
+A map clones as a handle to the same material, as the material does, so a
+setter through any copy changes what every Model that draws with the
+material shows.
+
+
+
+## Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::PbrMaterial;
+
+let flat: Vec<u8> = vec![128, 128, 255, 255];
+let gold = PbrMaterial::new().metallic(1.0)?.roughness(0.3)?;
+
+// A normal map tiled four times over the second UV layout.
+let map = gold
+    .normal_map()
+    .texture((flat, [1, 1]))?
+    .uv(1)?
+    .transform([0.0, 0.0], [4.0, 4.0], 0.0)?;
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { PbrMaterial } from "fragmentcolor";
+
+const flat = [128, 128, 255, 255];
+const gold = new PbrMaterial().metallic(1.0).roughness(0.3);
+
+// A normal map tiled four times over the second UV layout.
+const map = gold.normalMap().texture(flat, [1, 1]).uv(1).transform([0.0, 0.0], [4.0, 4.0], 0.0);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import PbrMaterial
+
+flat = [128, 128, 255, 255]
+gold = PbrMaterial().metallic(1.0).roughness(0.3)
+
+# A normal map tiled four times over the second UV layout.
+map = gold.normal_map().texture((flat, [1, 1])).uv(1).transform([0.0, 0.0], [4.0, 4.0], 0.0)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let flat = [128, 128, 255, 255]
+let gold = try PbrMaterial().metallic(1.0).roughness(0.3)
+
+// A normal map tiled four times over the second UV layout.
+let map = try gold.normalMap().texture(flat, [1, 1]).uv(1).transform([0.0, 0.0], [4.0, 4.0], 0.0)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val flat = listOf(128, 128, 255, 255)
+val gold = PbrMaterial().metallic(1.0f).roughness(0.3f)
+
+// A normal map tiled four times over the second UV layout.
+val map = gold.normalMap().texture(flat, listOf(1u, 1u)).uv(1u).transform(listOf(0.0f, 0.0f), listOf(4.0f, 4.0f), 0.0f)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+## Methods
+
+
+---
+
+### MaterialMap::texture \{#texture\}
+
+Set the texture the map samples, and return the map. The material's shader
+reads it under the map's name, such as `base_color_map`, through the UV set
+[`uv`](/api/scene/materialmap#uv) picks and the
+[`transform`](/api/scene/materialmap#transform) the
+map applies.
+
+Accepts any `Into<TextureInput>`, the inputs [`Renderer::create_texture`](/api/core/renderer#create_texture) takes:
+
+- A pre-built [`&Texture`](/api/texture/texture). The map stores the texture's ID immediately and the GPU texture stays Arc-shared across every material that points at it. Passing the same `&shared_texture` to the maps of N materials produces one GPU upload and N shader-uniform references: the cheap way to reuse one texture across a scene full of objects without paying for N texture allocations. The texture belongs to the `Renderer` that created it, and another `Renderer` refuses to draw it. It keeps the options it was created with, and the call refuses options beside it.
+- Encoded bytes, raw pixels with their size as `(bytes, [w, h])`, bytes with a format as `(bytes, format)`, bytes with every option as `(bytes, options)`, a path or a URL, alone or as `(path, format)` or `(path, options)`, or a [`Mipmap`](/api/texture/mipmap), alone or as `(chain, options)`. The material keeps this source in the map. Each `Renderer` that draws the material uploads a copy of its own at [`Renderer::load`](/api/core/renderer#load), or on native targets at its first [`Renderer::render`](/api/core/renderer#render), and frees it when the `Renderer` or the material drops. A map set again draws its old copy until the `Renderer` loads the new one.
+
+To share a map across Renderers, pass bytes, a path, a URL or a `Mipmap`.
+
+Each language spells these inputs the way its `create_texture` does:
+
+- **JavaScript:** `texture(input, options?)`, where `options` is a size such as `[w, h]`, a `TextureFormat`, or `{ size?, format?, mipmaps?, sampler?, usage? }`.
+- **Python:** `texture(input, size=None, format=None, mipmaps=None, sampler=None, usage=None)`. A NumPy array brings its own size, and a `size` that differs from it raises `InvalidInputError`.
+- **Swift and Kotlin:** `texture(texture)`, `texture(bytes)`, `texture(bytes, format)`, `texture(bytes, [w, h])`, `texture(bytes, size)`, `texture(bytes, options)`, `texture(path)`, `texture(path, format)`, `texture(path, options)`, `texture(chain)` and `texture(chain, options)`. Bytes are `Data`, `[UInt8]` or `[Int]` in Swift and `ByteArray` or `List<Int>` in Kotlin, in every bytes form. The bytes forms without `options` take an optional `usage`. An `Int` outside 0 to 255 throws, and so does a `[w, h]` that isn't 2 or 3 numbers.
+
+A source with no format of its own reads in the map's color space: sRGB in
+the base color and emissive maps, as glTF's color textures do, and linear in
+the maps that hold data, such as normals. A `Mipmap` or a KTX2 container
+keeps the format it stores, and takes that sRGB reading only where its bytes
+read the same in it, so a float chain or container stays linear. A format you
+pass yourself is the one it uploads in, and a `Mipmap` or KTX2 container
+whose bytes can't be read in it fails the `load` with an `InvalidInput` error
+that names `load`.
+
+Unset, a map draws a 1×1 default the renderer hands out lazily, which leaves
+the map's factor as it is, so `PbrMaterial::new()` renders correctly without
+a texture. Each map's page names its default.
+
+#### Memory
+
+A map holds its source for as long as the material keeps it. That is the file's
+bytes for an encoded PNG or JPEG, a glTF image inside its file included, the
+pixels for raw bytes or a NumPy array, the container for KTX2, and the chain
+for a `Mipmap`. A path or
+a URL holds only its string, and each `Renderer` reads or fetches it again.
+`renderer.create_texture` keeps nothing on the CPU, and the texture it returns
+draws in that one `Renderer`.
+
+#### Errors
+
+The call checks its input at once, and a call it refuses leaves the map as it
+was. Options beside a `Texture` return `MaterialError::Texture` with an
+`InvalidInput` texture error that names the call, such as
+`PbrMaterial::base_color_map().texture`, and so does an input that holds no
+data: Rust's `TextureData::Empty`, or an empty byte list, path or URL in any
+language.
+
+The bindings read their arguments before the setter runs and throw for one
+they can't use: a size that isn't 2 or 3 whole numbers, options of the wrong
+type or shape, options beside a `Texture`, and in Python a `size` that
+differs from a NumPy array's own. Python raises `TypeError` for an argument
+of the wrong type and `InvalidInputError` for the rest. JavaScript throws an `Error`
+of the same name. Swift throws `FragmentColorError`, and each call needs
+`try`, while Kotlin throws `FragmentColorException`.
+
+A source that fails to upload (file not found, decode error, unsupported
+format) fails [`Renderer::load(&material).await`](/api/core/renderer#load),
+or the native render that runs it. That `Renderer` keeps no copy and tries
+again at each later call, until the source is fixed or replaced, while the
+other maps upload.
+
+On the web, `render` uploads nothing, so await `load` in each `Renderer`
+before its first frame. Until then the map draws its 1×1 default. On native, only a map set on another thread during a `render`
+meets this, for that frame.
+
+For deterministic error handling, pre-build the texture eagerly:
+`renderer.create_texture(path).await?` returns a `Texture` that has already
+uploaded, so no `load` can fail on it later, and
+`texture(&texture)` takes an Arc-shared reference. The
+lazy path stays useful when the URL / path resolves at render time but the
+caller doesn't want to await yet.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::{PbrMaterial, Renderer};
+
+let renderer = Renderer::new();
+let albedo_bytes: Vec<u8> = vec![
+    255, 200, 120, 255,
+    255, 240, 180, 255,
+    230, 180, 100, 255,
+    255, 220, 150, 255,
+];
+let albedo = renderer.create_texture((albedo_bytes, [2, 2])).await?;
+
+// Every material whose map points at \`albedo\` reuses the same uploaded GPU
+// texture; passing the same handle to N maps costs one upload and N
+// shader-uniform references.
+let material = PbrMaterial::new();
+let map = material.base_color_map().texture(&albedo)?;
+
+// Raw pixels with their size upload when the scene loads.
+let tint: Vec<u8> = vec![255, 128, 0, 255];
+let tinted = PbrMaterial::new();
+let tinted_map = tinted.base_color_map().texture((tint, [1, 1]))?;
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { PbrMaterial, Renderer } from "fragmentcolor";
+
+const renderer = new Renderer();
+const albedo_bytes = [ 255, 200, 120, 255, 255, 240, 180, 255, 230, 180, 100, 255, 255, 220, 150, 255, ];
+const albedo = await renderer.createTexture(albedo_bytes, [2, 2]);
+
+// Every material whose map points at \`albedo\` reuses the same uploaded GPU
+// texture; passing the same handle to N maps costs one upload and N
+// shader-uniform references.
+const material = new PbrMaterial();
+const map = material.baseColorMap().texture(albedo);
+
+// Raw pixels with their size upload when the scene loads.
+const tint = [255, 128, 0, 255];
+const tinted = new PbrMaterial();
+const tinted_map = tinted.baseColorMap().texture(tint, [1, 1]);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import PbrMaterial, Renderer
+
+renderer = Renderer()
+albedo_bytes = [
+    255, 200, 120, 255,
+    255, 240, 180, 255,
+    230, 180, 100, 255,
+    255, 220, 150, 255,
+]
+albedo = renderer.create_texture(albedo_bytes, size=[2, 2])
+
+# Every material whose map points at \`albedo\` reuses the same uploaded GPU
+# texture; passing the same handle to N maps costs one upload and N
+# shader-uniform references.
+material = PbrMaterial()
+map = material.base_color_map().texture(albedo)
+
+# Raw pixels with their size upload when the scene loads.
+tint = [255, 128, 0, 255]
+tinted = PbrMaterial()
+tinted_map = tinted.base_color_map().texture((tint, [1, 1]))
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let renderer = Renderer()
+let albedo_bytes = [
+    255, 200, 120, 255,
+    255, 240, 180, 255,
+    230, 180, 100, 255,
+    255, 220, 150, 255,
+]
+let albedo = try await renderer.createTexture(albedo_bytes, [2, 2])
+
+// Every material whose map points at \`albedo\` reuses the same uploaded GPU
+// texture; passing the same handle to N maps costs one upload and N
+// shader-uniform references.
+let material = PbrMaterial()
+let map = try material.baseColorMap().texture(albedo)
+
+// Raw pixels with their size upload when the scene loads.
+let tint = [255, 128, 0, 255]
+let tinted = PbrMaterial()
+let tinted_map = try tinted.baseColorMap().texture(tint, [1, 1])
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val renderer = Renderer()
+val albedo_bytes = listOf(255, 200, 120, 255, 255, 240, 180, 255, 230, 180, 100, 255, 255, 220, 150, 255)
+val albedo = renderer.createTexture(albedo_bytes, listOf(2u, 2u))
+
+// Every material whose map points at \`albedo\` reuses the same uploaded GPU
+// texture; passing the same handle to N maps costs one upload and N
+// shader-uniform references.
+val material = PbrMaterial()
+val map = material.baseColorMap().texture(albedo)
+
+// Raw pixels with their size upload when the scene loads.
+val tint = listOf(255, 128, 0, 255)
+val tinted = PbrMaterial()
+val tinted_map = tinted.baseColorMap().texture(tint, listOf(1u, 1u))
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### MaterialMap::transform \{#transform\}
+
+Give the map its own UV transform, the one glTF's
+[`KHR_texture_transform`](https://github.com/KhronosGroup/glTF/tree/main/extensions/2.0/Khronos/KHR_texture_transform)
+describes, and return the map. The map's UV is scaled first, then rotated,
+then offset:
+
+- `scale` multiplies the UV (`[1, 1]` keeps it)
+- `rotation` turns the scaled UV around the origin, in radians. A positive
+  angle turns the UVs counter-clockwise in texture space, where `v` points
+  down, so the image itself turns clockwise
+- `offset` moves the result, in fractions of the texture (`[0, 0]` keeps it)
+
+Every map starts with the identity transform. The transform applies to the
+UV set that [`uv`](/api/scene/materialmap#uv)
+picks for the map.
+[`PbrMaterial::uv_transform`](/api/scene/pbrmaterial#uv_transform)
+sets one transform on all five maps, and a `transform` after it replaces the
+transform of its map alone.
+
+Whether a UV past 0 to 1 repeats the texture depends on the sampler. The
+PBR shader samples all five maps with one sampler, which takes the options
+of the first texture the material sets, in this order: base color,
+metallic-roughness, normal, occlusion, then emissive. A map left at its 1×1
+default doesn't count. So a material with only an occlusion map tiles it
+with the occlusion map's own options, and one with a clamped base color
+texture clamps a tiled normal map too.
+
+A number that is NaN or an infinity returns `MaterialError::NotFinite`,
+which names the part, such as `PbrMaterial::normal_map().transform:
+rotation must be finite, got NaN`, and leaves the map as it was: the setter
+checks the offset, the scale and the rotation before it writes any of them.
+The other languages also refuse a number past the 32-bit float range, such
+as `1e39`, with a message like `MaterialMap.transform: rotation must be a
+finite number that fits a 32-bit float, got 1e39`. JavaScript throws an
+`Error` named `InvalidInputError`, Python raises `InvalidInputError`,
+Swift throws `FragmentColorError` and Kotlin throws
+`FragmentColorException`.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::PbrMaterial;
+
+// Every map spans the surface twice, and the normal map eight times.
+let tiles = PbrMaterial::new().uv_transform([0.0, 0.0], [2.0, 2.0], 0.0)?;
+let normals = tiles.normal_map().transform([0.0, 0.0], [8.0, 8.0], 0.0)?;
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { PbrMaterial } from "fragmentcolor";
+
+// Every map spans the surface twice, and the normal map eight times.
+const tiles = new PbrMaterial().uvTransform([0.0, 0.0], [2.0, 2.0], 0.0);
+const normals = tiles.normalMap().transform([0.0, 0.0], [8.0, 8.0], 0.0);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import PbrMaterial
+
+# Every map spans the surface twice, and the normal map eight times.
+tiles = PbrMaterial().uv_transform([0.0, 0.0], [2.0, 2.0], 0.0)
+normals = tiles.normal_map().transform([0.0, 0.0], [8.0, 8.0], 0.0)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+// Every map spans the surface twice, and the normal map eight times.
+let tiles = try PbrMaterial().uvTransform([0.0, 0.0], [2.0, 2.0], 0.0)
+let normals = try tiles.normalMap().transform([0.0, 0.0], [8.0, 8.0], 0.0)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+// Every map spans the surface twice, and the normal map eight times.
+val tiles = PbrMaterial().uvTransform(listOf(0.0f, 0.0f), listOf(2.0f, 2.0f), 0.0f)
+val normals = tiles.normalMap().transform(listOf(0.0f, 0.0f), listOf(8.0f, 8.0f), 0.0f)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### MaterialMap::uv \{#uv\}
+
+Pick the vertex UV set the map samples, and return the map: `0` reads `Vertex::UV0`
+and `1` reads `Vertex::UV1`. glTF calls this choice `texCoord`. Baked
+lighting and occlusion often live on a second UV layout, apart from the
+tiled UVs of the color maps. Every map starts on set 0.
+
+A set other than 0 or 1 returns `MaterialError::UvSet`, such as
+`PbrMaterial::occlusion_map().uv takes UV set 0 or 1, got 2`, and keeps the
+map's set. JavaScript throws an `Error` named `MaterialError`, Python raises `MaterialError`, a
+`FragmentColorError` that is also a `ValueError`, Swift throws
+`FragmentColorError`, and Kotlin throws `FragmentColorException`. The set
+is a count like any other: JavaScript throws for a fraction or a negative
+number, and Python takes an `int`, raising `TypeError` for a float and
+`InvalidInputError` for an int below 0 or past `2**32 - 1`.
+
+The PBR shader reads `UV1` from every vertex, and a mesh whose vertices
+lack it fails to attach with an error that names `uv1`. `Vertex::pbr`
+seeds `UV1` at `[0, 0]`, so a map on set 1 reads that one point until
+the mesh sets its own. `Scene::load` gives a primitive without
+`TEXCOORD_1` its `TEXCOORD_0` values as `UV1`, so set 1 reads the same UVs
+as set 0 there.
+
+The map's
+[`transform`](/api/scene/materialmap#transform)
+applies to whichever set it reads.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::{Mesh, PbrMaterial, Vertex};
+
+let mesh = Mesh::new();
+mesh.add_vertices([
+    Vertex::pbr([0.0, 0.5, 0.0])
+        .set(Vertex::UV0, [0.5, 1.0])
+        .set(Vertex::UV1, [0.25, 0.75]),
+    Vertex::pbr([-0.5, -0.5, 0.0])
+        .set(Vertex::UV0, [0.0, 0.0])
+        .set(Vertex::UV1, [0.0, 0.5]),
+    Vertex::pbr([0.5, -0.5, 0.0])
+        .set(Vertex::UV0, [1.0, 0.0])
+        .set(Vertex::UV1, [0.5, 0.5]),
+]);
+
+// The occlusion map follows the second UV layout.
+let material = PbrMaterial::new();
+let map = material.occlusion_map().uv(1)?;
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Mesh, PbrMaterial, Vertex } from "fragmentcolor";
+
+const mesh = new Mesh();
+mesh.addVertices([ Vertex.pbr([0.0, 0.5, 0.0]) .set(Vertex.UV0, [0.5, 1.0]) .set(Vertex.UV1, [0.25, 0.75]), Vertex.pbr([-0.5, -0.5, 0.0]) .set(Vertex.UV0, [0.0, 0.0]) .set(Vertex.UV1, [0.0, 0.5]), Vertex.pbr([0.5, -0.5, 0.0]) .set(Vertex.UV0, [1.0, 0.0]) .set(Vertex.UV1, [0.5, 0.5]), ]);
+
+// The occlusion map follows the second UV layout.
+const material = new PbrMaterial();
+const map = material.occlusionMap().uv(1);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Mesh, PbrMaterial, Vertex
+
+mesh = Mesh()
+mesh.add_vertices([
+    Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]).set(Vertex.UV1, [0.25, 0.75]),
+    Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]).set(Vertex.UV1, [0.0, 0.5]),
+    Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]).set(Vertex.UV1, [0.5, 0.5]),
+])
+
+# The occlusion map follows the second UV layout.
+material = PbrMaterial()
+map = material.occlusion_map().uv(1)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let mesh = Mesh()
+mesh.addVertices([
+    try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]).set(Vertex.UV1, [0.25, 0.75]),
+    try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]).set(Vertex.UV1, [0.0, 0.5]),
+    try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]).set(Vertex.UV1, [0.5, 0.5]),
+])
+
+// The occlusion map follows the second UV layout.
+let material = PbrMaterial()
+let map = try material.occlusionMap().uv(1)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val mesh = Mesh()
+mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)).set(Vertex.UV1, listOf(0.25f, 0.75f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)).set(Vertex.UV1, listOf(0.0f, 0.5f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f)).set(Vertex.UV1, listOf(0.5f, 0.5f))))
+
+// The occlusion map follows the second UV layout.
+val material = PbrMaterial()
+val map = material.occlusionMap().uv(1u)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>

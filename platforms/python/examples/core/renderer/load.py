@@ -1,4 +1,4 @@
-from fragmentcolor import Material, Mesh, Model, Renderer, Scene, Vertex
+from fragmentcolor import Mesh, Model, PbrMaterial, Renderer, Scene, Vertex
 image = open("examples/assets/logo.png", "rb").read()
 
 renderer = Renderer()
@@ -12,7 +12,8 @@ mesh.add_vertices([
 ])
 
 # The material keeps the encoded image as a map.
-material = Material.pbr().base_color_texture(image)
+material = PbrMaterial()
+material.base_color_map().texture(image)
 model = Model(mesh, material)
 scene = Scene()
 scene.add(model)

@@ -42,7 +42,7 @@ class GeneratedExamples : ExampleCase() {
 
         val mesh = Mesh()
         mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
-        val model = Model(mesh, Material.pbr())
+        val model = Model(mesh, PbrMaterial())
 
         val camera = Camera.perspective(1.047f, 1.0f, 0.1f, 100.0f).lookAt(listOf(0.0f, 0.0f, 2.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
         val sun = Light.directional(listOf(0.3f, -1.0f, -0.4f), listOf(1.0f, 0.95f, 0.9f))
@@ -310,7 +310,8 @@ class GeneratedExamples : ExampleCase() {
         mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
 
         // The material keeps the encoded image as a map.
-        val material = Material.pbr().baseColorTexture(image)
+        val material = PbrMaterial()
+        material.baseColorMap().texture(image)
         val model = Model(mesh, material)
         val scene = Scene()
         scene.add(model)
@@ -446,6 +447,24 @@ class GeneratedExamples : ExampleCase() {
     }
 
     @Test
+    fun core_shader_alpha_mode() = example("docs/api/core/shader/alpha_mode.md") {
+        val shader = Shader("""
+        @vertex
+        fn vs_main(@location(0) position: vec3<f32>) -> @builtin(position) vec4<f32> {
+            return vec4<f32>(position, 1.0);
+        }
+
+        @fragment
+        fn fs_main() -> @location(0) vec4<f32> {
+            return vec4<f32>(0.6, 0.8, 1.0, 0.25);
+        }
+
+        """)
+
+        val glass = shader.alphaMode(AlphaMode.BLEND)
+    }
+
+    @Test
     fun core_shader_clear_meshes() = example("docs/api/core/shader/clear_meshes.md") {
         val shader = Shader("""
           struct VOut { @builtin(position) pos: vec4<f32> };
@@ -475,6 +494,24 @@ class GeneratedExamples : ExampleCase() {
         // The default shader includes a "resolution" uniform
         shader.set("resolution", listOf(800.0f, 600.0f))
         val res = shader.get("resolution")
+    }
+
+    @Test
+    fun core_shader_double_sided() = example("docs/api/core/shader/double_sided.md") {
+        val shader = Shader("""
+        @vertex
+        fn vs_main(@location(0) position: vec3<f32>) -> @builtin(position) vec4<f32> {
+            return vec4<f32>(position, 1.0);
+        }
+
+        @fragment
+        fn fs_main() -> @location(0) vec4<f32> {
+            return vec4<f32>(1.0, 0.5, 0.2, 1.0);
+        }
+
+        """)
+
+        val solid = shader.doubleSided(false)
     }
 
     @Test
@@ -963,7 +1000,7 @@ class GeneratedExamples : ExampleCase() {
         bulb.setRange(3.0f)
 
         val pass = Pass("lamp")
-        pass.add(Model(wall, Material.pbr()))
+        pass.add(Model(wall, PbrMaterial()))
         pass.add(camera)
         pass.add(bulb)
         renderer.render(pass, target)
@@ -1028,52 +1065,15 @@ class GeneratedExamples : ExampleCase() {
 
     @Test
     fun scene_material_Material() = example("docs/api/scene/material/material.md") {
-        val mesh = Mesh()
-        mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
+        val triangle = Mesh()
+        triangle.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f))))
 
-        val material = Material.pbr().baseColor(listOf(0.85f, 0.2f, 0.2f, 1.0f)).metallic(0.0f).roughness(0.4f).emissive(listOf(0.0f, 0.0f, 0.05f))
+        // One of the material types.
+        val gold = PbrMaterial().baseColor(listOf(1.0f, 0.8f, 0.3f, 1.0f)).metallic(1.0f)
+        val shiny = Model(triangle, gold)
 
-        val model = Model(mesh, material)
-    }
-
-    @Test
-    fun scene_material_alpha_cutoff() = example("docs/api/scene/material/alpha_cutoff.md") {
-        val foliage = Material.pbr().alphaCutoff(0.3f)
-    }
-
-    @Test
-    fun scene_material_alpha_mode() = example("docs/api/scene/material/alpha_mode.md") {
-        val foliage = Material.pbr().alphaMode(AlphaMode.MASK).alphaCutoff(0.3f)
-
-        val glass = Material.pbr().baseColor(listOf(0.9f, 0.95f, 1.0f, 0.25f)).alphaMode(AlphaMode.BLEND)
-
-        val solid = Material.pbr().alphaMode(AlphaMode.OPAQUE)
-    }
-
-    @Test
-    fun scene_material_base_color() = example("docs/api/scene/material/base_color.md") {
-        val renderer = Renderer()
-        val red = Material.pbr().baseColor(listOf(1.0f, 0.2f, 0.2f, 1.0f))
-    }
-
-    @Test
-    fun scene_material_base_color_texture() = example("docs/api/scene/material/base_color_texture.md") {
-        val renderer = Renderer()
-        val albedo_bytes = listOf(255, 200, 120, 255, 255, 240, 180, 255, 230, 180, 100, 255, 255, 220, 150, 255)
-        val albedo = renderer.createTexture(albedo_bytes, listOf(2u, 2u))
-
-        // Every Material that points at `albedo` reuses the same uploaded GPU
-        // texture; passing the same handle into N Material instances costs one
-        // upload and N shader-uniform references.
-        val material = Material.pbr().baseColorTexture(albedo)
-
-        // Raw pixels with their size upload when the scene loads.
-        val tint = listOf(255, 128, 0, 255)
-        val tinted = Material.pbr().baseColorTexture(tint, listOf(1u, 1u))
-    }
-
-    @Test
-    fun scene_material_custom() = example("docs/api/scene/material/custom.md") {
+        // A shader of your own, which the renderer fills with the camera, the lights
+        // and each Model's transform.
         val flat = Shader("""
             struct Camera { view_proj: mat4x4<f32>, position: vec3<f32> }
             struct Light { kind: u32, intensity: f32, range: f32, inner_cone_cos: f32,
@@ -1105,107 +1105,53 @@ class GeneratedExamples : ExampleCase() {
             }
 
         """)
-
-        val flat_mat = Material.custom(flat)
+        val plain = Mesh()
+        plain.addVertices(listOf(Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)), Vertex.pbr(listOf(0.5f, 0.5f, 0.0f))))
+        val glowing = Model(plain, flat)
     }
 
     @Test
-    fun scene_material_double_sided() = example("docs/api/scene/material/double_sided.md") {
+    fun scene_material_map_MaterialMap() = example("docs/api/scene/material_map/material_map.md") {
+        val flat = listOf(128, 128, 255, 255)
+        val gold = PbrMaterial().metallic(1.0f).roughness(0.3f)
+
+        // A normal map tiled four times over the second UV layout.
+        val map = gold.normalMap().texture(flat, listOf(1u, 1u)).uv(1u).transform(listOf(0.0f, 0.0f), listOf(4.0f, 4.0f), 0.0f)
+    }
+
+    @Test
+    fun scene_material_map_texture() = example("docs/api/scene/material_map/texture.md") {
         val renderer = Renderer()
-        // Leaf cards: thin, single-quad geometry; needs both sides + alpha cut-out.
-        val leaf = Material.pbr().doubleSided(true).alphaMode(AlphaMode.MASK).alphaCutoff(0.5f)
+        val albedo_bytes = listOf(255, 200, 120, 255, 255, 240, 180, 255, 230, 180, 100, 255, 255, 220, 150, 255)
+        val albedo = renderer.createTexture(albedo_bytes, listOf(2u, 2u))
 
-        // The default is single-sided, with back-face culling on.
-        val solid_mesh = Material.pbr().doubleSided(false)
-    }
+        // Every material whose map points at `albedo` reuses the same uploaded GPU
+        // texture; passing the same handle to N maps costs one upload and N
+        // shader-uniform references.
+        val material = PbrMaterial()
+        val map = material.baseColorMap().texture(albedo)
 
-    @Test
-    fun scene_material_emissive() = example("docs/api/scene/material/emissive.md") {
-        val renderer = Renderer()
-        val lava = Material.pbr().baseColor(listOf(0.1f, 0.05f, 0.0f, 1.0f)).emissive(listOf(1.5f, 0.4f, 0.1f))
-    }
-
-    @Test
-    fun scene_material_emissive_texture() = example("docs/api/scene/material/emissive_texture.md") {
         // Raw pixels with their size upload when the scene loads.
-        val glow_bytes = listOf(255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255)
-        val mat = Material.pbr().emissive(listOf(0.8f, 0.0f, 0.0f)).emissiveTexture(glow_bytes, listOf(2u, 2u))
+        val tint = listOf(255, 128, 0, 255)
+        val tinted = PbrMaterial()
+        val tinted_map = tinted.baseColorMap().texture(tint, listOf(1u, 1u))
     }
 
     @Test
-    fun scene_material_metallic() = example("docs/api/scene/material/metallic.md") {
-        val chrome = Material.pbr().metallic(1.0f).roughness(0.05f)
-    }
-
-    @Test
-    fun scene_material_metallic_roughness_texture() = example("docs/api/scene/material/metallic_roughness_texture.md") {
-        // Raw pixels with their size upload when the scene loads.
-        val mr_map_bytes = listOf(0, 200, 50, 255, 0, 240, 80, 255, 0, 180, 30, 255, 0, 220, 60, 255)
-        val mat = Material.pbr().metallicRoughnessTexture(mr_map_bytes, listOf(2u, 2u))
-    }
-
-    @Test
-    fun scene_material_normal_scale() = example("docs/api/scene/material/normal_scale.md") {
-        val detailed = Material.pbr().normalScale(1.5f)
-    }
-
-    @Test
-    fun scene_material_normal_texture() = example("docs/api/scene/material/normal_texture.md") {
-        // Raw pixels with their size upload when the scene loads.
-        val normal_map_bytes = listOf(128, 128, 255, 255, 128, 128, 255, 255, 128, 128, 255, 255, 128, 128, 255, 255)
-        val mat = Material.pbr().normalTexture(normal_map_bytes, listOf(2u, 2u)).normalScale(1.2f)
-    }
-
-    @Test
-    fun scene_material_occlusion_strength() = example("docs/api/scene/material/occlusion_strength.md") {
-        val crevices = Material.pbr().occlusionStrength(0.8f)
-    }
-
-    @Test
-    fun scene_material_occlusion_texture() = example("docs/api/scene/material/occlusion_texture.md") {
-        // Raw pixels with their size upload when the scene loads.
-        val ao_bytes = listOf(220, 0, 0, 255, 180, 0, 0, 255, 200, 0, 0, 255, 160, 0, 0, 255)
-        val mat = Material.pbr().occlusionTexture(ao_bytes, listOf(2u, 2u))
-    }
-
-    @Test
-    fun scene_material_pbr() = example("docs/api/scene/material/pbr.md") {
-        val bronze = Material.pbr().baseColor(listOf(0.8f, 0.5f, 0.2f, 1.0f)).metallic(1.0f).roughness(0.3f)
-    }
-
-    @Test
-    fun scene_material_roughness() = example("docs/api/scene/material/roughness.md") {
-        val renderer = Renderer()
-        val satin = Material.pbr().roughness(0.35f)
-    }
-
-    @Test
-    fun scene_material_shader() = example("docs/api/scene/material/shader.md") {
-        // Direct uniform access for a custom field that isn't covered by the
-        // Material setters or by Camera / Light.
-        val material = Material.pbr()
-        material.shader().set("material.alpha_cutoff", 0.25f)
-    }
-
-    @Test
-    fun scene_material_texture_transform() = example("docs/api/scene/material/texture_transform.md") {
+    fun scene_material_map_transform() = example("docs/api/scene/material_map/transform.md") {
         // Every map spans the surface twice, and the normal map eight times.
-        val tiles = Material.pbr().uvTransform(listOf(0.0f, 0.0f), listOf(2.0f, 2.0f), 0.0f).textureTransform(TextureSlot.NORMAL, listOf(0.0f, 0.0f), listOf(8.0f, 8.0f), 0.0f)
+        val tiles = PbrMaterial().uvTransform(listOf(0.0f, 0.0f), listOf(2.0f, 2.0f), 0.0f)
+        val normals = tiles.normalMap().transform(listOf(0.0f, 0.0f), listOf(8.0f, 8.0f), 0.0f)
     }
 
     @Test
-    fun scene_material_texture_uv() = example("docs/api/scene/material/texture_uv.md") {
+    fun scene_material_map_uv() = example("docs/api/scene/material_map/uv.md") {
         val mesh = Mesh()
         mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)).set(Vertex.UV1, listOf(0.25f, 0.75f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)).set(Vertex.UV1, listOf(0.0f, 0.5f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f)).set(Vertex.UV1, listOf(0.5f, 0.5f))))
 
         // The occlusion map follows the second UV layout.
-        val material = Material.pbr().textureUv(TextureSlot.OCCLUSION, 1u)
-    }
-
-    @Test
-    fun scene_material_uv_transform() = example("docs/api/scene/material/uv_transform.md") {
-        // Tile the texture 4× in both directions, rotate 45°, shift by half a tile.
-        val brick = Material.pbr().uvTransform(listOf(0.5f, 0.0f), listOf(4.0f, 4.0f), 0.785f) // 45° in radians
+        val material = PbrMaterial()
+        val map = material.occlusionMap().uv(1u)
     }
 
     @Test
@@ -1213,8 +1159,8 @@ class GeneratedExamples : ExampleCase() {
         val mesh = Mesh()
         mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
 
-        val model = Model(mesh, Material.pbr())
-        model.material().shader().set("camera.position", listOf(0.0f, 0.0f, 5.0f))
+        val model = Model(mesh, PbrMaterial())
+        val material = model.material()
     }
 
     @Test
@@ -1222,7 +1168,7 @@ class GeneratedExamples : ExampleCase() {
         val mesh = Mesh()
         mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
 
-        val model = Model(mesh, Material.pbr())
+        val model = Model(mesh, PbrMaterial())
         // A second triangle joins the first through the Model.
         model.mesh().addVertices(listOf(Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f)), Vertex.pbr(listOf(0.5f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 1.0f)), Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f))))
     }
@@ -1232,7 +1178,7 @@ class GeneratedExamples : ExampleCase() {
         val mesh = Mesh()
         mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
 
-        val model = Model(mesh, Material.pbr())
+        val model = Model(mesh, PbrMaterial())
     }
 
     @Test
@@ -1241,7 +1187,7 @@ class GeneratedExamples : ExampleCase() {
         val mesh = Mesh()
         mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
 
-        val model = Model(mesh, Material.pbr())
+        val model = Model(mesh, PbrMaterial())
         model.rotate(listOf(0.0f, 1.0f, 0.0f), 1.571f) // 90° around Y
     }
 
@@ -1251,7 +1197,7 @@ class GeneratedExamples : ExampleCase() {
         val mesh = Mesh()
         mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
 
-        val model = Model(mesh, Material.pbr())
+        val model = Model(mesh, PbrMaterial())
         model.scale(listOf(2.0f, 2.0f, 2.0f))
     }
 
@@ -1261,7 +1207,7 @@ class GeneratedExamples : ExampleCase() {
         val mesh = Mesh()
         mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
 
-        val model = Model(mesh, Material.pbr())
+        val model = Model(mesh, PbrMaterial())
         model.setTransform(listOf(2.0f, 0.0f, 0.0f, 0.0f, 0.0f, 2.0f, 0.0f, 0.0f, 0.0f, 0.0f, 2.0f, 0.0f, 3.0f, 0.0f, 0.0f, 1.0f))
     }
 
@@ -1269,7 +1215,7 @@ class GeneratedExamples : ExampleCase() {
     fun scene_model_set_visible() = example("docs/api/scene/model/set_visible.md") {
         val mesh = Mesh()
         mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f))))
-        val detail = Model(mesh, Material.pbr())
+        val detail = Model(mesh, PbrMaterial())
 
         // Far from the camera, hide the detail Model.
         detail.setVisible(false)
@@ -1283,7 +1229,7 @@ class GeneratedExamples : ExampleCase() {
         val mesh = Mesh()
         mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
 
-        val model = Model(mesh, Material.pbr())
+        val model = Model(mesh, PbrMaterial())
         val identity = model.transform()
     }
 
@@ -1293,7 +1239,7 @@ class GeneratedExamples : ExampleCase() {
         val mesh = Mesh()
         mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
 
-        val model = Model(mesh, Material.pbr())
+        val model = Model(mesh, PbrMaterial())
         model.translate(listOf(5.0f, 0.0f, -2.0f))
     }
 
@@ -1301,10 +1247,136 @@ class GeneratedExamples : ExampleCase() {
     fun scene_model_visible() = example("docs/api/scene/model/visible.md") {
         val mesh = Mesh()
         mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f))))
-        val model = Model(mesh, Material.pbr())
+        val model = Model(mesh, PbrMaterial())
 
         // Models start visible; toggle with `set_visible`.
         val visible_now = model.visible()
+    }
+
+    @Test
+    fun scene_pbr_material_PbrMaterial() = example("docs/api/scene/pbr_material/pbr_material.md") {
+        val mesh = Mesh()
+        mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
+
+        val material = PbrMaterial().baseColor(listOf(0.85f, 0.2f, 0.2f, 1.0f)).metallic(0.0f).roughness(0.4f).emissive(listOf(0.0f, 0.0f, 0.05f))
+
+        val model = Model(mesh, material)
+    }
+
+    @Test
+    fun scene_pbr_material_alpha_cutoff() = example("docs/api/scene/pbr_material/alpha_cutoff.md") {
+        val foliage = PbrMaterial().alphaCutoff(0.3f)
+    }
+
+    @Test
+    fun scene_pbr_material_alpha_mode() = example("docs/api/scene/pbr_material/alpha_mode.md") {
+        val foliage = PbrMaterial().alphaMode(AlphaMode.MASK).alphaCutoff(0.3f)
+
+        val glass = PbrMaterial().baseColor(listOf(0.9f, 0.95f, 1.0f, 0.25f)).alphaMode(AlphaMode.BLEND)
+
+        val solid = PbrMaterial().alphaMode(AlphaMode.OPAQUE)
+    }
+
+    @Test
+    fun scene_pbr_material_base_color() = example("docs/api/scene/pbr_material/base_color.md") {
+        val renderer = Renderer()
+        val red = PbrMaterial().baseColor(listOf(1.0f, 0.2f, 0.2f, 1.0f))
+    }
+
+    @Test
+    fun scene_pbr_material_base_color_map() = example("docs/api/scene/pbr_material/base_color_map.md") {
+        // Raw pixels with their size upload when the scene loads.
+        val tint = listOf(255, 128, 0, 255)
+        val material = PbrMaterial()
+        val map = material.baseColorMap().texture(tint, listOf(1u, 1u))
+    }
+
+    @Test
+    fun scene_pbr_material_double_sided() = example("docs/api/scene/pbr_material/double_sided.md") {
+        val renderer = Renderer()
+        // Leaf cards: thin, single-quad geometry; needs both sides + alpha cut-out.
+        val leaf = PbrMaterial().doubleSided(true).alphaMode(AlphaMode.MASK).alphaCutoff(0.5f)
+
+        // The default is single-sided, with back-face culling on.
+        val solid_mesh = PbrMaterial().doubleSided(false)
+    }
+
+    @Test
+    fun scene_pbr_material_emissive() = example("docs/api/scene/pbr_material/emissive.md") {
+        val renderer = Renderer()
+        val lava = PbrMaterial().baseColor(listOf(0.1f, 0.05f, 0.0f, 1.0f)).emissive(listOf(1.5f, 0.4f, 0.1f))
+    }
+
+    @Test
+    fun scene_pbr_material_emissive_map() = example("docs/api/scene/pbr_material/emissive_map.md") {
+        // Raw pixels with their size upload when the scene loads.
+        val glow_bytes = listOf(255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255)
+        val material = PbrMaterial().emissive(listOf(0.8f, 0.0f, 0.0f))
+        val map = material.emissiveMap().texture(glow_bytes, listOf(2u, 2u))
+    }
+
+    @Test
+    fun scene_pbr_material_metallic() = example("docs/api/scene/pbr_material/metallic.md") {
+        val chrome = PbrMaterial().metallic(1.0f).roughness(0.05f)
+    }
+
+    @Test
+    fun scene_pbr_material_metallic_roughness_map() = example("docs/api/scene/pbr_material/metallic_roughness_map.md") {
+        // Raw pixels with their size upload when the scene loads.
+        val mr_map_bytes = listOf(0, 200, 50, 255, 0, 240, 80, 255, 0, 180, 30, 255, 0, 220, 60, 255)
+        val material = PbrMaterial()
+        val map = material.metallicRoughnessMap().texture(mr_map_bytes, listOf(2u, 2u))
+    }
+
+    @Test
+    fun scene_pbr_material_new() = example("docs/api/scene/pbr_material/new.md") {
+        val bronze = PbrMaterial().baseColor(listOf(0.8f, 0.5f, 0.2f, 1.0f)).metallic(1.0f).roughness(0.3f)
+    }
+
+    @Test
+    fun scene_pbr_material_normal_map() = example("docs/api/scene/pbr_material/normal_map.md") {
+        // Raw pixels with their size upload when the scene loads.
+        val normal_map_bytes = listOf(128, 128, 255, 255, 128, 128, 255, 255, 128, 128, 255, 255, 128, 128, 255, 255)
+        val material = PbrMaterial().normalScale(1.2f)
+        val map = material.normalMap().texture(normal_map_bytes, listOf(2u, 2u))
+    }
+
+    @Test
+    fun scene_pbr_material_normal_scale() = example("docs/api/scene/pbr_material/normal_scale.md") {
+        val detailed = PbrMaterial().normalScale(1.5f)
+    }
+
+    @Test
+    fun scene_pbr_material_occlusion_map() = example("docs/api/scene/pbr_material/occlusion_map.md") {
+        // Raw pixels with their size upload when the scene loads.
+        val ao_bytes = listOf(220, 0, 0, 255, 180, 0, 0, 255, 200, 0, 0, 255, 160, 0, 0, 255)
+        val material = PbrMaterial()
+        val map = material.occlusionMap().texture(ao_bytes, listOf(2u, 2u))
+    }
+
+    @Test
+    fun scene_pbr_material_occlusion_strength() = example("docs/api/scene/pbr_material/occlusion_strength.md") {
+        val crevices = PbrMaterial().occlusionStrength(0.8f)
+    }
+
+    @Test
+    fun scene_pbr_material_roughness() = example("docs/api/scene/pbr_material/roughness.md") {
+        val renderer = Renderer()
+        val satin = PbrMaterial().roughness(0.35f)
+    }
+
+    @Test
+    fun scene_pbr_material_shader() = example("docs/api/scene/pbr_material/shader.md") {
+        // Direct uniform access for a custom field that isn't covered by the
+        // PbrMaterial setters or by Camera / Light.
+        val material = PbrMaterial()
+        material.shader().set("material.alpha_cutoff", 0.25f)
+    }
+
+    @Test
+    fun scene_pbr_material_uv_transform() = example("docs/api/scene/pbr_material/uv_transform.md") {
+        // Tile the texture 4× in both directions, rotate 45°, shift by half a tile.
+        val brick = PbrMaterial().uvTransform(listOf(0.5f, 0.0f), listOf(4.0f, 4.0f), 0.785f)
     }
 
     @Test
@@ -1313,7 +1385,7 @@ class GeneratedExamples : ExampleCase() {
 
         val mesh = Mesh()
         mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
-        val model = Model(mesh, Material.pbr())
+        val model = Model(mesh, PbrMaterial())
 
         val camera = Camera.perspective(1.047f, 1.0f, 0.1f, 100.0f).lookAt(listOf(0.0f, 0.0f, 3.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
         val sun = Light.directional(listOf(0.3f, -1.0f, -0.4f), listOf(1.0f, 0.95f, 0.9f))
@@ -1334,7 +1406,7 @@ class GeneratedExamples : ExampleCase() {
 
         val mesh = Mesh()
         mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
-        val model = Model(mesh, Material.pbr())
+        val model = Model(mesh, PbrMaterial())
 
         // A backdrop pass that clears to a soft blue before the scene's main draw.
         val backdrop = Pass("backdrop")
@@ -1349,7 +1421,7 @@ class GeneratedExamples : ExampleCase() {
     fun scene_scene_add_to() = example("docs/api/scene/scene/add_to.md") {
         val mesh = Mesh()
         mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
-        val model = Model(mesh, Material.pbr())
+        val model = Model(mesh, PbrMaterial())
 
         val scene = Scene()
         scene.addPass(Pass("geometry"))
@@ -1369,7 +1441,7 @@ class GeneratedExamples : ExampleCase() {
         val scene = Scene()
         // A warm dusk ambient. It applies to every Material added below.
         scene.ambient(listOf(0.06f, 0.04f, 0.03f))
-        scene.add(Model(mesh, Material.pbr()))
+        scene.add(Model(mesh, PbrMaterial()))
         scene.add(Light.directional(listOf(0.3f, -1.0f, -0.4f), listOf(1.0f, 0.95f, 0.9f)))
 
         renderer.render(scene, target)
@@ -1426,7 +1498,7 @@ class GeneratedExamples : ExampleCase() {
         val mesh = Mesh()
         mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
         val scene = Scene()
-        scene.add(Model(mesh, Material.pbr()))
+        scene.add(Model(mesh, PbrMaterial()))
 
         // Compose, don't clear: keep whatever the previous pass drew.
         for (p in scene.listPasses()) {
@@ -1449,7 +1521,7 @@ class GeneratedExamples : ExampleCase() {
     fun scene_scene_models() = example("docs/api/scene/scene/models.md") {
         val mesh = Mesh()
         mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
-        val model = Model(mesh, Material.pbr())
+        val model = Model(mesh, PbrMaterial())
 
         val scene = Scene()
         scene.add(model)
@@ -1472,7 +1544,7 @@ class GeneratedExamples : ExampleCase() {
         val mesh = Mesh()
         mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
         val scene = Scene()
-        scene.add(Model(mesh, Material.pbr()))
+        scene.add(Model(mesh, PbrMaterial()))
 
         scene.noDefaultCamera()
     }
@@ -1482,7 +1554,7 @@ class GeneratedExamples : ExampleCase() {
         val mesh = Mesh()
         mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
         val scene = Scene()
-        scene.add(Model(mesh, Material.pbr()))
+        scene.add(Model(mesh, PbrMaterial()))
 
         scene.noDefaultLight()
     }
@@ -1492,7 +1564,7 @@ class GeneratedExamples : ExampleCase() {
         val mesh = Mesh()
         mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
         val scene = Scene()
-        scene.add(Model(mesh, Material.pbr()))
+        scene.add(Model(mesh, PbrMaterial()))
 
         // The host overrides every uniform, so suppress FC's stock camera + light.
         scene.noDefaults()
@@ -1518,7 +1590,7 @@ class GeneratedExamples : ExampleCase() {
         val mesh = Mesh()
         mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
         val scene = Scene()
-        scene.add(Model(mesh, Material.pbr()))
+        scene.add(Model(mesh, PbrMaterial()))
 
         val camera = Camera.perspective(1.047f, 16.0f / 9.0f, 0.1f, 100.0f).lookAt(listOf(0.0f, 1.5f, 4.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
         scene.setDefaultCamera(camera)
@@ -1529,7 +1601,7 @@ class GeneratedExamples : ExampleCase() {
         val mesh = Mesh()
         mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
         val scene = Scene()
-        scene.add(Model(mesh, Material.pbr()))
+        scene.add(Model(mesh, PbrMaterial()))
 
         val key = Light.directional(listOf(0.3f, -1.0f, -0.4f), listOf(1.0f, 0.95f, 0.9f))
         scene.setDefaultLight(key)
@@ -1546,11 +1618,6 @@ class GeneratedExamples : ExampleCase() {
             Pass("geometry"),
             Pass("overlay"),
         ))
-    }
-
-    @Test
-    fun scene_texture_slot_TextureSlot() = example("docs/api/scene/texture_slot/texture_slot.md") {
-        val material = Material.pbr().textureUv(TextureSlot.OCCLUSION, 1u).textureTransform(TextureSlot.NORMAL, listOf(0.0f, 0.0f), listOf(4.0f, 4.0f), 0.0f)
     }
 
     @Test

@@ -1,0 +1,8 @@
+import FragmentColor
+
+let renderer = Renderer()
+// Leaf cards: thin, single-quad geometry; needs both sides + alpha cut-out.
+let leaf = try PbrMaterial().doubleSided(true).alphaMode(AlphaMode.mask).alphaCutoff(0.5)
+
+// The default is single-sided, with back-face culling on.
+let solid_mesh = PbrMaterial().doubleSided(false)

@@ -1,4 +1,4 @@
-from fragmentcolor import Material, Mesh, Model, Vertex
+from fragmentcolor import Mesh, Model, PbrMaterial, Vertex
 
 mesh = Mesh()
 mesh.add_vertices([
@@ -6,7 +6,7 @@ mesh.add_vertices([
     Vertex.pbr([-0.5, -0.5, 0.0]),
     Vertex.pbr([0.5, -0.5, 0.0]),
 ])
-detail = Model(mesh, Material.pbr())
+detail = Model(mesh, PbrMaterial())
 
 # Far from the camera, hide the detail Model.
 detail.set_visible(False)

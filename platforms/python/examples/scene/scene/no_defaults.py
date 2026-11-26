@@ -1,4 +1,4 @@
-from fragmentcolor import Material, Mesh, Model, Scene, Vertex
+from fragmentcolor import Mesh, Model, PbrMaterial, Scene, Vertex
 
 mesh = Mesh()
 mesh.add_vertices([
@@ -7,7 +7,7 @@ mesh.add_vertices([
     Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
 ])
 scene = Scene()
-scene.add(Model(mesh, Material.pbr()))
+scene.add(Model(mesh, PbrMaterial()))
 
 # The host overrides every uniform, so suppress FC's stock camera + light.
 scene.no_defaults()

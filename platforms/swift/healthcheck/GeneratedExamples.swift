@@ -42,7 +42,7 @@ final class GeneratedExamples: ExampleCase {
                 try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
                 try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
             ])
-            let model = Model(mesh, Material.pbr())
+            let model = Model(mesh, PbrMaterial())
 
             let camera = try Camera.perspective(1.047, 1.0, 0.1, 100.0).lookAt([0.0, 0.0, 2.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
             let sun = try Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])
@@ -335,7 +335,8 @@ final class GeneratedExamples: ExampleCase {
             ])
 
             // The material keeps the encoded image as a map.
-            let material = try Material.pbr().baseColorTexture(image)
+            let material = PbrMaterial()
+            try material.baseColorMap().texture(image)
             let model = Model(mesh, material)
             let scene = Scene()
             try scene.add(model)
@@ -483,6 +484,25 @@ final class GeneratedExamples: ExampleCase {
         }
     }
 
+    func test_core_shader_alpha_mode() async {
+        await example("docs/api/core/shader/alpha_mode.md") {
+            let shader = try Shader("""
+            @vertex
+            fn vs_main(@location(0) position: vec3<f32>) -> @builtin(position) vec4<f32> {
+                return vec4<f32>(position, 1.0);
+            }
+
+            @fragment
+            fn fs_main() -> @location(0) vec4<f32> {
+                return vec4<f32>(0.6, 0.8, 1.0, 0.25);
+            }
+
+            """)
+
+            let glass = shader.alphaMode(AlphaMode.blend)
+        }
+    }
+
     func test_core_shader_clear_meshes() async {
         await example("docs/api/core/shader/clear_meshes.md") {
             let shader = try Shader("""
@@ -518,6 +538,25 @@ final class GeneratedExamples: ExampleCase {
             // The default shader includes a "resolution" uniform
             try shader.set("resolution", [800.0, 600.0])
             let res = try shader.get("resolution")
+        }
+    }
+
+    func test_core_shader_double_sided() async {
+        await example("docs/api/core/shader/double_sided.md") {
+            let shader = try Shader("""
+            @vertex
+            fn vs_main(@location(0) position: vec3<f32>) -> @builtin(position) vec4<f32> {
+                return vec4<f32>(position, 1.0);
+            }
+
+            @fragment
+            fn fs_main() -> @location(0) vec4<f32> {
+                return vec4<f32>(1.0, 0.5, 0.2, 1.0);
+            }
+
+            """)
+
+            let solid = shader.doubleSided(false)
         }
     }
 
@@ -1115,7 +1154,7 @@ final class GeneratedExamples: ExampleCase {
             try bulb.setRange(3.0)
 
             let pass = Pass("lamp")
-            try pass.add(Model(wall, Material.pbr()))
+            try pass.add(Model(wall, PbrMaterial()))
             try pass.add(camera)
             try pass.add(bulb)
             try renderer.render(pass, target)
@@ -1190,66 +1229,19 @@ final class GeneratedExamples: ExampleCase {
 
     func test_scene_material_Material() async {
         await example("docs/api/scene/material/material.md") {
-            let mesh = Mesh()
-            mesh.addVertices([
-                try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
-                try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
-                try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+            let triangle = Mesh()
+            triangle.addVertices([
+                try Vertex.pbr([0.0, 0.5, 0.0]),
+                try Vertex.pbr([-0.5, -0.5, 0.0]),
+                try Vertex.pbr([0.5, -0.5, 0.0]),
             ])
 
-            let material = try Material.pbr().baseColor([0.85, 0.2, 0.2, 1.0]).metallic(0.0).roughness(0.4).emissive([0.0, 0.0, 0.05])
+            // One of the material types.
+            let gold = try PbrMaterial().baseColor([1.0, 0.8, 0.3, 1.0]).metallic(1.0)
+            let shiny = Model(triangle, gold)
 
-            let model = Model(mesh, material)
-        }
-    }
-
-    func test_scene_material_alpha_cutoff() async {
-        await example("docs/api/scene/material/alpha_cutoff.md") {
-            let foliage = try Material.pbr().alphaCutoff(0.3)
-        }
-    }
-
-    func test_scene_material_alpha_mode() async {
-        await example("docs/api/scene/material/alpha_mode.md") {
-            let foliage = try Material.pbr().alphaMode(AlphaMode.mask).alphaCutoff(0.3)
-
-            let glass = try Material.pbr().baseColor([0.9, 0.95, 1.0, 0.25]).alphaMode(AlphaMode.blend)
-
-            let solid = Material.pbr().alphaMode(AlphaMode.opaque)
-        }
-    }
-
-    func test_scene_material_base_color() async {
-        await example("docs/api/scene/material/base_color.md") {
-            let renderer = Renderer()
-            let red = try Material.pbr().baseColor([1.0, 0.2, 0.2, 1.0])
-        }
-    }
-
-    func test_scene_material_base_color_texture() async {
-        await example("docs/api/scene/material/base_color_texture.md") {
-            let renderer = Renderer()
-            let albedo_bytes = [
-                255, 200, 120, 255,
-                255, 240, 180, 255,
-                230, 180, 100, 255,
-                255, 220, 150, 255,
-            ]
-            let albedo = try await renderer.createTexture(albedo_bytes, [2, 2])
-
-            // Every Material that points at `albedo` reuses the same uploaded GPU
-            // texture; passing the same handle into N Material instances costs one
-            // upload and N shader-uniform references.
-            let material = try Material.pbr().baseColorTexture(albedo)
-
-            // Raw pixels with their size upload when the scene loads.
-            let tint = [255, 128, 0, 255]
-            let tinted = try Material.pbr().baseColorTexture(tint, [1, 1])
-        }
-    }
-
-    func test_scene_material_custom() async {
-        await example("docs/api/scene/material/custom.md") {
+            // A shader of your own, which the renderer fills with the camera, the lights
+            // and each Model's transform.
             let flat = try Shader("""
                 struct Camera { view_proj: mat4x4<f32>, position: vec3<f32> }
                 struct Light { kind: u32, intensity: f32, range: f32, inner_cone_cos: f32,
@@ -1281,130 +1273,60 @@ final class GeneratedExamples: ExampleCase {
                 }
 
             """)
-
-            let flat_mat = Material.custom(flat)
+            let plain = Mesh()
+            plain.addVertices([
+                try Vertex.pbr([-0.5, -0.5, 0.0]),
+                try Vertex.pbr([0.5, -0.5, 0.0]),
+                try Vertex.pbr([0.5, 0.5, 0.0]),
+            ])
+            let glowing = Model(plain, flat)
         }
     }
 
-    func test_scene_material_double_sided() async {
-        await example("docs/api/scene/material/double_sided.md") {
+    func test_scene_material_map_MaterialMap() async {
+        await example("docs/api/scene/material_map/material_map.md") {
+            let flat = [128, 128, 255, 255]
+            let gold = try PbrMaterial().metallic(1.0).roughness(0.3)
+
+            // A normal map tiled four times over the second UV layout.
+            let map = try gold.normalMap().texture(flat, [1, 1]).uv(1).transform([0.0, 0.0], [4.0, 4.0], 0.0)
+        }
+    }
+
+    func test_scene_material_map_texture() async {
+        await example("docs/api/scene/material_map/texture.md") {
             let renderer = Renderer()
-            // Leaf cards: thin, single-quad geometry; needs both sides + alpha cut-out.
-            let leaf = try Material.pbr().doubleSided(true).alphaMode(AlphaMode.mask).alphaCutoff(0.5)
-
-            // The default is single-sided, with back-face culling on.
-            let solid_mesh = Material.pbr().doubleSided(false)
-        }
-    }
-
-    func test_scene_material_emissive() async {
-        await example("docs/api/scene/material/emissive.md") {
-            let renderer = Renderer()
-            let lava = try Material.pbr().baseColor([0.1, 0.05, 0.0, 1.0]).emissive([1.5, 0.4, 0.1])
-        }
-    }
-
-    func test_scene_material_emissive_texture() async {
-        await example("docs/api/scene/material/emissive_texture.md") {
-            // Raw pixels with their size upload when the scene loads.
-            let glow_bytes = [
-                255, 0, 0, 255,
-                255, 0, 0, 255,
-                255, 0, 0, 255,
-                255, 0, 0, 255,
+            let albedo_bytes = [
+                255, 200, 120, 255,
+                255, 240, 180, 255,
+                230, 180, 100, 255,
+                255, 220, 150, 255,
             ]
-            let mat = try Material.pbr().emissive([0.8, 0.0, 0.0]).emissiveTexture(glow_bytes, [2, 2])
-        }
-    }
+            let albedo = try await renderer.createTexture(albedo_bytes, [2, 2])
 
-    func test_scene_material_metallic() async {
-        await example("docs/api/scene/material/metallic.md") {
-            let chrome = try Material.pbr().metallic(1.0).roughness(0.05)
-        }
-    }
+            // Every material whose map points at `albedo` reuses the same uploaded GPU
+            // texture; passing the same handle to N maps costs one upload and N
+            // shader-uniform references.
+            let material = PbrMaterial()
+            let map = try material.baseColorMap().texture(albedo)
 
-    func test_scene_material_metallic_roughness_texture() async {
-        await example("docs/api/scene/material/metallic_roughness_texture.md") {
             // Raw pixels with their size upload when the scene loads.
-            let mr_map_bytes = [
-                0, 200, 50, 255,
-                0, 240, 80, 255,
-                0, 180, 30, 255,
-                0, 220, 60, 255,
-            ]
-            let mat = try Material.pbr().metallicRoughnessTexture(mr_map_bytes, [2, 2])
+            let tint = [255, 128, 0, 255]
+            let tinted = PbrMaterial()
+            let tinted_map = try tinted.baseColorMap().texture(tint, [1, 1])
         }
     }
 
-    func test_scene_material_normal_scale() async {
-        await example("docs/api/scene/material/normal_scale.md") {
-            let detailed = try Material.pbr().normalScale(1.5)
-        }
-    }
-
-    func test_scene_material_normal_texture() async {
-        await example("docs/api/scene/material/normal_texture.md") {
-            // Raw pixels with their size upload when the scene loads.
-            let normal_map_bytes = [
-                128, 128, 255, 255,
-                128, 128, 255, 255,
-                128, 128, 255, 255,
-                128, 128, 255, 255,
-            ]
-            let mat = try Material.pbr().normalTexture(normal_map_bytes, [2, 2]).normalScale(1.2)
-        }
-    }
-
-    func test_scene_material_occlusion_strength() async {
-        await example("docs/api/scene/material/occlusion_strength.md") {
-            let crevices = try Material.pbr().occlusionStrength(0.8)
-        }
-    }
-
-    func test_scene_material_occlusion_texture() async {
-        await example("docs/api/scene/material/occlusion_texture.md") {
-            // Raw pixels with their size upload when the scene loads.
-            let ao_bytes = [
-                220, 0, 0, 255,
-                180, 0, 0, 255,
-                200, 0, 0, 255,
-                160, 0, 0, 255,
-            ]
-            let mat = try Material.pbr().occlusionTexture(ao_bytes, [2, 2])
-        }
-    }
-
-    func test_scene_material_pbr() async {
-        await example("docs/api/scene/material/pbr.md") {
-            let bronze = try Material.pbr().baseColor([0.8, 0.5, 0.2, 1.0]).metallic(1.0).roughness(0.3)
-        }
-    }
-
-    func test_scene_material_roughness() async {
-        await example("docs/api/scene/material/roughness.md") {
-            let renderer = Renderer()
-            let satin = try Material.pbr().roughness(0.35)
-        }
-    }
-
-    func test_scene_material_shader() async {
-        await example("docs/api/scene/material/shader.md") {
-            // Direct uniform access for a custom field that isn't covered by the
-            // Material setters or by Camera / Light.
-            let material = Material.pbr()
-            try material.shader().set("material.alpha_cutoff", 0.25)
-        }
-    }
-
-    func test_scene_material_texture_transform() async {
-        await example("docs/api/scene/material/texture_transform.md") {
+    func test_scene_material_map_transform() async {
+        await example("docs/api/scene/material_map/transform.md") {
             // Every map spans the surface twice, and the normal map eight times.
-            let tiles = try Material.pbr().uvTransform([0.0, 0.0], [2.0, 2.0], 0.0).textureTransform(TextureSlot.normal, [0.0, 0.0], [8.0, 8.0], 0.0)
+            let tiles = try PbrMaterial().uvTransform([0.0, 0.0], [2.0, 2.0], 0.0)
+            let normals = try tiles.normalMap().transform([0.0, 0.0], [8.0, 8.0], 0.0)
         }
     }
 
-    func test_scene_material_texture_uv() async {
-        await example("docs/api/scene/material/texture_uv.md") {
+    func test_scene_material_map_uv() async {
+        await example("docs/api/scene/material_map/uv.md") {
             let mesh = Mesh()
             mesh.addVertices([
                 try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]).set(Vertex.UV1, [0.25, 0.75]),
@@ -1413,14 +1335,8 @@ final class GeneratedExamples: ExampleCase {
             ])
 
             // The occlusion map follows the second UV layout.
-            let material = try Material.pbr().textureUv(TextureSlot.occlusion, 1)
-        }
-    }
-
-    func test_scene_material_uv_transform() async {
-        await example("docs/api/scene/material/uv_transform.md") {
-            // Tile the texture 4× in both directions, rotate 45°, shift by half a tile.
-            let brick = try Material.pbr().uvTransform([0.5, 0.0], [4.0, 4.0], 0.785) // 45° in radians
+            let material = PbrMaterial()
+            let map = try material.occlusionMap().uv(1)
         }
     }
 
@@ -1433,8 +1349,8 @@ final class GeneratedExamples: ExampleCase {
                 try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
             ])
 
-            let model = Model(mesh, Material.pbr())
-            try model.material().shader().set("camera.position", [0.0, 0.0, 5.0])
+            let model = Model(mesh, PbrMaterial())
+            let material = model.material()
         }
     }
 
@@ -1447,7 +1363,7 @@ final class GeneratedExamples: ExampleCase {
                 try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
             ])
 
-            let model = Model(mesh, Material.pbr())
+            let model = Model(mesh, PbrMaterial())
             // A second triangle joins the first through the Model.
             model.mesh().addVertices([
                 try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
@@ -1466,7 +1382,7 @@ final class GeneratedExamples: ExampleCase {
                 try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
             ])
 
-            let model = Model(mesh, Material.pbr())
+            let model = Model(mesh, PbrMaterial())
         }
     }
 
@@ -1480,7 +1396,7 @@ final class GeneratedExamples: ExampleCase {
                 try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
             ])
 
-            let model = Model(mesh, Material.pbr())
+            let model = Model(mesh, PbrMaterial())
             try model.rotate([0.0, 1.0, 0.0], 1.571) // 90° around Y
         }
     }
@@ -1495,7 +1411,7 @@ final class GeneratedExamples: ExampleCase {
                 try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
             ])
 
-            let model = Model(mesh, Material.pbr())
+            let model = Model(mesh, PbrMaterial())
             try model.scale([2.0, 2.0, 2.0])
         }
     }
@@ -1510,7 +1426,7 @@ final class GeneratedExamples: ExampleCase {
                 try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
             ])
 
-            let model = Model(mesh, Material.pbr())
+            let model = Model(mesh, PbrMaterial())
             try model.setTransform([
                 [2.0, 0.0, 0.0, 0.0],
                 [0.0, 2.0, 0.0, 0.0],
@@ -1528,7 +1444,7 @@ final class GeneratedExamples: ExampleCase {
                 try Vertex.pbr([-0.5, -0.5, 0.0]),
                 try Vertex.pbr([0.5, -0.5, 0.0]),
             ])
-            let detail = Model(mesh, Material.pbr())
+            let detail = Model(mesh, PbrMaterial())
 
             // Far from the camera, hide the detail Model.
             detail.setVisible(false)
@@ -1547,7 +1463,7 @@ final class GeneratedExamples: ExampleCase {
                 try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
             ])
 
-            let model = Model(mesh, Material.pbr())
+            let model = Model(mesh, PbrMaterial())
             let identity = model.transform()
         }
     }
@@ -1562,7 +1478,7 @@ final class GeneratedExamples: ExampleCase {
                 try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
             ])
 
-            let model = Model(mesh, Material.pbr())
+            let model = Model(mesh, PbrMaterial())
             try model.translate([5.0, 0.0, -2.0])
         }
     }
@@ -1575,10 +1491,178 @@ final class GeneratedExamples: ExampleCase {
                 try Vertex.pbr([-0.5, -0.5, 0.0]),
                 try Vertex.pbr([0.5, -0.5, 0.0]),
             ])
-            let model = Model(mesh, Material.pbr())
+            let model = Model(mesh, PbrMaterial())
 
             // Models start visible; toggle with `set_visible`.
             let visible_now = model.visible()
+        }
+    }
+
+    func test_scene_pbr_material_PbrMaterial() async {
+        await example("docs/api/scene/pbr_material/pbr_material.md") {
+            let mesh = Mesh()
+            mesh.addVertices([
+                try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
+                try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+                try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+            ])
+
+            let material = try PbrMaterial().baseColor([0.85, 0.2, 0.2, 1.0]).metallic(0.0).roughness(0.4).emissive([0.0, 0.0, 0.05])
+
+            let model = Model(mesh, material)
+        }
+    }
+
+    func test_scene_pbr_material_alpha_cutoff() async {
+        await example("docs/api/scene/pbr_material/alpha_cutoff.md") {
+            let foliage = try PbrMaterial().alphaCutoff(0.3)
+        }
+    }
+
+    func test_scene_pbr_material_alpha_mode() async {
+        await example("docs/api/scene/pbr_material/alpha_mode.md") {
+            let foliage = try PbrMaterial().alphaMode(AlphaMode.mask).alphaCutoff(0.3)
+
+            let glass = try PbrMaterial().baseColor([0.9, 0.95, 1.0, 0.25]).alphaMode(AlphaMode.blend)
+
+            let solid = PbrMaterial().alphaMode(AlphaMode.opaque)
+        }
+    }
+
+    func test_scene_pbr_material_base_color() async {
+        await example("docs/api/scene/pbr_material/base_color.md") {
+            let renderer = Renderer()
+            let red = try PbrMaterial().baseColor([1.0, 0.2, 0.2, 1.0])
+        }
+    }
+
+    func test_scene_pbr_material_base_color_map() async {
+        await example("docs/api/scene/pbr_material/base_color_map.md") {
+            // Raw pixels with their size upload when the scene loads.
+            let tint = [255, 128, 0, 255]
+            let material = PbrMaterial()
+            let map = try material.baseColorMap().texture(tint, [1, 1])
+        }
+    }
+
+    func test_scene_pbr_material_double_sided() async {
+        await example("docs/api/scene/pbr_material/double_sided.md") {
+            let renderer = Renderer()
+            // Leaf cards: thin, single-quad geometry; needs both sides + alpha cut-out.
+            let leaf = try PbrMaterial().doubleSided(true).alphaMode(AlphaMode.mask).alphaCutoff(0.5)
+
+            // The default is single-sided, with back-face culling on.
+            let solid_mesh = PbrMaterial().doubleSided(false)
+        }
+    }
+
+    func test_scene_pbr_material_emissive() async {
+        await example("docs/api/scene/pbr_material/emissive.md") {
+            let renderer = Renderer()
+            let lava = try PbrMaterial().baseColor([0.1, 0.05, 0.0, 1.0]).emissive([1.5, 0.4, 0.1])
+        }
+    }
+
+    func test_scene_pbr_material_emissive_map() async {
+        await example("docs/api/scene/pbr_material/emissive_map.md") {
+            // Raw pixels with their size upload when the scene loads.
+            let glow_bytes = [
+                255, 0, 0, 255,
+                255, 0, 0, 255,
+                255, 0, 0, 255,
+                255, 0, 0, 255,
+            ]
+            let material = try PbrMaterial().emissive([0.8, 0.0, 0.0])
+            let map = try material.emissiveMap().texture(glow_bytes, [2, 2])
+        }
+    }
+
+    func test_scene_pbr_material_metallic() async {
+        await example("docs/api/scene/pbr_material/metallic.md") {
+            let chrome = try PbrMaterial().metallic(1.0).roughness(0.05)
+        }
+    }
+
+    func test_scene_pbr_material_metallic_roughness_map() async {
+        await example("docs/api/scene/pbr_material/metallic_roughness_map.md") {
+            // Raw pixels with their size upload when the scene loads.
+            let mr_map_bytes = [
+                0, 200, 50, 255,
+                0, 240, 80, 255,
+                0, 180, 30, 255,
+                0, 220, 60, 255,
+            ]
+            let material = PbrMaterial()
+            let map = try material.metallicRoughnessMap().texture(mr_map_bytes, [2, 2])
+        }
+    }
+
+    func test_scene_pbr_material_new() async {
+        await example("docs/api/scene/pbr_material/new.md") {
+            let bronze = try PbrMaterial().baseColor([0.8, 0.5, 0.2, 1.0]).metallic(1.0).roughness(0.3)
+        }
+    }
+
+    func test_scene_pbr_material_normal_map() async {
+        await example("docs/api/scene/pbr_material/normal_map.md") {
+            // Raw pixels with their size upload when the scene loads.
+            let normal_map_bytes = [
+                128, 128, 255, 255,
+                128, 128, 255, 255,
+                128, 128, 255, 255,
+                128, 128, 255, 255,
+            ]
+            let material = try PbrMaterial().normalScale(1.2)
+            let map = try material.normalMap().texture(normal_map_bytes, [2, 2])
+        }
+    }
+
+    func test_scene_pbr_material_normal_scale() async {
+        await example("docs/api/scene/pbr_material/normal_scale.md") {
+            let detailed = try PbrMaterial().normalScale(1.5)
+        }
+    }
+
+    func test_scene_pbr_material_occlusion_map() async {
+        await example("docs/api/scene/pbr_material/occlusion_map.md") {
+            // Raw pixels with their size upload when the scene loads.
+            let ao_bytes = [
+                220, 0, 0, 255,
+                180, 0, 0, 255,
+                200, 0, 0, 255,
+                160, 0, 0, 255,
+            ]
+            let material = PbrMaterial()
+            let map = try material.occlusionMap().texture(ao_bytes, [2, 2])
+        }
+    }
+
+    func test_scene_pbr_material_occlusion_strength() async {
+        await example("docs/api/scene/pbr_material/occlusion_strength.md") {
+            let crevices = try PbrMaterial().occlusionStrength(0.8)
+        }
+    }
+
+    func test_scene_pbr_material_roughness() async {
+        await example("docs/api/scene/pbr_material/roughness.md") {
+            let renderer = Renderer()
+            let satin = try PbrMaterial().roughness(0.35)
+        }
+    }
+
+    func test_scene_pbr_material_shader() async {
+        await example("docs/api/scene/pbr_material/shader.md") {
+            // Direct uniform access for a custom field that isn't covered by the
+            // PbrMaterial setters or by Camera / Light.
+            let material = PbrMaterial()
+            try material.shader().set("material.alpha_cutoff", 0.25)
+        }
+    }
+
+    func test_scene_pbr_material_uv_transform() async {
+        await example("docs/api/scene/pbr_material/uv_transform.md") {
+            // Tile the texture 4× in both directions, rotate 45°, shift by half a tile.
+            let brick = try PbrMaterial().uvTransform([0.5, 0.0], [4.0, 4.0], 0.785)
         }
     }
 
@@ -1592,7 +1676,7 @@ final class GeneratedExamples: ExampleCase {
                 try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
                 try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
             ])
-            let model = Model(mesh, Material.pbr())
+            let model = Model(mesh, PbrMaterial())
 
             let camera = try Camera.perspective(1.047, 1.0, 0.1, 100.0).lookAt([0.0, 0.0, 3.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
             let sun = try Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])
@@ -1618,7 +1702,7 @@ final class GeneratedExamples: ExampleCase {
                 try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
                 try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
             ])
-            let model = Model(mesh, Material.pbr())
+            let model = Model(mesh, PbrMaterial())
 
             // A backdrop pass that clears to a soft blue before the scene's main draw.
             let backdrop = Pass("backdrop")
@@ -1638,7 +1722,7 @@ final class GeneratedExamples: ExampleCase {
                 try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
                 try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
             ])
-            let model = Model(mesh, Material.pbr())
+            let model = Model(mesh, PbrMaterial())
 
             let scene = Scene()
             scene.addPass(Pass("geometry"))
@@ -1663,7 +1747,7 @@ final class GeneratedExamples: ExampleCase {
             let scene = Scene()
             // A warm dusk ambient. It applies to every Material added below.
             try scene.ambient([0.06, 0.04, 0.03])
-            try scene.add(Model(mesh, Material.pbr()))
+            try scene.add(Model(mesh, PbrMaterial()))
             try scene.add(Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]))
 
             try renderer.render(scene, target)
@@ -1729,7 +1813,7 @@ final class GeneratedExamples: ExampleCase {
                 try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
             ])
             let scene = Scene()
-            try scene.add(Model(mesh, Material.pbr()))
+            try scene.add(Model(mesh, PbrMaterial()))
 
             // Compose, don't clear: keep whatever the previous pass drew.
             for p in scene.listPasses() {
@@ -1758,7 +1842,7 @@ final class GeneratedExamples: ExampleCase {
                 try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
                 try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
             ])
-            let model = Model(mesh, Material.pbr())
+            let model = Model(mesh, PbrMaterial())
 
             let scene = Scene()
             try scene.add(model)
@@ -1787,7 +1871,7 @@ final class GeneratedExamples: ExampleCase {
                 try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
             ])
             let scene = Scene()
-            try scene.add(Model(mesh, Material.pbr()))
+            try scene.add(Model(mesh, PbrMaterial()))
 
             scene.noDefaultCamera()
         }
@@ -1802,7 +1886,7 @@ final class GeneratedExamples: ExampleCase {
                 try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
             ])
             let scene = Scene()
-            try scene.add(Model(mesh, Material.pbr()))
+            try scene.add(Model(mesh, PbrMaterial()))
 
             scene.noDefaultLight()
         }
@@ -1817,7 +1901,7 @@ final class GeneratedExamples: ExampleCase {
                 try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
             ])
             let scene = Scene()
-            try scene.add(Model(mesh, Material.pbr()))
+            try scene.add(Model(mesh, PbrMaterial()))
 
             // The host overrides every uniform, so suppress FC's stock camera + light.
             scene.noDefaults()
@@ -1849,7 +1933,7 @@ final class GeneratedExamples: ExampleCase {
                 try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
             ])
             let scene = Scene()
-            try scene.add(Model(mesh, Material.pbr()))
+            try scene.add(Model(mesh, PbrMaterial()))
 
             let camera = try Camera.perspective(1.047, 16.0 / 9.0, 0.1, 100.0).lookAt([0.0, 1.5, 4.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
             scene.setDefaultCamera(camera)
@@ -1865,7 +1949,7 @@ final class GeneratedExamples: ExampleCase {
                 try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
             ])
             let scene = Scene()
-            try scene.add(Model(mesh, Material.pbr()))
+            try scene.add(Model(mesh, PbrMaterial()))
 
             let key = try Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])
             scene.setDefaultLight(key)
@@ -1883,12 +1967,6 @@ final class GeneratedExamples: ExampleCase {
                 Pass("geometry"),
                 Pass("overlay"),
             ])
-        }
-    }
-
-    func test_scene_texture_slot_TextureSlot() async {
-        await example("docs/api/scene/texture_slot/texture_slot.md") {
-            let material = try Material.pbr().textureUv(TextureSlot.occlusion, 1).textureTransform(TextureSlot.normal, [0.0, 0.0], [4.0, 4.0], 0.0)
         }
     }
 

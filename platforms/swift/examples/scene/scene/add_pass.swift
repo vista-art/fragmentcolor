@@ -8,7 +8,7 @@ mesh.addVertices([
     try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
     try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
 ])
-let model = Model(mesh, Material.pbr())
+let model = Model(mesh, PbrMaterial())
 
 // A backdrop pass that clears to a soft blue before the scene's main draw.
 let backdrop = Pass("backdrop")

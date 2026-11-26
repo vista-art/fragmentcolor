@@ -1,9 +1,9 @@
-import { Camera, Material, Mesh, Model, Scene, Vertex } from "fragmentcolor";
+import { Camera, Mesh, Model, PbrMaterial, Scene, Vertex } from "fragmentcolor";
 
 const mesh = new Mesh();
 mesh.addVertices([ Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]), Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]), ]);
 const scene = new Scene();
-scene.add(new Model(mesh, Material.pbr()));
+scene.add(new Model(mesh, new PbrMaterial()));
 
 const camera = Camera.perspective(1.047, 16.0 / 9.0, 0.1, 100.0).lookAt([0.0, 1.5, 4.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
 scene.setDefaultCamera(camera);

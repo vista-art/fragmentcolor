@@ -8,5 +8,5 @@ mesh.addVertices([
     try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
 ])
 
-let model = Model(mesh, Material.pbr())
+let model = Model(mesh, PbrMaterial())
 try model.rotate([0.0, 1.0, 0.0], 1.571) // 90° around Y
