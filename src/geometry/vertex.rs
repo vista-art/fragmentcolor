@@ -58,7 +58,7 @@ impl Vertex {
     #[lsp_doc("docs/api/geometry/vertex/pbr.md")]
     #[allow(private_bounds)]
     pub fn pbr<P: IntoVertexPositionFull>(position: P) -> Self {
-        // Seed every attribute `Material::pbr` reads in its vertex shader
+        // Seed every attribute `PbrMaterial` reads in its vertex shader
         // with a neutral identity value. Chain `.set(...)` afterwards to
         // override the slots a real mesh actually has data for. These are
         // the loader's fallbacks for missing glTF accessors, with two

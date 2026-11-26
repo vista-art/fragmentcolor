@@ -55,12 +55,12 @@ pub(super) struct RenderPipelineKey {
     pub(super) color_format: wgpu::TextureFormat,
     pub(super) depth: DepthUse,
     pub(super) sample_count: u32,
-    /// `Material::alpha_mode` bakes into the pipeline: `Opaque`/`Mask`
+    /// `Shader::alpha_mode`, which the materials' `alpha_mode` sets, bakes into the pipeline: `Opaque`/`Mask`
     /// turn blending off, `Blend` flips on standard alpha-over and disables
     /// depth-write. Different modes against the same shader hash therefore
     /// need different pipelines.
     pub(super) alpha_mode: crate::AlphaMode,
-    /// `Material::double_sided` flips the `cull_mode` on the primitive
+    /// `Shader::double_sided`, which the materials' `double_sided` sets, flips the `cull_mode` on the primitive
     /// state, so it also baked into the pipeline.
     pub(super) double_sided: bool,
     /// Vertex buffer layouts of the shader's mesh, if any.
@@ -112,7 +112,7 @@ impl RenderContext {
 }
 
 /// The override a shader declares to learn whether its target stores colors
-/// encoded for display. `Material::pbr` encodes its linear light when it does.
+/// encoded for display. `PbrMaterial` and `ToonMaterial` encode their linear light when it does.
 const ENCODE_SRGB: &str = "ENCODE_SRGB";
 
 /// Whether `format` stores colors encoded for display without encoding them
@@ -210,7 +210,7 @@ pub(super) fn create_render_pipeline(
             entry_point: Some(fs_entry),
             targets: &[Some(wgpu::ColorTargetState {
                 format,
-                // Blend state baked from Material::alpha_mode:
+                // Blend state baked from Shader::alpha_mode:
                 //   Opaque / Mask -> no blending (alpha bits go to the FB
                 //                    but the equation ignores them; Mask
                 //                    does its work via `discard` in the

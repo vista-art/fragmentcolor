@@ -1,4 +1,4 @@
-// Material::pbr default complete shader.
+// PbrMaterial's complete shader.
 //
 // Composes the `mesh/transform`, `material/pbr` and `color/linear_to_srgb`
 // registry snippets, then `light.wgsl` and `light_loops.wgsl`, with this main
@@ -101,10 +101,10 @@ fn shade_light(lt: Light, world: vec3<f32>, n: vec3<f32>, v: vec3<f32>, surface:
 @group(0) @binding(0) var<uniform> camera: Camera;
 @group(1) @binding(0) var<uniform> material: PbrMaterial;
 
-// glTF 2.0 PBR-MR texture maps. Every Material::pbr starts with a 1×1
-// fallback bound in each slot (see Renderer::default_pbr_textures) so the
-// bind group is always complete; user code overrides any slot via
-// `Material::base_color_texture(&tex)` and friends.
+// glTF 2.0 PBR-MR texture maps. Every PbrMaterial starts with a 1×1
+// fallback bound in each slot (see `PbrDefaults`) so the bind group is
+// always complete; user code overrides any slot via
+// `base_color_map().texture(&tex)` and the other four `MaterialMap`s.
 @group(2) @binding(0) var base_color_map: texture_2d<f32>;
 @group(2) @binding(1) var metallic_roughness_map: texture_2d<f32>;
 @group(2) @binding(2) var normal_map: texture_2d<f32>;

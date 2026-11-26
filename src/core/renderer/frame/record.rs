@@ -279,7 +279,7 @@ impl RenderContext {
                             }
                         } else {
                             // No user texture: fall back to the PBR default for
-                            // the known glTF slot names so `Material::pbr` works
+                            // the known glTF slot names so `PbrMaterial` works
                             // without the caller supplying every map. The 1x1
                             // defaults look the same under any sampler, so they
                             // don't pair with one.

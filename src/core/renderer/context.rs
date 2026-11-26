@@ -77,7 +77,7 @@ pub(crate) struct RenderContext {
 
     // Lazy-init 1x1 fallback textures for the default PBR shader's glTF
     // texture-map bindings. Populated synchronously on first use inside
-    // `process_render_pass`, so `Material::pbr` doesn't need a Renderer.
+    // `process_render_pass`, so `PbrMaterial::new` doesn't need a Renderer.
     pub(super) pbr_defaults: RwLock<Option<Arc<PbrDefaults>>>,
 
     // Reusable scratch buffers for `build_pass_draws`. Cleared at the

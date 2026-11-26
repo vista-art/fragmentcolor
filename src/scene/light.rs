@@ -97,7 +97,7 @@ impl GpuLight {
     /// The size of one packed light.
     pub(crate) const SIZE: usize = 64;
 
-    /// The white light `Material::pbr` draws with while no Light reaches it.
+    /// The white light a `PbrMaterial` or `ToonMaterial` draws with while no Light reaches it.
     pub(crate) fn placeholder() -> Self {
         Self {
             kind: LightKind::Directional as u32,
@@ -985,7 +985,7 @@ mod tests {
 
     #[test]
     fn ambient_default_seeds_to_dim_gray() {
-        // Material::pbr seeds `lights.ambient = [0.03; 3]` so a fresh
+        // PbrMaterial::new seeds `lights.ambient = [0.03; 3]` so a fresh
         // material's shader has a sensible non-zero ambient.
         let material = PbrMaterial::new();
         let amb: [f32; 3] = material.shader().get("lights.ambient").unwrap();
