@@ -94,18 +94,14 @@ jobs:
       - name: Lint
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
-      # TEMPORARY: find where the library tests crash on the runner. Remove once fixed.
-      - name: Diagnose library test crash
-        continue-on-error: true
-        run: |
-          sudo apt-get install -y -qq gdb
-          grep PRETTY_NAME /etc/os-release
-          dpkg-query -W -f='${Package} ${Version}\n' mesa-vulkan-drivers libgl1-mesa-dri libllvm* 2>/dev/null || true
-          BIN=$(cargo test --lib --no-run --color never 2>&1 | sed -n 's/.*Executable unittests src\/lib.rs (\(.*\))/\1/p' | tail -1)
-          echo "test binary: $BIN"
-          gdb -q -batch -ex "set pagination off" -ex "handle SIGPIPE nostop noprint" -ex run -ex "bt 40" -ex "info sharedlibrary (lvp|LLVM|vulkan|gallium)" --args "$BIN" --test-threads=4 2>&1 | grep -v -E '^\[(New Thread|Thread .* exited)' | tail -200
-
+      # The tests open many devices at once, from parallel threads. Vulkan loaders before
+      # 1.4.345 look a device up for vkSetDebugUtilsObjectNameEXT under a different lock than
+      # the one vkDestroyDevice holds, so naming an object while another thread drops its
+      # device can read freed memory. Ubuntu 26.04's loader segfaults there under lavapipe.
+      # WGPU_DEBUG=0 keeps wgpu from enabling VK_EXT_debug_utils, which names the objects.
       - name: Tests
+        env:
+          WGPU_DEBUG: "0"
         run: cargo test
 
       # @TODO Implement image diffs
