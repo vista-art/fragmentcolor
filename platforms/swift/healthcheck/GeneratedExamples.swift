@@ -1970,6 +1970,66 @@ final class GeneratedExamples: ExampleCase {
         }
     }
 
+    func test_scene_unlit_material_UnlitMaterial() async {
+        await example("docs/api/scene/unlit_material/unlit_material.md") {
+            let mesh = Mesh()
+            mesh.addVertices([
+                try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
+                try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+                try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+            ])
+
+            let badge = try UnlitMaterial().baseColor([1.0, 0.8, 0.1, 1.0])
+            let model = Model(mesh, badge)
+        }
+    }
+
+    func test_scene_unlit_material_alpha_cutoff() async {
+        await example("docs/api/scene/unlit_material/alpha_cutoff.md") {
+            let sprite = try UnlitMaterial().alphaMode(AlphaMode.mask).alphaCutoff(0.3)
+        }
+    }
+
+    func test_scene_unlit_material_alpha_mode() async {
+        await example("docs/api/scene/unlit_material/alpha_mode.md") {
+            let overlay = try UnlitMaterial().baseColor([0.0, 0.0, 0.0, 0.5]).alphaMode(AlphaMode.blend)
+        }
+    }
+
+    func test_scene_unlit_material_base_color() async {
+        await example("docs/api/scene/unlit_material/base_color.md") {
+            let red = try UnlitMaterial().baseColor([1.0, 0.2, 0.2, 1.0])
+        }
+    }
+
+    func test_scene_unlit_material_base_color_map() async {
+        await example("docs/api/scene/unlit_material/base_color_map.md") {
+            // Raw pixels with their size upload when the scene loads.
+            let pixels = [255, 128, 0, 255]
+            let material = UnlitMaterial()
+            let map = try material.baseColorMap().texture(pixels, [1, 1])
+        }
+    }
+
+    func test_scene_unlit_material_double_sided() async {
+        await example("docs/api/scene/unlit_material/double_sided.md") {
+            let card = UnlitMaterial().doubleSided(true)
+        }
+    }
+
+    func test_scene_unlit_material_new() async {
+        await example("docs/api/scene/unlit_material/new.md") {
+            let label = try UnlitMaterial().baseColor([0.1, 0.6, 1.0, 1.0])
+        }
+    }
+
+    func test_scene_unlit_material_shader() async {
+        await example("docs/api/scene/unlit_material/shader.md") {
+            let material = UnlitMaterial()
+            try material.shader().set("material.alpha_cutoff", 0.25)
+        }
+    }
+
     func test_targets_target_Target() async {
         await example("docs/api/targets/target/target.md") {
             let canvas = CAMetalLayer()

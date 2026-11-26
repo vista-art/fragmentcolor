@@ -1621,6 +1621,54 @@ class GeneratedExamples : ExampleCase() {
     }
 
     @Test
+    fun scene_unlit_material_UnlitMaterial() = example("docs/api/scene/unlit_material/unlit_material.md") {
+        val mesh = Mesh()
+        mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
+
+        val badge = UnlitMaterial().baseColor(listOf(1.0f, 0.8f, 0.1f, 1.0f))
+        val model = Model(mesh, badge)
+    }
+
+    @Test
+    fun scene_unlit_material_alpha_cutoff() = example("docs/api/scene/unlit_material/alpha_cutoff.md") {
+        val sprite = UnlitMaterial().alphaMode(AlphaMode.MASK).alphaCutoff(0.3f)
+    }
+
+    @Test
+    fun scene_unlit_material_alpha_mode() = example("docs/api/scene/unlit_material/alpha_mode.md") {
+        val overlay = UnlitMaterial().baseColor(listOf(0.0f, 0.0f, 0.0f, 0.5f)).alphaMode(AlphaMode.BLEND)
+    }
+
+    @Test
+    fun scene_unlit_material_base_color() = example("docs/api/scene/unlit_material/base_color.md") {
+        val red = UnlitMaterial().baseColor(listOf(1.0f, 0.2f, 0.2f, 1.0f))
+    }
+
+    @Test
+    fun scene_unlit_material_base_color_map() = example("docs/api/scene/unlit_material/base_color_map.md") {
+        // Raw pixels with their size upload when the scene loads.
+        val pixels = listOf(255, 128, 0, 255)
+        val material = UnlitMaterial()
+        val map = material.baseColorMap().texture(pixels, listOf(1u, 1u))
+    }
+
+    @Test
+    fun scene_unlit_material_double_sided() = example("docs/api/scene/unlit_material/double_sided.md") {
+        val card = UnlitMaterial().doubleSided(true)
+    }
+
+    @Test
+    fun scene_unlit_material_new() = example("docs/api/scene/unlit_material/new.md") {
+        val label = UnlitMaterial().baseColor(listOf(0.1f, 0.6f, 1.0f, 1.0f))
+    }
+
+    @Test
+    fun scene_unlit_material_shader() = example("docs/api/scene/unlit_material/shader.md") {
+        val material = UnlitMaterial()
+        material.shader().set("material.alpha_cutoff", 0.25f)
+    }
+
+    @Test
     fun targets_target_Target() = example("docs/api/targets/target/target.md") {
         val surfaceTexture = android.graphics.SurfaceTexture(0)
         val canvas = android.view.Surface(surfaceTexture)

@@ -1,0 +1,769 @@
+---
+title: UnlitMaterial
+description: "A material that draws its base color as it is, with no lighting: glTF's `KHR_materials_unlit`. Each fragment is `base_color` times its map's sample times the vertex color, encoded for the target. Reach for it for UI, sprites, models whose lighting is baked into their textures, and debug views. The [glTF loader](/api/scene/scene#load) builds one for every material that carries `KHR_materials_unlit`."
+category: scene
+categoryLabel: Scene
+sidebar:
+  order: 4
+---
+
+import { Code, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
+
+## Description
+
+A material that draws its base color as it is, with no lighting: glTF's
+`KHR_materials_unlit`. Each fragment is `base_color` times its map's sample
+times the vertex color, encoded for the target. Reach for it for UI,
+sprites, models whose lighting is baked into their textures, and debug
+views. The [glTF loader](/api/scene/scene#load)
+builds one for every material that carries `KHR_materials_unlit`.
+
+An `UnlitMaterial` has two number settings, `base_color` and
+`alpha_cutoff`, and one map, `base_color_map()`, a
+[`MaterialMap`](/api/scene/materialmap) that sets
+its texture, UV set and transform. `alpha_mode` and `double_sided` set how
+it blends and which faces it draws. These calls mean the same as they do on
+[`PbrMaterial`](/api/scene/pbrmaterial).
+
+It reads the `camera` root and no lights, so a
+[Light](/api/scene/light) on its pass costs it
+nothing and changes nothing. It takes the vertex layout `PbrMaterial` takes,
+so a [`Vertex::pbr`](/api/geometry/vertex#pbr) mesh,
+or a mesh the glTF loader built, draws with either material.
+
+A material draws on a [Mesh](/api/geometry/mesh)
+through a [Model](/api/scene/model). `Model::new`
+takes an `UnlitMaterial` as it takes any
+[Material](/api/scene/material).
+
+Clones share one shader, as with `PbrMaterial`: a setter on one handle
+changes what every handle draws. Build a fresh `UnlitMaterial::new()` for an
+independent material.
+
+
+
+## Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::{Mesh, Model, UnlitMaterial, Vertex};
+
+let mesh = Mesh::new();
+mesh.add_vertices([
+    Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]),
+    Vertex::pbr([-0.5, -0.5, 0.0]).set(Vertex::UV0, [0.0, 0.0]),
+    Vertex::pbr([0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]),
+]);
+
+let badge = UnlitMaterial::new().base_color([1.0, 0.8, 0.1, 1.0])?;
+let model = Model::new(mesh, badge);
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Mesh, Model, UnlitMaterial, Vertex } from "fragmentcolor";
+
+const mesh = new Mesh();
+mesh.addVertices([ Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]), Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]), ]);
+
+const badge = new UnlitMaterial().baseColor([1.0, 0.8, 0.1, 1.0]);
+const model = new Model(mesh, badge);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Mesh, Model, UnlitMaterial, Vertex
+
+mesh = Mesh()
+mesh.add_vertices([
+    Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
+    Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+    Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+])
+
+badge = UnlitMaterial().base_color([1.0, 0.8, 0.1, 1.0])
+model = Model(mesh, badge)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let mesh = Mesh()
+mesh.addVertices([
+    try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
+    try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+    try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+])
+
+let badge = try UnlitMaterial().baseColor([1.0, 0.8, 0.1, 1.0])
+let model = Model(mesh, badge)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val mesh = Mesh()
+mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
+
+val badge = UnlitMaterial().baseColor(listOf(1.0f, 0.8f, 0.1f, 1.0f))
+val model = Model(mesh, badge)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+## Methods
+
+
+---
+
+### UnlitMaterial::alpha_cutoff \{#alpha_cutoff\}
+
+Sets the alpha threshold `AlphaMode::Mask` uses. The fragment shader
+discards a fragment whose alpha, the base color's times the map's and the
+vertex color's, falls below it. Stored on `material.alpha_cutoff`; default
+`0.5`, matching glTF 2.0. `Opaque` and `Blend` ignore it.
+
+NaN or an infinity returns `MaterialError::NotFinite`, which names the
+call, and the material keeps the value it had. The other languages also
+refuse a number past the 32-bit float range, such as `1e39`, with a
+message like `UnlitMaterial.alphaCutoff: value must be a finite number that
+fits a 32-bit float, got 1e39`. JavaScript throws an `Error` named
+`InvalidInputError`, Python raises `InvalidInputError`, Swift throws
+`FragmentColorError` and Kotlin throws `FragmentColorException`.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::{AlphaMode, UnlitMaterial};
+
+let sprite = UnlitMaterial::new()
+    .alpha_mode(AlphaMode::Mask)
+    .alpha_cutoff(0.3)?;
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { AlphaMode, UnlitMaterial } from "fragmentcolor";
+
+const sprite = new UnlitMaterial().alphaMode(AlphaMode.Mask).alphaCutoff(0.3);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import AlphaMode, UnlitMaterial
+
+sprite = UnlitMaterial().alpha_mode(AlphaMode.Mask).alpha_cutoff(0.3)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let sprite = try UnlitMaterial().alphaMode(AlphaMode.mask).alphaCutoff(0.3)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val sprite = UnlitMaterial().alphaMode(AlphaMode.MASK).alphaCutoff(0.3f)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### UnlitMaterial::alpha_mode \{#alpha_mode\}
+
+Set how the renderer treats the alpha of the material's output, as glTF 2.0's
+`alphaMode` does. It works as
+[`PbrMaterial::alpha_mode`](/api/scene/pbrmaterial#alpha_mode)
+does:
+
+- `AlphaMode::Opaque` (default): blending is off and alpha is ignored.
+- `AlphaMode::Mask`: the fragment shader discards a fragment whose alpha
+  falls below `alpha_cutoff`, and the rest draw as opaque. It suits sprites
+  and cut-outs with hard edges.
+- `AlphaMode::Blend`: depth writes turn off and the color blends over what is
+  behind it. The renderer sorts blended Models back to front by the pass's
+  Camera.
+
+It is pipeline state, so each mode builds its own pipeline once and reuses it.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::{AlphaMode, UnlitMaterial};
+
+let overlay = UnlitMaterial::new()
+    .base_color([0.0, 0.0, 0.0, 0.5])?
+    .alpha_mode(AlphaMode::Blend);
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { AlphaMode, UnlitMaterial } from "fragmentcolor";
+
+const overlay = new UnlitMaterial().baseColor([0.0, 0.0, 0.0, 0.5]).alphaMode(AlphaMode.Blend);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import AlphaMode, UnlitMaterial
+
+overlay = UnlitMaterial().base_color([0.0, 0.0, 0.0, 0.5]).alpha_mode(AlphaMode.Blend)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let overlay = try UnlitMaterial().baseColor([0.0, 0.0, 0.0, 0.5]).alphaMode(AlphaMode.blend)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val overlay = UnlitMaterial().baseColor(listOf(0.0f, 0.0f, 0.0f, 0.5f)).alphaMode(AlphaMode.BLEND)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### UnlitMaterial::base_color \{#base_color\}
+
+Set the color the material draws, in linear RGBA. The base color map's
+sample and the vertex color multiply it, and alpha goes through the fragment
+output unchanged.
+
+Maps to the `material.base_color` uniform on the underlying shader. Default
+is `[1, 1, 1, 1]`.
+
+Returns a handle to the same material (Arc-shared), so calls chain.
+
+An item that is NaN or an infinity returns `MaterialError::NotFinite`,
+which names the call and the item, and the material keeps the value it
+had. The other languages also refuse an item past the 32-bit float range,
+such as `1e39`, with a message like `UnlitMaterial.baseColor: item 3 must be a
+finite number that fits a 32-bit float, got 1e39`. JavaScript throws an
+`Error` named `InvalidInputError`, Python raises `InvalidInputError`,
+Swift throws `FragmentColorError` and Kotlin throws
+`FragmentColorException`.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::UnlitMaterial;
+
+let red = UnlitMaterial::new().base_color([1.0, 0.2, 0.2, 1.0])?;
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { UnlitMaterial } from "fragmentcolor";
+
+const red = new UnlitMaterial().baseColor([1.0, 0.2, 0.2, 1.0]);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import UnlitMaterial
+
+red = UnlitMaterial().base_color([1.0, 0.2, 0.2, 1.0])
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let red = try UnlitMaterial().baseColor([1.0, 0.2, 0.2, 1.0])
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val red = UnlitMaterial().baseColor(listOf(1.0f, 0.2f, 0.2f, 1.0f))
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### UnlitMaterial::base_color_map \{#base_color_map\}
+
+The material's one map, as a
+[`MaterialMap`](/api/scene/materialmap) handle that
+sets its texture, UV set and transform. Each fragment draws
+`material.base_color * textureSample(base_color_map, unlit_sampler, uv) * vertex_color`,
+where `uv` is the UV set the map's
+[`uv`](/api/scene/materialmap#uv) picks, through its
+[`transform`](/api/scene/materialmap#transform).
+
+A source with no format of its own reads as sRGB in this map, as glTF's base
+color does. Unset, the map draws a 1×1 white default, so the material draws
+its base color alone.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::UnlitMaterial;
+
+// Raw pixels with their size upload when the scene loads.
+let pixels: Vec<u8> = vec![255, 128, 0, 255];
+let material = UnlitMaterial::new();
+let map = material.base_color_map().texture((pixels, [1, 1]))?;
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { UnlitMaterial } from "fragmentcolor";
+
+// Raw pixels with their size upload when the scene loads.
+const pixels = [255, 128, 0, 255];
+const material = new UnlitMaterial();
+const map = material.baseColorMap().texture(pixels, [1, 1]);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import UnlitMaterial
+
+# Raw pixels with their size upload when the scene loads.
+pixels = [255, 128, 0, 255]
+material = UnlitMaterial()
+map = material.base_color_map().texture(pixels, size=[1, 1])
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+// Raw pixels with their size upload when the scene loads.
+let pixels = [255, 128, 0, 255]
+let material = UnlitMaterial()
+let map = try material.baseColorMap().texture(pixels, [1, 1])
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+// Raw pixels with their size upload when the scene loads.
+val pixels = listOf(255, 128, 0, 255)
+val material = UnlitMaterial()
+val map = material.baseColorMap().texture(pixels, listOf(1u, 1u))
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### UnlitMaterial::double_sided \{#double_sided\}
+
+Draw both faces of every triangle when `true`. When `false` (the default),
+the renderer culls back faces, the ones whose vertices run clockwise on
+screen. Mirrors glTF 2.0's `doubleSided`.
+
+A sprite or a label on a single quad that the camera can see from behind
+needs both faces. Like `alpha_mode`, it is pipeline state.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::UnlitMaterial;
+
+let card = UnlitMaterial::new().double_sided(true);
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { UnlitMaterial } from "fragmentcolor";
+
+const card = new UnlitMaterial().doubleSided(true);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import UnlitMaterial
+
+card = UnlitMaterial().double_sided(True)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let card = UnlitMaterial().doubleSided(true)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val card = UnlitMaterial().doubleSided(true)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### UnlitMaterial::new \{#new\}
+
+Construct a white, opaque, single-sided `UnlitMaterial`. Its base color map
+starts unbound, and the renderer binds a 1×1 white default in its place, so
+the material draws `base_color` alone until you set a map through
+[`base_color_map()`](/api/scene/unlitmaterial#base_color_map).
+`UnlitMaterial::new` can't fail: the shader parts it composes are compiled
+into the library.
+
+The shader multiplies the base color, the map's sample and the vertex color,
+and encodes the result as sRGB on the `Rgba8Unorm` and `Bgra8Unorm` targets
+FragmentColor creates, as `PbrMaterial` does. It reads these vertex inputs
+from the mesh:
+
+- `@location(0) position : vec3<f32>`, from `Vertex::new([...])` or `Vertex::pbr([...])`.
+- `@location(2) uv0      : vec2<f32>`, set as `.set(Vertex::UV0, ...)`.
+- `@location(7) color0   : vec4<f32>`, set as `.set(Vertex::COLOR0, ...)`, which tints the base color.
+- `@location(8) uv1      : vec2<f32>`, set as `.set(Vertex::UV1, ...)`, which the map samples on UV set 1.
+
+`Vertex::pbr` sets each of them to a neutral value. Locations 3 to 6 hold
+`model_0` to `model_3`, the columns of the Model's transform.
+
+#### Defaults (post-construction)
+
+| key                     | value          |
+| ----------------------- | -------------- |
+| `material.base_color`   | `[1, 1, 1, 1]` |
+| `material.alpha_cutoff` | `0.5`          |
+| `base_color_map`        | 1×1 white      |
+| `camera.view_proj`      | identity 4×4   |
+| `camera.position`       | `[0, 0, 0]`    |
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::UnlitMaterial;
+
+let label = UnlitMaterial::new().base_color([0.1, 0.6, 1.0, 1.0])?;
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { UnlitMaterial } from "fragmentcolor";
+
+const label = new UnlitMaterial().baseColor([0.1, 0.6, 1.0, 1.0]);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import UnlitMaterial
+
+label = UnlitMaterial().base_color([0.1, 0.6, 1.0, 1.0])
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let label = try UnlitMaterial().baseColor([0.1, 0.6, 1.0, 1.0])
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val label = UnlitMaterial().baseColor(listOf(0.1f, 0.6f, 1.0f, 1.0f))
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### UnlitMaterial::shader \{#shader\}
+
+Borrow the underlying `Shader`, for a uniform the material's setters don't
+cover. It is the shader the material draws with, so a change reaches every
+Model that uses the material, and every clone of it.
+
+For the camera, add a [Camera](/api/scene/camera)
+to the [Pass](/api/core/pass) that draws the
+material, rather than setting `camera.*` by hand. The Camera keeps the
+shader up to date as it moves.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::UnlitMaterial;
+
+let material = UnlitMaterial::new();
+material.shader().set("material.alpha_cutoff", 0.25)?;
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { UnlitMaterial } from "fragmentcolor";
+
+const material = new UnlitMaterial();
+material.shader().set("material.alpha_cutoff", 0.25);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import UnlitMaterial
+
+material = UnlitMaterial()
+material.shader().set("material.alpha_cutoff", 0.25)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let material = UnlitMaterial()
+try material.shader().set("material.alpha_cutoff", 0.25)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val material = UnlitMaterial()
+material.shader().set("material.alpha_cutoff", 0.25f)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>

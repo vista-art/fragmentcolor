@@ -20,24 +20,30 @@ settings its shader reads:
 
 - [PbrMaterial](/api/scene/pbrmaterial), glTF 2.0's
   metallic-roughness model on FragmentColor's built-in physically-based shader.
-  The glTF loader builds one for each material in the file.
+  The glTF loader builds one for each material in the file that isn't unlit.
+- [UnlitMaterial](/api/scene/unlitmaterial), a base
+  color times its map with no lighting, as glTF's `KHR_materials_unlit`. The
+  glTF loader builds one for each material that carries the extension.
 - A [Shader](/api/core/shader) of your own, for any
   other look. See [A Shader as a material](#a-shader-as-a-material) below.
 
 `Model::new` takes any of the types above, and `Model::material` returns
 what the Model draws with:
 
-- **Rust:** `Model::new` takes `impl Into<Material>`, so a `PbrMaterial`, a
-  `Shader` or a reference to either works, and `Model::material` returns
-  `&Material`, an enum with a variant per type: `Material::Pbr(PbrMaterial)`
-  and `Material::Custom(Shader)`. It is `#[non_exhaustive]`, so a `match` on
+- **Rust:** `Model::new` takes `impl Into<Material>`, so a `PbrMaterial`, an
+  `UnlitMaterial`, a `Shader` or a reference to any of them works, and
+  `Model::material` returns `&Material`, an enum with a variant per type:
+  `Material::Pbr(PbrMaterial)`, `Material::Unlit(UnlitMaterial)` and
+  `Material::Custom(Shader)`. It is `#[non_exhaustive]`, so a `match` on
   it needs a `_` arm, and a later material type lands without breaking it.
 - **JavaScript and Python:** the Model takes the material object itself, and
-  `model.material()` returns that object, a `PbrMaterial` or a `Shader`.
+  `model.material()` returns that object, a `PbrMaterial`, an `UnlitMaterial`
+  or a `Shader`.
 - **Swift and Kotlin:** `Material` is an enum that holds the object, as
-  `.pbr(PbrMaterial)` and `.custom(Shader)` in Swift, and `Material.Pbr` and
-  `Material.Custom` in Kotlin. The `Model` constructor also takes a
-  `PbrMaterial` or a `Shader` directly.
+  `.pbr(PbrMaterial)`, `.unlit(UnlitMaterial)` and `.custom(Shader)` in Swift,
+  and `Material.Pbr`, `Material.Unlit` and `Material.Custom` in Kotlin. The
+  `Model` constructor also takes a `PbrMaterial`, an `UnlitMaterial` or a
+  `Shader` directly.
 
 A material is a handle. The Model holds the same material you passed it, so
 a setter on that material changes every Model that draws with it.

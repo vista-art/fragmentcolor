@@ -39,6 +39,7 @@ __all__ = [
     "Light",
     "LightKind",
     "PbrMaterial",
+    "UnlitMaterial",
     "MaterialMap",
     "AlphaMode",
     "Texture",
@@ -2587,17 +2588,18 @@ class Scene:
 
         The loader reads static glTF: mesh primitives (`POSITION`, `NORMAL`,
         `TEXCOORD_0`, `TEXCOORD_1`, `COLOR_0`, `TANGENT` and indices), PBR-MR
-        materials with all five maps as `PbrMaterial`s, per-node transforms flattened into
+        materials with all five maps as `PbrMaterial`s, materials with
+        `KHR_materials_unlit` as `UnlitMaterial`s, per-node transforms flattened into
         Model matrices, glTF camera nodes, and `KHR_lights_punctual` lights.
-        Animation, skinning, morph targets, and material extensions beyond PBR-MR
-        and `KHR_texture_transform` are out of scope; they parse cleanly and the
-        loader ignores them.
+        Animation, skinning, morph targets, and material extensions beyond PBR-MR,
+        `KHR_materials_unlit` and `KHR_texture_transform` are out of scope; they parse
+        cleanly and the loader ignores them.
 
         Each map samples the UV set its `texCoord` names, through its own
         `KHR_texture_transform`. The extension's `texCoord`, when it has one, wins
         over the texture's. A primitive without `TEXCOORD_1` takes its `TEXCOORD_0`
         values as `UV1`, so a map on set 1 samples the same UVs as set 0 there.
-        The PBR material samples two UV sets, so a texture that names `TEXCOORD_2`
+        Both material types sample two UV sets, so a texture that names `TEXCOORD_2`
         or above returns `SceneLoadError::Invalid`, naming the texture, such as
         `occlusionTexture`.
 
@@ -3392,11 +3394,11 @@ class Model:
     | `visible`      | read whether the Model draws                       |
     | `set_visible`  | show or hide the Model without removing it         |
     """
-    def __new__(cls, mesh: Mesh, material: PbrMaterial | Shader) -> Model:
+    def __new__(cls, mesh: Mesh, material: PbrMaterial | Shader | UnlitMaterial) -> Model:
         """
         Construct a `Model` from a `Mesh` and a
         [Material](https://fragmentcolor.org/api/scene/material): a `PbrMaterial`,
-        or a `Shader` of your own. Both arguments are taken by value; the Model owns
+        an `UnlitMaterial`, or a `Shader` of your own. Both arguments are taken by value; the Model owns
         them. The transform starts at the 4×4 identity
         matrix. The renderer reads it at draw time and passes it to the vertex stage
         as the `model_0` to `model_3` instance attributes, the four columns of a
@@ -3468,16 +3470,16 @@ class Model:
         ])
         ```
         """
-    def material(self) -> PbrMaterial | Shader:
+    def material(self) -> PbrMaterial | Shader | UnlitMaterial:
         """
         The [Material](https://fragmentcolor.org/api/scene/material) the Model draws
         with: the same handle `Model::new` took, so a setter on it changes every
         Model that draws with that material.
 
         In Rust it returns `&Material`, the enum with a variant per material type,
-        such as `Material::Pbr(PbrMaterial)` or `Material::Custom(Shader)`.
-        JavaScript and Python return the material object itself, a `PbrMaterial` or
-        a `Shader`. Swift and Kotlin return the `Material` enum, which holds the
+        such as `Material::Pbr(PbrMaterial)`, `Material::Unlit(UnlitMaterial)` or
+        `Material::Custom(Shader)`. JavaScript and Python return the material object
+        itself, a `PbrMaterial`, an `UnlitMaterial` or a `Shader`. Swift and Kotlin return the `Material` enum, which holds the
         object.
 
         To give a Model a look of its own, build a fresh material, such as a new
@@ -5323,6 +5325,233 @@ class PbrMaterial:
         ]
         material = PbrMaterial().emissive([0.8, 0.0, 0.0])
         map = material.emissive_map().texture(glow_bytes, size=[2, 2])
+        ```
+        """
+
+@final
+class UnlitMaterial:
+    """
+    A material that draws its base color as it is, with no lighting: glTF's
+    `KHR_materials_unlit`. Each fragment is `base_color` times its map's sample
+    times the vertex color, encoded for the target. Reach for it for UI,
+    sprites, models whose lighting is baked into their textures, and debug
+    views. The [glTF loader](https://fragmentcolor.org/api/scene/scene#load)
+    builds one for every material that carries `KHR_materials_unlit`.
+
+    An `UnlitMaterial` has two number settings, `base_color` and
+    `alpha_cutoff`, and one map, `base_color_map()`, a
+    [`MaterialMap`](https://fragmentcolor.org/api/scene/materialmap) that sets
+    its texture, UV set and transform. `alpha_mode` and `double_sided` set how
+    it blends and which faces it draws. These calls mean the same as they do on
+    [`PbrMaterial`](https://fragmentcolor.org/api/scene/pbrmaterial).
+
+    It reads the `camera` root and no lights, so a
+    [Light](https://fragmentcolor.org/api/scene/light) on its pass costs it
+    nothing and changes nothing. It takes the vertex layout `PbrMaterial` takes,
+    so a [`Vertex::pbr`](https://fragmentcolor.org/api/geometry/vertex#pbr) mesh,
+    or a mesh the glTF loader built, draws with either material.
+
+    A material draws on a [Mesh](https://fragmentcolor.org/api/geometry/mesh)
+    through a [Model](https://fragmentcolor.org/api/scene/model). `Model::new`
+    takes an `UnlitMaterial` as it takes any
+    [Material](https://fragmentcolor.org/api/scene/material).
+
+    Clones share one shader, as with `PbrMaterial`: a setter on one handle
+    changes what every handle draws. Build a fresh `UnlitMaterial::new()` for an
+    independent material.
+
+    Example:
+
+    ```python
+    from fragmentcolor import Mesh, Model, UnlitMaterial, Vertex
+
+    mesh = Mesh()
+    mesh.add_vertices([
+        Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
+        Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+        Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+    ])
+
+    badge = UnlitMaterial().base_color([1.0, 0.8, 0.1, 1.0])
+    model = Model(mesh, badge)
+    ```
+    """
+    def __new__(cls) -> UnlitMaterial:
+        """
+        Construct a white, opaque, single-sided `UnlitMaterial`. Its base color map
+        starts unbound, and the renderer binds a 1×1 white default in its place, so
+        the material draws `base_color` alone until you set a map through
+        [`base_color_map()`](https://fragmentcolor.org/api/scene/unlitmaterial#base_color_map).
+        `UnlitMaterial::new` can't fail: the shader parts it composes are compiled
+        into the library.
+
+        The shader multiplies the base color, the map's sample and the vertex color,
+        and encodes the result as sRGB on the `Rgba8Unorm` and `Bgra8Unorm` targets
+        FragmentColor creates, as `PbrMaterial` does. It reads these vertex inputs
+        from the mesh:
+
+        - `@location(0) position : vec3<f32>`, from `Vertex::new([...])` or `Vertex::pbr([...])`.
+        - `@location(2) uv0      : vec2<f32>`, set as `.set(Vertex::UV0, ...)`.
+        - `@location(7) color0   : vec4<f32>`, set as `.set(Vertex::COLOR0, ...)`, which tints the base color.
+        - `@location(8) uv1      : vec2<f32>`, set as `.set(Vertex::UV1, ...)`, which the map samples on UV set 1.
+
+        `Vertex::pbr` sets each of them to a neutral value. Locations 3 to 6 hold
+        `model_0` to `model_3`, the columns of the Model's transform.
+
+        ## Defaults (post-construction)
+
+        | key                     | value          |
+        | ----------------------- | -------------- |
+        | `material.base_color`   | `[1, 1, 1, 1]` |
+        | `material.alpha_cutoff` | `0.5`          |
+        | `base_color_map`        | 1×1 white      |
+        | `camera.view_proj`      | identity 4×4   |
+        | `camera.position`       | `[0, 0, 0]`    |
+
+        Example:
+
+        ```python
+        from fragmentcolor import UnlitMaterial
+
+        label = UnlitMaterial().base_color([0.1, 0.6, 1.0, 1.0])
+        ```
+        """
+    def shader(self) -> Shader:
+        """
+        Borrow the underlying `Shader`, for a uniform the material's setters don't
+        cover. It is the shader the material draws with, so a change reaches every
+        Model that uses the material, and every clone of it.
+
+        For the camera, add a [Camera](https://fragmentcolor.org/api/scene/camera)
+        to the [Pass](https://fragmentcolor.org/api/core/pass) that draws the
+        material, rather than setting `camera.*` by hand. The Camera keeps the
+        shader up to date as it moves.
+
+        Example:
+
+        ```python
+        from fragmentcolor import UnlitMaterial
+
+        material = UnlitMaterial()
+        material.shader().set("material.alpha_cutoff", 0.25)
+        ```
+        """
+    def base_color(self, color: npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat]) -> UnlitMaterial:
+        """
+        Set the color the material draws, in linear RGBA. The base color map's
+        sample and the vertex color multiply it, and alpha goes through the fragment
+        output unchanged.
+
+        Maps to the `material.base_color` uniform on the underlying shader. Default
+        is `[1, 1, 1, 1]`.
+
+        Returns a handle to the same material (Arc-shared), so calls chain.
+
+        An item that is NaN or an infinity returns `MaterialError::NotFinite`,
+        which names the call and the item, and the material keeps the value it
+        had. The other languages also refuse an item past the 32-bit float range,
+        such as `1e39`, with a message like `UnlitMaterial.baseColor: item 3 must be a
+        finite number that fits a 32-bit float, got 1e39`. JavaScript throws an
+        `Error` named `InvalidInputError`, Python raises `InvalidInputError`,
+        Swift throws `FragmentColorError` and Kotlin throws
+        `FragmentColorException`.
+
+        Example:
+
+        ```python
+        from fragmentcolor import UnlitMaterial
+
+        red = UnlitMaterial().base_color([1.0, 0.2, 0.2, 1.0])
+        ```
+        """
+    def alpha_cutoff(self, value: SupportsFloat) -> UnlitMaterial:
+        """
+        Sets the alpha threshold `AlphaMode::Mask` uses. The fragment shader
+        discards a fragment whose alpha, the base color's times the map's and the
+        vertex color's, falls below it. Stored on `material.alpha_cutoff`; default
+        `0.5`, matching glTF 2.0. `Opaque` and `Blend` ignore it.
+
+        NaN or an infinity returns `MaterialError::NotFinite`, which names the
+        call, and the material keeps the value it had. The other languages also
+        refuse a number past the 32-bit float range, such as `1e39`, with a
+        message like `UnlitMaterial.alphaCutoff: value must be a finite number that
+        fits a 32-bit float, got 1e39`. JavaScript throws an `Error` named
+        `InvalidInputError`, Python raises `InvalidInputError`, Swift throws
+        `FragmentColorError` and Kotlin throws `FragmentColorException`.
+
+        Example:
+
+        ```python
+        from fragmentcolor import AlphaMode, UnlitMaterial
+
+        sprite = UnlitMaterial().alpha_mode(AlphaMode.Mask).alpha_cutoff(0.3)
+        ```
+        """
+    def alpha_mode(self, mode: AlphaMode) -> UnlitMaterial:
+        """
+        Set how the renderer treats the alpha of the material's output, as glTF 2.0's
+        `alphaMode` does. It works as
+        [`PbrMaterial::alpha_mode`](https://fragmentcolor.org/api/scene/pbrmaterial#alpha_mode)
+        does:
+
+        - `AlphaMode::Opaque` (default): blending is off and alpha is ignored.
+        - `AlphaMode::Mask`: the fragment shader discards a fragment whose alpha
+          falls below `alpha_cutoff`, and the rest draw as opaque. It suits sprites
+          and cut-outs with hard edges.
+        - `AlphaMode::Blend`: depth writes turn off and the color blends over what is
+          behind it. The renderer sorts blended Models back to front by the pass's
+          Camera.
+
+        It is pipeline state, so each mode builds its own pipeline once and reuses it.
+
+        Example:
+
+        ```python
+        from fragmentcolor import AlphaMode, UnlitMaterial
+
+        overlay = UnlitMaterial().base_color([0.0, 0.0, 0.0, 0.5]).alpha_mode(AlphaMode.Blend)
+        ```
+        """
+    def double_sided(self, value: bool) -> UnlitMaterial:
+        """
+        Draw both faces of every triangle when `true`. When `false` (the default),
+        the renderer culls back faces, the ones whose vertices run clockwise on
+        screen. Mirrors glTF 2.0's `doubleSided`.
+
+        A sprite or a label on a single quad that the camera can see from behind
+        needs both faces. Like `alpha_mode`, it is pipeline state.
+
+        Example:
+
+        ```python
+        from fragmentcolor import UnlitMaterial
+
+        card = UnlitMaterial().double_sided(True)
+        ```
+        """
+    def base_color_map(self) -> MaterialMap:
+        """
+        The material's one map, as a
+        [`MaterialMap`](https://fragmentcolor.org/api/scene/materialmap) handle that
+        sets its texture, UV set and transform. Each fragment draws
+        `material.base_color * textureSample(base_color_map, unlit_sampler, uv) * vertex_color`,
+        where `uv` is the UV set the map's
+        [`uv`](https://fragmentcolor.org/api/scene/materialmap#uv) picks, through its
+        [`transform`](https://fragmentcolor.org/api/scene/materialmap#transform).
+
+        A source with no format of its own reads as sRGB in this map, as glTF's base
+        color does. Unset, the map draws a 1×1 white default, so the material draws
+        its base color alone.
+
+        Example:
+
+        ```python
+        from fragmentcolor import UnlitMaterial
+
+        # Raw pixels with their size upload when the scene loads.
+        pixels = [255, 128, 0, 255]
+        material = UnlitMaterial()
+        map = material.base_color_map().texture(pixels, size=[1, 1])
         ```
         """
 

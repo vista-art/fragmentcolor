@@ -60,9 +60,9 @@ with: the same handle `Model::new` took, so a setter on it changes every
 Model that draws with that material.
 
 In Rust it returns `&Material`, the enum with a variant per material type,
-such as `Material::Pbr(PbrMaterial)` or `Material::Custom(Shader)`.
-JavaScript and Python return the material object itself, a `PbrMaterial` or
-a `Shader`. Swift and Kotlin return the `Material` enum, which holds the
+such as `Material::Pbr(PbrMaterial)`, `Material::Unlit(UnlitMaterial)` or
+`Material::Custom(Shader)`. JavaScript and Python return the material object
+itself, a `PbrMaterial`, an `UnlitMaterial` or a `Shader`. Swift and Kotlin return the `Material` enum, which holds the
 object.
 
 To give a Model a look of its own, build a fresh material, such as a new
@@ -297,7 +297,7 @@ lang="kotlin"
 
 Construct a `Model` from a `Mesh` and a
 [Material](/api/scene/material): a `PbrMaterial`,
-or a `Shader` of your own. Both arguments are taken by value; the Model owns
+an `UnlitMaterial`, or a `Shader` of your own. Both arguments are taken by value; the Model owns
 them. The transform starts at the 4×4 identity
 matrix. The renderer reads it at draw time and passes it to the vertex stage
 as the `model_0` to `model_3` instance attributes, the four columns of a

@@ -4638,6 +4638,190 @@ public func FfiConverterTypeTextureTarget_lower(_ value: TextureTarget) -> UInt6
 
 
 
+public protocol UnlitMaterialProtocol: AnyObject, Sendable {
+    
+    func alphaCutoff(value: Float) throws  -> UnlitMaterial
+    
+    func alphaMode(mode: AlphaMode)  -> UnlitMaterial
+    
+    func baseColor(color: [Float]) throws  -> UnlitMaterial
+    
+    func baseColorMap()  -> MaterialMap
+    
+    func doubleSided(value: Bool)  -> UnlitMaterial
+    
+    func shader()  -> Shader
+    
+}
+open class UnlitMaterial: UnlitMaterialProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_fragmentcolor_fn_clone_unlitmaterial(self.handle, $0) }
+    }
+public convenience init() {
+    let handle =
+        try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_constructor_unlitmaterial_new(uniffiCallStatus
+    )
+}
+    self.init(unsafeFromHandle: handle)
+}
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_fragmentcolor_fn_free_unlitmaterial(handle, $0) }
+    }
+
+    
+
+    
+open func alphaCutoff(value: Float)throws  -> UnlitMaterial  {
+    return try  FfiConverterTypeUnlitMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_unlitmaterial_alphacutoff(
+            self.uniffiCloneHandle(),
+        FfiConverterFloat.lower(value),uniffiCallStatus
+    )
+})
+}
+    
+open func alphaMode(mode: AlphaMode) -> UnlitMaterial  {
+    return try!  FfiConverterTypeUnlitMaterial_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_unlitmaterial_alphamode(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeAlphaMode_lower(mode),uniffiCallStatus
+    )
+})
+}
+    
+open func baseColor(color: [Float])throws  -> UnlitMaterial  {
+    return try  FfiConverterTypeUnlitMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_unlitmaterial_basecolor(
+            self.uniffiCloneHandle(),
+        FfiConverterSequenceFloat.lower(color),uniffiCallStatus
+    )
+})
+}
+    
+open func baseColorMap() -> MaterialMap  {
+    return try!  FfiConverterTypeMaterialMap_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_unlitmaterial_basecolormap(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func doubleSided(value: Bool) -> UnlitMaterial  {
+    return try!  FfiConverterTypeUnlitMaterial_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_unlitmaterial_doublesided(
+            self.uniffiCloneHandle(),
+        FfiConverterBool.lower(value),uniffiCallStatus
+    )
+})
+}
+    
+open func shader() -> Shader  {
+    return try!  FfiConverterTypeShader_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_unlitmaterial_shader(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeUnlitMaterial: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = UnlitMaterial
+
+    public static func lift(_ handle: UInt64) throws -> UnlitMaterial {
+        return UnlitMaterial(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: UnlitMaterial) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> UnlitMaterial {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: UnlitMaterial, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeUnlitMaterial_lift(_ handle: UInt64) throws -> UnlitMaterial {
+    return try FfiConverterTypeUnlitMaterial.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeUnlitMaterial_lower(_ value: UnlitMaterial) -> UInt64 {
+    return FfiConverterTypeUnlitMaterial.lower(value)
+}
+
+
+
+
+
+
 public protocol VertexProtocol: AnyObject, Sendable {
     
     /**
@@ -6689,6 +6873,8 @@ public enum Material {
     
     case pbr(PbrMaterial
     )
+    case unlit(UnlitMaterial
+    )
     case custom(Shader
     )
 
@@ -6715,7 +6901,10 @@ public struct FfiConverterTypeMaterial: FfiConverterRustBuffer {
         case 1: return .pbr(try FfiConverterTypePbrMaterial.read(from: &buf)
         )
         
-        case 2: return .custom(try FfiConverterTypeShader.read(from: &buf)
+        case 2: return .unlit(try FfiConverterTypeUnlitMaterial.read(from: &buf)
+        )
+        
+        case 3: return .custom(try FfiConverterTypeShader.read(from: &buf)
         )
         
         default: throw UniffiInternalError.unexpectedEnumCase
@@ -6731,8 +6920,13 @@ public struct FfiConverterTypeMaterial: FfiConverterRustBuffer {
             FfiConverterTypePbrMaterial.write(v1, into: &buf)
             
         
-        case let .custom(v1):
+        case let .unlit(v1):
             writeInt(&buf, Int32(2))
+            FfiConverterTypeUnlitMaterial.write(v1, into: &buf)
+            
+        
+        case let .custom(v1):
+            writeInt(&buf, Int32(3))
             FfiConverterTypeShader.write(v1, into: &buf)
             
         }
@@ -9821,6 +10015,24 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_scene_setpasses() != 7841) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_fragmentcolor_checksum_method_unlitmaterial_alphacutoff() != 10912) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_unlitmaterial_alphamode() != 34981) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_unlitmaterial_basecolor() != 23863) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_unlitmaterial_basecolormap() != 15976) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_unlitmaterial_doublesided() != 34744) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_unlitmaterial_shader() != 40243) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_fragmentcolor_checksum_method_texturetarget_getimage() != 13515) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -9960,6 +10172,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_constructor_scene_new() != 58352) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_constructor_unlitmaterial_new() != 13372) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_constructor_mipmap_build() != 59480) {
