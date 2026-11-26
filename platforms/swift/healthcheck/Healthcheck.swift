@@ -654,15 +654,15 @@ final class Healthcheck: ExampleCase {
         do {
             _ = try PbrMaterial().baseColorMap().texture(Data())
             throw HealthcheckError.assertion("MaterialMap.texture with an empty byte list should throw")
-        } catch let error as FragmentColorError {
-            guard "\(error)".contains("it got an empty byte list") else {
-                throw HealthcheckError.assertion("an empty byte list threw \(error)")
+        } catch let FragmentColorError.InvalidInput(message) {
+            guard message.hasSuffix("it got an empty byte list") else {
+                throw HealthcheckError.assertion("an empty byte list threw \(message)")
             }
         }
         do {
             _ = try PbrMaterial().baseColorMap().source(input: .cloneOf(texture), options: TextureOptions(format: .rgba8Unorm))
             throw HealthcheckError.assertion("MaterialMap.source with options beside a Texture should throw")
-        } catch let FragmentColorError.Material(message) {
+        } catch let FragmentColorError.InvalidInput(message) {
             guard message.contains("PbrMaterial::base_color_map().texture") else {
                 throw HealthcheckError.assertion("options beside a Texture threw \(message)")
             }

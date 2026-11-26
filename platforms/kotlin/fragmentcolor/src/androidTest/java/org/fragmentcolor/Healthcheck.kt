@@ -519,14 +519,16 @@ class Healthcheck : ExampleCase() {
         val red = byteArrayOf(0xff.toByte(), 0, 0, 0xff.toByte())
         val texture = renderer.createTexture(red, Size(width = 1u, height = 1u, depth = null))
         PbrMaterial().normalMap().texture(texture)
-        val empty = assertFailsWith<FragmentColorException> { PbrMaterial().baseColorMap().texture(ByteArray(0)) }
-        assertTrue(empty.message.orEmpty().contains("it got an empty byte list"), "an empty byte list threw ${empty.message}")
+        val empty = assertFailsWith<FragmentColorException.InvalidInput> {
+            PbrMaterial().baseColorMap().texture(ByteArray(0))
+        }
+        assertTrue(empty.message.endsWith("it got an empty byte list"), "an empty byte list threw ${empty.message}")
         val options = TextureOptions(format = TextureFormat.RGBA8_UNORM)
-        val beside = assertFailsWith<FragmentColorException> {
+        val beside = assertFailsWith<FragmentColorException.InvalidInput> {
             PbrMaterial().baseColorMap().source(TextureData.CloneOf(texture), options)
         }
         assertTrue(
-            beside.message.orEmpty().contains("PbrMaterial::base_color_map().texture"),
+            beside.message.contains("PbrMaterial::base_color_map().texture"),
             "options beside a Texture threw ${beside.message}",
         )
         Unit
