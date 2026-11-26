@@ -54,9 +54,18 @@ fn unlit_seeds_default_uniforms() {
     let material = UnlitMaterial::new();
 
     let base: [f32; 4] = material.shader().get("material.base_color").expect("read");
-    let cutoff: f32 = material.shader().get("material.alpha_cutoff").expect("read");
-    let flag: u32 = material.shader().get("material.alpha_mode_flag").expect("read");
-    let set: u32 = material.shader().get("material.uv[0].uv_set").expect("read");
+    let cutoff: f32 = material
+        .shader()
+        .get("material.alpha_cutoff")
+        .expect("read");
+    let flag: u32 = material
+        .shader()
+        .get("material.alpha_mode_flag")
+        .expect("read");
+    let set: u32 = material
+        .shader()
+        .get("material.uv[0].uv_set")
+        .expect("read");
     let scale: [f32; 2] = material.shader().get("material.uv[0].scale").expect("read");
 
     assert_eq!(base, [1.0, 1.0, 1.0, 1.0]);
@@ -78,8 +87,14 @@ fn setters_update_the_shader_and_share_it_with_clones() {
         .double_sided(true);
 
     let base: [f32; 4] = material.shader().get("material.base_color").expect("read");
-    let cutoff: f32 = material.shader().get("material.alpha_cutoff").expect("read");
-    let flag: u32 = material.shader().get("material.alpha_mode_flag").expect("read");
+    let cutoff: f32 = material
+        .shader()
+        .get("material.alpha_cutoff")
+        .expect("read");
+    let flag: u32 = material
+        .shader()
+        .get("material.alpha_mode_flag")
+        .expect("read");
     assert_eq!(base, [0.2, 0.4, 0.6, 0.8]);
     assert_eq!((cutoff, flag), (0.25, AlphaMode::Mask.flag()));
     assert_eq!(*material.shader.object.alpha_mode.read(), AlphaMode::Mask);
@@ -122,7 +137,10 @@ fn map_errors_name_the_unlit_material() {
             .contains("UnlitMaterial::base_color_map().uv"),
         "{error}"
     );
-    let set: u32 = material.shader().get("material.uv[0].uv_set").expect("read");
+    let set: u32 = material
+        .shader()
+        .get("material.uv[0].uv_set")
+        .expect("read");
     assert_eq!(set, 0);
 }
 

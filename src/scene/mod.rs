@@ -29,5 +29,5 @@ pub use model::*;
 pub use pbr_material::PbrMaterial;
 pub use scene::{PassRef, Scene};
 pub use scene_object::SceneObject;
-pub use unlit_material::UnlitMaterial;
 pub(crate) use scene_object::push_uniform;
+pub use unlit_material::UnlitMaterial;

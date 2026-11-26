@@ -4,8 +4,8 @@
 
 use super::SceneLoadError;
 use crate::scene::{MapSlot, UvSet, UvTransform};
-use crate::{AlphaMode, Material, MaterialMap, PbrMaterial, UnlitMaterial};
 use crate::texture::TextureSource;
+use crate::{AlphaMode, Material, MaterialMap, PbrMaterial, UnlitMaterial};
 
 /// Translates a glTF texture's sampler into [`SamplerOptions`].
 /// `MIRRORED_REPEAT` becomes `REPEAT`, since the sampler has no mirror mode.
