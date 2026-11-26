@@ -18,4 +18,4 @@ map = material.base_color_map().texture(albedo)
 # Raw pixels with their size upload when the scene loads.
 tint = [255, 128, 0, 255]
 tinted = PbrMaterial()
-tinted_map = tinted.base_color_map().texture((tint, [1, 1]))
+tinted_map = tinted.base_color_map().texture(tint, size=[1, 1])

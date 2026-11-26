@@ -5193,7 +5193,7 @@ class PbrMaterial:
         # Raw pixels with their size upload when the scene loads.
         tint = [255, 128, 0, 255]
         material = PbrMaterial()
-        map = material.base_color_map().texture((tint, [1, 1]))
+        map = material.base_color_map().texture(tint, size=[1, 1])
         ```
         """
     def metallic_roughness_map(self) -> MaterialMap:
@@ -5224,7 +5224,7 @@ class PbrMaterial:
             0, 220, 60, 255,
         ]
         material = PbrMaterial()
-        map = material.metallic_roughness_map().texture((mr_map_bytes, [2, 2]))
+        map = material.metallic_roughness_map().texture(mr_map_bytes, size=[2, 2])
         ```
         """
     def normal_map(self) -> MaterialMap:
@@ -5257,7 +5257,7 @@ class PbrMaterial:
             128, 128, 255, 255,
         ]
         material = PbrMaterial().normal_scale(1.2)
-        map = material.normal_map().texture((normal_map_bytes, [2, 2]))
+        map = material.normal_map().texture(normal_map_bytes, size=[2, 2])
         ```
         """
     def occlusion_map(self) -> MaterialMap:
@@ -5290,7 +5290,7 @@ class PbrMaterial:
             160, 0, 0, 255,
         ]
         material = PbrMaterial()
-        map = material.occlusion_map().texture((ao_bytes, [2, 2]))
+        map = material.occlusion_map().texture(ao_bytes, size=[2, 2])
         ```
         """
     def emissive_map(self) -> MaterialMap:
@@ -5322,7 +5322,7 @@ class PbrMaterial:
             255, 0, 0, 255,
         ]
         material = PbrMaterial().emissive([0.8, 0.0, 0.0])
-        map = material.emissive_map().texture((glow_bytes, [2, 2]))
+        map = material.emissive_map().texture(glow_bytes, size=[2, 2])
         ```
         """
 
@@ -5361,7 +5361,7 @@ class MaterialMap:
     gold = PbrMaterial().metallic(1.0).roughness(0.3)
 
     # A normal map tiled four times over the second UV layout.
-    map = gold.normal_map().texture((flat, [1, 1])).uv(1).transform([0.0, 0.0], [4.0, 4.0], 0.0)
+    map = gold.normal_map().texture(flat, size=[1, 1]).uv(1).transform([0.0, 0.0], [4.0, 4.0], 0.0)
     ```
     """
     def texture(self, input: _PyTextureSource, size: _PySize | None = ..., format: TextureFormat | None = ..., mipmaps: bool | None = ..., sampler: SamplerOptions | dict[str, Any] | None = ..., usage: SupportsIndex | TextureUsage | None = ...) -> MaterialMap:
@@ -5465,7 +5465,7 @@ class MaterialMap:
         # Raw pixels with their size upload when the scene loads.
         tint = [255, 128, 0, 255]
         tinted = PbrMaterial()
-        tinted_map = tinted.base_color_map().texture((tint, [1, 1]))
+        tinted_map = tinted.base_color_map().texture(tint, size=[1, 1])
         ```
         """
     def uv(self, set: SupportsIndex) -> MaterialMap:

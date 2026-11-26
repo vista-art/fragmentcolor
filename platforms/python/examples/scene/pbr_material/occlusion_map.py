@@ -8,4 +8,4 @@ ao_bytes = [
     160, 0, 0, 255,
 ]
 material = PbrMaterial()
-map = material.occlusion_map().texture((ao_bytes, [2, 2]))
+map = material.occlusion_map().texture(ao_bytes, size=[2, 2])

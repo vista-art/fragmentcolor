@@ -8,4 +8,4 @@ normal_map_bytes = [
     128, 128, 255, 255,
 ]
 material = PbrMaterial().normal_scale(1.2)
-map = material.normal_map().texture((normal_map_bytes, [2, 2]))
+map = material.normal_map().texture(normal_map_bytes, size=[2, 2])

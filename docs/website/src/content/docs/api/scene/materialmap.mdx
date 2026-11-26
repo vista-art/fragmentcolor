@@ -85,7 +85,7 @@ flat = [128, 128, 255, 255]
 gold = PbrMaterial().metallic(1.0).roughness(0.3)
 
 # A normal map tiled four times over the second UV layout.
-map = gold.normal_map().texture((flat, [1, 1])).uv(1).transform([0.0, 0.0], [4.0, 4.0], 0.0)
+map = gold.normal_map().texture(flat, size=[1, 1]).uv(1).transform([0.0, 0.0], [4.0, 4.0], 0.0)
 `}
 lang="python"
 />
@@ -292,7 +292,7 @@ map = material.base_color_map().texture(albedo)
 # Raw pixels with their size upload when the scene loads.
 tint = [255, 128, 0, 255]
 tinted = PbrMaterial()
-tinted_map = tinted.base_color_map().texture((tint, [1, 1]))
+tinted_map = tinted.base_color_map().texture(tint, size=[1, 1])
 `}
 lang="python"
 />
