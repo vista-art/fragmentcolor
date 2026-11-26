@@ -357,9 +357,10 @@ class Renderer:
         This is the only way to observe what a compute pass *wrote* into a storage
         binding. [`Shader::get`](https://fragmentcolor.org/api/core/shader) returns
         what was last set on the CPU side, so GPU writes don't show up through it.
-        A [`Shader::set`](https://fragmentcolor.org/api/core/shader#set) on any field
-        of the root uploads the whole root from that CPU copy at the next render that
-        binds it, which replaces what a compute pass wrote there.
+        A [`Shader::set`](https://fragmentcolor.org/api/core/shader#set) on a field
+        or an item of the root uploads only those bytes at the next render that binds
+        it, so the rest of the root keeps what a compute pass wrote there. Raw bytes
+        on the root replace all of it.
 
         `read_storage` is `async` because the underlying `map_async` requires an
         awaited callback. It returns a Promise in JS, is `async` in Swift and
@@ -791,7 +792,7 @@ class Shader:
         - A `Texture` created by a `Renderer` binds to a texture uniform, a `texture_external` one included.
         - Raw bytes replace a whole storage-buffer or push-constant root: a byte slice in Rust, a `Uint8Array` in JavaScript, `bytes` (or a `bytearray` or `memoryview`) in Python, `Data` in Swift, or a `ByteArray` in Kotlin. The byte count must equal the root's size, and any other length throws.
 
-        Setting one field of a storage root uploads the whole root from the shader's CPU copy at the next render that binds it, which overwrites everything a compute pass wrote to that root.
+        Setting a field or an item of a storage root uploads only its bytes at the next render that binds the root, so the rest of the root keeps what a compute pass wrote there. Uploads cover whole 4-byte words, so setting one `f16` also writes the `f16` that shares its word, from the shader's copy. Raw bytes on the root upload all of it.
 
         Example:
 
