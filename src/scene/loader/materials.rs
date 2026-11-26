@@ -1,9 +1,9 @@
-//! Reads each glTF material into a `Material`, with the sampler
-//! and the UV set and transform each of its texture slots reads.
+//! Reads each glTF material into a `PbrMaterial`, with the sampler
+//! and the UV set and transform each of its maps reads.
 
 use super::SceneLoadError;
-use crate::Material;
-use crate::scene::{TextureSlot, UvSet, UvTransform};
+use crate::PbrMaterial;
+use crate::scene::{MapSlot, UvSet, UvTransform};
 use crate::texture::TextureSource;
 
 /// Translates a glTF texture's sampler into [`SamplerOptions`].
@@ -38,14 +38,14 @@ pub(super) fn map_sampler_options(sampler: &gltf::texture::Sampler<'_>) -> crate
     }
 }
 
-/// Build the PBR Material of a glTF material. Each texture slot becomes a map
-/// of its image's source in `images`, which every slot that reads the image shares.
+/// Build the PBR material of a glTF material. Each texture reference becomes a map
+/// of its image's source in `images`, which every map that reads the image shares.
 pub(super) fn build_material(
     gltf_material: &gltf::Material<'_>,
     images: &[TextureSource],
-) -> Result<Material, SceneLoadError> {
+) -> Result<PbrMaterial, SceneLoadError> {
     let pbr = gltf_material.pbr_metallic_roughness();
-    let mut material = Material::pbr()
+    let mut material = PbrMaterial::new()
         .base_color(pbr.base_color_factor())?
         .metallic(pbr.metallic_factor())?
         .roughness(pbr.roughness_factor())?
@@ -70,32 +70,38 @@ pub(super) fn build_material(
 
     let read = |texture: gltf::Texture<'_>| convert_image(&texture, images);
     if let Some(info) = pbr.base_color_texture() {
-        material.set_map(TextureSlot::BaseColor, read(info.texture())?)?;
-        apply_uv(&material, TextureSlot::BaseColor, read_info_uv(&info))?;
+        material
+            .map(MapSlot::BaseColor)
+            .set_map(read(info.texture())?)?;
+        apply_uv(&material, MapSlot::BaseColor, read_info_uv(&info))?;
     }
     if let Some(info) = pbr.metallic_roughness_texture() {
-        material.set_map(TextureSlot::MetallicRoughness, read(info.texture())?)?;
-        apply_uv(
-            &material,
-            TextureSlot::MetallicRoughness,
-            read_info_uv(&info),
-        )?;
+        material
+            .map(MapSlot::MetallicRoughness)
+            .set_map(read(info.texture())?)?;
+        apply_uv(&material, MapSlot::MetallicRoughness, read_info_uv(&info))?;
     }
     if let Some(info) = gltf_material.normal_texture() {
-        material.set_map(TextureSlot::Normal, read(info.texture())?)?;
+        material
+            .map(MapSlot::Normal)
+            .set_map(read(info.texture())?)?;
         let extension = info.extension_value(TEXTURE_TRANSFORM);
         let uv = read_extension_uv(info.tex_coord(), extension)?;
-        apply_uv(&material, TextureSlot::Normal, uv)?;
+        apply_uv(&material, MapSlot::Normal, uv)?;
     }
     if let Some(info) = gltf_material.occlusion_texture() {
-        material.set_map(TextureSlot::Occlusion, read(info.texture())?)?;
+        material
+            .map(MapSlot::Occlusion)
+            .set_map(read(info.texture())?)?;
         let extension = info.extension_value(TEXTURE_TRANSFORM);
         let uv = read_extension_uv(info.tex_coord(), extension)?;
-        apply_uv(&material, TextureSlot::Occlusion, uv)?;
+        apply_uv(&material, MapSlot::Occlusion, uv)?;
     }
     if let Some(info) = gltf_material.emissive_texture() {
-        material.set_map(TextureSlot::Emissive, read(info.texture())?)?;
-        apply_uv(&material, TextureSlot::Emissive, read_info_uv(&info))?;
+        material
+            .map(MapSlot::Emissive)
+            .set_map(read(info.texture())?)?;
+        apply_uv(&material, MapSlot::Emissive, read_info_uv(&info))?;
     }
 
     Ok(material)
@@ -163,7 +169,7 @@ fn read_extension_uv(
 /// Point one material slot at the UV set and transform its glTF texture reads.
 /// The PBR shader samples two UV sets, so `TEXCOORD_2` and above are an error,
 /// and so is a transform with a number that isn't finite, such as `1e39`.
-fn apply_uv(material: &Material, slot: TextureSlot, uv: TextureUv) -> Result<(), SceneLoadError> {
+fn apply_uv(material: &PbrMaterial, slot: MapSlot, uv: TextureUv) -> Result<(), SceneLoadError> {
     let Ok(set) = UvSet::try_from(uv.uv_set) else {
         return Err(SceneLoadError::Invalid(format!(
             "glTF {} reads TEXCOORD_{}, and the PBR material samples TEXCOORD_0 and TEXCOORD_1 only",
@@ -172,21 +178,21 @@ fn apply_uv(material: &Material, slot: TextureSlot, uv: TextureUv) -> Result<(),
         )));
     };
     let transform = uv.transform.check(TEXTURE_TRANSFORM)?;
-    Ok(material.set_slot_uv(slot, set, transform)?)
+    Ok(material.map(slot).set_uv(set, transform)?)
 }
 
 /// The glTF property that holds a slot's texture reference.
-fn name_slot(slot: TextureSlot) -> &'static str {
+fn name_slot(slot: MapSlot) -> &'static str {
     match slot {
-        TextureSlot::BaseColor => "baseColorTexture",
-        TextureSlot::MetallicRoughness => "metallicRoughnessTexture",
-        TextureSlot::Normal => "normalTexture",
-        TextureSlot::Occlusion => "occlusionTexture",
-        TextureSlot::Emissive => "emissiveTexture",
+        MapSlot::BaseColor => "baseColorTexture",
+        MapSlot::MetallicRoughness => "metallicRoughnessTexture",
+        MapSlot::Normal => "normalTexture",
+        MapSlot::Occlusion => "occlusionTexture",
+        MapSlot::Emissive => "emissiveTexture",
     }
 }
 
-/// Convert a glTF texture reference into the source a Material map keeps, with the
+/// Convert a glTF texture reference into the source a material map keeps, with the
 /// texture's own sampler. Every reference to one image shares that image's source.
 fn convert_image(
     texture: &gltf::Texture<'_>,

@@ -10,8 +10,11 @@ use std::convert::TryInto;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
-use crate::bindings::web::{describe, read_bytes, read_class, read_numbers, read_rows, read_text};
+use crate::bindings::web::{
+    describe, read_bytes, read_class, read_flag, read_numbers, read_rows, read_text,
+};
 use crate::core::shader::UniformInput;
+use crate::scene::read_alpha_mode;
 use crate::{Shader, ShaderError, UniformData};
 
 #[wasm_bindgen]
@@ -131,6 +134,24 @@ impl Shader {
     #[lsp_doc("docs/api/core/shader/is_compute.md")]
     pub fn is_compute_js(&self) -> bool {
         self.is_compute()
+    }
+
+    #[wasm_bindgen(js_name = "alphaMode")]
+    #[lsp_doc("docs/api/core/shader/alpha_mode.md")]
+    pub fn alpha_mode_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "AlphaMode")] mode: &JsValue,
+    ) -> Result<Shader, WebError> {
+        Ok(self.alpha_mode(read_alpha_mode(mode)?))
+    }
+
+    #[wasm_bindgen(js_name = "doubleSided")]
+    #[lsp_doc("docs/api/core/shader/double_sided.md")]
+    pub fn double_sided_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "boolean")] value: &JsValue,
+    ) -> Result<Shader, WebError> {
+        Ok(self.double_sided(read_flag(value, "Shader.doubleSided: value")?))
     }
 
     // No-op Result::unwrap shim for transpiled examples that used Rust .unwrap()

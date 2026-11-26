@@ -1071,7 +1071,7 @@ mod swift {
         if own.is_empty() { all } else { own }
     }
 
-    /// The postfix chain that ends `head`, such as `Material.pbr()` or `mesh`.
+    /// The postfix chain that ends `head`, such as `PbrMaterial.new()` or `mesh`.
     fn chain_before(head: &str) -> &str {
         let code = code_only(head);
         let mut start = head.len();

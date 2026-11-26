@@ -28,7 +28,7 @@ Typical uses:
 
 ```rust
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Material, Mesh, Model, Vertex};
+use fragmentcolor::{Mesh, Model, PbrMaterial, Vertex};
 
 let mesh = Mesh::new();
 mesh.add_vertices([
@@ -36,7 +36,7 @@ mesh.add_vertices([
     Vertex::pbr([-0.5, -0.5, 0.0]),
     Vertex::pbr([0.5, -0.5, 0.0]),
 ]);
-let detail = Model::new(mesh, Material::pbr());
+let detail = Model::new(mesh, PbrMaterial::new());
 
 // Far from the camera, hide the detail Model.
 detail.set_visible(false);

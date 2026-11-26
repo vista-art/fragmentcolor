@@ -640,7 +640,7 @@ mod tests {
     #[test]
     fn the_lowered_pbr_shader_writes_webgl2_glsl() {
         // WebGL2 compiles GLSL ES 3.0, which the lowered PBR fragment stage must become.
-        let pbr = crate::Material::pbr();
+        let pbr = crate::PbrMaterial::new();
         let object = &pbr.shader().object;
         let roots = object.light_roots.clone().expect("roots");
         let lowered = lower_roots(object.module_for_pipeline(true), &roots, 253).expect("lowered");
@@ -682,11 +682,11 @@ mod tests {
     }
 
     #[test]
-    fn the_custom_page_reference_compiles() {
-        // The roots and the reference functions on the Material::custom page.
+    fn the_material_page_reference_compiles() {
+        // The roots and the reference functions in the Material page's Lights section.
         let page = include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/docs/api/scene/material/custom.md"
+            "/docs/api/scene/material/material.md"
         ));
         let blocks: Vec<&str> = page
             .split("```wgsl")

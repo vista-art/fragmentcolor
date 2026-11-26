@@ -14,7 +14,7 @@ keep injection on but supply your own light, use
 
 ```rust
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Material, Mesh, Model, Scene, Vertex};
+use fragmentcolor::{Mesh, Model, PbrMaterial, Scene, Vertex};
 
 let mesh = Mesh::new();
 mesh.add_vertices([
@@ -23,7 +23,7 @@ mesh.add_vertices([
     Vertex::pbr([0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]),
 ]);
 let scene = Scene::new();
-scene.add(&Model::new(mesh, Material::pbr()))?;
+scene.add(&Model::new(mesh, PbrMaterial::new()))?;
 
 scene.no_default_light();
 # Ok(())

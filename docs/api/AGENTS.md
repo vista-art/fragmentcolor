@@ -42,14 +42,14 @@ tabs show the same literal, with a `u` on Kotlin's unsigned arguments.
 
 Every FragmentColor function that takes an angle takes **radians**.
 This is consistent across `Camera::perspective`, `Model::rotate`,
-`Material::uv_transform`, `Light::set_cone_angles`, and any future
+`PbrMaterial::uv_transform`, `Light::set_cone_angles`, and any future
 angle-bearing API. Examples must pass radian literals directly. Add
 an inline comment with the degree equivalent for readability when the
 intent helps.
 
 ```
 GOOD: Camera::perspective(1.047, 16.0 / 9.0, 0.1, 100.0)    // 60° FOV
-GOOD: Material::pbr().uv_transform([0.5, 0.0], [4.0, 4.0], 0.785)  // 45°
+GOOD: PbrMaterial::new().uv_transform([0.5, 0.0], [4.0, 4.0], 0.785)  // 45°
 BAD : Camera::perspective(60.0.to_radians(), 16.0 / 9.0, 0.1, 100.0)
 BAD : Camera::perspective(std::f32::consts::FRAC_PI_3, …, …, …)
 ```

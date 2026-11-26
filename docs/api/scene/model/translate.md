@@ -23,7 +23,7 @@ range`. The Model keeps its transform, and JavaScript and Python raise it as
 
 ```rust
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Material, Mesh, Model, Renderer, Vertex};
+use fragmentcolor::{Mesh, Model, PbrMaterial, Renderer, Vertex};
 
 let renderer = Renderer::new();
 let mesh = Mesh::new();
@@ -33,7 +33,7 @@ mesh.add_vertices([
     Vertex::pbr([0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]),
 ]);
 
-let model = Model::new(mesh, Material::pbr());
+let model = Model::new(mesh, PbrMaterial::new());
 model.translate([5.0, 0.0, -2.0])?;
 
 # let m = model.transform();

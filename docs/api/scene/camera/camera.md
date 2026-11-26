@@ -56,7 +56,7 @@ viewpoint we're using right now".
 
 ```rust
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Camera, Material, Mesh, Model, Pass, Renderer, Vertex};
+use fragmentcolor::{Camera, Mesh, Model, Pass, PbrMaterial, Renderer, Vertex};
 
 let renderer = Renderer::new();
 let camera = Camera::perspective(1.047, 16.0 / 9.0, 0.1, 100.0)?
@@ -68,7 +68,7 @@ mesh.add_vertices([
     Vertex::pbr([-0.5, -0.5, 0.0]).set(Vertex::UV0, [0.0, 0.0]),
     Vertex::pbr([0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]),
 ]);
-let model = Model::new(mesh, Material::pbr());
+let model = Model::new(mesh, PbrMaterial::new());
 
 let pass = Pass::new("scene");
 pass.add(&model)?;

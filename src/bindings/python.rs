@@ -38,19 +38,20 @@ pub fn fragmentcolor(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Mesh primitives
     m.add_class::<crate::Quad>()?;
 
-    // Scene graph: Scene + Model + Camera + Light + Material + AlphaMode are
-    // the v0.12.0 surface for 3D content. Their pyclass impls live next to
-    // the Rust types (see `src/scene/platform/python.rs`,
-    // `src/scene/material/platform/python.rs`); registering them here makes them
-    // importable as `from fragmentcolor import Scene, Model, ...`.
+    // Scene graph: Scene + Model + Camera + Light + the material types are
+    // the surface for 3D content. Their pyclass impls live next to the Rust
+    // types (see `src/scene/platform/python.rs`,
+    // `src/scene/pbr_material/platform/python.rs`); registering them here makes them
+    // importable as `from fragmentcolor import Scene, Model, ...`. `Material` is a
+    // Rust enum, so Python gets the material object itself.
     m.add_class::<crate::scene::Scene>()?;
     m.add_class::<crate::scene::Model>()?;
     m.add_class::<crate::scene::Camera>()?;
     m.add_class::<crate::scene::Light>()?;
     m.add_class::<crate::scene::LightKind>()?;
-    m.add_class::<crate::Material>()?;
+    m.add_class::<crate::PbrMaterial>()?;
+    m.add_class::<crate::MaterialMap>()?;
     m.add_class::<crate::AlphaMode>()?;
-    m.add_class::<crate::TextureSlot>()?;
 
     // Texture handle + format
     m.add_class::<crate::texture::Texture>()?;

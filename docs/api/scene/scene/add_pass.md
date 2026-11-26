@@ -40,7 +40,7 @@ them through the same `set_target(...)` and use `load_previous` to compose.
 
 ```rust
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Material, Mesh, Model, Pass, Renderer, Scene, Vertex};
+use fragmentcolor::{Mesh, Model, Pass, PbrMaterial, Renderer, Scene, Vertex};
 
 let renderer = Renderer::new();
 
@@ -50,7 +50,7 @@ mesh.add_vertices([
     Vertex::pbr([-0.5, -0.5, 0.0]).set(Vertex::UV0, [0.0, 0.0]),
     Vertex::pbr([0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]),
 ]);
-let model = Model::new(mesh, Material::pbr());
+let model = Model::new(mesh, PbrMaterial::new());
 
 // A backdrop pass that clears to a soft blue before the scene's main draw.
 let backdrop = Pass::new("backdrop");

@@ -5,6 +5,12 @@ package org.fragmentcolor
 // List<Float>; these take Double, FloatArray and DoubleArray as well,
 // and a 4x4 matrix as its four columns.
 
+/** A Model that draws `mesh` with a PbrMaterial, which the generated constructor takes as `Material.Pbr`. */
+fun Model(mesh: Mesh, material: PbrMaterial): Model = Model(mesh, Material.Pbr(material))
+
+/** A Model that draws `mesh` with a Shader of your own, which the generated constructor takes as `Material.Custom`. */
+fun Model(mesh: Mesh, material: Shader): Model = Model(mesh, Material.Custom(material))
+
 /** Replace the model's transform with a column-major 4x4 matrix of 16 numbers. */
 fun Model.setTransform(matrix: FloatArray) {
     setTransform(matrix.toList())

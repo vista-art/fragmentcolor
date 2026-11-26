@@ -175,6 +175,18 @@ impl Shader {
     pub fn set_registry(base_url: &str) {
         source::registry::set_registry(base_url);
     }
+
+    #[lsp_doc("docs/api/core/shader/alpha_mode.md")]
+    pub fn alpha_mode(&self, mode: AlphaMode) -> Self {
+        self.object.set_alpha_mode(mode);
+        self.clone()
+    }
+
+    #[lsp_doc("docs/api/core/shader/double_sided.md")]
+    pub fn double_sided(&self, value: bool) -> Self {
+        self.object.set_double_sided(value);
+        self.clone()
+    }
 }
 
 /// FragmentColor's Shader internal implementation.
@@ -424,14 +436,14 @@ impl ShaderObject {
     }
 
     /// Set the pipeline-state alpha mode for this shader. Called by
-    /// `Material::alpha_mode`; the renderer reads it when building a
+    /// `Shader::alpha_mode` and `PbrMaterial::alpha_mode`; the renderer reads it when building a
     /// `RenderPipelineKey`. See [`AlphaMode`].
     pub(crate) fn set_alpha_mode(&self, mode: AlphaMode) {
         *self.alpha_mode.write() = mode;
     }
 
     /// Set the pipeline-state double-sided flag for this shader. Called by
-    /// `Material::double_sided`; the renderer reads it to flip the
+    /// `Shader::double_sided` and `PbrMaterial::double_sided`; the renderer reads it to flip the
     /// `cull_mode` and key it into the pipeline cache.
     pub(crate) fn set_double_sided(&self, value: bool) {
         *self.double_sided.write() = value;
@@ -531,7 +543,7 @@ impl ShaderObject {
             // Default `double_sided=true` for shaders used directly: this
             // preserves the pre-Material renderer behavior (no back-face
             // cull) for callers who build a Shader without going through
-            // Material. `Material::pbr()` flips it back to `false` so that
+            // Material. `PbrMaterial::new()` flips it back to `false` so that
             // path follows the glTF 2.0 default (single-sided = back-face
             // cull on).
             double_sided: RwLock::new(true),

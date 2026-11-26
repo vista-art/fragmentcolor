@@ -34,7 +34,7 @@ renderer skip it everywhere else. Without one, every fragment pays for it.
 
 ```rust
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Camera, Light, Material, Mesh, Model, Pass, Renderer, Vertex};
+use fragmentcolor::{Camera, Light, Mesh, Model, Pass, PbrMaterial, Renderer, Vertex};
 
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([64, 64]).await?;
@@ -54,7 +54,7 @@ let bulb = Light::point([0.0, 0.5, 1.0], [1.0, 0.95, 0.8])?.set_intensity(15.0)?
 bulb.set_range(3.0)?;
 
 let pass = Pass::new("lamp");
-pass.add(&Model::new(wall, Material::pbr()))?;
+pass.add(&Model::new(wall, PbrMaterial::new()))?;
 pass.add(&camera)?;
 pass.add(&bulb)?;
 renderer.render(&pass, &target)?;

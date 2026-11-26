@@ -1,22 +1,23 @@
 # Model::material
 
-Borrow the Material handle the Model owns. The Material wraps a Shader;
-reach through `model.material().shader()` if you need direct uniform
-manipulation (camera state, custom uniforms not exposed by Material's
-setters).
+The [Material](https://fragmentcolor.org/api/scene/material) the Model draws
+with: the same handle `Model::new` took, so a setter on it changes every
+Model that draws with that material.
 
-Note: `Material::clone` is a shallow Arc-share, so the handle stored on this
-Model points at the same underlying shader state as whatever Material was
-passed to `Model::new`. Mutations made through `model.material()` are
-visible to every other Model that received the same source handle (and vice
-versa). To detach a Model's appearance, construct a fresh `Material::pbr()`
-or `Material::custom()` rather than cloning.
+In Rust it returns `&Material`, the enum with a variant per material type,
+such as `Material::Pbr(PbrMaterial)` or `Material::Custom(Shader)`.
+JavaScript and Python return the material object itself, a `PbrMaterial` or
+a `Shader`. Swift and Kotlin return the `Material` enum, which holds the
+object.
+
+To give a Model a look of its own, build a fresh material, such as a new
+`PbrMaterial::new()`, rather than cloning one.
 
 ## Example
 
 ```rust
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Material, Mesh, Model, Vertex};
+use fragmentcolor::{Mesh, Model, PbrMaterial, Vertex};
 
 let mesh = Mesh::new();
 mesh.add_vertices([
@@ -25,8 +26,9 @@ mesh.add_vertices([
     Vertex::pbr([0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]),
 ]);
 
-let model = Model::new(mesh, Material::pbr());
-model.material().shader().set("camera.position", [0.0, 0.0, 5.0])?;
+let model = Model::new(mesh, PbrMaterial::new());
+let material = model.material();
+# let _ = material;
 # Ok(())
 # }
 ```

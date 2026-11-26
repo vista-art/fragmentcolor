@@ -584,7 +584,7 @@ impl crate::errors::Classify for CameraError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Material;
+    use crate::PbrMaterial;
 
     fn identity() -> [[f32; 4]; 4] {
         [
@@ -806,7 +806,7 @@ mod tests {
             .expect("camera")
             .look_at([1.0, 2.0, 3.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
             .expect("camera");
-        let material = Material::pbr();
+        let material = PbrMaterial::new();
         let model = crate::scene::Model::new(pbr_triangle_mesh(), material.clone());
 
         let pass = crate::Pass::new("scene");
@@ -832,7 +832,7 @@ mod tests {
         // The same camera absorbed by a pass shows live updates on every
         // shader the pass wires it into, with no second `add` call.
         let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0).expect("camera");
-        let material = Material::pbr();
+        let material = PbrMaterial::new();
         let model = crate::scene::Model::new(pbr_triangle_mesh(), material.clone());
 
         let pass = crate::Pass::new("scene");
@@ -949,7 +949,7 @@ struct Camera { view_proj: mat4x4<f16>, position: vec3<f16> };
             .expect("camera")
             .look_at([0.0, 0.0, 7.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
             .expect("camera");
-        let material = Material::pbr();
+        let material = PbrMaterial::new();
 
         let pass = crate::Pass::new("scene");
         pass.add(&camera)
@@ -1052,7 +1052,7 @@ struct Camera { view_proj: mat4x4<f16>, position: vec3<f16> };
         // set_aspect should update the attached shader's `camera.view_proj`
         // uniform without re-adding.
         let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0).expect("camera");
-        let material = Material::pbr();
+        let material = PbrMaterial::new();
         let model = crate::scene::Model::new(pbr_triangle_mesh(), material.clone());
         let pass = crate::Pass::new("scene");
         pass.add(&model).expect("add_model");

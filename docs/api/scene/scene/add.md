@@ -39,7 +39,7 @@ the first frame renders something recognizable. Add your own to take over.
 
 ```rust
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Camera, Light, Material, Mesh, Model, Renderer, Scene, Vertex};
+use fragmentcolor::{Camera, Light, Mesh, Model, PbrMaterial, Renderer, Scene, Vertex};
 
 let renderer = Renderer::new();
 
@@ -49,7 +49,7 @@ mesh.add_vertices([
     Vertex::pbr([-0.5, -0.5, 0.0]).set(Vertex::UV0, [0.0, 0.0]),
     Vertex::pbr([0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]),
 ]);
-let model = Model::new(mesh, Material::pbr());
+let model = Model::new(mesh, PbrMaterial::new());
 
 let camera = Camera::perspective(1.047, 1.0, 0.1, 100.0)?
     .look_at([0.0, 0.0, 3.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])?;

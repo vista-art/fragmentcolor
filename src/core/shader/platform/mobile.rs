@@ -151,6 +151,18 @@ impl Shader {
         self.is_compute()
     }
 
+    #[uniffi::method(name = "alphaMode")]
+    #[lsp_doc("docs/api/core/shader/alpha_mode.md")]
+    pub fn alpha_mode_mobile(self: Arc<Self>, mode: crate::AlphaMode) -> Arc<Self> {
+        Arc::new(self.alpha_mode(mode))
+    }
+
+    #[uniffi::method(name = "doubleSided")]
+    #[lsp_doc("docs/api/core/shader/double_sided.md")]
+    pub fn double_sided_mobile(self: Arc<Self>, value: bool) -> Arc<Self> {
+        Arc::new(self.double_sided(value))
+    }
+
     // ------------------------------------------------------------------
     // Mesh-aware constructors
     // ------------------------------------------------------------------

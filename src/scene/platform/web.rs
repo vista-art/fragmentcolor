@@ -9,18 +9,23 @@ use crate::bindings::web::{
     read_bytes, read_count, read_finite, read_flag, read_float, read_floats, read_text,
     read_unsigned, read_vector,
 };
+use crate::scene::material::platform::web::{read_material, write_material};
 use crate::scene::{Camera, GltfSource, Light, LightKind, Model, PassRef, Scene};
-use crate::{Material, Mesh, Pass};
+use crate::{Mesh, Pass};
 
 #[wasm_bindgen]
 impl Model {
     #[wasm_bindgen(constructor)]
     #[lsp_doc("docs/api/scene/model/new.md")]
-    pub fn new_js(mesh: &Mesh, material: &Material) -> Self {
+    pub fn new_js(
+        mesh: &Mesh,
+        #[wasm_bindgen(unchecked_param_type = "PbrMaterial | Shader")] material: &JsValue,
+    ) -> Result<Model, WebError> {
         // Materials and Meshes are wrapped around Arc internally, so cloning
         // here is an Arc::clone: cheap, with share semantics. The JS caller keeps
         // their original handle live.
-        Model::new(mesh.clone(), material.clone())
+        let material = read_material(material, "Model")?;
+        Ok(Model::new(mesh.clone(), material))
     }
 
     #[wasm_bindgen(js_name = "mesh")]
@@ -31,8 +36,9 @@ impl Model {
 
     #[wasm_bindgen(js_name = "material")]
     #[lsp_doc("docs/api/scene/model/material.md")]
-    pub fn material_js(&self) -> Material {
-        self.material.clone()
+    #[wasm_bindgen(unchecked_return_type = "PbrMaterial | Shader")]
+    pub fn material_js(&self) -> JsValue {
+        write_material(&self.material)
     }
 
     #[wasm_bindgen(js_name = "transform")]

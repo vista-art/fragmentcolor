@@ -19,7 +19,7 @@ leaves the pass and its mesh as they were, as with `add`.
 
 ```rust
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Material, Mesh, Model, Pass, Scene, Vertex};
+use fragmentcolor::{Mesh, Model, Pass, PbrMaterial, Scene, Vertex};
 
 let mesh = Mesh::new();
 mesh.add_vertices([
@@ -27,7 +27,7 @@ mesh.add_vertices([
     Vertex::pbr([-0.5, -0.5, 0.0]).set(Vertex::UV0, [0.0, 0.0]),
     Vertex::pbr([0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]),
 ]);
-let model = Model::new(mesh, Material::pbr());
+let model = Model::new(mesh, PbrMaterial::new());
 
 let scene = Scene::new();
 scene.add_pass(&Pass::new("geometry"));

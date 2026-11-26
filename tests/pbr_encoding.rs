@@ -1,7 +1,7 @@
 #![cfg(not(target_arch = "wasm32"))]
 
 use fragmentcolor::{
-    Material, Mesh, Model, Pass, Renderer, Target, TextureData, TextureFormat, TextureInput,
+    Mesh, Model, Pass, PbrMaterial, Renderer, Target, TextureData, TextureFormat, TextureInput,
     TextureOptions, TextureUsage, Vertex,
 };
 
@@ -15,7 +15,7 @@ fn cover() -> Model {
         [[-1.0, -1.0, 0.0], [3.0, -1.0, 0.0], [-1.0, 3.0, 0.0]]
             .map(|corner| Vertex::pbr(corner).set(Vertex::NORMAL, [0.0, 0.0, 1.0])),
     );
-    let material = Material::pbr()
+    let material = PbrMaterial::new()
         .base_color([0.0, 0.0, 0.0, 1.0])
         .expect("base color")
         .emissive([GLOW, GLOW, GLOW])

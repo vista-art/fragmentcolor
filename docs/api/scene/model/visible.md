@@ -11,7 +11,7 @@ rebuild.
 
 ```rust
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Material, Mesh, Model, Vertex};
+use fragmentcolor::{Mesh, Model, PbrMaterial, Vertex};
 
 let mesh = Mesh::new();
 mesh.add_vertices([
@@ -19,7 +19,7 @@ mesh.add_vertices([
     Vertex::pbr([-0.5, -0.5, 0.0]),
     Vertex::pbr([0.5, -0.5, 0.0]),
 ]);
-let model = Model::new(mesh, Material::pbr());
+let model = Model::new(mesh, PbrMaterial::new());
 
 // Models start visible; toggle with `set_visible`.
 let visible_now = model.visible();

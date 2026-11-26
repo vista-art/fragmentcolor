@@ -65,6 +65,20 @@ extension Shader {
         try validateMesh(mesh: mesh)
     }
 
+    // MARK: - Pipeline state
+
+    /// Set how the renderer treats this shader's alpha (unlabeled overload).
+    @discardableResult
+    public func alphaMode(_ mode: AlphaMode) -> Shader {
+        return alphaMode(mode: mode)
+    }
+
+    /// Draw both faces, or cull back faces (unlabeled overload).
+    @discardableResult
+    public func doubleSided(_ value: Bool) -> Shader {
+        return doubleSided(value: value)
+    }
+
     // MARK: - Uniform setters
 
     // Each overload only says what kind of value it carries. Rust shapes it

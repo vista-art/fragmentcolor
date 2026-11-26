@@ -1,24 +1,23 @@
-//! `MaterialError`: a value a Material setter can't use.
+//! `MaterialError`: a value a material setter or map can't use.
 
 use crate::ShaderError;
 use crate::scene::NotFinite;
 use crate::texture::TextureError;
 
-/// Errors from Material setters that take a value the material can't use.
+/// Errors from material setters and maps that take a value the material can't use.
 /// A refused call changes nothing on the material.
 #[derive(Debug, thiserror::Error)]
 pub enum MaterialError {
-    #[error("Material::texture_uv takes UV set 0 or 1, got {0}")]
-    UvSet(u32),
+    /// A UV set other than 0 or 1, which `call` names, such as `PbrMaterial::normal_map().uv`.
+    #[error("{call} takes UV set 0 or 1, got {set}")]
+    UvSet { call: String, set: u32 },
     /// A number that isn't finite, such as NaN or an infinity, which `label` names with its call.
     #[error("{label} must be finite, got {value}")]
     NotFinite { label: String, value: f32 },
-    /// A value the material's shader can't hold, such as a number past
-    /// the range of an `f16` field that a `Material::custom` shader declares,
-    /// or a texture for a slot that a `Material::custom` shader declares as a number.
+    /// A value the material's shader can't hold.
     #[error(transparent)]
     Shader(#[from] ShaderError),
-    /// A texture setter's input that makes no texture, such as options beside a `Texture`,
+    /// A map's texture input that makes no texture, such as options beside a `Texture`,
     /// which keeps the options it was created with, or an input that holds no data.
     #[error(transparent)]
     Texture(#[from] TextureError),
