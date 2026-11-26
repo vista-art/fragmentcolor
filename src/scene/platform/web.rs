@@ -19,7 +19,10 @@ impl Model {
     #[lsp_doc("docs/api/scene/model/new.md")]
     pub fn new_js(
         mesh: &Mesh,
-        #[wasm_bindgen(unchecked_param_type = "PbrMaterial | Shader")] material: &JsValue,
+        #[wasm_bindgen(
+            unchecked_param_type = "PbrMaterial | UnlitMaterial | ToonMaterial | Shader"
+        )]
+        material: &JsValue,
     ) -> Result<Model, WebError> {
         // Materials and Meshes are wrapped around Arc internally, so cloning
         // here is an Arc::clone: cheap, with share semantics. The JS caller keeps
@@ -36,7 +39,7 @@ impl Model {
 
     #[wasm_bindgen(js_name = "material")]
     #[lsp_doc("docs/api/scene/model/material.md")]
-    #[wasm_bindgen(unchecked_return_type = "PbrMaterial | Shader")]
+    #[wasm_bindgen(unchecked_return_type = "PbrMaterial | UnlitMaterial | ToonMaterial | Shader")]
     pub fn material_js(&self) -> JsValue {
         write_material(&self.material)
     }
