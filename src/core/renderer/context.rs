@@ -196,22 +196,32 @@ impl RenderContext {
                 .insert(name.to_string(), (buffer.clone(), span));
             buffer
         });
-        // An upgradable read blocks a `set` until the dirty flag is cleared, so no update is lost.
+        // An upgradable read blocks a `set` until the changes are cleared, so no update is lost.
         let storage = shader.storage.upgradable_read();
-        let dirty = storage.is_storage_dirty(name);
-        if created || dirty {
-            match storage.get_bytes(name) {
-                Some(bytes) => self
-                    .queue
-                    .write_buffer(&buffer, 0, &pools::pad_bytes(bytes)),
-                None => {
-                    let zeros = vec![0u8; pools::align_size(span) as usize];
-                    self.queue.write_buffer(&buffer, 0, &zeros)
+        let changes = storage.storage_changes(name);
+        let changed = !changes.is_empty();
+        match storage.get_bytes(name) {
+            Some(bytes) if created => self
+                .queue
+                .write_buffer(&buffer, 0, &pools::pad_bytes(bytes)),
+            // Only the bytes a `set` changed go up, so the rest keeps what a compute pass wrote.
+            Some(bytes) if changed => {
+                let padded = pools::pad_bytes(bytes);
+                for range in changes {
+                    let end = range.end.min(padded.len());
+                    if let Some(slice) = padded.get(range.start..end) {
+                        self.queue.write_buffer(&buffer, range.start as u64, slice);
+                    }
                 }
             }
+            None if created => {
+                let zeros = vec![0u8; pools::align_size(span) as usize];
+                self.queue.write_buffer(&buffer, 0, &zeros)
+            }
+            _ => {}
         }
-        if dirty {
-            RwLockUpgradableReadGuard::upgrade(storage).clear_storage_dirty(name);
+        if changed {
+            RwLockUpgradableReadGuard::upgrade(storage).clear_storage_changes(name);
         }
         buffer
     }
