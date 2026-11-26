@@ -280,6 +280,62 @@ struct VOut { @builtin(position) pos: vec4<f32> };
     });
 }
 
+// Story: a `set` that lands while a render holds the storage for its upload waits in
+// `pending`. The next render applies it and uploads its range, and the counts the
+// compute pass wrote stay.
+#[test]
+fn a_set_queued_during_an_upload_goes_up_with_the_next_render() {
+    pollster::block_on(async move {
+        // Arrange
+        let renderer = Renderer::new();
+        let probe = renderer
+            .create_texture_target([8u32, 8u32])
+            .await
+            .expect("texture target");
+        let shader = Shader::new(
+            r#"
+struct QueuedSim { step: u32, counts: array<u32, 4> }
+@group(0) @binding(0) var<storage, read_write> queued_sim: QueuedSim;
+@compute @workgroup_size(1)
+fn cs_main() {
+  for (var i = 0u; i < 4u; i++) { queued_sim.counts[i] += queued_sim.step; }
+}
+"#,
+        )
+        .expect("simulation shader");
+        let pass = Pass::from_shader("simulation", &shader);
+        shader.set("queued_sim.step", 1u32).expect("set step");
+        renderer.render(&pass, &probe).expect("first render");
+
+        // Act
+        let uploading = shader.object.storage.upgradable_read();
+        shader
+            .set("queued_sim.counts[2]", 100u32)
+            .expect("set while uploading");
+        let queued = shader.object.pending.len();
+        drop(uploading);
+        renderer.render(&pass, &probe).expect("second render");
+
+        // Assert
+        let bytes = renderer
+            .read_storage(&shader, "queued_sim")
+            .await
+            .expect("read_storage");
+        let words: Vec<u32> = bytes
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|chunk| u32::from_le_bytes(*chunk))
+            .collect();
+        assert_eq!(queued, 1, "the set waits in pending while the lock is held");
+        assert_eq!(
+            words,
+            [1, 2, 2, 101, 2],
+            "count 2 went up, and the rest stayed"
+        );
+    });
+}
+
 #[test]
 fn sampler_comparison_binds_and_renders_smoke() {
     pollster::block_on(async move {

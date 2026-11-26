@@ -17,9 +17,9 @@ pub(crate) struct UniformStorage {
     pub(crate) uniforms: HashMap<String, (u32, u32, Uniform)>, // (offset, size, original data)
     // CPU-side blobs for storage buffers: root name -> raw bytes
     pub(crate) storage_blobs: HashMap<String, Vec<u8>>,
-    // The byte ranges of each storage root set on the CPU since its last GPU upload,
-    // sorted, apart and aligned for `write_buffer`.
-    storage_changes: HashMap<String, Vec<Range<usize>>>,
+    // What changed in each storage root on the CPU since its last GPU upload,
+    // and how far each RenderContext's buffer has caught up.
+    storage_changes: HashMap<String, StorageChanges>,
     // CPU-side blobs for push constants: root name -> raw bytes
     pub(crate) push_blobs: HashMap<String, Vec<u8>>,
 }
@@ -493,16 +493,41 @@ impl UniformStorage {
         source.get(start..end)
     }
 
-    /// The byte ranges of the storage root `root` set since its last upload, sorted and apart.
-    /// Each starts and ends on a 4-byte word, so the last one can reach past a root
-    /// whose size isn't a multiple of 4, into the padding of its GPU buffer.
-    pub(crate) fn storage_changes(&self, root: &str) -> &[Range<usize>] {
-        self.storage_changes.get(root).map_or(&[], Vec::as_slice)
+    /// What the RenderContext `context` uploads to bring its buffer for the storage
+    /// root `root` up to date. Ranges come sorted and apart, and each starts and ends
+    /// on a 4-byte word, so the last one can reach past a root whose size isn't a
+    /// multiple of 4, into the padding of its GPU buffer.
+    ///
+    /// The changes are kept from the last upload by any context. A context that
+    /// uploaded before that one missed changes the list no longer holds, so it takes
+    /// the whole root. A context that never uploaded this shader's root, because
+    /// another shader created the buffer they share, takes the changes the list holds.
+    pub(crate) fn list_changes(&self, root: &str, context: u64) -> StorageUpload {
+        let Some(changes) = self.storage_changes.get(root) else {
+            return StorageUpload::Nothing;
+        };
+        let caught_up = changes
+            .contexts
+            .get(&context)
+            .copied()
+            .unwrap_or(changes.uploaded);
+        if caught_up == changes.generation {
+            StorageUpload::Nothing
+        } else if caught_up < changes.uploaded {
+            StorageUpload::Whole
+        } else {
+            StorageUpload::Ranges(merge_ranges(changes.ranges.clone()))
+        }
     }
 
-    /// Forgets the changes of the storage root `root` once they are uploaded.
-    pub(crate) fn clear_storage_changes(&mut self, root: &str) {
-        self.storage_changes.remove(root);
+    /// Records that `context` holds every change to the storage root `root`, after an
+    /// upload or the creation of its buffer, and forgets the changes it uploaded.
+    pub(crate) fn clear_changes(&mut self, root: &str, context: u64) {
+        let changes = self.storage_changes.entry(root.to_string()).or_default();
+        changes.ranges.clear();
+        changes.merged = 0;
+        changes.uploaded = changes.generation;
+        changes.contexts.insert(context, changes.generation);
     }
     /// True iff the shader's source declared a top-level storage binding
     /// named `root` (i.e. there is a CPU-side blob for it).
@@ -527,25 +552,63 @@ fn allocate_zeros(name: &str, span: u32) -> Result<Vec<u8>, ShaderError> {
     Ok(vec![0u8; span as usize])
 }
 
+/// What a RenderContext uploads to its buffer for a storage root, from `list_changes`.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum StorageUpload {
+    /// The buffer holds every change.
+    Nothing,
+    /// The buffer missed changes that another context took, so the whole root goes up.
+    Whole,
+    /// Only these bytes changed, so only they go up and the rest keeps what a
+    /// compute pass wrote.
+    Ranges(Vec<Range<usize>>),
+}
+
+/// The changes to one storage root since its last upload, and which contexts hold them.
+#[derive(Debug, Clone, Default)]
+struct StorageChanges {
+    /// Each change since the last upload, widened to whole 4-byte words, as set.
+    ranges: Vec<Range<usize>>,
+    /// How many ranges the last merge left, so the list merges again once it doubles.
+    merged: usize,
+    /// Counts the changes to the root.
+    generation: u64,
+    /// The generation at the last upload by any context: `ranges` hold every change after it.
+    uploaded: u64,
+    /// The generation each RenderContext's buffer holds, by context id.
+    contexts: HashMap<u64, u64>,
+}
+
 /// Records in `changes` that the bytes in `range` of the storage root `root` changed on the CPU.
-/// The range widens to whole 4-byte words, which is what `write_buffer` takes,
-/// and joins any range it overlaps or touches, so the list stays sorted and apart.
-fn mark_storage(changes: &mut HashMap<String, Vec<Range<usize>>>, root: &str, range: Range<usize>) {
+/// The range widens to whole 4-byte words, which is what a buffer copy takes. Ranges join
+/// at upload, so a set costs the same in any order, and the list merges once it doubles,
+/// so sets with no render between them keep it short.
+fn mark_storage(changes: &mut HashMap<String, StorageChanges>, root: &str, range: Range<usize>) {
     let start = range.start & !3;
     let end = range.end.saturating_add(3) & !3;
     if start >= end {
         return;
     }
-    let ranges = changes.entry(root.to_string()).or_default();
-    // The ranges this one overlaps or touches sit between `first` and `last`.
-    let first = ranges.partition_point(|r| r.end < start);
-    let last = ranges.partition_point(|r| r.start <= end);
-    let merged = match ranges.get(first..last) {
-        Some([head, .., tail]) => head.start.min(start)..tail.end.max(end),
-        Some([one]) => one.start.min(start)..one.end.max(end),
-        _ => start..end,
-    };
-    ranges.splice(first..last, [merged]);
+    let changes = changes.entry(root.to_string()).or_default();
+    changes.generation += 1;
+    changes.ranges.push(start..end);
+    if changes.ranges.len() > (changes.merged * 2).max(64) {
+        changes.ranges = merge_ranges(std::mem::take(&mut changes.ranges));
+        changes.merged = changes.ranges.len();
+    }
+}
+
+/// Sorts `ranges` and joins the ones that overlap or touch, so they come sorted and apart.
+fn merge_ranges(mut ranges: Vec<Range<usize>>) -> Vec<Range<usize>> {
+    ranges.sort_unstable_by_key(|range| range.start);
+    let mut merged: Vec<Range<usize>> = Vec::with_capacity(ranges.len());
+    for range in ranges {
+        match merged.last_mut() {
+            Some(last) if range.start <= last.end => last.end = last.end.max(range.end),
+            _ => merged.push(range),
+        }
+    }
+    merged
 }
 
 /// Copies `bytes` over `blob`, refusing any other length.
@@ -724,18 +787,19 @@ fn locate<'a>(
 mod tests {
     use super::*;
 
-    /// The changes left after marking each `(start, end)` in order, as `(start, end)` pairs.
+    /// The ranges a context uploads after marking each `(start, end)` in order, as `(start, end)` pairs.
     fn marked(ranges: &[(usize, usize)]) -> Vec<(usize, usize)> {
-        let mut changes = HashMap::new();
+        let mut storage = UniformStorage::new(&HashMap::new()).expect("empty storage");
         for &(start, end) in ranges {
-            mark_storage(&mut changes, "root", start..end);
+            mark_storage(&mut storage.storage_changes, "root", start..end);
         }
-        changes
-            .remove("root")
-            .unwrap_or_default()
-            .into_iter()
-            .map(|range| (range.start, range.end))
-            .collect()
+        match storage.list_changes("root", 1) {
+            StorageUpload::Ranges(ranges) => ranges
+                .into_iter()
+                .map(|range| (range.start, range.end))
+                .collect(),
+            _ => Vec::new(),
+        }
     }
 
     // Story: Each change widens to whole 4-byte words, as write_buffer takes them.
@@ -762,5 +826,63 @@ mod tests {
             "one change over several"
         );
         assert_eq!(marked(&[(4, 12), (6, 8)]), [(4, 12)], "inside another");
+    }
+    // Story: Sets in descending order, with no render between them, join at upload
+    // and keep the list short, so no set pays for the ones before it.
+    #[test]
+    fn many_changes_merge_once_the_list_doubles() {
+        // Arrange
+        let mut storage = UniformStorage::new(&HashMap::new()).expect("empty storage");
+
+        // Act
+        for word in (0..1000).rev() {
+            mark_storage(&mut storage.storage_changes, "root", word * 4..word * 4 + 4);
+        }
+
+        // Assert
+        let changes = &storage.storage_changes["root"];
+        assert!(
+            changes.ranges.len() <= 128,
+            "{} ranges kept",
+            changes.ranges.len()
+        );
+        assert_eq!(
+            storage.list_changes("root", 1),
+            StorageUpload::Ranges(vec![0..4000]),
+            "one range covers every word"
+        );
+    }
+
+    // Story: Each context catches up on its own. The first to upload takes the ranges,
+    // and one that missed them, because they were forgotten after another context's
+    // upload, takes the whole root.
+    #[test]
+    fn each_context_catches_up_on_its_own() {
+        // Arrange
+        let mut storage = UniformStorage::new(&HashMap::new()).expect("empty storage");
+        let (x, y) = (1, 2);
+        storage.clear_changes("root", x);
+        storage.clear_changes("root", y);
+
+        // Act
+        mark_storage(&mut storage.storage_changes, "root", 0..4);
+        let x_first = storage.list_changes("root", x);
+        storage.clear_changes("root", x);
+        mark_storage(&mut storage.storage_changes, "root", 4..8);
+        let y_after = storage.list_changes("root", y);
+        storage.clear_changes("root", y);
+        let x_after = storage.list_changes("root", x);
+        storage.clear_changes("root", x);
+        let x_again = storage.list_changes("root", x);
+
+        // Assert
+        assert_eq!(
+            x_first,
+            StorageUpload::Ranges(vec![0..4]),
+            "x takes its range"
+        );
+        assert_eq!(y_after, StorageUpload::Whole, "y missed 0..4, which x took");
+        assert_eq!(x_after, StorageUpload::Whole, "x missed 4..8, which y took");
+        assert_eq!(x_again, StorageUpload::Nothing, "x holds every change");
     }
 }

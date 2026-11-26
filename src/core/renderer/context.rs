@@ -12,6 +12,7 @@ use crate::core::renderer::{InitializationError, Renderer, checks, device, pools
 use crate::core::renderer::{
     ReadbackBufferPool, StorageBufferPool, TexturePool, UniformBufferPool,
 };
+use crate::core::shader::uniforms::StorageUpload;
 use crate::texture::{TextureId, TextureObject};
 use crate::{ShaderHash, ShaderObject};
 use dashmap::DashMap;
@@ -168,8 +169,10 @@ impl RenderContext {
     }
 
     /// The persistent buffer behind the storage root `name`.
-    /// It is created, or recreated at a new `span`, with the shader's bytes,
-    /// and takes a fresh upload only when `set` has changed them since the last frame.
+    /// It is created, or recreated at a new `span`, with the shader's bytes. After that,
+    /// it takes only the word ranges a `set` changed since this context's last upload,
+    /// so the rest keeps what a compute pass wrote, or the whole root when another
+    /// Renderer's upload took changes this one hadn't seen (`UniformStorage::list_changes`).
     /// It holds `span` rounded up to 4 bytes, the size the root binds and reads back at.
     pub(super) fn storage_buffer(
         &self,
@@ -198,32 +201,86 @@ impl RenderContext {
         });
         // An upgradable read blocks a `set` until the changes are cleared, so no update is lost.
         let storage = shader.storage.upgradable_read();
-        let changes = storage.storage_changes(name);
-        let changed = !changes.is_empty();
-        match storage.get_bytes(name) {
-            Some(bytes) if created => self
-                .queue
-                .write_buffer(&buffer, 0, &pools::pad_bytes(bytes)),
-            // Only the bytes a `set` changed go up, so the rest keeps what a compute pass wrote.
-            Some(bytes) if changed => {
-                let padded = pools::pad_bytes(bytes);
-                for range in changes {
-                    let end = range.end.min(padded.len());
-                    if let Some(slice) = padded.get(range.start..end) {
-                        self.queue.write_buffer(&buffer, range.start as u64, slice);
-                    }
-                }
+        let upload = match created {
+            true => StorageUpload::Whole,
+            false => storage.list_changes(name, self.id),
+        };
+        let uploads = upload != StorageUpload::Nothing;
+        match (storage.get_bytes(name), upload) {
+            (Some(bytes), StorageUpload::Whole) => {
+                self.queue
+                    .write_buffer(&buffer, 0, &pools::pad_bytes(bytes))
             }
-            None if created => {
+            (Some(bytes), StorageUpload::Ranges(ranges)) => {
+                self.write_ranges(&buffer, &pools::pad_bytes(bytes), &ranges)
+            }
+            (None, StorageUpload::Whole) if created => {
                 let zeros = vec![0u8; pools::align_size(span) as usize];
                 self.queue.write_buffer(&buffer, 0, &zeros)
             }
             _ => {}
         }
-        if changed {
-            RwLockUpgradableReadGuard::upgrade(storage).clear_storage_changes(name);
+        if uploads {
+            RwLockUpgradableReadGuard::upgrade(storage).clear_changes(name, self.id);
         }
         buffer
+    }
+
+    /// Copies each of `ranges` of `bytes` to the same offset in `buffer`. One range
+    /// goes through `write_buffer`. More go into one staging buffer, packed, with one
+    /// copy each, since each `write_buffer` stages its bytes in a buffer of its own.
+    /// The ranges are word-aligned, as buffer copies need, and submitted before the
+    /// frame that binds `buffer`, as `write_buffer` is.
+    fn write_ranges(&self, buffer: &wgpu::Buffer, bytes: &[u8], ranges: &[std::ops::Range<usize>]) {
+        let slices: Vec<(usize, &[u8])> = ranges
+            .iter()
+            .filter_map(|range| {
+                let end = range.end.min(bytes.len());
+                bytes
+                    .get(range.start..end)
+                    .map(|slice| (range.start, slice))
+            })
+            .filter(|(_, slice)| !slice.is_empty())
+            .collect();
+        if let [(offset, slice)] = slices[..] {
+            self.queue.write_buffer(buffer, offset as u64, slice);
+            return;
+        }
+        let size: usize = slices.iter().map(|(_, slice)| slice.len()).sum();
+        if size == 0 {
+            return;
+        }
+        let staging = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Storage Ranges Staging Buffer"),
+            size: size as u64,
+            usage: wgpu::BufferUsages::MAP_WRITE | wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: true,
+        });
+        let Ok(mut view) = staging.slice(..).get_mapped_range_mut() else {
+            for (offset, slice) in slices {
+                self.queue.write_buffer(buffer, offset as u64, slice);
+            }
+            return;
+        };
+        let mut at = 0;
+        for (_, slice) in &slices {
+            view.slice(at..at + slice.len()).copy_from_slice(slice);
+            at += slice.len();
+        }
+        drop(view);
+        staging.unmap();
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Storage Ranges Upload"),
+            });
+        let mut at = 0;
+        for (offset, slice) in &slices {
+            let len = slice.len() as u64;
+            encoder.copy_buffer_to_buffer(&staging, at, buffer, *offset as u64, len);
+            at += len;
+        }
+        self.queue.submit([encoder.finish()]);
     }
 
     pub(crate) fn set_sample_count(&self, count: u32) {

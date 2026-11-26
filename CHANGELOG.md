@@ -28,7 +28,7 @@ The materials release. Each shading model gets a type of its own, and errors tak
 
 ### Shaders and uniforms
 
-- A `Shader.set` on a field or an item of a storage root uploads only those bytes at the next render, in every language, so the rest of the root keeps what a compute pass wrote there. It uploaded the whole root from the shader's copy, so a compute pass that kept state in a root, such as counts beside a `step` the app sets each frame, lost that state on every `set`. An upload covers whole 4-byte words, so a `set` of one `f16` also writes the `f16` that shares its word. Raw bytes on the root still replace all of it.
+- A `Shader.set` on a field or an item of a storage root uploads only those bytes at the next render, in every language, so the rest of the root keeps what a compute pass wrote there. It uploaded the whole root from the shader's copy, so a compute pass that kept state in a root, such as counts beside a `step` the app sets each frame, lost that state on every `set`. An upload covers whole 4-byte words, so a `set` of one `f16` also writes the `f16` that shares its word. Raw bytes on the root still replace all of it, and so does a render that creates or recreates the root's buffer. Each Renderer catches up on its own, and one that missed changes another Renderer uploaded takes the whole root. Changes to items apart from each other go up through one staging buffer.
 
 ### Website and examples
 
