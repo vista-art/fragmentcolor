@@ -8,7 +8,8 @@ package org.fragmentcolor
 /**
  * A Model that draws `mesh` with a PbrMaterial, an UnlitMaterial, a ToonMaterial or a Shader,
  * including what another Model's [material] returned, as JavaScript and Python take it.
- * Throws [FragmentColorException] for any other object.
+ * Throws [IllegalArgumentException] for any other object, as JavaScript and Python
+ * throw a `TypeError` for an argument of the wrong type.
  */
 fun Model(mesh: Mesh, material: Any): Model {
     val handle = when (material) {
@@ -16,7 +17,7 @@ fun Model(mesh: Mesh, material: Any): Model {
         is UnlitMaterial -> MaterialHandle.Unlit(material)
         is ToonMaterial -> MaterialHandle.Toon(material)
         is Shader -> MaterialHandle.Custom(material)
-        else -> throw FragmentColorException.Render(
+        else -> throw IllegalArgumentException(
             "Model: expected a PbrMaterial, an UnlitMaterial, a ToonMaterial or a Shader, got ${material::class.simpleName}",
         )
     }
@@ -66,11 +67,11 @@ fun Model.setTransform(columns: List<List<Double>>) {
 /** A 4x4 matrix from its four columns, flat, column after column, or the error that names the column. */
 private fun flattenColumns(columns: List<List<Float>>, label: String): List<Float> {
     if (columns.size != 4) {
-        throw FragmentColorException.Render("$label takes 4 columns of 4 numbers, got ${columns.size} columns")
+        throw FragmentColorException.InvalidInput("$label takes 4 columns of 4 numbers, got ${columns.size} columns")
     }
     columns.forEachIndexed { index, column ->
         if (column.size != 4) {
-            throw FragmentColorException.Render("$label: column $index takes 4 numbers, got ${column.size}")
+            throw FragmentColorException.InvalidInput("$label: column $index takes 4 numbers, got ${column.size}")
         }
     }
     return columns.flatten()

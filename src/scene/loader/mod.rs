@@ -525,7 +525,7 @@ fn add_light(
     Ok(())
 }
 
-#[cfg(any(python, wasm, test))]
+#[cfg(any(python, wasm, mobile, test))]
 impl crate::errors::Classify for SceneLoadError {
     fn classify(&self) -> crate::errors::ErrorClass {
         crate::errors::ErrorClass::SceneLoad

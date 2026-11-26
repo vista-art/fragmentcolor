@@ -100,7 +100,7 @@ fun Pass.setViewport(rect: List<UInt>) {
     val region = when (rect.size) {
         2 -> ScreenRegion(listOf(0u, 0u), rect)
         4 -> ScreenRegion(rect.subList(0, 2), rect.subList(2, 4))
-        else -> throw FragmentColorException.Render(
+        else -> throw FragmentColorException.InvalidInput(
             "setViewport: expected [width, height] or [x, y, width, height], got ${rect.size} numbers",
         )
     }
@@ -115,7 +115,7 @@ fun Pass.setViewport(rect: List<UInt>) {
 @JvmName("setViewportPairs")
 fun Pass.setViewport(originAndSize: List<List<UInt>>) {
     if (originAndSize.size != 2) {
-        throw FragmentColorException.Render(
+        throw FragmentColorException.InvalidInput(
             "setViewport: expected [[x, y], [width, height]], got ${originAndSize.size} pairs",
         )
     }
@@ -130,17 +130,17 @@ fun Pass.setViewport(originAndSize: List<List<UInt>>) {
  */
 operator fun ScreenRegion.Companion.invoke(origin: List<UInt>, size: List<UInt>): ScreenRegion {
     if (origin.size != 2 || size.size != 2) {
-        throw FragmentColorException.Render("ScreenRegion: origin and size hold 2 numbers each")
+        throw FragmentColorException.InvalidInput("ScreenRegion: origin and size hold 2 numbers each")
     }
     val (x, y) = origin
     val (width, height) = size
     if (width == 0u || height == 0u) {
-        throw FragmentColorException.Render(
+        throw FragmentColorException.InvalidInput(
             "ScreenRegion: a region needs a width and a height of at least 1, got $width by $height",
         )
     }
     if (x > UInt.MAX_VALUE - width || y > UInt.MAX_VALUE - height) {
-        throw FragmentColorException.Render(
+        throw FragmentColorException.InvalidInput(
             "ScreenRegion: a region at $x, $y sized $width by $height reaches past ${UInt.MAX_VALUE}",
         )
     }

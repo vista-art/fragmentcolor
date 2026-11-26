@@ -21,7 +21,7 @@ fun TextureRegion.Companion.from(rect: List<UInt>): TextureRegion {
         2 -> listOf(0u, 0u, 0u) to listOf(rect[0], rect[1], 1u)
         4 -> listOf(rect[0], rect[1], 0u) to listOf(rect[2], rect[3], 1u)
         6 -> rect.subList(0, 3) to rect.subList(3, 6)
-        else -> throw FragmentColorException.Render("TextureRegion.from: rect must hold 2, 4 or 6 numbers")
+        else -> throw FragmentColorException.InvalidInput("TextureRegion.from: rect must hold 2, 4 or 6 numbers")
     }
     return TextureRegion(
         originX = origin[0], originY = origin[1], originZ = origin[2],
@@ -36,7 +36,7 @@ fun TextureRegion.Companion.from(rect: List<UInt>): TextureRegion {
  */
 fun TextureRegion.Companion.from(region: ScreenRegion): TextureRegion {
     if (region.maxX <= region.minX || region.maxY <= region.minY) {
-        throw FragmentColorException.Render(
+        throw FragmentColorException.InvalidInput(
             "TextureRegion.from: a region needs each max past its min, got x from ${region.minX} to ${region.maxX} and y from ${region.minY} to ${region.maxY}",
         )
     }

@@ -6750,34 +6750,89 @@ public func FfiConverterTypeErrorKind_lower(_ value: ErrorKind) -> RustBuffer {
 /**
  * Mobile-facing error type, one typed error for Swift and Kotlin to match on.
  *
- * Most internal errors flatten to their `Display` text. A GPU error keeps its kind,
- * its step's label and the device's own detail apart, a shader the device refuses
- * keeps the fields of its refusal, and a hidden window's frame is `Occluded`, so a
- * render loop can skip it. The exported `Display` gives Swift's `description` and
- * `localizedDescription`, and Kotlin's `toString()`, the full text of every case.
+ * Each case is a class Python raises, by the same name without its `Error` suffix,
+ * such as `InvalidInput` for `InvalidInputError`, and `Other` for an error that
+ * Python raises as the base `FragmentColorError`. Every case carries the error's
+ * full `message`, and a case with fields carries them under the names Python and
+ * JavaScript give them. The exported `Display` gives Swift's `description` and
+ * `localizedDescription`, and Kotlin's `toString()`, the message.
  */
 public 
 enum FragmentColorError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
 
     
     
-    case Init(String
+    /**
+     * An error with no class of its own: Python's base `FragmentColorError`.
+     */
+    case Other(message: String
     )
-    case Render(String
+    /**
+     * A value the call can't take, such as a negative size or bytes that don't match their texture.
+     */
+    case InvalidInput(message: String
     )
-    case Shader(String
+    /**
+     * A texture format the CPU mipmap builder can't fill.
+     */
+    case UnsupportedMipmapFormat(message: String
     )
-    case Device(kind: ErrorKind, label: String, detail: String
+    /**
+     * Image bytes that can't be decoded.
+     */
+    case MalformedImage(message: String
     )
-    case Limit(item: String, limit: String, value: UInt64, max: UInt64
+    /**
+     * A window that is hidden or minimized, so render skips the frame.
+     */
+    case OccludedSurface(message: String
     )
-    case Feature(item: String, feature: String
+    /**
+     * A GPU error an error scope caught, with its kind, the label of the step
+     * that raised it and the device's own detail.
+     */
+    case Device(message: String, kind: ErrorKind, label: String, detail: String
     )
-    case Binding(uniform: String, expected: String, found: String
+    /**
+     * Something in a shader or mesh past one of the device's limits.
+     */
+    case Limit(message: String, item: String, limit: String, value: UInt64, max: UInt64
     )
-    case Entry(stage: String
+    /**
+     * Something in a shader that needs a feature the device lacks.
+     */
+    case Feature(message: String, item: String, feature: String
     )
-    case Occluded
+    /**
+     * A texture uniform whose slot can't take its texture, or that was never set.
+     */
+    case Binding(message: String, uniform: String, expected: String, found: String
+    )
+    /**
+     * A shader without the entry point its pass runs.
+     */
+    case Entry(message: String, stage: String
+    )
+    /**
+     * A scene file that fails to load.
+     */
+    case SceneLoad(message: String
+    )
+    /**
+     * A light setter that doesn't fit the light's kind.
+     */
+    case Light(message: String
+    )
+    /**
+     * Camera parameters that leave no usable view.
+     */
+    case Camera(message: String
+    )
+    /**
+     * A material setter value the material can't use.
+     */
+    case Material(message: String
+    )
 
     
 
@@ -6818,39 +6873,61 @@ public struct FfiConverterTypeFragmentColorError: FfiConverterRustBuffer {
         
 
         
-        case 1: return .Init(
-            try FfiConverterString.read(from: &buf)
+        case 1: return .Other(
+            message: try FfiConverterString.read(from: &buf)
             )
-        case 2: return .Render(
-            try FfiConverterString.read(from: &buf)
+        case 2: return .InvalidInput(
+            message: try FfiConverterString.read(from: &buf)
             )
-        case 3: return .Shader(
-            try FfiConverterString.read(from: &buf)
+        case 3: return .UnsupportedMipmapFormat(
+            message: try FfiConverterString.read(from: &buf)
             )
-        case 4: return .Device(
+        case 4: return .MalformedImage(
+            message: try FfiConverterString.read(from: &buf)
+            )
+        case 5: return .OccludedSurface(
+            message: try FfiConverterString.read(from: &buf)
+            )
+        case 6: return .Device(
+            message: try FfiConverterString.read(from: &buf), 
             kind: try FfiConverterTypeErrorKind.read(from: &buf), 
             label: try FfiConverterString.read(from: &buf), 
             detail: try FfiConverterString.read(from: &buf)
             )
-        case 5: return .Limit(
+        case 7: return .Limit(
+            message: try FfiConverterString.read(from: &buf), 
             item: try FfiConverterString.read(from: &buf), 
             limit: try FfiConverterString.read(from: &buf), 
             value: try FfiConverterUInt64.read(from: &buf), 
             max: try FfiConverterUInt64.read(from: &buf)
             )
-        case 6: return .Feature(
+        case 8: return .Feature(
+            message: try FfiConverterString.read(from: &buf), 
             item: try FfiConverterString.read(from: &buf), 
             feature: try FfiConverterString.read(from: &buf)
             )
-        case 7: return .Binding(
+        case 9: return .Binding(
+            message: try FfiConverterString.read(from: &buf), 
             uniform: try FfiConverterString.read(from: &buf), 
             expected: try FfiConverterString.read(from: &buf), 
             found: try FfiConverterString.read(from: &buf)
             )
-        case 8: return .Entry(
+        case 10: return .Entry(
+            message: try FfiConverterString.read(from: &buf), 
             stage: try FfiConverterString.read(from: &buf)
             )
-        case 9: return .Occluded
+        case 11: return .SceneLoad(
+            message: try FfiConverterString.read(from: &buf)
+            )
+        case 12: return .Light(
+            message: try FfiConverterString.read(from: &buf)
+            )
+        case 13: return .Camera(
+            message: try FfiConverterString.read(from: &buf)
+            )
+        case 14: return .Material(
+            message: try FfiConverterString.read(from: &buf)
+            )
 
          default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -6863,57 +6940,88 @@ public struct FfiConverterTypeFragmentColorError: FfiConverterRustBuffer {
 
         
         
-        case let .Init(v1):
+        case let .Other(message):
             writeInt(&buf, Int32(1))
-            FfiConverterString.write(v1, into: &buf)
+            FfiConverterString.write(message, into: &buf)
             
         
-        case let .Render(v1):
+        case let .InvalidInput(message):
             writeInt(&buf, Int32(2))
-            FfiConverterString.write(v1, into: &buf)
+            FfiConverterString.write(message, into: &buf)
             
         
-        case let .Shader(v1):
+        case let .UnsupportedMipmapFormat(message):
             writeInt(&buf, Int32(3))
-            FfiConverterString.write(v1, into: &buf)
+            FfiConverterString.write(message, into: &buf)
             
         
-        case let .Device(kind,label,detail):
+        case let .MalformedImage(message):
             writeInt(&buf, Int32(4))
+            FfiConverterString.write(message, into: &buf)
+            
+        
+        case let .OccludedSurface(message):
+            writeInt(&buf, Int32(5))
+            FfiConverterString.write(message, into: &buf)
+            
+        
+        case let .Device(message,kind,label,detail):
+            writeInt(&buf, Int32(6))
+            FfiConverterString.write(message, into: &buf)
             FfiConverterTypeErrorKind.write(kind, into: &buf)
             FfiConverterString.write(label, into: &buf)
             FfiConverterString.write(detail, into: &buf)
             
         
-        case let .Limit(item,limit,value,max):
-            writeInt(&buf, Int32(5))
+        case let .Limit(message,item,limit,value,max):
+            writeInt(&buf, Int32(7))
+            FfiConverterString.write(message, into: &buf)
             FfiConverterString.write(item, into: &buf)
             FfiConverterString.write(limit, into: &buf)
             FfiConverterUInt64.write(value, into: &buf)
             FfiConverterUInt64.write(max, into: &buf)
             
         
-        case let .Feature(item,feature):
-            writeInt(&buf, Int32(6))
+        case let .Feature(message,item,feature):
+            writeInt(&buf, Int32(8))
+            FfiConverterString.write(message, into: &buf)
             FfiConverterString.write(item, into: &buf)
             FfiConverterString.write(feature, into: &buf)
             
         
-        case let .Binding(uniform,expected,found):
-            writeInt(&buf, Int32(7))
+        case let .Binding(message,uniform,expected,found):
+            writeInt(&buf, Int32(9))
+            FfiConverterString.write(message, into: &buf)
             FfiConverterString.write(uniform, into: &buf)
             FfiConverterString.write(expected, into: &buf)
             FfiConverterString.write(found, into: &buf)
             
         
-        case let .Entry(stage):
-            writeInt(&buf, Int32(8))
+        case let .Entry(message,stage):
+            writeInt(&buf, Int32(10))
+            FfiConverterString.write(message, into: &buf)
             FfiConverterString.write(stage, into: &buf)
             
         
-        case .Occluded:
-            writeInt(&buf, Int32(9))
+        case let .SceneLoad(message):
+            writeInt(&buf, Int32(11))
+            FfiConverterString.write(message, into: &buf)
+            
         
+        case let .Light(message):
+            writeInt(&buf, Int32(12))
+            FfiConverterString.write(message, into: &buf)
+            
+        
+        case let .Camera(message):
+            writeInt(&buf, Int32(13))
+            FfiConverterString.write(message, into: &buf)
+            
+        
+        case let .Material(message):
+            writeInt(&buf, Int32(14))
+            FfiConverterString.write(message, into: &buf)
+            
         }
     }
 }

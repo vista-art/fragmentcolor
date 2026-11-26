@@ -28,7 +28,8 @@ class Healthcheck : ExampleCase() {
 
     // A pipeline the GPU refuses throws FragmentColorException.Device, with its kind, the
     // step's label and the device's own detail. An error scope catches it, so the
-    // GPU error log stays empty, and toString() carries the full text.
+    // GPU error log stays empty. Its name is the class Python raises, and its message
+    // and toString() carry the full text.
     @Test
     fun refusedPipelineThrowsDevice() = runBlocking {
         val renderer = Renderer()
@@ -48,15 +49,21 @@ class Healthcheck : ExampleCase() {
         assertEquals(ErrorKind.VALIDATION, error.kind)
         assertEquals("render pipeline", error.label)
         assertTrue(error.detail.isNotEmpty(), "Device detail is empty")
-        assertEquals("Device error (validation) in 'render pipeline': ${error.detail}", error.toString())
+        assertEquals("DeviceError", error.name)
+        assertEquals("Device error (validation) in 'render pipeline': ${error.detail}", error.message)
+        assertEquals(error.message, error.toString())
     }
 
-    // A hidden window's frame throws FragmentColorException.Occluded, whose text is the
-    // Rust error's. An emulator can't hide a texture target, so the case is built here.
+    // A hidden window's frame throws FragmentColorException.OccludedSurface, named after
+    // the class Python raises, whose message and toString() are its text. An emulator
+    // can't hide a texture target, so the case is built here.
     @Test
     fun occludedDescribesFrame() {
-        val occluded = FragmentColorException.Occluded()
-        assertEquals("Surface error: failed to acquire frame: surface is occluded", occluded.toString())
+        val text = "Surface error: failed to acquire frame: surface is occluded"
+        val occluded = FragmentColorException.OccludedSurface(text)
+        assertEquals("OccludedSurfaceError", occluded.name)
+        assertEquals(text, occluded.message)
+        assertEquals(text, occluded.toString())
     }
 
     // A size with layers reaches the check the other languages run: a texture
@@ -88,8 +95,8 @@ class Healthcheck : ExampleCase() {
             """.trimIndent()
         )
         feedback.set("source", target.texture())
-        val conflict = assertFailsWith<FragmentColorException.Render> { renderer.render(feedback, target) }
-        assertTrue(conflict.toString().contains("Texture conflict"), conflict.toString())
+        val conflict = assertFailsWith<FragmentColorException.Other> { renderer.render(feedback, target) }
+        assertTrue(conflict.message.contains("Texture conflict"), conflict.message)
 
         val solid = Shader(
             """
@@ -101,8 +108,8 @@ class Healthcheck : ExampleCase() {
             """.trimIndent()
         )
         val foreign = Renderer().createTextureTarget(listOf(8u, 8u))
-        val owner = assertFailsWith<FragmentColorException.Render> { renderer.render(solid, foreign) }
-        assertTrue(owner.toString().contains("another Renderer"), owner.toString())
+        val owner = assertFailsWith<FragmentColorException.Other> { renderer.render(solid, foreign) }
+        assertTrue(owner.message.contains("another Renderer"), owner.message)
         renderer.render(solid, target)
     }
 
@@ -177,8 +184,8 @@ class Healthcheck : ExampleCase() {
         second.render(shader, second.createTextureTarget(listOf(8u, 8u)))
 
         painted.setIndices(listOf(0u, 1u, 5u))
-        val past = assertFailsWith<FragmentColorException.Render> { renderer.render(shader, target) }
-        assertTrue(past.toString().contains("points past the last of 3 vertices"), past.toString())
+        val past = assertFailsWith<FragmentColorException.Other> { renderer.render(shader, target) }
+        assertTrue(past.message.contains("points past the last of 3 vertices"), past.message)
         painted.setIndices(listOf(0u, 1u, 2u))
         renderer.render(shader, target)
 
@@ -554,8 +561,9 @@ class Healthcheck : ExampleCase() {
         val model = Model(fullTarget(), material)
         assertIs<UnlitMaterial>(model.material())
         val again = Model(fullTarget(), model.material())
-        val refused = assertFailsWith<FragmentColorException.Render> { Model(Mesh(), Mesh()) }
-        assertTrue(refused.toString().contains("Model: expected a PbrMaterial"), "a Mesh for a material threw '$refused'")
+        // A Mesh is no material: a wrong type throws IllegalArgumentException, as it throws a TypeError in JS and Python.
+        val refused = assertFailsWith<IllegalArgumentException> { Model(Mesh(), Mesh()) }
+        assertTrue(refused.message.orEmpty().contains("Model: expected a PbrMaterial"), "a Mesh for a material threw '$refused'")
         // A black light would darken a PbrMaterial, and leaves an unlit one as it is.
         val (red, green, blue) = drawOver(again, Light.directional(listOf(0f, 0f, -1f), listOf(0f, 0f, 0f)))
         // Linear 0.5 encodes as sRGB 188 on the 8-bit target.
@@ -583,8 +591,9 @@ class Healthcheck : ExampleCase() {
             "ToonMaterial::ramp_map().uv" to { held.rampMap().uv(0u) },
         )
         for ((label, call) in refusals) {
-            val error = assertFailsWith<FragmentColorException.Render>(label) { call() }
-            assertTrue(error.toString().contains(label), "$label threw '$error', which doesn't name the call")
+            val error = assertFailsWith<FragmentColorException.Material>(label) { call() }
+            assertEquals("MaterialError", error.name, label)
+            assertTrue(error.message.contains(label), "$label threw '$error', which doesn't name the call")
         }
     }
 
@@ -606,8 +615,8 @@ class Healthcheck : ExampleCase() {
             listOf(listOf(1f, 0f, 0f, 0f), listOf(0f, 1f, 0f), listOf(0f, 0f, 1f, 0f), listOf(0f, 0f, 0f, 1f)),
         )
         for (shape in shapes) {
-            val error = assertFailsWith<FragmentColorException> { model.setTransform(shape) }
-            assertTrue(error.toString().contains("Model.setTransform"), error.toString())
+            val error = assertFailsWith<FragmentColorException.InvalidInput> { model.setTransform(shape) }
+            assertTrue(error.message.startsWith("Model.setTransform"), error.message)
         }
         assertFailsWith<FragmentColorException> {
             model.setTransform(listOf(listOf(1.0, 0.0, 0.0, 0.0), listOf(0.0, 1.0, 0.0, 0.0), listOf(0.0, 0.0, Double.NaN, 0.0), listOf(0.0, 0.0, 0.0, 1.0)))

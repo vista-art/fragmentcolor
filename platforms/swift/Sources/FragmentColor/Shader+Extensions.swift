@@ -192,7 +192,7 @@ extension Shader {
         case let .sampler(info): return info
         case let .bytes(data): return data
         case .array, .struct, .storage, .pushConstant:
-            throw FragmentColorError.Render("Shader.get: \(key) read back as a shape, not as its bytes")
+            throw FragmentColorError.Other(message: "Shader.get: \(key) read back as a shape, not as its bytes")
         }
     }
 

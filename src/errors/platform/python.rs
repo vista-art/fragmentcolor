@@ -1,12 +1,8 @@
-//! The Python exception classes, `raise` and `PythonError`.
+//! The Python exception classes, `raise_error` and `PythonError`.
 
 use crate::core::Field;
-use crate::errors::{Classify, ErrorClass};
-use pyo3::{
-    create_exception,
-    exceptions::{PyBaseException, PyException},
-    prelude::*,
-};
+use crate::errors::{Classify, ErrorClass, ErrorShape};
+use pyo3::{create_exception, exceptions::PyException, prelude::*};
 
 create_exception!(fragment_color, PyFragmentColorError, PyException);
 create_exception!(
@@ -65,20 +61,6 @@ create_exception!(
     "A shader without the entry point its pass runs, with the stage."
 );
 
-/// An exception of class `T` with the full `message`, carrying the attributes `fields` sets.
-pub(crate) fn raise<T: pyo3::PyTypeInfo>(
-    message: String,
-    fields: impl FnOnce(&Bound<'_, PyBaseException>) -> PyResult<()>,
-) -> PyErr {
-    Python::attach(|py| {
-        let error = PyErr::new::<T, _>(message);
-        match fields(error.value(py)) {
-            Ok(()) => error,
-            Err(failure) => failure,
-        }
-    })
-}
-
 /// An exception of `class` with the full `message`.
 pub(crate) fn raise_class(class: ErrorClass, message: String) -> PyErr {
     match class {
@@ -99,9 +81,14 @@ pub(crate) fn raise_class(class: ErrorClass, message: String) -> PyErr {
     }
 }
 
-/// The exception for `error`, of the class it names.
-pub(crate) fn raise_error<E: Classify + std::fmt::Display>(error: &E) -> PyErr {
-    raise_class(error.classify(), error.to_string())
+/// The exception for `error`: its class, its full message and its fields as attributes.
+pub(crate) fn raise_error<E: Classify + ?Sized>(error: &E) -> PyErr {
+    let ErrorShape {
+        class,
+        message,
+        fields,
+    } = error.shape();
+    raise_fields(class, message, fields)
 }
 
 /// An exception of `class` with the full `message` that carries each of `fields` as an attribute.
@@ -111,12 +98,16 @@ pub(crate) fn raise_fields(
     fields: Vec<(&'static str, Field)>,
 ) -> PyErr {
     let error = raise_class(class, message);
+    if fields.is_empty() {
+        return error;
+    }
     Python::attach(|py| {
         let value = error.value(py);
         for (name, field) in fields {
             let set = match field {
                 Field::Text(text) => value.setattr(name, text),
                 Field::Number(number) => value.setattr(name, number),
+                Field::Kind(kind) => value.setattr(name, kind),
             };
             if let Err(failure) = set {
                 return failure;
@@ -124,23 +115,6 @@ pub(crate) fn raise_fields(
         }
         error
     })
-}
-
-impl DeviceError {
-    /// A `DeviceError` with the full `message` that carries the GPU error's `kind`,
-    /// the `label` of its step and the device's own `detail`.
-    pub(crate) fn raise(
-        kind: crate::ErrorKind,
-        label: String,
-        detail: String,
-        message: String,
-    ) -> PyErr {
-        raise::<DeviceError>(message, |error| {
-            error.setattr("kind", kind)?;
-            error.setattr("label", label)?;
-            error.setattr("detail", detail)
-        })
-    }
 }
 
 /// Python exceptions with two bases, `FragmentColorError` and a builtin,

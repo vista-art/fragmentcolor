@@ -38,7 +38,7 @@ impl From<NotFinite> for ModelError {
 }
 
 /// Every variant is an invalid input, as the bindings raise a number they refuse at the call.
-#[cfg(any(python, wasm, test))]
+#[cfg(any(python, wasm, mobile, test))]
 impl crate::errors::Classify for ModelError {
     fn classify(&self) -> crate::errors::ErrorClass {
         crate::errors::ErrorClass::InvalidInput

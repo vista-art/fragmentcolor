@@ -7,9 +7,7 @@ use crate::SceneObjectHandle;
 use crate::bindings::numbers::{read_finite, read_floats, read_vector};
 use crate::errors::platform::mobile::FragmentColorError;
 use crate::scene::material::platform::mobile::MaterialHandle;
-use crate::scene::{
-    Camera, CameraError, GltfSource, Light, LightError, LightKind, Model, ModelError, Scene,
-};
+use crate::scene::{Camera, GltfSource, Light, LightKind, Model, Scene};
 use crate::{Mesh, Pass};
 
 /// Mobile-marshallable target for [`Scene::add_to`]: a pass index or a pass
@@ -25,27 +23,6 @@ use crate::{Mesh, Pass};
 pub enum PassTarget {
     Index(u32),
     Name(String),
-}
-
-/// Refused camera parameters reach Swift and Kotlin as a render error.
-impl From<CameraError> for FragmentColorError {
-    fn from(error: CameraError) -> Self {
-        FragmentColorError::Render(error.to_string())
-    }
-}
-
-/// A light setter's refusal reaches Swift and Kotlin as a render error.
-impl From<LightError> for FragmentColorError {
-    fn from(error: LightError) -> Self {
-        FragmentColorError::Render(error.to_string())
-    }
-}
-
-/// A Model transform call's refusal reaches Swift and Kotlin as a render error.
-impl From<ModelError> for FragmentColorError {
-    fn from(error: ModelError) -> Self {
-        FragmentColorError::Render(error.to_string())
-    }
 }
 
 #[uniffi::export]
@@ -82,8 +59,8 @@ impl Model {
     ) -> Result<(), FragmentColorError> {
         let flat = read_floats(matrix, "Model.setTransform")?;
         let Ok(flat) = <[f32; 16]>::try_from(flat.as_slice()) else {
-            return Err(FragmentColorError::Render(
-                "Model.setTransform: expected 16 floats (column-major mat4)".into(),
+            return Err(FragmentColorError::invalid_input(
+                "Model.setTransform: expected 16 floats (column-major mat4)",
             ));
         };
         let columns =

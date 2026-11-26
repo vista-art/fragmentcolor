@@ -26,7 +26,7 @@ impl From<wasm_bindgen::JsValue> for DisplayError {
     }
 }
 
-#[cfg(any(python, wasm, test))]
+#[cfg(any(python, wasm, mobile, test))]
 impl crate::errors::Classify for DisplayError {
     fn classify(&self) -> crate::errors::ErrorClass {
         crate::errors::ErrorClass::Base

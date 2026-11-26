@@ -83,7 +83,7 @@ impl From<pyo3::PyErr> for PassError {
 /// A value the caller passed is an `InvalidInputError`, whether a setter or `render`
 /// refuses it: a color, a viewport, a target texture or a dispatch. Any other error
 /// is a `FragmentColorError`.
-#[cfg(any(python, wasm, test))]
+#[cfg(any(python, wasm, mobile, test))]
 impl crate::errors::Classify for PassError {
     fn classify(&self) -> crate::errors::ErrorClass {
         use crate::errors::ErrorClass;

@@ -163,18 +163,10 @@ impl From<VectorError> for pyo3::PyErr {
     }
 }
 
-#[cfg(any(python, wasm, test))]
+#[cfg(any(python, wasm, mobile, test))]
 impl crate::errors::Classify for VectorError {
     fn classify(&self) -> crate::errors::ErrorClass {
         crate::errors::ErrorClass::InvalidInput
-    }
-}
-
-/// A float vector Swift and Kotlin can't use throws a render error, as a bad region does.
-#[cfg(mobile)]
-impl From<VectorError> for crate::errors::platform::mobile::FragmentColorError {
-    fn from(error: VectorError) -> Self {
-        Self::Render(error.to_string())
     }
 }
 

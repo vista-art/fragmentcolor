@@ -36,7 +36,7 @@ fun Renderer.Companion.setLogLevel(level: LogLevel) {
 fun Renderer.createTarget(surface: Surface): WindowTarget {
     val window = SurfaceBridge.native_window_from_surface(surface)
     if (window == 0L) {
-        throw FragmentColorException.Init("createTarget: the Surface has no ANativeWindow")
+        throw FragmentColorException.Other("createTarget: the Surface has no ANativeWindow")
     }
     try {
         return createTarget(window.toULong())
@@ -253,7 +253,7 @@ suspend fun Renderer.readTexture(textureId: TextureId): ByteArray {
  */
 internal fun sizeRecord(size: List<UInt>, method: String): Size {
     if (size.size != 2 && size.size != 3) {
-        throw FragmentColorException.Render("$method: a size holds 2 or 3 numbers, got ${size.size}")
+        throw FragmentColorException.InvalidInput("$method: a size holds 2 or 3 numbers, got ${size.size}")
     }
     return Size(width = size[0], height = size[1], depth = size.getOrNull(2))
 }
@@ -269,7 +269,7 @@ internal fun readFloats(values: List<Double>, label: String): List<Float> =
 internal fun readFinite(value: Double, label: String): Float {
     val float = value.toFloat()
     if (!float.isFinite()) {
-        throw FragmentColorException.Render(
+        throw FragmentColorException.InvalidInput(
             "$label must be a finite number that fits a 32-bit float, got ${showNumber(value)}",
         )
     }
@@ -293,7 +293,7 @@ internal fun readFloats(values: DoubleArray, label: String): List<Float> = readF
 internal fun readPosition(values: List<Double>, label: String): List<Float> {
     val floats = readFloats(values, label)
     if (floats.size !in 1..4) {
-        throw FragmentColorException.Render("$label takes 1 to 4 numbers, got ${floats.size}")
+        throw FragmentColorException.InvalidInput("$label takes 1 to 4 numbers, got ${floats.size}")
     }
     return floats
 }
@@ -302,7 +302,7 @@ internal fun readPosition(values: List<Double>, label: String): List<Float> {
 internal fun readVector(values: List<Double>, count: Int, label: String): List<Float> {
     val floats = readFloats(values, label)
     if (floats.size != count) {
-        throw FragmentColorException.Render("$label takes $count numbers, got ${floats.size}")
+        throw FragmentColorException.InvalidInput("$label takes $count numbers, got ${floats.size}")
     }
     return floats
 }
@@ -322,7 +322,7 @@ internal fun byteArray(bytes: List<Int>, method: String): ByteArray =
     ByteArray(bytes.size) { index ->
         val value = bytes[index]
         if (value !in 0..255) {
-            throw FragmentColorException.Render("$method: $value is not a byte")
+            throw FragmentColorException.InvalidInput("$method: $value is not a byte")
         }
         value.toByte()
     }

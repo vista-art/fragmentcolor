@@ -39,7 +39,7 @@ extension Texture {
     /// Throws for any other length.
     public func writeRegion(_ bytes: Data, _ rect: [UInt32]) throws {
         guard let region = textureRegion(rect) else {
-            throw FragmentColorError.Render("writeRegion: expected 2, 4 or 6 numbers, got \(rect.count)")
+            throw FragmentColorError.InvalidInput(message: "writeRegion: expected 2, 4 or 6 numbers, got \(rect.count)")
         }
         try writeRegion(bytes: bytes, region: region)
     }

@@ -108,7 +108,7 @@ impl From<pyo3::PyErr> for TextureError {
 }
 
 /// Four texture errors take their own class of `FragmentColorError`, so a caller can tell them apart.
-#[cfg(any(python, wasm, test))]
+#[cfg(any(python, wasm, mobile, test))]
 impl crate::errors::Classify for TextureError {
     fn classify(&self) -> crate::errors::ErrorClass {
         use crate::errors::ErrorClass;
@@ -120,20 +120,29 @@ impl crate::errors::Classify for TextureError {
             _ => ErrorClass::Base,
         }
     }
-}
 
-#[cfg(python)]
-impl From<TextureError> for pyo3::PyErr {
-    fn from(e: TextureError) -> Self {
-        let message = e.to_string();
-        match e {
+    /// A device error carries its `kind`, the `label` of its step and the device's own `detail`.
+    fn list_fields(&self) -> Vec<(&'static str, crate::core::Field)> {
+        use crate::core::Field;
+        match self {
             TextureError::DeviceError {
                 kind,
                 label,
                 detail,
-            } => crate::errors::DeviceError::raise(kind, label, detail, message),
-            other => crate::errors::raise_error(&other),
+            } => vec![
+                ("kind", Field::Kind(*kind)),
+                ("label", Field::Text(label.clone())),
+                ("detail", Field::Text(detail.clone())),
+            ],
+            _ => Vec::new(),
         }
+    }
+}
+
+#[cfg(python)]
+impl From<TextureError> for pyo3::PyErr {
+    fn from(error: TextureError) -> Self {
+        crate::errors::raise_error(&error)
     }
 }
 
@@ -156,15 +165,7 @@ impl From<wasm_bindgen::JsValue> for TextureError {
 #[cfg(wasm)]
 impl From<TextureError> for crate::errors::WebError {
     fn from(error: TextureError) -> Self {
-        let message = error.to_string();
-        match error {
-            TextureError::DeviceError {
-                kind,
-                label,
-                detail,
-            } => crate::core::throw_device(kind, &label, &detail, &message),
-            other => crate::errors::WebError::from_error(&other),
-        }
+        crate::errors::WebError::from_error(&error)
     }
 }
 

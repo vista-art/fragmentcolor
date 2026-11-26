@@ -72,8 +72,8 @@ fn read_layer(
     // SAFETY: Swift passes the address of a live Objective-C object, and `as_ref`
     // turns a null pointer into `None`. No other address can be checked here.
     let Some(object) = (unsafe { layer.as_ref() }) else {
-        return Err(FragmentColorError::Init(
-            "createTarget: the CAMetalLayer pointer is null".into(),
+        return Err(FragmentColorError::other(
+            "createTarget: the CAMetalLayer pointer is null",
         ));
     };
     // Only a CAMetalLayer answers drawableSize, so check the class before asking.

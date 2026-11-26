@@ -340,7 +340,7 @@ extension Renderer {
 /// Throws for any other length.
 func sizeRecord(_ size: [UInt32], _ method: String) throws -> Size {
     guard size.count == 2 || size.count == 3 else {
-        throw FragmentColorError.Render("\(method): a size holds 2 or 3 numbers, got \(size.count)")
+        throw FragmentColorError.InvalidInput(message: "\(method): a size holds 2 or 3 numbers, got \(size.count)")
     }
     return Size(width: size[0], height: size[1], depth: size.count == 3 ? size[2] : nil)
 }
@@ -349,7 +349,7 @@ func sizeRecord(_ size: [UInt32], _ method: String) throws -> Size {
 func byteData(_ bytes: [Int], _ method: String) throws -> Data {
     Data(try bytes.map { value -> UInt8 in
         guard let byte = UInt8(exactly: value) else {
-            throw FragmentColorError.Render("\(method): \(value) is not a byte")
+            throw FragmentColorError.InvalidInput(message: "\(method): \(value) is not a byte")
         }
         return byte
     })
@@ -367,8 +367,8 @@ func readFloats(_ values: [Double], _ label: String) throws -> [Float] {
 func readFinite(_ value: Double, _ label: String) throws -> Float {
     let float = Float(value)
     guard float.isFinite else {
-        throw FragmentColorError.Render(
-            "\(label) must be a finite number that fits a 32-bit float, got \(showNumber(value))"
+        throw FragmentColorError.InvalidInput(
+            message: "\(label) must be a finite number that fits a 32-bit float, got \(showNumber(value))"
         )
     }
     return float
@@ -378,7 +378,7 @@ func readFinite(_ value: Double, _ label: String) throws -> Float {
 func readPosition(_ values: [Double], _ label: String) throws -> [Float] {
     let floats = try readFloats(values, label)
     guard (1...4).contains(floats.count) else {
-        throw FragmentColorError.Render("\(label) takes 1 to 4 numbers, got \(floats.count)")
+        throw FragmentColorError.InvalidInput(message: "\(label) takes 1 to 4 numbers, got \(floats.count)")
     }
     return floats
 }
@@ -387,7 +387,7 @@ func readPosition(_ values: [Double], _ label: String) throws -> [Float] {
 func readVector(_ values: [Double], _ count: Int, _ label: String) throws -> [Float] {
     let floats = try readFloats(values, label)
     guard floats.count == count else {
-        throw FragmentColorError.Render("\(label) takes \(count) numbers, got \(floats.count)")
+        throw FragmentColorError.InvalidInput(message: "\(label) takes \(count) numbers, got \(floats.count)")
     }
     return floats
 }

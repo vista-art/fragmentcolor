@@ -9,7 +9,7 @@ pub enum SizeError {
     Invalid(String),
 }
 
-#[cfg(any(python, wasm, test))]
+#[cfg(any(python, wasm, mobile, test))]
 impl crate::errors::Classify for SizeError {
     fn classify(&self) -> crate::errors::ErrorClass {
         crate::errors::ErrorClass::InvalidInput
@@ -54,7 +54,7 @@ pub enum ScreenRegionError {
     },
 }
 
-#[cfg(any(python, wasm, test))]
+#[cfg(any(python, wasm, mobile, test))]
 impl crate::errors::Classify for ScreenRegionError {
     fn classify(&self) -> crate::errors::ErrorClass {
         crate::errors::ErrorClass::InvalidInput
@@ -97,7 +97,7 @@ impl From<CssFailure<'_>> for ColorError {
     }
 }
 
-#[cfg(any(python, wasm, test))]
+#[cfg(any(python, wasm, mobile, test))]
 impl crate::errors::Classify for ColorError {
     fn classify(&self) -> crate::errors::ErrorClass {
         crate::errors::ErrorClass::InvalidInput

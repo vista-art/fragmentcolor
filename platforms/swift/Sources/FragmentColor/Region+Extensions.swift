@@ -24,7 +24,7 @@ extension TextureRegion {
     /// Throws `FragmentColorError` for any other length, as Kotlin throws `FragmentColorException`.
     public static func from(_ rect: [UInt32]) throws -> TextureRegion {
         guard let region = textureRegion(rect) else {
-            throw FragmentColorError.Render("TextureRegion.from: expected 2, 4 or 6 numbers, got \(rect.count)")
+            throw FragmentColorError.InvalidInput(message: "TextureRegion.from: expected 2, 4 or 6 numbers, got \(rect.count)")
         }
         return region
     }
@@ -33,8 +33,8 @@ extension TextureRegion {
     /// Throws `FragmentColorError` for a region whose max isn't past its min, as Kotlin does.
     public static func from(_ region: ScreenRegion) throws -> TextureRegion {
         guard region.maxX > region.minX, region.maxY > region.minY else {
-            throw FragmentColorError.Render(
-                "TextureRegion.from: a region needs each max past its min, got x from \(region.minX) to \(region.maxX) and y from \(region.minY) to \(region.maxY)"
+            throw FragmentColorError.InvalidInput(
+                message: "TextureRegion.from: a region needs each max past its min, got x from \(region.minX) to \(region.maxX) and y from \(region.minY) to \(region.maxY)"
             )
         }
         return TextureRegion(

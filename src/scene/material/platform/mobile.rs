@@ -2,8 +2,7 @@
 
 use std::sync::Arc;
 
-use crate::errors::platform::mobile::FragmentColorError;
-use crate::{Material, MaterialError, PbrMaterial, Shader, ToonMaterial, UnlitMaterial};
+use crate::{Material, PbrMaterial, Shader, ToonMaterial, UnlitMaterial};
 
 /// What a `Model` draws with, as the uniffi plumbing carries it: one case per
 /// material type, holding the object. Uniffi can't marshal `impl Into<Material>` or
@@ -39,17 +38,6 @@ impl From<&Material> for MaterialHandle {
             Material::Unlit(material) => Self::Unlit(Arc::new(material.clone())),
             Material::Toon(material) => Self::Toon(Arc::new(material.clone())),
             Material::Custom(shader) => Self::Custom(Arc::new(shader.clone())),
-        }
-    }
-}
-
-/// A value the material can't use reaches Swift and Kotlin as a render error,
-/// and a texture input as the error `createTexture` throws for it.
-impl From<MaterialError> for FragmentColorError {
-    fn from(error: MaterialError) -> Self {
-        match error {
-            MaterialError::Texture(error) => error.into(),
-            error => FragmentColorError::Render(error.to_string()),
         }
     }
 }

@@ -574,7 +574,7 @@ impl SceneObject for Camera {
     }
 }
 
-#[cfg(any(python, wasm, test))]
+#[cfg(any(python, wasm, mobile, test))]
 impl crate::errors::Classify for CameraError {
     fn classify(&self) -> crate::errors::ErrorClass {
         crate::errors::ErrorClass::Camera

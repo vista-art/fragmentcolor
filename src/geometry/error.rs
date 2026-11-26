@@ -31,7 +31,7 @@ pub enum MeshError {
     Error(String),
 }
 
-#[cfg(any(python, wasm, test))]
+#[cfg(any(python, wasm, mobile, test))]
 impl crate::errors::Classify for MeshError {
     fn classify(&self) -> crate::errors::ErrorClass {
         crate::errors::ErrorClass::Base

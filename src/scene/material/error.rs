@@ -40,12 +40,19 @@ impl From<NotFinite> for MaterialError {
 
 /// A texture input takes the class the same input raises in `create_texture`,
 /// and every other refusal is a `MaterialError`.
-#[cfg(any(python, wasm, test))]
+#[cfg(any(python, wasm, mobile, test))]
 impl crate::errors::Classify for MaterialError {
     fn classify(&self) -> crate::errors::ErrorClass {
         match self {
             MaterialError::Texture(error) => error.classify(),
             _ => crate::errors::ErrorClass::Material,
+        }
+    }
+
+    fn list_fields(&self) -> Vec<(&'static str, crate::core::Field)> {
+        match self {
+            MaterialError::Texture(error) => error.list_fields(),
+            _ => Vec::new(),
         }
     }
 }

@@ -13,10 +13,10 @@ import Foundation
 /// Throws unless it holds 4 columns of 4 numbers, naming the column that doesn't.
 private func flattenColumns(_ columns: [[Float]], _ label: String) throws -> [Float] {
     guard columns.count == 4 else {
-        throw FragmentColorError.Render("\(label) takes 4 columns of 4 numbers, got \(columns.count) columns")
+        throw FragmentColorError.InvalidInput(message: "\(label) takes 4 columns of 4 numbers, got \(columns.count) columns")
     }
     for (index, column) in columns.enumerated() where column.count != 4 {
-        throw FragmentColorError.Render("\(label): column \(index) takes 4 numbers, got \(column.count)")
+        throw FragmentColorError.InvalidInput(message: "\(label): column \(index) takes 4 numbers, got \(column.count)")
     }
     return columns.flatMap { $0 }
 }

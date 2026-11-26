@@ -155,7 +155,7 @@ No type is planned for Lambert or Blinn-Phong shading, which costs about what PB
 
 ### Errors
 
-- [ ] One error shape in every language. Each error carries its class name, its message and its fields under the same names, so a docs page describes it once. Swift's and Kotlin's cases follow the classes Python raises, and Kotlin's `message` holds the error's text, where it lists the fields today
+- [x] One error shape in every language. Each error carries its class name, its message and its fields under the same names, so a docs page describes it once. Swift's and Kotlin's cases follow the classes Python raises, and Kotlin's `message` holds the error's text, where it listed the fields
 - [ ] `DeviceError` and `ErrorKind` leave the object menu. Users never build an error, so one Errors page lists each class, when it's raised and its fields, with `kind` among the fields of `DeviceError`. The build keeps checking their docs
 
 ### Demo

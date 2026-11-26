@@ -63,7 +63,8 @@ final class Healthcheck: ExampleCase {
 
     // A pipeline the GPU refuses throws FragmentColorError.Device, with its kind, the
     // step's label and the device's own detail. An error scope catches it, so the
-    // GPU error log stays empty, and localizedDescription carries the full text.
+    // GPU error log stays empty. Its name is the class Python raises, and its message
+    // and localizedDescription carry the full text.
     func testRefusedPipelineThrowsDevice() async throws {
         let renderer = Renderer()
         let target = try await renderer.createTextureTarget([8, 8])
@@ -80,30 +81,32 @@ final class Healthcheck: ExampleCase {
             try renderer.render(unfed, target)
             throw HealthcheckError.assertion("render of a refused pipeline should throw")
         } catch let error as FragmentColorError {
-            guard case let .Device(kind, label, detail) = error else {
+            guard case let .Device(message, kind, label, detail) = error else {
                 throw HealthcheckError.assertion("render threw \(error), not Device")
             }
+            try assertEqual(error.name, "DeviceError", "Device name")
+            try assertEqual(error.message, message, "Device message")
             try assertEqual(kind, .validation, "Device kind")
             try assertEqual(label, "render pipeline", "Device label")
             guard !detail.isEmpty else {
                 throw HealthcheckError.assertion("Device detail is empty")
             }
             let text = error.localizedDescription
-            guard text == "Device error (validation) in 'render pipeline': \(detail)" else {
+            guard text == "Device error (validation) in 'render pipeline': \(detail)", text == message else {
                 throw HealthcheckError.assertion("localizedDescription is \(text)")
             }
         }
     }
 
-    // A hidden window's frame throws FragmentColorError.Occluded, whose text is the Rust error's.
-    // A simulator can't hide a texture target, so the case is built here.
+    // A hidden window's frame throws FragmentColorError.OccludedSurface, named after the
+    // class Python raises, whose description is its message. A simulator can't hide a
+    // texture target, so the case is built here.
     func testOccludedDescribesFrame() throws {
-        let occluded = FragmentColorError.Occluded
-        try assertEqual(
-            occluded.description,
-            "Surface error: failed to acquire frame: surface is occluded",
-            "Occluded description"
-        )
+        let text = "Surface error: failed to acquire frame: surface is occluded"
+        let occluded = FragmentColorError.OccludedSurface(message: text)
+        try assertEqual(occluded.name, "OccludedSurfaceError", "OccludedSurface name")
+        try assertEqual(occluded.message, text, "OccludedSurface message")
+        try assertEqual(occluded.description, text, "OccludedSurface description")
     }
 
     // render refuses a shader the device can't run before any GPU work, with a case
@@ -123,7 +126,7 @@ final class Healthcheck: ExampleCase {
             try renderer.render(far, target)
             throw HealthcheckError.assertion("a group past the device should throw")
         } catch let error as FragmentColorError {
-            guard case let .Limit(item, limit, value, max) = error else {
+            guard case let .Limit(_, item, limit, value, max) = error else {
                 throw HealthcheckError.assertion("render threw \(error), not Limit")
             }
             try assertEqual(limit, "max_bind_groups", "Limit limit")
@@ -140,7 +143,7 @@ final class Healthcheck: ExampleCase {
             try renderer.render(storage, target)
             throw HealthcheckError.assertion("a storage format the device lacks should throw")
         } catch let error as FragmentColorError {
-            guard case let .Feature(item, feature) = error else {
+            guard case let .Feature(_, item, feature) = error else {
                 throw HealthcheckError.assertion("render threw \(error), not Feature")
             }
             try assertEqual(item, "'img' at @group(0) @binding(0)", "Feature item")
@@ -161,7 +164,7 @@ final class Healthcheck: ExampleCase {
             try renderer.render(unset, target)
             throw HealthcheckError.assertion("an unset texture should throw")
         } catch let error as FragmentColorError {
-            guard case let .Binding(uniform, expected, found) = error else {
+            guard case let .Binding(_, uniform, expected, found) = error else {
                 throw HealthcheckError.assertion("render threw \(error), not Binding")
             }
             try assertEqual(uniform, "source", "Binding uniform")
@@ -173,7 +176,7 @@ final class Healthcheck: ExampleCase {
             try renderer.render(lone, target)
             throw HealthcheckError.assertion("a shader without a vertex stage should throw")
         } catch let error as FragmentColorError {
-            guard case let .Entry(stage) = error else {
+            guard case let .Entry(_, stage) = error else {
                 throw HealthcheckError.assertion("render threw \(error), not Entry")
             }
             try assertEqual(stage, "@vertex", "Entry stage")
@@ -208,7 +211,7 @@ final class Healthcheck: ExampleCase {
             try renderer.render(shader, target)
             throw HealthcheckError.assertion("an sRGB texture in an external slot should throw")
         } catch let error as FragmentColorError {
-            guard case let .Binding(uniform, expected, found) = error else {
+            guard case let .Binding(_, uniform, expected, found) = error else {
                 throw HealthcheckError.assertion("render threw \(error), not Binding")
             }
             try assertEqual(uniform, "video", "Binding uniform")
@@ -244,7 +247,7 @@ final class Healthcheck: ExampleCase {
             }
         """)
         try feedback.set("source", target.texture())
-        try assertRenderThrows("sampling the render target", "Texture conflict") {
+        try assertThrows("sampling the render target", "FragmentColorError", "Texture conflict") {
             try renderer.render(feedback, target)
         }
 
@@ -256,7 +259,7 @@ final class Healthcheck: ExampleCase {
             @fragment fn fs_main() -> @location(0) vec4<f32> { return vec4f(1., 0., 0., 1.); }
         """)
         let foreign = try await Renderer().createTextureTarget([8, 8])
-        try assertRenderThrows("a target from another Renderer", "another Renderer") {
+        try assertThrows("a target from another Renderer", "FragmentColorError", "another Renderer") {
             try renderer.render(solid, foreign)
         }
         try renderer.render(solid, target)
@@ -334,7 +337,7 @@ final class Healthcheck: ExampleCase {
         try second.render(shader, other)
 
         painted.setIndices([0, 1, 5])
-        try assertRenderThrows("an index past the last vertex", "points past the last of 3 vertices") {
+        try assertThrows("an index past the last vertex", "FragmentColorError", "points past the last of 3 vertices") {
             try renderer.render(shader, target)
         }
         painted.setIndices([0, 1, 2])
@@ -347,7 +350,7 @@ final class Healthcheck: ExampleCase {
         do {
             try Shader(source).addMesh(named)
             throw HealthcheckError.assertion("a position property should throw")
-        } catch FragmentColorError.Shader(let message) {
+        } catch FragmentColorError.Other(let message) {
             guard message.contains("property named 'position'") else {
                 throw HealthcheckError.assertion("a position property: unexpected message \(message)")
             }
@@ -373,7 +376,7 @@ final class Healthcheck: ExampleCase {
             try renderer.render(far, target)
             throw HealthcheckError.assertion("a vertex input past the attribute limit should throw")
         } catch let error as FragmentColorError {
-            guard case let .Limit(_, limit, value, _) = error else {
+            guard case let .Limit(_, _, limit, value, _) = error else {
                 throw HealthcheckError.assertion("render threw \(error), not Limit")
             }
             try assertEqual(limit, "max_vertex_attributes", "Limit limit")
@@ -381,13 +384,13 @@ final class Healthcheck: ExampleCase {
         }
     }
 
-    /// Checks that `run` throws `FragmentColorError.Render` with `words` in its text.
-    private func assertRenderThrows(_ label: String, _ words: String, _ run: () throws -> Void) throws {
+    /// Checks that `run` throws the `FragmentColorError` Python raises as `name`, with `words` in its message.
+    private func assertThrows(_ label: String, _ name: String, _ words: String, _ run: () throws -> Void) throws {
         do {
             try run()
         } catch let error as FragmentColorError {
-            guard case let .Render(message) = error, message.contains(words) else {
-                throw HealthcheckError.assertion("\(label) threw \(error)")
+            guard error.name == name, error.message.contains(words) else {
+                throw HealthcheckError.assertion("\(label) threw \(error.name): \(error)")
             }
             return
         }
@@ -659,7 +662,7 @@ final class Healthcheck: ExampleCase {
         do {
             _ = try PbrMaterial().baseColorMap().source(input: .cloneOf(texture), options: TextureOptions(format: .rgba8Unorm))
             throw HealthcheckError.assertion("MaterialMap.source with options beside a Texture should throw")
-        } catch let FragmentColorError.Render(message) {
+        } catch let FragmentColorError.Material(message) {
             guard message.contains("PbrMaterial::base_color_map().texture") else {
                 throw HealthcheckError.assertion("options beside a Texture threw \(message)")
             }
@@ -732,7 +735,7 @@ final class Healthcheck: ExampleCase {
             do {
                 try call()
                 throw HealthcheckError.assertion("\(label) should throw")
-            } catch let FragmentColorError.Render(message) {
+            } catch let FragmentColorError.Material(message) {
                 guard message.contains(label) else {
                     throw HealthcheckError.assertion("\(label) threw '\(message)', which doesn't name the call")
                 }
@@ -758,7 +761,7 @@ final class Healthcheck: ExampleCase {
             do {
                 try model.setTransform(shape)
                 throw HealthcheckError.assertion("Model.setTransform(\(shape)) should throw")
-            } catch let FragmentColorError.Render(message) {
+            } catch let FragmentColorError.InvalidInput(message) {
                 guard message.hasPrefix("Model.setTransform") else {
                     throw HealthcheckError.assertion("unexpected message: \(message)")
                 }
@@ -864,7 +867,7 @@ final class Healthcheck: ExampleCase {
         do {
             try renderer.render(shader, target)
         } catch let error as FragmentColorError {
-            guard case let .Feature(item, feature) = error else {
+            guard case let .Feature(_, item, feature) = error else {
                 throw HealthcheckError.assertion("render threw \(error), not Feature")
             }
             try assertEqual(item, "the shader", "Feature item")
@@ -913,7 +916,7 @@ final class Healthcheck: ExampleCase {
         do {
             try Shader(source).addMesh(negative)
             throw HealthcheckError.assertion("attaching id = -1 to a u32 input should throw")
-        } catch FragmentColorError.Shader(let message) {
+        } catch FragmentColorError.Other(let message) {
             guard message.contains("expected u32, got -1 at vertex 1") else {
                 throw HealthcheckError.assertion("-1 for a u32: unexpected message \(message)")
             }

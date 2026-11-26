@@ -29,6 +29,7 @@ impl WebError {
             let field = match field {
                 Field::Text(text) => JsValue::from_str(text),
                 Field::Number(number) => JsValue::from_f64(*number as f64),
+                Field::Kind(kind) => JsValue::from_f64(*kind as u64 as f64),
             };
             // Setting a property on a new Error object never throws.
             let _ = js_sys::Reflect::set(&error, &JsValue::from_str(name), &field);
@@ -36,9 +37,10 @@ impl WebError {
         Self(error)
     }
 
-    /// The error for `error`, named after its class.
-    pub(crate) fn from_error<E: Classify + std::fmt::Display>(error: &E) -> Self {
-        Self::new(error.classify(), &error.to_string())
+    /// The error for `error`, named after its class, with its fields as properties.
+    pub(crate) fn from_error<E: Classify + ?Sized>(error: &E) -> Self {
+        let shape = error.shape();
+        Self::with_fields(shape.class, &shape.message, &shape.fields)
     }
 
     /// A `TypeError` for an argument of the wrong type, as Python raises one.

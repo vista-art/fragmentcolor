@@ -113,7 +113,7 @@ fun Shader.get(key: String): Any = when (val data = getData(key)) {
     is UniformData.Sampler -> data.v1
     is UniformData.Bytes -> data.v1
     is UniformData.Array, is UniformData.Struct, is UniformData.Storage, is UniformData.PushConstant ->
-        throw FragmentColorException.Render("Shader.get: $key read back as a shape, not as its bytes")
+        throw FragmentColorException.Other("Shader.get: $key read back as a shape, not as its bytes")
 }
 
 // ---------------------------------------------------------------------------

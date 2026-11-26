@@ -13,10 +13,10 @@ Each language raises it in its own form:
 - Rust returns `RendererError::DeviceError { kind, label, detail }`. On the web a readback, such as `get_image`, returns `TextureError::DeviceError` with the same fields.
 - JavaScript throws an `Error` named `DeviceError`, with `kind`, `label` and `detail` properties.
 - Python raises `DeviceError`, a `FragmentColorError`, with `kind`, `label` and `detail` attributes.
-- Swift throws `FragmentColorError.Device(kind:label:detail:)`.
-- Kotlin throws `FragmentColorException.Device(kind, label, detail)`.
+- Swift throws `FragmentColorError.Device(message:kind:label:detail:)`, whose `name` is `DeviceError`.
+- Kotlin throws `FragmentColorException.Device(message, kind, label, detail)`, whose `name` is `DeviceError`.
 
-Each language's own text for the error carries all three, as `Device error (validation) in 'frame': ...`: `Error.message` in JavaScript, `str(e)` in Python, `localizedDescription` and `description` in Swift, and `toString()` in Kotlin. Kotlin's `Throwable.message` lists the fields instead, as `kind=VALIDATION, label=frame, detail=...`.
+Each language's own text for the error carries all three, as `Device error (validation) in 'frame': ...`: `Error.message` in JavaScript, `str(e)` in Python, `message`, `localizedDescription` and `description` in Swift, and `message` and `toString()` in Kotlin.
 
 On the web the GPU reports an error after `render` has returned, so the next call throws it, as `Renderer::render` describes.
 

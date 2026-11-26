@@ -10,6 +10,7 @@ use crate::core::renderer::pipelines::layout::{
     describe_texture, find_entry, pick_source, plan_layout,
 };
 use crate::core::renderer::*;
+use crate::errors::Classify;
 use crate::texture::{Registration, Texture, TextureObject};
 use crate::{Mesh, PbrMaterial, Shader, ShaderError, Vertex};
 use std::sync::atomic::Ordering;

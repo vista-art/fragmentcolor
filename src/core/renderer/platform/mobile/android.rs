@@ -142,8 +142,8 @@ fn acquire_window(
 ) -> Result<(AndroidNativeWindow, wgpu::Extent3d), FragmentColorError> {
     let raw = pointer as *mut ndk_sys::ANativeWindow;
     if raw.is_null() {
-        return Err(FragmentColorError::Init(
-            "createTarget: the ANativeWindow pointer is null".into(),
+        return Err(FragmentColorError::other(
+            "createTarget: the ANativeWindow pointer is null",
         ));
     }
     // SAFETY: the caller guarantees the ANativeWindow is alive and valid

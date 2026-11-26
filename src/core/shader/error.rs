@@ -255,7 +255,7 @@ impl From<pyo3::PyErr> for ShaderError {
     }
 }
 
-#[cfg(any(python, wasm, test))]
+#[cfg(any(python, wasm, mobile, test))]
 impl crate::errors::Classify for ShaderError {
     fn classify(&self) -> crate::errors::ErrorClass {
         crate::errors::ErrorClass::Base
