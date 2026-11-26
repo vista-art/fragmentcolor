@@ -1,7 +1,7 @@
 # Vertex::pbr
 
 Construct a `Vertex` that matches the PBR shader's vertex input layout.
-Seeds every attribute [`Material::pbr`](https://fragmentcolor.org/api/scene/material#pbr)
+Seeds every attribute [`PbrMaterial`](https://fragmentcolor.org/api/scene/pbrmaterial)
 reads (`NORMAL`, `UV0`, `COLOR0`, `UV1`, `TANGENT`) with a neutral identity
 default; chain `.set(...)` to override the slots a real mesh has data for.
 
@@ -22,7 +22,7 @@ Defaults:
 | `NORMAL`  | `[0, 0, 1]`             | forward-facing surface                          |
 | `UV0`     | `[0, 0]`                | corner of the texture                           |
 | `COLOR0`  | `[1, 1, 1, 1]`          | identity vertex tint                            |
-| `UV1`     | `[0, 0]`                | read by slots `texture_uv` puts on UV set 1     |
+| `UV1`     | `[0, 0]`                | read by maps that `uv(1)` puts on UV set 1      |
 | `TANGENT` | `[1, 0, 0, 1]`          | T = +X, bitangent sign +1                       |
 
 ## Example

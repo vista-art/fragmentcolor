@@ -1071,7 +1071,7 @@ mod convert {
                 // non-identifier character: closes the same set of contexts
                 // as the original allowlist (`;`, `\n`, ` `) plus `,` and
                 // `)` which appear when `?` is on a nested call inside a
-                // function call: `Model.new(mesh, Material.pbr()?)`.
+                // function call: `Model.new(mesh, PbrMaterial.new()?)`.
                 let chars: Vec<char> = out.chars().collect();
                 let mut s = String::with_capacity(out.len());
                 let mut i = 0usize;

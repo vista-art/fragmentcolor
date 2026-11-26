@@ -6,10 +6,11 @@ use std::sync::Arc;
 use crate::SceneObjectHandle;
 use crate::bindings::numbers::{read_finite, read_floats, read_vector};
 use crate::errors::platform::mobile::FragmentColorError;
+use crate::scene::material::platform::mobile::MobileMaterial;
 use crate::scene::{
     Camera, CameraError, GltfSource, Light, LightError, LightKind, Model, ModelError, Scene,
 };
-use crate::{Material, Mesh, Pass};
+use crate::{Mesh, Pass};
 
 /// Mobile-marshallable target for [`Scene::add_to`]: a pass index or a pass
 /// name. Uniffi can't marshal `impl Into<PassRef>`, so Swift / Kotlin pick a
@@ -51,8 +52,8 @@ impl From<ModelError> for FragmentColorError {
 impl Model {
     #[uniffi::constructor(name = "new")]
     #[lsp_doc("docs/api/scene/model/new.md")]
-    pub fn new_mobile(mesh: Arc<Mesh>, material: Arc<Material>) -> Arc<Self> {
-        Arc::new(Model::new((*mesh).clone(), (*material).clone()))
+    pub fn new_mobile(mesh: Arc<Mesh>, material: MobileMaterial) -> Arc<Self> {
+        Arc::new(Model::new((*mesh).clone(), crate::Material::from(material)))
     }
 
     #[uniffi::method(name = "mesh")]
@@ -63,8 +64,8 @@ impl Model {
 
     #[uniffi::method(name = "material")]
     #[lsp_doc("docs/api/scene/model/material.md")]
-    pub fn material_mobile(self: Arc<Self>) -> Arc<Material> {
-        Arc::new(self.material.clone())
+    pub fn material_mobile(self: Arc<Self>) -> MobileMaterial {
+        MobileMaterial::from(&self.material)
     }
 
     #[uniffi::method(name = "transform")]

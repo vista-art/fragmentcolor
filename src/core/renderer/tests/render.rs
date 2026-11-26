@@ -868,7 +868,7 @@ fn model_pass() -> Arc<PassObject> {
             .map(|corner| crate::Vertex::pbr(corner).set(crate::Vertex::NORMAL, [0.0, 0.0, 1.0])),
     );
     let pass = Pass::new("models");
-    pass.add(&crate::Model::new(mesh, crate::Material::pbr()))
+    pass.add(&crate::Model::new(mesh, crate::PbrMaterial::new()))
         .expect("add failed");
     pass.passes().first().cloned().expect("pass")
 }
@@ -996,7 +996,7 @@ fn default_depth_matches_the_color_attachment() {
                 crate::Vertex::pbr(corner).set(crate::Vertex::NORMAL, [0.0, 0.0, 1.0])
             }),
         );
-        pass.add(&crate::Model::new(mesh, crate::Material::pbr()))
+        pass.add(&crate::Model::new(mesh, crate::PbrMaterial::new()))
             .expect("add failed");
         pass.set_target(&target).expect("set_target failed");
         let pass = pass.passes().first().cloned().expect("pass");
@@ -1348,8 +1348,8 @@ const LEFT: (u32, u32) = (4, 8);
 const RIGHT: (u32, u32) = (12, 8);
 
 /// A material that glows red without any light.
-fn red_glow() -> crate::Material {
-    crate::Material::pbr()
+fn red_glow() -> crate::PbrMaterial {
+    crate::PbrMaterial::new()
         .base_color([0.0, 0.0, 0.0, 1.0])
         .expect("base color")
         .emissive([1.0, 0.0, 0.0])
@@ -1357,7 +1357,7 @@ fn red_glow() -> crate::Material {
 }
 
 /// A model whose mesh spans `left` to `right` across the middle of the view.
-fn strip(material: &crate::Material, left: f32, right: f32) -> crate::Model {
+fn strip(material: impl Into<crate::Material>, left: f32, right: f32) -> crate::Model {
     let mesh = crate::Mesh::new();
     let corners = [
         [left, -0.5, 0.0],
@@ -1371,7 +1371,7 @@ fn strip(material: &crate::Material, left: f32, right: f32) -> crate::Model {
         corners
             .map(|corner| crate::Vertex::pbr(corner).set(crate::Vertex::NORMAL, [0.0, 0.0, 1.0])),
     );
-    crate::Model::new(mesh, material.clone())
+    crate::Model::new(mesh, material)
 }
 
 fn camera() -> crate::Camera {
@@ -1675,7 +1675,7 @@ fn a_material_shader_draws_its_own_instances() {
             .await
             .expect("texture target");
         let shader = crate::Shader::new(INDEX_COLOR).expect("shader");
-        let model = strip(&crate::Material::custom(shader.clone()), 0.2, 1.0);
+        let model = strip(&shader, 0.2, 1.0);
         let pass = Pass::new("models");
         pass.set_clear_color(BLUE).expect("set clear color");
         pass.add(&model).expect("add model");
@@ -1885,7 +1885,7 @@ fn the_blend_phase_draws_the_planned_buffers() {
 }
 
 /// `strip`, with one more property on each vertex, which widens its stride.
-fn wide_strip(material: &crate::Material, left: f32, right: f32) -> crate::Model {
+fn wide_strip(material: &crate::PbrMaterial, left: f32, right: f32) -> crate::Model {
     let narrow = strip(material, left, right);
     let mesh = crate::Mesh::new();
     let vertices = narrow.mesh().object.verts.read().clone();

@@ -28,6 +28,16 @@ extension Model {
         self.init(mesh: mesh, material: material)
     }
 
+    /// A Model that draws `mesh` with a PbrMaterial, which the generated initializer takes as `.pbr`.
+    public convenience init(_ mesh: Mesh, _ material: PbrMaterial) {
+        self.init(mesh: mesh, material: .pbr(material))
+    }
+
+    /// A Model that draws `mesh` with a Shader of your own, which the generated initializer takes as `.custom`.
+    public convenience init(_ mesh: Mesh, _ material: Shader) {
+        self.init(mesh: mesh, material: .custom(material))
+    }
+
     // MARK: - Setters
 
     public func setTransform(_ matrix: [Float]) throws {

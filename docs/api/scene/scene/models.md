@@ -18,7 +18,7 @@ order; user-added Models appear after.
 
 ```rust
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Material, Mesh, Model, Scene, Vertex};
+use fragmentcolor::{Mesh, Model, PbrMaterial, Scene, Vertex};
 
 let mesh = Mesh::new();
 mesh.add_vertices([
@@ -26,7 +26,7 @@ mesh.add_vertices([
     Vertex::pbr([-0.5, -0.5, 0.0]).set(Vertex::UV0, [0.0, 0.0]),
     Vertex::pbr([0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]),
 ]);
-let model = Model::new(mesh, Material::pbr());
+let model = Model::new(mesh, PbrMaterial::new());
 
 let scene = Scene::new();
 scene.add(&model)?;

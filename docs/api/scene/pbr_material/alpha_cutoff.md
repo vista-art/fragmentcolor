@@ -1,0 +1,29 @@
+# PbrMaterial::alpha_cutoff
+
+Sets the alpha threshold used by `AlphaMode::Mask`. Fragments whose
+`base_color.a` falls below this value are `discard`ed in the fragment
+shader. Stored on `material.alpha_cutoff`; default `0.5`, matching glTF 2.0.
+
+Only `AlphaMode::Mask` reads this value; in `Opaque` and `Blend` modes the
+fragment shader ignores it. Use it together with `PbrMaterial::alpha_mode`
+when you want hard-edged cut-out transparency (foliage, chain-link, decals).
+
+NaN or an infinity returns `MaterialError::NotFinite`, which names the
+call, and the material keeps the value it had. The other languages also
+refuse a number past the 32-bit float range, such as `1e39`, with a
+message like `PbrMaterial.alphaCutoff: value must be a finite number that
+fits a 32-bit float, got 1e39`. JavaScript throws an `Error` named
+`InvalidInputError`, Python raises `InvalidInputError`, Swift throws
+`FragmentColorError` and Kotlin throws `FragmentColorException`.
+
+## Example
+
+```rust
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::PbrMaterial;
+
+let foliage = PbrMaterial::new().alpha_cutoff(0.3)?;
+# let _foliage = foliage;
+# Ok(())
+# }
+```

@@ -93,6 +93,18 @@ impl Shader {
         self.is_compute()
     }
 
+    #[pyo3(name = "alpha_mode")]
+    #[lsp_doc("docs/api/core/shader/alpha_mode.md")]
+    pub fn alpha_mode_py(&self, mode: crate::AlphaMode) -> Self {
+        self.alpha_mode(mode)
+    }
+
+    #[pyo3(name = "double_sided")]
+    #[lsp_doc("docs/api/core/shader/double_sided.md")]
+    pub fn double_sided_py(&self, value: bool) -> Self {
+        self.double_sided(value)
+    }
+
     // Internal duck-typed interface used by PyRenderable dispatch, not part of public docs.
     #[doc(hidden)]
     pub fn renderable_type(&self) -> &'static str {

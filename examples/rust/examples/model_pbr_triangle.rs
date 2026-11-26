@@ -1,13 +1,13 @@
 //! Render a single PBR-shaded triangle through Scene + Model + Material.
 //!
 //! Demonstrates the v0.11.2 top-level path: build a `Mesh`, wrap it in a
-//! `Model` paired with `Material::pbr()`, and absorb the Model plus a
+//! `Model` paired with `PbrMaterial::new()`, and absorb the Model plus a
 //! `Camera` and a `Light` into a `Scene` through the unified `Scene::add`.
 //! The Scene owns the Pass under the hood and feeds the whole thing into
 //! the Renderer in one call. The Material ships the default Cook-Torrance +
 //! GGX physically-based shader.
 
-use fragmentcolor::{Camera, Light, Material, Mesh, Model, Renderer, Scene, Target, Vertex};
+use fragmentcolor::{Camera, Light, Mesh, Model, PbrMaterial, Renderer, Scene, Target, Vertex};
 
 fn main() {
     pollster::block_on(async move {
@@ -29,7 +29,7 @@ fn main() {
             mesh.add_vertex(Vertex::pbr(pos).set(Vertex::UV0, uv));
         }
 
-        let material = Material::pbr()
+        let material = PbrMaterial::new()
             .base_color([0.85, 0.4, 0.2, 1.0])
             .expect("base color")
             .metallic(0.0)

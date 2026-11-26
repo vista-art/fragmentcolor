@@ -260,7 +260,13 @@ mod tests {
                 "InvalidInputError",
             ),
             (Box::new(ModelError::ZeroAxis), "InvalidInputError"),
-            (Box::new(MaterialError::UvSet(2)), "MaterialError"),
+            (
+                Box::new(MaterialError::UvSet {
+                    call: "PbrMaterial::normal_map().uv".into(),
+                    set: 2,
+                }),
+                "MaterialError",
+            ),
             (
                 Box::new(MaterialError::Texture(TextureError::InvalidInput(text(
                     "x",

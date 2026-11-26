@@ -6,9 +6,9 @@ A `Model` pairs a [Mesh](https://fragmentcolor.org/api/geometry/mesh) with a
 content; the Material handles shading, the Mesh handles geometry, the Model
 handles "where in the world".
 
-Each `Model::new` takes ownership of the Material it's given. Cloning the
-Material before passing it in is cheap: `Material::clone` shares the handle
-and copies nothing. The per-Model transform is *not* a Material uniform. The
+Each `Model::new` takes ownership of the material it's given. Cloning the
+material before passing it in is cheap: a clone shares the handle and copies
+nothing. The per-Model transform is *not* a material uniform. The
 renderer reads it at draw time and feeds it to the vertex stage as four
 `vec4<f32>` instance attributes, `model_0` to `model_3`, the columns of a
 `mat4x4<f32>`. The PBR shader reads them at locations 3 to 6.
@@ -22,7 +22,7 @@ their order matters.
 For the fan-out case (one Material, many positioned items), the pattern is:
 
 ```text
-template = Material::pbr().base_color(...)
+template = PbrMaterial::new().base_color(...)
 for each item:
   model = Model::new(item.mesh, template.clone())
   model.set_transform(item.matrix)
@@ -55,7 +55,7 @@ again.
 
 ```rust
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Material, Mesh, Model, Vertex};
+use fragmentcolor::{Mesh, Model, PbrMaterial, Vertex};
 
 let mesh = Mesh::new();
 mesh.add_vertices([
@@ -64,7 +64,7 @@ mesh.add_vertices([
     Vertex::pbr([0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]),
 ]);
 
-let mat = Material::pbr().base_color([0.3, 0.6, 1.0, 1.0])?;
+let mat = PbrMaterial::new().base_color([0.3, 0.6, 1.0, 1.0])?;
 let model = Model::new(mesh, mat);
 model.translate([2.0, 0.0, 0.0])?;
 model.scale([1.5, 1.5, 1.5])?;

@@ -676,7 +676,7 @@ impl Renderable for Scene {
 mod tests {
     use super::*;
     use crate::Vertex;
-    use crate::{Material, Mesh, Model, Renderer, Target};
+    use crate::{Mesh, Model, PbrMaterial, Renderer, Target};
 
     fn pbr_triangle_mesh() -> Mesh {
         let mesh = Mesh::new();
@@ -706,7 +706,7 @@ mod tests {
     #[test]
     fn add_creates_default_pass_lazily() {
         let scene = Scene::new();
-        let model = Model::new(pbr_triangle_mesh(), Material::pbr());
+        let model = Model::new(pbr_triangle_mesh(), PbrMaterial::new());
         scene.add(&model).expect("add");
         assert!(scene.inner.default_pass.read().is_some());
         assert_eq!(scene.inner.passes.read().len(), 1);
@@ -748,7 +748,7 @@ mod tests {
         // the backdrop, so the render order follows insertion order.
         let backdrop = Pass::new("backdrop");
         scene.add_pass(&backdrop);
-        let model = Model::new(pbr_triangle_mesh(), Material::pbr());
+        let model = Model::new(pbr_triangle_mesh(), PbrMaterial::new());
         scene.add(&model).expect("add");
 
         let list = scene.passes();
@@ -769,7 +769,7 @@ mod tests {
         // geometry renders after it, unlike the old "extras always first"
         // behavior.
         let scene = Scene::new();
-        let model = Model::new(pbr_triangle_mesh(), Material::pbr());
+        let model = Model::new(pbr_triangle_mesh(), PbrMaterial::new());
         scene.add(&model).expect("add"); // default pass first
         let overlay = Pass::new("overlay");
         scene.add_pass(&overlay); // overlay second
@@ -786,7 +786,7 @@ mod tests {
     #[test]
     fn defaults_inject_camera_and_light_when_missing() {
         let scene = Scene::new();
-        let material = Material::pbr();
+        let material = PbrMaterial::new();
         let model = Model::new(pbr_triangle_mesh(), material.clone());
         scene.add(&model).expect("add");
 
@@ -812,7 +812,7 @@ mod tests {
     #[test]
     fn user_camera_skips_default_injection() {
         let scene = Scene::new();
-        let material = Material::pbr();
+        let material = PbrMaterial::new();
         let model = Model::new(pbr_triangle_mesh(), material.clone());
         scene.add(&model).expect("add");
         // User-supplied camera at [3, 0, 0]. After this `add`, has_camera is
@@ -831,7 +831,7 @@ mod tests {
     #[test]
     fn user_light_skips_default_injection() {
         let scene = Scene::new();
-        let material = Material::pbr();
+        let material = PbrMaterial::new();
         let model = Model::new(pbr_triangle_mesh(), material.clone());
         scene.add(&model).expect("add");
         let light = Light::directional([0.0, -1.0, 0.0], [0.5, 0.0, 0.0]).expect("light");
@@ -850,7 +850,7 @@ mod tests {
         let scene = Scene::new();
         let alias = scene.clone();
         alias
-            .add(&Model::new(pbr_triangle_mesh(), Material::pbr()))
+            .add(&Model::new(pbr_triangle_mesh(), PbrMaterial::new()))
             .expect("add via alias");
         assert!(scene.inner.default_pass.read().is_some());
     }
@@ -860,7 +860,7 @@ mod tests {
         // Each `Scene::add` call routes through the typed-lane bookkeeping;
         // the three getters return Arc-shared clones of what was added.
         let scene = Scene::new();
-        let model = Model::new(pbr_triangle_mesh(), Material::pbr());
+        let model = Model::new(pbr_triangle_mesh(), PbrMaterial::new());
         let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0)
             .expect("camera")
             .look_at([1.0, 2.0, 3.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
@@ -894,7 +894,7 @@ mod tests {
         // straight to `pass.add(...)`. The typed lanes must still pick
         // those up so consumers can grab the default camera/light back.
         let scene = Scene::new();
-        let model = Model::new(pbr_triangle_mesh(), Material::pbr());
+        let model = Model::new(pbr_triangle_mesh(), PbrMaterial::new());
         scene.add(&model).expect("model");
         assert!(scene.cameras().is_empty(), "no camera before passes()");
         assert!(scene.lights().is_empty(), "no light before passes()");
@@ -972,7 +972,7 @@ struct Lights { ambient: vec3<f16> }
     // and the scene and its shaders keep the color they had.
     #[test]
     fn ambient_refuses_a_channel_that_is_not_finite() {
-        let material = Material::pbr();
+        let material = PbrMaterial::new();
         let scene = Scene::new();
         scene
             .add(&Model::new(pbr_triangle_mesh(), material.clone()))
@@ -1001,7 +1001,7 @@ struct Lights { ambient: vec3<f16> }
                 .expect("texture target");
             let model = Model::new(
                 pbr_triangle_mesh(),
-                Material::pbr()
+                PbrMaterial::new()
                     .base_color([0.6, 0.2, 0.8, 1.0])
                     .expect("base color"),
             );
@@ -1049,8 +1049,8 @@ struct Lights { ambient: vec3<f16> }
     fn add_to_targets_pass_by_index_and_name() {
         let scene = Scene::new();
         scene.add_pass(&Pass::new("a")).add_pass(&Pass::new("b"));
-        let by_index = Model::new(pbr_triangle_mesh(), Material::pbr());
-        let by_name = Model::new(pbr_triangle_mesh(), Material::pbr());
+        let by_index = Model::new(pbr_triangle_mesh(), PbrMaterial::new());
+        let by_name = Model::new(pbr_triangle_mesh(), PbrMaterial::new());
         scene.add_to(0usize, &by_index).expect("by index");
         scene.add_to("b", &by_name).expect("by name");
 
@@ -1070,7 +1070,7 @@ struct Lights { ambient: vec3<f16> }
     #[test]
     fn add_to_unknown_target_errors() {
         let scene = Scene::new();
-        let model = Model::new(pbr_triangle_mesh(), Material::pbr());
+        let model = Model::new(pbr_triangle_mesh(), PbrMaterial::new());
         assert!(
             scene.add_to(3usize, &model).is_err(),
             "out-of-range index errors"
@@ -1090,7 +1090,7 @@ struct Lights { ambient: vec3<f16> }
         let bare = crate::Mesh::new();
         bare.add_vertices([[0.0, 0.5, 0.0], [-0.5, -0.5, 0.0], [0.5, -0.5, 0.0]]);
 
-        let refused = scene.add(&crate::Model::new(bare, crate::Material::pbr()));
+        let refused = scene.add(&crate::Model::new(bare, crate::PbrMaterial::new()));
         let passes = scene.list_passes().len();
         let default_pass = scene.inner.default_pass.read().is_some();
         scene
@@ -1175,7 +1175,7 @@ struct Lights { ambient: vec3<f16> }
     #[test]
     fn an_add_from_an_attach_lands_on_the_new_default_pass() {
         let scene = Scene::new();
-        let material = Material::pbr();
+        let material = PbrMaterial::new();
         let nesting = Nesting {
             scene: scene.clone(),
             child: Model::new(pbr_triangle_mesh(), material.clone()),
@@ -1205,7 +1205,7 @@ struct Lights { ambient: vec3<f16> }
     #[test]
     fn a_refused_first_add_keeps_what_its_attach_added() {
         let scene = Scene::new();
-        let material = Material::pbr();
+        let material = PbrMaterial::new();
         let nesting = Nesting {
             scene: scene.clone(),
             child: Model::new(pbr_triangle_mesh(), material.clone()),
@@ -1246,7 +1246,7 @@ struct Lights { ambient: vec3<f16> }
 
         let panicked = std::panic::catch_unwind(added);
         scene
-            .add(&Model::new(pbr_triangle_mesh(), Material::pbr()))
+            .add(&Model::new(pbr_triangle_mesh(), PbrMaterial::new()))
             .expect("add");
 
         let passes = scene.list_passes();
@@ -1285,7 +1285,12 @@ struct Lights { ambient: vec3<f16> }
     }
 
     /// `Arranging` with a child model on `material`.
-    fn arranging(scene: &Scene, material: &Material, target: PassRef, refuse: bool) -> Arranging {
+    fn arranging(
+        scene: &Scene,
+        material: &PbrMaterial,
+        target: PassRef,
+        refuse: bool,
+    ) -> Arranging {
         Arranging {
             scene: scene.clone(),
             overlay: Pass::new("overlay"),
@@ -1301,7 +1306,7 @@ struct Lights { ambient: vec3<f16> }
     #[test]
     fn an_attach_sees_the_default_pass_its_first_add_builds() {
         let scene = Scene::new();
-        let material = Material::pbr();
+        let material = PbrMaterial::new();
         let target = PassRef::from("Scene Default Pass");
         let arranging = arranging(&scene, &material, target, false);
 
@@ -1328,7 +1333,7 @@ struct Lights { ambient: vec3<f16> }
     #[test]
     fn a_refused_first_add_keeps_what_its_attach_added_to_it() {
         let scene = Scene::new();
-        let material = Material::pbr();
+        let material = PbrMaterial::new();
         let arranging = arranging(&scene, &material, PassRef::from(0usize), true);
 
         let refused = scene.add(&arranging);
@@ -1441,7 +1446,7 @@ struct Lights { ambient: vec3<f16> }
         let left = names(&scene);
         let forgotten = scene.inner.default_pass.read().is_none();
         scene
-            .add(&Model::new(pbr_triangle_mesh(), Material::pbr()))
+            .add(&Model::new(pbr_triangle_mesh(), PbrMaterial::new()))
             .expect("add a model");
 
         assert_eq!(*removed.lock(), Some(true), "remove_pass found it");
@@ -1486,7 +1491,7 @@ struct Lights { ambient: vec3<f16> }
         });
 
         scene
-            .add(&Model::new(pbr_triangle_mesh(), Material::pbr()))
+            .add(&Model::new(pbr_triangle_mesh(), PbrMaterial::new()))
             .expect("add");
 
         assert_eq!(names(&scene), ["sky", "hud", "post", "Scene Default Pass"]);
@@ -1497,7 +1502,7 @@ struct Lights { ambient: vec3<f16> }
     #[test]
     fn a_panicking_first_add_keeps_what_its_attach_added() {
         let scene = Scene::new();
-        let material = Material::pbr();
+        let material = PbrMaterial::new();
         let child = Model::new(pbr_triangle_mesh(), material.clone());
         let object = scripted(&scene, move |scene| {
             scene.add(&child)?;
@@ -1525,7 +1530,7 @@ struct Lights { ambient: vec3<f16> }
     #[test]
     fn a_render_during_an_add_to_injects_no_second_camera() {
         let scene = Scene::new();
-        let material = Material::pbr();
+        let material = PbrMaterial::new();
         scene
             .add(&Model::new(pbr_triangle_mesh(), material.clone()))
             .expect("add");
@@ -1589,14 +1594,14 @@ struct Lights { ambient: vec3<f16> }
         // instead of attaching to a Pass the graph no longer holds.
         let scene = Scene::new();
         scene
-            .add(&Model::new(pbr_triangle_mesh(), Material::pbr()))
+            .add(&Model::new(pbr_triangle_mesh(), PbrMaterial::new()))
             .expect("add");
         let default_pass = scene.list_passes()[0].clone();
         assert!(scene.remove_pass(&default_pass));
         assert!(scene.inner.default_pass.read().is_none());
 
         scene
-            .add(&Model::new(pbr_triangle_mesh(), Material::pbr()))
+            .add(&Model::new(pbr_triangle_mesh(), PbrMaterial::new()))
             .expect("add again");
         assert_eq!(scene.list_passes().len(), 1, "a fresh default pass appears");
     }
@@ -1621,7 +1626,7 @@ struct Lights { ambient: vec3<f16> }
     fn set_passes_drops_a_stale_default_pass_handle() {
         let scene = Scene::new();
         scene
-            .add(&Model::new(pbr_triangle_mesh(), Material::pbr()))
+            .add(&Model::new(pbr_triangle_mesh(), PbrMaterial::new()))
             .expect("add");
         assert!(scene.inner.default_pass.read().is_some());
         // Replace the graph with passes that don't include the default pass.
@@ -1633,7 +1638,7 @@ struct Lights { ambient: vec3<f16> }
     fn set_passes_keeps_a_surviving_default_pass_handle() {
         let scene = Scene::new();
         scene
-            .add(&Model::new(pbr_triangle_mesh(), Material::pbr()))
+            .add(&Model::new(pbr_triangle_mesh(), PbrMaterial::new()))
             .expect("add");
         let default_pass = scene.list_passes()[0].clone();
         // Reorder, keeping the default pass in the graph.
@@ -1647,7 +1652,7 @@ struct Lights { ambient: vec3<f16> }
     #[test]
     fn no_defaults_skips_camera_and_light_injection() {
         let scene = Scene::new();
-        let material = Material::pbr();
+        let material = PbrMaterial::new();
         let model = Model::new(pbr_triangle_mesh(), material.clone());
         scene.add(&model).expect("add");
         scene.no_defaults();
@@ -1673,7 +1678,7 @@ struct Lights { ambient: vec3<f16> }
     #[test]
     fn no_default_camera_keeps_default_light() {
         let scene = Scene::new();
-        let model = Model::new(pbr_triangle_mesh(), Material::pbr());
+        let model = Model::new(pbr_triangle_mesh(), PbrMaterial::new());
         scene.add(&model).expect("add");
         scene.no_default_camera();
 
@@ -1685,7 +1690,7 @@ struct Lights { ambient: vec3<f16> }
     #[test]
     fn no_default_light_keeps_default_camera() {
         let scene = Scene::new();
-        let model = Model::new(pbr_triangle_mesh(), Material::pbr());
+        let model = Model::new(pbr_triangle_mesh(), PbrMaterial::new());
         scene.add(&model).expect("add");
         scene.no_default_light();
 
@@ -1697,7 +1702,7 @@ struct Lights { ambient: vec3<f16> }
     #[test]
     fn set_default_camera_injects_the_override() {
         let scene = Scene::new();
-        let material = Material::pbr();
+        let material = PbrMaterial::new();
         let model = Model::new(pbr_triangle_mesh(), material.clone());
         scene.add(&model).expect("add");
 
@@ -1718,7 +1723,7 @@ struct Lights { ambient: vec3<f16> }
     #[test]
     fn set_default_light_injects_the_override() {
         let scene = Scene::new();
-        let material = Material::pbr();
+        let material = PbrMaterial::new();
         let model = Model::new(pbr_triangle_mesh(), material.clone());
         scene.add(&model).expect("add");
 
@@ -1735,7 +1740,7 @@ struct Lights { ambient: vec3<f16> }
         // no_default_camera turns injection off; a later set_default_camera
         // is an explicit request, so it re-arms injection.
         let scene = Scene::new();
-        let material = Material::pbr();
+        let material = PbrMaterial::new();
         let model = Model::new(pbr_triangle_mesh(), material.clone());
         scene.add(&model).expect("add");
 

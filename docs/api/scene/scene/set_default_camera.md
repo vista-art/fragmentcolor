@@ -15,7 +15,7 @@ the camera you pass.
 
 ```rust
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Camera, Material, Mesh, Model, Scene, Vertex};
+use fragmentcolor::{Camera, Mesh, Model, PbrMaterial, Scene, Vertex};
 
 let mesh = Mesh::new();
 mesh.add_vertices([
@@ -24,7 +24,7 @@ mesh.add_vertices([
     Vertex::pbr([0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]),
 ]);
 let scene = Scene::new();
-scene.add(&Model::new(mesh, Material::pbr()))?;
+scene.add(&Model::new(mesh, PbrMaterial::new()))?;
 
 let camera = Camera::perspective(1.047, 16.0 / 9.0, 0.1, 100.0)?
     .look_at([0.0, 1.5, 4.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])?;

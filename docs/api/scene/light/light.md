@@ -59,7 +59,7 @@ shaders it reached draw without it.
 
 ## Cost model
 
-`Material::pbr` shades each fragment with the lights that reach it. At
+`PbrMaterial` shades each fragment with the lights that reach it. At
 each render the renderer sorts every light with a finite `range` into a
 grid of clusters over the pass's camera view, and a fragment loops over
 the lights of its own cluster. The cost of a fragment grows with the
@@ -104,9 +104,9 @@ lights:
   Material as the lighting model and the Passes as views into the same
   lit world.
 
-For independent lighting setups, build a separate Material per scene
-(each `Material::pbr()` makes a new shader with its own list) or pass
-your own shader to `Material::custom`. One scene with one Material
+For independent lighting setups, build a separate material per scene
+(each `PbrMaterial::new()` makes a new shader with its own list) or draw
+with a shader of your own. One scene with one material
 covers the typical case, and the shared list is what lets
 `Scene::add(&light)` reach every Pass that renders the Scene.
 
@@ -141,7 +141,7 @@ covers the typical case, and the shared list is what lets
 
 ```rust
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Light, Material, Mesh, Model, Pass, Renderer, Vertex};
+use fragmentcolor::{Light, Mesh, Model, Pass, PbrMaterial, Renderer, Vertex};
 
 let renderer = Renderer::new();
 let mesh = Mesh::new();
@@ -150,7 +150,7 @@ mesh.add_vertices([
     Vertex::pbr([-0.5, -0.5, 0.0]).set(Vertex::UV0, [0.0, 0.0]),
     Vertex::pbr([0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]),
 ]);
-let model = Model::new(mesh, Material::pbr());
+let model = Model::new(mesh, PbrMaterial::new());
 
 let sun = Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])?
     .set_intensity(1.5)?;

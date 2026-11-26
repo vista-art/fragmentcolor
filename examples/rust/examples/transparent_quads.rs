@@ -5,7 +5,7 @@
 //! result looks the same as it would with a hand-sorted scene.
 
 use fragmentcolor::{
-    AlphaMode, Camera, Light, Material, Mesh, Model, Renderer, Scene, Target, Vertex,
+    AlphaMode, Camera, Light, Mesh, Model, PbrMaterial, Renderer, Scene, Target, Vertex,
 };
 
 fn main() {
@@ -42,15 +42,15 @@ fn main() {
         // Three different-colored glass panels at distinct Z depths. Each
         // shares the PBR shader (single pipeline + single bind group); only
         // the base-color factor and the alpha differ.
-        let red_glass = Material::pbr()
+        let red_glass = PbrMaterial::new()
             .base_color([1.0, 0.2, 0.2, 0.45])
             .expect("base color")
             .alpha_mode(AlphaMode::Blend);
-        let green_glass = Material::pbr()
+        let green_glass = PbrMaterial::new()
             .base_color([0.2, 1.0, 0.2, 0.45])
             .expect("base color")
             .alpha_mode(AlphaMode::Blend);
-        let blue_glass = Material::pbr()
+        let blue_glass = PbrMaterial::new()
             .base_color([0.2, 0.4, 1.0, 0.45])
             .expect("base color")
             .alpha_mode(AlphaMode::Blend);

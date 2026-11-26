@@ -7,18 +7,19 @@ use pyo3::types::PyString;
 use crate::bindings::numbers::read_floats;
 use crate::bindings::python::{PyChannels, PyFloat, PyUnsigned, read_numbers, read_unsigned};
 use crate::errors::InvalidInputError;
+use crate::scene::material::platform::python::PyMaterial;
 use crate::scene::{
     Camera, CameraError, Light, LightError, LightKind, Model, ModelError, PassRef, Scene,
     SceneLoadError,
 };
-use crate::{Material, Mesh, Pass};
+use crate::{Mesh, Pass};
 
 #[pymethods]
 impl Model {
     #[new]
     #[lsp_doc("docs/api/scene/model/new.md")]
-    pub fn new_py(mesh: Mesh, material: Material) -> Self {
-        Model::new(mesh, material)
+    pub fn new_py(mesh: Mesh, material: PyMaterial) -> Self {
+        Model::new(mesh, crate::Material::from(material))
     }
 
     #[pyo3(name = "mesh")]
@@ -29,10 +30,10 @@ impl Model {
 
     #[pyo3(name = "material")]
     #[lsp_doc("docs/api/scene/model/material.md")]
-    pub fn material_py(&self) -> Material {
-        // Material::clone is a shallow Arc-share, so mutations through the
-        // returned handle reach the Model's Material.
-        self.material.clone()
+    pub fn material_py(&self) -> PyMaterial {
+        // A material clone is a shallow Arc-share, so mutations through the
+        // returned object reach the Model's material.
+        PyMaterial::from(&self.material)
     }
 
     #[pyo3(name = "transform")]

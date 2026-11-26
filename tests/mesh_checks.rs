@@ -1,8 +1,8 @@
 #![cfg(not(target_arch = "wasm32"))]
 
 use fragmentcolor::{
-    Instance, Material, Mesh, MeshError, Model, Pass, Renderer, RendererError, Shader, ShaderError,
-    Target, Vertex,
+    Instance, Mesh, MeshError, Model, Pass, PbrMaterial, Renderer, RendererError, Shader,
+    ShaderError, Target, Vertex,
 };
 
 const WHITE: &str = r#"
@@ -250,10 +250,10 @@ fn a_mesh_draws_with_two_renderers() {
 }
 
 /// A Model of `material` on `corners`, drawn without indices.
-fn model_on(material: &Material, corners: &[[f32; 3]]) -> Model {
+fn model_on(material: &PbrMaterial, corners: &[[f32; 3]]) -> Model {
     let mesh = Mesh::new();
     mesh.add_vertices(corners.iter().map(|corner| Vertex::pbr(*corner)));
-    Model::new(mesh, material.clone())
+    Model::new(mesh, material)
 }
 
 const TRIANGLE: [[f32; 3]; 3] = [[-1.0, -1.0, 0.0], [3.0, -1.0, 0.0], [-1.0, 3.0, 0.0]];
@@ -270,7 +270,7 @@ fn a_frame_checks_only_the_meshes_it_draws() {
             .create_texture_target([8, 8])
             .await
             .expect("texture target");
-        let material = Material::pbr();
+        let material = PbrMaterial::new();
         let floor = model_on(&material, &TRIANGLE);
         let growing = model_on(&material, &EDGE);
         growing.set_visible(false);

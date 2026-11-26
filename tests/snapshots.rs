@@ -4,7 +4,9 @@ use std::fs;
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
 
-use fragmentcolor::{Camera, Light, Material, Mesh, Model, Pass, Renderer, Shader, Target, Vertex};
+use fragmentcolor::{
+    Camera, Light, Mesh, Model, Pass, PbrMaterial, Renderer, Shader, Target, Vertex,
+};
 
 pub struct Tolerance(pub f64);
 
@@ -204,7 +206,7 @@ fn quad(corners: [[f32; 3]; 4], normal: [f32; 3]) -> Mesh {
 fn snapshot_clustered_lights() {
     pollster::block_on(async move {
         let size = [128u32, 128u32];
-        let material = Material::pbr().roughness(0.7).expect("roughness");
+        let material = PbrMaterial::new().roughness(0.7).expect("roughness");
         let pass = Pass::new("clustered lights");
         let floor = quad(
             [

@@ -4,9 +4,9 @@
 //! becomes a [`SceneSource`] tagged with its format, so the loader knows
 //! which parser reads it. glTF 2.0, with its `.glb` binary container, is the one format.
 //!
-//! The shape mirrors `Material::pbr()` and `Camera::perspective(...)`: sync
+//! The shape mirrors `PbrMaterial::new()` and `Camera::perspective(...)`: sync
 //! return, no `Renderer` argument. Each image stays encoded, as its file's bytes or
-//! its path, and every slot that reads it becomes a Material map of that one source.
+//! its path, and every map that reads it becomes a material map of that one source.
 //! Each Renderer that draws the Scene decodes it into a copy of its own (see [`crate::Renderer::load`]).
 //!
 //! The loader covers static glTF: mesh primitives (positions, normals,
@@ -354,7 +354,7 @@ fn visit_node(
             let material = match cache.materials.get(&key) {
                 Some(material) => material.clone(),
                 None => {
-                    let material = build_material(&primitive.material(), images)?;
+                    let material = Material::from(build_material(&primitive.material(), images)?);
                     cache.materials.insert(key, material.clone());
                     material
                 }

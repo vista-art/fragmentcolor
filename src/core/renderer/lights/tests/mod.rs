@@ -6,7 +6,7 @@
 
 use super::grid::GRID_MARGIN;
 use super::*;
-use crate::{Camera, Light, Material, Mesh, Model, Pass, Renderer, Shader, Target, Vertex};
+use crate::{Camera, Light, Mesh, Model, Pass, PbrMaterial, Renderer, Shader, Target, Vertex};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 /// Counts set prepares, uploaded bytes and binning dispatches, and turns grids off, for the tests.
@@ -168,8 +168,8 @@ fn quad(corners: [[f32; 3]; 4], normal: [f32; 3]) -> Mesh {
     mesh
 }
 
-fn rough() -> Material {
-    Material::pbr()
+fn rough() -> PbrMaterial {
+    PbrMaterial::new()
         .base_color([1.0, 1.0, 1.0, 1.0])
         .expect("base color")
         .roughness(0.8)
@@ -179,7 +179,7 @@ fn rough() -> Material {
 }
 
 /// A floor at y = 0 and a wall at z = -6, both 12 meters wide.
-fn floor_and_wall(material: &Material) -> [Model; 2] {
+fn floor_and_wall(material: &PbrMaterial) -> [Model; 2] {
     let floor = quad(
         [
             [-6.0, 0.0, -6.0],
@@ -935,12 +935,12 @@ fn the_uniform_path_caps_lights_at_its_block() {
         assert_eq!(material.shader().object.collect_lights().len(), 2);
 
         // The fixed-size `LightArray` shape caps at its own length.
-        let older = Material::custom(fullscreen(
+        let older = fullscreen(
             "struct LightArray { count: u32, ambient: vec3<f32>, lights: array<Light, 2> }
 @group(0) @binding(1) var<uniform> lights: LightArray;",
             "vec4<f32>(lights.lights[0].color, 1.0)",
-        ));
-        let small = Pass::from_shader("two lights", older.shader());
+        );
+        let small = Pass::from_shader("two lights", &older);
         for index in 0..2 {
             small
                 .add(&Light::point([index as f32, 0.0, 0.0], [1.0; 3]).expect("light"))
@@ -1199,7 +1199,7 @@ fn layout(module: &naga::Module, name: &str, member: &str) -> (u32, u32) {
 
 #[test]
 fn constants_match() {
-    let pbr = Material::pbr();
+    let pbr = PbrMaterial::new();
     let shading = &pbr.shader().object.module;
     let binning = parse_binning().expect("binning module");
     for module in [shading, &binning] {

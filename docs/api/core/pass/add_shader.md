@@ -10,7 +10,7 @@ render pass, or a render shader on a compute pass, returns
 `PassError::ShaderKind`, which names both kinds.
 
 A shader that declares the light roots, as
-[`Material::custom`](https://fragmentcolor.org/api/scene/material#custom)
+[Material](https://fragmentcolor.org/api/scene/material#lights)
 lists them, takes every [Light](https://fragmentcolor.org/api/scene/light)
 the pass holds. When those lights would take it past the most it holds on
 the device, `add_shader` returns `PassError::LightCapReached`.

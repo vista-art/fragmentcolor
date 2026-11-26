@@ -264,7 +264,7 @@ mod tests {
     // so a render reads it without walking the lights, and the next epoch takes it again.
     #[test]
     fn the_light_summary_holds_for_one_epoch() {
-        let shader = crate::Material::pbr().shader().object.clone();
+        let shader = crate::PbrMaterial::new().shader().object.clone();
         let lamp = Light::point([0.0, 0.0, 0.0], [1.0; 3]).expect("light");
         let push = || {
             let entry = (lamp.object.id, Arc::downgrade(&lamp.object));

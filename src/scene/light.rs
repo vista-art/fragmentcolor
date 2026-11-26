@@ -585,7 +585,7 @@ impl crate::errors::Classify for LightError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Material;
+    use crate::PbrMaterial;
 
     fn pbr_triangle_mesh() -> crate::Mesh {
         let mesh = crate::Mesh::new();
@@ -600,8 +600,8 @@ mod tests {
     #[test]
     fn a_light_reaches_a_shader_that_joins_meanwhile() {
         let pass = crate::Pass::new("racing");
-        let model = crate::Model::new(pbr_triangle_mesh(), Material::pbr());
-        let shader = model.material.shader.object.clone();
+        let model = crate::Model::new(pbr_triangle_mesh(), PbrMaterial::new());
+        let shader = model.material.shader().object.clone();
         let joiner = std::rc::Rc::new(std::cell::RefCell::new(None));
         let handle = joiner.clone();
         let (racing, added) = (pass.clone(), model.clone());
@@ -840,7 +840,7 @@ mod tests {
             .expect("light")
             .set_cone_angles(0.2, 0.6)
             .expect("spot cones");
-        let material = Material::pbr();
+        let material = PbrMaterial::new();
         let model = crate::scene::Model::new(pbr_triangle_mesh(), material.clone());
         let pass = crate::Pass::new("scene");
         pass.add(&model)
@@ -872,7 +872,7 @@ mod tests {
         // A shader joining the pass replays every light on it. A light the
         // shader already holds keeps its one entry.
         let light = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]).expect("light");
-        let material = Material::pbr();
+        let material = PbrMaterial::new();
         let model = crate::scene::Model::new(pbr_triangle_mesh(), material.clone());
         let pass = crate::Pass::new("scene");
         pass.add(&light).expect("light");
@@ -887,7 +887,7 @@ mod tests {
     fn lights_follow_the_shader_across_passes() {
         // Two passes that share a Material share its shader, and so its light
         // list: a light added to either pass lights both.
-        let material = Material::pbr();
+        let material = PbrMaterial::new();
         let model_a = crate::scene::Model::new(pbr_triangle_mesh(), material.clone());
         let model_b = crate::scene::Model::new(pbr_triangle_mesh(), material.clone());
 
@@ -913,7 +913,7 @@ mod tests {
 
     #[test]
     fn a_light_lives_while_a_pass_or_scene_holds_it() {
-        let material = Material::pbr();
+        let material = PbrMaterial::new();
         let pass = crate::Pass::new("held by a pass");
         pass.add(&crate::scene::Model::new(
             pbr_triangle_mesh(),
@@ -924,7 +924,7 @@ mod tests {
             .expect("light");
         assert_eq!(material.shader().object.collect_lights()[0].kind, 1);
 
-        let scene_material = Material::pbr();
+        let scene_material = PbrMaterial::new();
         let scene = crate::Scene::new();
         scene
             .add(&crate::scene::Model::new(
@@ -949,7 +949,7 @@ mod tests {
     fn dropped_lights_leave_room_under_the_cap() {
         // The list keeps dropped lights until it prunes, and the cap counts live ones.
         crate::testing::light_cap::lower(4);
-        let material = Material::pbr();
+        let material = PbrMaterial::new();
         let first = crate::Pass::new("first");
         first
             .add(&crate::scene::Model::new(
@@ -987,7 +987,7 @@ mod tests {
     fn ambient_default_seeds_to_dim_gray() {
         // Material::pbr seeds `lights.ambient = [0.03; 3]` so a fresh
         // material's shader has a sensible non-zero ambient.
-        let material = Material::pbr();
+        let material = PbrMaterial::new();
         let amb: [f32; 3] = material.shader().get("lights.ambient").unwrap();
         assert_eq!(amb, [0.03, 0.03, 0.03]);
     }
