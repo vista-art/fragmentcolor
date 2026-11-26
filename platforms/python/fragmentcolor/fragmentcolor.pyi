@@ -40,6 +40,7 @@ __all__ = [
     "LightKind",
     "PbrMaterial",
     "UnlitMaterial",
+    "ToonMaterial",
     "MaterialMap",
     "AlphaMode",
     "Texture",
@@ -3394,11 +3395,11 @@ class Model:
     | `visible`      | read whether the Model draws                       |
     | `set_visible`  | show or hide the Model without removing it         |
     """
-    def __new__(cls, mesh: Mesh, material: PbrMaterial | Shader | UnlitMaterial) -> Model:
+    def __new__(cls, mesh: Mesh, material: PbrMaterial | Shader | ToonMaterial | UnlitMaterial) -> Model:
         """
         Construct a `Model` from a `Mesh` and a
         [Material](https://fragmentcolor.org/api/scene/material): a `PbrMaterial`,
-        an `UnlitMaterial`, or a `Shader` of your own. Both arguments are taken by value; the Model owns
+        an `UnlitMaterial`, a `ToonMaterial`, or a `Shader` of your own. Both arguments are taken by value; the Model owns
         them. The transform starts at the 4×4 identity
         matrix. The renderer reads it at draw time and passes it to the vertex stage
         as the `model_0` to `model_3` instance attributes, the four columns of a
@@ -3470,16 +3471,16 @@ class Model:
         ])
         ```
         """
-    def material(self) -> PbrMaterial | Shader | UnlitMaterial:
+    def material(self) -> PbrMaterial | Shader | ToonMaterial | UnlitMaterial:
         """
         The [Material](https://fragmentcolor.org/api/scene/material) the Model draws
         with: the same handle `Model::new` took, so a setter on it changes every
         Model that draws with that material.
 
         In Rust it returns `&Material`, the enum with a variant per material type,
-        such as `Material::Pbr(PbrMaterial)`, `Material::Unlit(UnlitMaterial)` or
+        such as `Material::Pbr(PbrMaterial)`, `Material::Toon(ToonMaterial)` or
         `Material::Custom(Shader)`. JavaScript and Python return the material object
-        itself, a `PbrMaterial`, an `UnlitMaterial` or a `Shader`. Swift and Kotlin return the `Material` enum, which holds the
+        itself, a `PbrMaterial`, an `UnlitMaterial`, a `ToonMaterial` or a `Shader`. Swift and Kotlin return the `Material` enum, which holds the
         object.
 
         To give a Model a look of its own, build a fresh material, such as a new
@@ -5556,6 +5557,430 @@ class UnlitMaterial:
         """
 
 @final
+class ToonMaterial:
+    """
+    A cel-shaded material: each light lights it in flat steps rather than a
+    smooth gradient, with an optional hard highlight and a rim along the edges
+    the camera sees. The look reads as drawn rather than photographed, and it
+    holds up on simple meshes and flat colors.
+
+    Each light's diffuse term is cut into
+    [`bands`](https://fragmentcolor.org/api/scene/toonmaterial#bands) even
+    steps, three by default, or read from a
+    [`ramp_map()`](https://fragmentcolor.org/api/scene/toonmaterial#ramp_map)
+    gradient once one is set. A [`highlight`](https://fragmentcolor.org/api/scene/toonmaterial#highlight)
+    color adds a hard spot where the light glints, and a
+    [`rim`](https://fragmentcolor.org/api/scene/toonmaterial#rim) color marks
+    the faces seen edge-on. Both start black, which turns them off.
+
+    `base_color`, `base_color_map()`, `alpha_cutoff`, `alpha_mode` and
+    `double_sided` mean the same as they do on
+    [`PbrMaterial`](https://fragmentcolor.org/api/scene/pbrmaterial) and
+    [`UnlitMaterial`](https://fragmentcolor.org/api/scene/unlitmaterial).
+
+    It reads the `camera` and `lights` roots `PbrMaterial` reads, through the
+    same light loops, so the [Lights](https://fragmentcolor.org/api/scene/light)
+    on its pass light it as they light a PBR model, at the same brightness, and
+    the scene's ambient light fills its shadows. It takes the vertex layout
+    `PbrMaterial` takes, so a
+    [`Vertex::pbr`](https://fragmentcolor.org/api/geometry/vertex#pbr) mesh, or
+    a mesh the glTF loader built, draws with any of the three. An outline is
+    not a material setting: it needs a draw of its own.
+
+    A material draws on a [Mesh](https://fragmentcolor.org/api/geometry/mesh)
+    through a [Model](https://fragmentcolor.org/api/scene/model). `Model::new`
+    takes a `ToonMaterial` as it takes any
+    [Material](https://fragmentcolor.org/api/scene/material).
+
+    Clones share one shader, as with `PbrMaterial`: a setter on one handle
+    changes what every handle draws. Build a fresh `ToonMaterial::new()` for an
+    independent material.
+
+    Example:
+
+    ```python
+    from fragmentcolor import Mesh, Model, ToonMaterial, Vertex
+
+    mesh = Mesh()
+    mesh.add_vertices([
+        Vertex.pbr([0.0, 0.5, 0.0]),
+        Vertex.pbr([-0.5, -0.5, 0.0]),
+        Vertex.pbr([0.5, -0.5, 0.0]),
+    ])
+
+    hero = ToonMaterial().base_color([0.9, 0.3, 0.2, 1.0]).bands(2).highlight([1.0, 1.0, 1.0]).rim([0.3, 0.5, 1.0])
+    model = Model(mesh, hero)
+    ```
+    """
+    def __new__(cls) -> ToonMaterial:
+        """
+        Construct a white, opaque, single-sided `ToonMaterial` that lights in three
+        bands, with no highlight and no rim. Its two maps start unbound: the
+        renderer binds a 1×1 white default to each, so the material draws
+        `base_color` in bands until you set a map through
+        [`base_color_map()`](https://fragmentcolor.org/api/scene/toonmaterial#base_color_map)
+        or [`ramp_map()`](https://fragmentcolor.org/api/scene/toonmaterial#ramp_map).
+        `ToonMaterial::new` can't fail: the shader parts it composes are compiled
+        into the library.
+
+        The shader adds up each light the fragment receives, the scene's ambient
+        light times the albedo, and the rim, and encodes the result as sRGB on the
+        `Rgba8Unorm` and `Bgra8Unorm` targets FragmentColor creates, as
+        `PbrMaterial` does. It reads these vertex inputs from the mesh:
+
+        - `@location(0) position : vec3<f32>`, from `Vertex::new([...])` or `Vertex::pbr([...])`.
+        - `@location(1) normal   : vec3<f32>`, set as `.set(Vertex::NORMAL, ...)`.
+        - `@location(2) uv0      : vec2<f32>`, set as `.set(Vertex::UV0, ...)`.
+        - `@location(7) color0   : vec4<f32>`, set as `.set(Vertex::COLOR0, ...)`, which tints the base color.
+        - `@location(8) uv1      : vec2<f32>`, set as `.set(Vertex::UV1, ...)`, which the base color map samples on UV set 1.
+
+        `Vertex::pbr` sets each of them to a neutral value. Locations 3 to 6 hold
+        `model_0` to `model_3`, the columns of the Model's transform.
+
+        ## Defaults (post-construction)
+
+        | key                       | value          |
+        | ------------------------- | -------------- |
+        | `material.base_color`     | `[1, 1, 1, 1]` |
+        | `material.bands`          | `3`            |
+        | `material.highlight`      | `[0, 0, 0]`    |
+        | `material.highlight_size` | `0.05`         |
+        | `material.rim`            | `[0, 0, 0]`    |
+        | `material.rim_width`      | `0.2`          |
+        | `material.alpha_cutoff`   | `0.5`          |
+        | `base_color_map`          | 1×1 white      |
+        | `ramp_map`                | 1×1, no ramp   |
+        | `camera.view_proj`        | identity 4×4   |
+        | `camera.position`         | `[0, 0, 0]`    |
+        | `lights.ambient`          | `[0.03; 3]`    |
+
+        Example:
+
+        ```python
+        from fragmentcolor import ToonMaterial
+
+        grass = ToonMaterial().base_color([0.3, 0.7, 0.2, 1.0])
+        ```
+        """
+    def shader(self) -> Shader:
+        """
+        Borrow the underlying `Shader`, for a uniform the material's setters don't
+        cover. It is the shader the material draws with, so a change reaches every
+        Model that uses the material, and every clone of it.
+
+        For the camera and the lights, add a
+        [Camera](https://fragmentcolor.org/api/scene/camera) and
+        [Lights](https://fragmentcolor.org/api/scene/light) to the
+        [Pass](https://fragmentcolor.org/api/core/pass) that draws the material,
+        rather than setting `camera.*` by hand. They keep the shader up to date.
+
+        Example:
+
+        ```python
+        from fragmentcolor import ToonMaterial
+
+        material = ToonMaterial()
+        material.shader().set("material.alpha_cutoff", 0.25)
+        ```
+        """
+    def base_color(self, color: npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat]) -> ToonMaterial:
+        """
+        Set the material's color, in linear RGBA. The base color map's sample and
+        the vertex color multiply it, each light's band or ramp level scales it, and
+        alpha goes through the fragment output unchanged.
+
+        Maps to the `material.base_color` uniform on the underlying shader. Default
+        is `[1, 1, 1, 1]`.
+
+        Returns a handle to the same material (Arc-shared), so calls chain.
+
+        An item that is NaN or an infinity returns `MaterialError::NotFinite`,
+        which names the call and the item, and the material keeps the value it
+        had. The other languages also refuse an item past the 32-bit float range,
+        such as `1e39`, with a message like `ToonMaterial.baseColor: item 3 must be a
+        finite number that fits a 32-bit float, got 1e39`. JavaScript throws an
+        `Error` named `InvalidInputError`, Python raises `InvalidInputError`,
+        Swift throws `FragmentColorError` and Kotlin throws
+        `FragmentColorException`.
+
+        Example:
+
+        ```python
+        from fragmentcolor import ToonMaterial
+
+        red = ToonMaterial().base_color([1.0, 0.2, 0.2, 1.0])
+        ```
+        """
+    def bands(self, count: SupportsIndex) -> ToonMaterial:
+        """
+        Set how many even steps each light's diffuse term takes, from the edge of
+        the shadow to a face turned straight at the light. A face at the cosine
+        `ndl` to the light gets `ceil(ndl * bands) / bands` of it, and a face turned
+        away gets none, so the scene's ambient light alone fills it. One band lights
+        every face toward the light fully, and many bands come close to smooth
+        shading.
+
+        Maps to the `material.bands` uniform on the underlying shader. Default
+        is `3`. A [`ramp_map()`](https://fragmentcolor.org/api/scene/toonmaterial#ramp_map)
+        takes over from the bands once it holds a texture wider than one texel.
+
+        Returns a handle to the same material (Arc-shared), so calls chain.
+
+        `0` returns `MaterialError::Bands`, such as `ToonMaterial::bands takes 1
+        band or more, got 0`, and the material keeps the bands it had. JavaScript
+        throws an `Error` named `MaterialError`, Python raises `MaterialError`, a
+        `FragmentColorError` that is also a `ValueError`, Swift throws
+        `FragmentColorError`, and Kotlin throws `FragmentColorException`. The count
+        is a count like any other: JavaScript throws for a fraction or a negative
+        number, and Python takes an `int`, raising `TypeError` for a float and
+        `InvalidInputError` for an int below 0 or past `2**32 - 1`.
+
+        Example:
+
+        ```python
+        from fragmentcolor import ToonMaterial
+
+        # Lit or in shadow, and nothing between.
+        flat = ToonMaterial().bands(1)
+        ```
+        """
+    def highlight(self, color: npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat]) -> ToonMaterial:
+        """
+        Set the color of the hard highlight, in linear RGB. Each light adds it, as a
+        spot with a hard edge, where the half vector between the light and the eye
+        comes within
+        [`highlight_size`](https://fragmentcolor.org/api/scene/toonmaterial#highlight_size)
+        of the normal, on faces turned toward the light. The light's color and
+        falloff scale it, as they scale the diffuse term.
+
+        Maps to the `material.highlight` uniform on the underlying shader. Default
+        is `[0, 0, 0]`, which adds nothing.
+
+        Returns a handle to the same material (Arc-shared), so calls chain.
+
+        An item that is NaN or an infinity returns `MaterialError::NotFinite`,
+        which names the call and the item, and the material keeps the value it
+        had. The other languages also refuse an item past the 32-bit float range,
+        such as `1e39`. JavaScript throws an `Error` named `InvalidInputError`,
+        Python raises `InvalidInputError`, Swift throws `FragmentColorError` and
+        Kotlin throws `FragmentColorException`.
+
+        Example:
+
+        ```python
+        from fragmentcolor import ToonMaterial
+
+        glossy = ToonMaterial().highlight([1.0, 1.0, 1.0])
+        ```
+        """
+    def highlight_size(self, value: SupportsFloat) -> ToonMaterial:
+        """
+        Set how large the highlight's spot is, from `0`, which hides it, to `1`,
+        which spreads it over every face turned toward the light. The spot covers
+        the faces where the cosine between the normal and the half vector, between
+        the light and the eye, tops `1 - size`. At the default `0.05`, the spot
+        reaches about 18 degrees from the glint.
+
+        Maps to the `material.highlight_size` uniform on the underlying shader.
+
+        Returns a handle to the same material (Arc-shared), so calls chain.
+
+        NaN or an infinity returns `MaterialError::NotFinite`, which names the
+        call, and the material keeps the value it had. The other languages also
+        refuse a number past the 32-bit float range, such as `1e39`. JavaScript
+        throws an `Error` named `InvalidInputError`, Python raises
+        `InvalidInputError`, Swift throws `FragmentColorError` and Kotlin throws
+        `FragmentColorException`.
+
+        Example:
+
+        ```python
+        from fragmentcolor import ToonMaterial
+
+        wet = ToonMaterial().highlight([1.0, 1.0, 1.0]).highlight_size(0.15)
+        ```
+        """
+    def rim(self, color: npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat]) -> ToonMaterial:
+        """
+        Set the color of the rim, in linear RGB, which the material adds to the
+        faces the camera sees edge-on, along the silhouette. It needs no light, so it
+        shows in shadow too. [`rim_width`](https://fragmentcolor.org/api/scene/toonmaterial#rim_width)
+        sets how far in from the edge it reaches.
+
+        Maps to the `material.rim` uniform on the underlying shader. Default is
+        `[0, 0, 0]`, which adds nothing.
+
+        Returns a handle to the same material (Arc-shared), so calls chain.
+
+        An item that is NaN or an infinity returns `MaterialError::NotFinite`,
+        which names the call and the item, and the material keeps the value it
+        had. The other languages also refuse an item past the 32-bit float range,
+        such as `1e39`. JavaScript throws an `Error` named `InvalidInputError`,
+        Python raises `InvalidInputError`, Swift throws `FragmentColorError` and
+        Kotlin throws `FragmentColorException`.
+
+        Example:
+
+        ```python
+        from fragmentcolor import ToonMaterial
+
+        ghost = ToonMaterial().rim([0.4, 0.8, 1.0])
+        ```
+        """
+    def rim_width(self, value: SupportsFloat) -> ToonMaterial:
+        """
+        Set how far in from the silhouette the rim reaches, from `0`, which hides
+        it, to `1`, which covers every face not turned straight at the camera. The
+        rim covers the faces where the cosine between the normal and the direction
+        to the camera stays under the width. At the default `0.2`, it covers the
+        faces turned more than about 78 degrees from the camera.
+
+        Maps to the `material.rim_width` uniform on the underlying shader.
+
+        Returns a handle to the same material (Arc-shared), so calls chain.
+
+        NaN or an infinity returns `MaterialError::NotFinite`, which names the
+        call, and the material keeps the value it had. The other languages also
+        refuse a number past the 32-bit float range, such as `1e39`. JavaScript
+        throws an `Error` named `InvalidInputError`, Python raises
+        `InvalidInputError`, Swift throws `FragmentColorError` and Kotlin throws
+        `FragmentColorException`.
+
+        Example:
+
+        ```python
+        from fragmentcolor import ToonMaterial
+
+        glow = ToonMaterial().rim([1.0, 0.6, 0.2]).rim_width(0.35)
+        ```
+        """
+    def alpha_cutoff(self, value: SupportsFloat) -> ToonMaterial:
+        """
+        Sets the alpha threshold `AlphaMode::Mask` uses. The fragment shader
+        discards a fragment whose alpha, the base color's times the map's and the
+        vertex color's, falls below it. Stored on `material.alpha_cutoff`; default
+        `0.5`, matching glTF 2.0. `Opaque` and `Blend` ignore it.
+
+        NaN or an infinity returns `MaterialError::NotFinite`, which names the
+        call, and the material keeps the value it had. The other languages also
+        refuse a number past the 32-bit float range, such as `1e39`, with a
+        message like `ToonMaterial.alphaCutoff: value must be a finite number that
+        fits a 32-bit float, got 1e39`. JavaScript throws an `Error` named
+        `InvalidInputError`, Python raises `InvalidInputError`, Swift throws
+        `FragmentColorError` and Kotlin throws `FragmentColorException`.
+
+        Example:
+
+        ```python
+        from fragmentcolor import AlphaMode, ToonMaterial
+
+        leaves = ToonMaterial().alpha_mode(AlphaMode.Mask).alpha_cutoff(0.3)
+        ```
+        """
+    def alpha_mode(self, mode: AlphaMode) -> ToonMaterial:
+        """
+        Set how the renderer treats the alpha of the material's output, as glTF 2.0's
+        `alphaMode` does. It works as
+        [`PbrMaterial::alpha_mode`](https://fragmentcolor.org/api/scene/pbrmaterial#alpha_mode)
+        does:
+
+        - `AlphaMode::Opaque` (default): blending is off and alpha is ignored.
+        - `AlphaMode::Mask`: the fragment shader discards a fragment whose alpha
+          falls below `alpha_cutoff`, and the rest draw as opaque. It suits leaves,
+          hair cards and cut-outs with hard edges.
+        - `AlphaMode::Blend`: depth writes turn off and the color blends over what is
+          behind it. The renderer sorts blended Models back to front by the pass's
+          Camera.
+
+        It is pipeline state, so each mode builds its own pipeline once and reuses it.
+
+        Example:
+
+        ```python
+        from fragmentcolor import AlphaMode, ToonMaterial
+
+        glass = ToonMaterial().base_color([0.6, 0.8, 1.0, 0.4]).alpha_mode(AlphaMode.Blend)
+        ```
+        """
+    def double_sided(self, value: bool) -> ToonMaterial:
+        """
+        Draw both faces of every triangle when `true`. When `false` (the default),
+        the renderer culls back faces, the ones whose vertices run clockwise on
+        screen. Mirrors glTF 2.0's `doubleSided`.
+
+        Thin geometry the camera can see from both sides, such as a flag or a
+        leaf, needs both faces. Like `alpha_mode`, it is pipeline state.
+
+        Example:
+
+        ```python
+        from fragmentcolor import ToonMaterial
+
+        flag = ToonMaterial().double_sided(True)
+        ```
+        """
+    def base_color_map(self) -> MaterialMap:
+        """
+        The material's color map, as a
+        [`MaterialMap`](https://fragmentcolor.org/api/scene/materialmap) handle that
+        sets its texture, UV set and transform. Its sample multiplies
+        `material.base_color` and the vertex color, at the UV set the map's
+        [`uv`](https://fragmentcolor.org/api/scene/materialmap#uv) picks, through its
+        [`transform`](https://fragmentcolor.org/api/scene/materialmap#transform).
+
+        A source with no format of its own reads as sRGB in this map, as glTF's base
+        color does. Unset, the map draws a 1×1 white default, so the material draws
+        its base color alone.
+
+        Example:
+
+        ```python
+        from fragmentcolor import ToonMaterial
+
+        # Raw pixels with their size upload when the scene loads.
+        pixels = [255, 128, 0, 255]
+        material = ToonMaterial()
+        map = material.base_color_map().texture(pixels, size=[1, 1])
+        ```
+        """
+    def ramp_map(self) -> MaterialMap:
+        """
+        The gradient that lights the material in place of its
+        [`bands`](https://fragmentcolor.org/api/scene/toonmaterial#bands), as a
+        [`MaterialMap`](https://fragmentcolor.org/api/scene/materialmap) handle that
+        sets its texture. Each light reads it left to right by the cosine `ndl`
+        between the normal and the light, at `ndl * 0.5 + 0.5`: the left half
+        colors the faces turned away from the light, the middle the edge of the
+        shadow, and the right edge the faces turned straight at it. The ramp's color
+        times the base color is that light's diffuse term, so a colored ramp tints
+        the shadows.
+
+        The ramp takes over once it holds a texture wider than one texel. The ramp
+        samples its middle row, so a ramp one texel tall is enough. Its texture's
+        own sampler applies: set `smooth: false` for hard steps between its texels.
+        A source with no format of its own reads as sRGB, as a painted gradient is.
+
+        The ramp reads the light, not the mesh's UVs, so its
+        [`uv`](https://fragmentcolor.org/api/scene/materialmap#uv) and
+        [`transform`](https://fragmentcolor.org/api/scene/materialmap#transform)
+        return `MaterialError::NoUv`, which names the call, and change nothing.
+
+        Example:
+
+        ```python
+        from fragmentcolor import ToonMaterial
+
+        # Deep blue shadows, a warm middle tone and full light, one texel each.
+        ramp = [
+            20, 30, 90, 255, 20, 30, 90, 255,
+            200, 140, 110, 255, 255, 255, 255, 255,
+        ]
+        material = ToonMaterial()
+        map = material.ramp_map().texture(ramp, size=[4, 1])
+        ```
+        """
+
+@final
 class MaterialMap:
     """
     One texture map of a material: the texture it samples, the vertex UV set it
@@ -5713,6 +6138,10 @@ class MaterialMap:
         number, and Python takes an `int`, raising `TypeError` for a float and
         `InvalidInputError` for an int below 0 or past `2**32 - 1`.
 
+        [`ToonMaterial::ramp_map`](https://fragmentcolor.org/api/scene/toonmaterial#ramp_map)
+        reads the light level in place of the mesh's UVs, so its `uv` returns
+        `MaterialError::NoUv`, which names the call, and changes nothing.
+
         The PBR shader reads `UV1` from every vertex, and a mesh whose vertices
         lack it fails to attach with an error that names `uv1`. `Vertex::pbr`
         seeds `UV1` at `[0, 0]`, so a map on set 1 reads that one point until
@@ -5779,6 +6208,10 @@ class MaterialMap:
         `Error` named `InvalidInputError`, Python raises `InvalidInputError`,
         Swift throws `FragmentColorError` and Kotlin throws
         `FragmentColorException`.
+
+        [`ToonMaterial::ramp_map`](https://fragmentcolor.org/api/scene/toonmaterial#ramp_map)
+        reads the light level in place of the mesh's UVs, so its `transform` returns
+        `MaterialError::NoUv`, which names the call, and changes nothing.
 
         Example:
 

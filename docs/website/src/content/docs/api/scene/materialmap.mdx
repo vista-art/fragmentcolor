@@ -4,7 +4,7 @@ description: "One texture map of a material: the texture it samples, the vertex 
 category: scene
 categoryLabel: Scene
 sidebar:
-  order: 5
+  order: 6
 ---
 
 import { Code, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
@@ -398,6 +398,10 @@ finite number that fits a 32-bit float, got 1e39`. JavaScript throws an
 Swift throws `FragmentColorError` and Kotlin throws
 `FragmentColorException`.
 
+[`ToonMaterial::ramp_map`](/api/scene/toonmaterial#ramp_map)
+reads the light level in place of the mesh's UVs, so its `transform` returns
+`MaterialError::NoUv`, which names the call, and changes nothing.
+
 #### Example
 
 <Tabs>
@@ -492,6 +496,10 @@ map's set. JavaScript throws an `Error` named `MaterialError`, Python raises `Ma
 is a count like any other: JavaScript throws for a fraction or a negative
 number, and Python takes an `int`, raising `TypeError` for a float and
 `InvalidInputError` for an int below 0 or past `2**32 - 1`.
+
+[`ToonMaterial::ramp_map`](/api/scene/toonmaterial#ramp_map)
+reads the light level in place of the mesh's UVs, so its `uv` returns
+`MaterialError::NoUv`, which names the call, and changes nothing.
 
 The PBR shader reads `UV1` from every vertex, and a mesh whose vertices
 lack it fails to attach with an error that names `uv1`. `Vertex::pbr`

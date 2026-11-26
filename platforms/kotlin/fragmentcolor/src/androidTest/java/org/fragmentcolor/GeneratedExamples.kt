@@ -1621,6 +1621,88 @@ class GeneratedExamples : ExampleCase() {
     }
 
     @Test
+    fun scene_toon_material_ToonMaterial() = example("docs/api/scene/toon_material/toon_material.md") {
+        val mesh = Mesh()
+        mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f))))
+
+        val hero = ToonMaterial().baseColor(listOf(0.9f, 0.3f, 0.2f, 1.0f)).bands(2u).highlight(listOf(1.0f, 1.0f, 1.0f)).rim(listOf(0.3f, 0.5f, 1.0f))
+        val model = Model(mesh, hero)
+    }
+
+    @Test
+    fun scene_toon_material_alpha_cutoff() = example("docs/api/scene/toon_material/alpha_cutoff.md") {
+        val leaves = ToonMaterial().alphaMode(AlphaMode.MASK).alphaCutoff(0.3f)
+    }
+
+    @Test
+    fun scene_toon_material_alpha_mode() = example("docs/api/scene/toon_material/alpha_mode.md") {
+        val glass = ToonMaterial().baseColor(listOf(0.6f, 0.8f, 1.0f, 0.4f)).alphaMode(AlphaMode.BLEND)
+    }
+
+    @Test
+    fun scene_toon_material_bands() = example("docs/api/scene/toon_material/bands.md") {
+        // Lit or in shadow, and nothing between.
+        val flat = ToonMaterial().bands(1u)
+    }
+
+    @Test
+    fun scene_toon_material_base_color() = example("docs/api/scene/toon_material/base_color.md") {
+        val red = ToonMaterial().baseColor(listOf(1.0f, 0.2f, 0.2f, 1.0f))
+    }
+
+    @Test
+    fun scene_toon_material_base_color_map() = example("docs/api/scene/toon_material/base_color_map.md") {
+        // Raw pixels with their size upload when the scene loads.
+        val pixels = listOf(255, 128, 0, 255)
+        val material = ToonMaterial()
+        val map = material.baseColorMap().texture(pixels, listOf(1u, 1u))
+    }
+
+    @Test
+    fun scene_toon_material_double_sided() = example("docs/api/scene/toon_material/double_sided.md") {
+        val flag = ToonMaterial().doubleSided(true)
+    }
+
+    @Test
+    fun scene_toon_material_highlight() = example("docs/api/scene/toon_material/highlight.md") {
+        val glossy = ToonMaterial().highlight(listOf(1.0f, 1.0f, 1.0f))
+    }
+
+    @Test
+    fun scene_toon_material_highlight_size() = example("docs/api/scene/toon_material/highlight_size.md") {
+        val wet = ToonMaterial().highlight(listOf(1.0f, 1.0f, 1.0f)).highlightSize(0.15f)
+    }
+
+    @Test
+    fun scene_toon_material_new() = example("docs/api/scene/toon_material/new.md") {
+        val grass = ToonMaterial().baseColor(listOf(0.3f, 0.7f, 0.2f, 1.0f))
+    }
+
+    @Test
+    fun scene_toon_material_ramp_map() = example("docs/api/scene/toon_material/ramp_map.md") {
+        // Deep blue shadows, a warm middle tone and full light, one texel each.
+        val ramp = listOf(20, 30, 90, 255, 20, 30, 90, 255, 200, 140, 110, 255, 255, 255, 255, 255)
+        val material = ToonMaterial()
+        val map = material.rampMap().texture(ramp, listOf(4u, 1u))
+    }
+
+    @Test
+    fun scene_toon_material_rim() = example("docs/api/scene/toon_material/rim.md") {
+        val ghost = ToonMaterial().rim(listOf(0.4f, 0.8f, 1.0f))
+    }
+
+    @Test
+    fun scene_toon_material_rim_width() = example("docs/api/scene/toon_material/rim_width.md") {
+        val glow = ToonMaterial().rim(listOf(1.0f, 0.6f, 0.2f)).rimWidth(0.35f)
+    }
+
+    @Test
+    fun scene_toon_material_shader() = example("docs/api/scene/toon_material/shader.md") {
+        val material = ToonMaterial()
+        material.shader().set("material.alpha_cutoff", 0.25f)
+    }
+
+    @Test
     fun scene_unlit_material_UnlitMaterial() = example("docs/api/scene/unlit_material/unlit_material.md") {
         val mesh = Mesh()
         mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))

@@ -1970,6 +1970,109 @@ final class GeneratedExamples: ExampleCase {
         }
     }
 
+    func test_scene_toon_material_ToonMaterial() async {
+        await example("docs/api/scene/toon_material/toon_material.md") {
+            let mesh = Mesh()
+            mesh.addVertices([
+                try Vertex.pbr([0.0, 0.5, 0.0]),
+                try Vertex.pbr([-0.5, -0.5, 0.0]),
+                try Vertex.pbr([0.5, -0.5, 0.0]),
+            ])
+
+            let hero = try ToonMaterial().baseColor([0.9, 0.3, 0.2, 1.0]).bands(2).highlight([1.0, 1.0, 1.0]).rim([0.3, 0.5, 1.0])
+            let model = Model(mesh, hero)
+        }
+    }
+
+    func test_scene_toon_material_alpha_cutoff() async {
+        await example("docs/api/scene/toon_material/alpha_cutoff.md") {
+            let leaves = try ToonMaterial().alphaMode(AlphaMode.mask).alphaCutoff(0.3)
+        }
+    }
+
+    func test_scene_toon_material_alpha_mode() async {
+        await example("docs/api/scene/toon_material/alpha_mode.md") {
+            let glass = try ToonMaterial().baseColor([0.6, 0.8, 1.0, 0.4]).alphaMode(AlphaMode.blend)
+        }
+    }
+
+    func test_scene_toon_material_bands() async {
+        await example("docs/api/scene/toon_material/bands.md") {
+            // Lit or in shadow, and nothing between.
+            let flat = try ToonMaterial().bands(1)
+        }
+    }
+
+    func test_scene_toon_material_base_color() async {
+        await example("docs/api/scene/toon_material/base_color.md") {
+            let red = try ToonMaterial().baseColor([1.0, 0.2, 0.2, 1.0])
+        }
+    }
+
+    func test_scene_toon_material_base_color_map() async {
+        await example("docs/api/scene/toon_material/base_color_map.md") {
+            // Raw pixels with their size upload when the scene loads.
+            let pixels = [255, 128, 0, 255]
+            let material = ToonMaterial()
+            let map = try material.baseColorMap().texture(pixels, [1, 1])
+        }
+    }
+
+    func test_scene_toon_material_double_sided() async {
+        await example("docs/api/scene/toon_material/double_sided.md") {
+            let flag = ToonMaterial().doubleSided(true)
+        }
+    }
+
+    func test_scene_toon_material_highlight() async {
+        await example("docs/api/scene/toon_material/highlight.md") {
+            let glossy = try ToonMaterial().highlight([1.0, 1.0, 1.0])
+        }
+    }
+
+    func test_scene_toon_material_highlight_size() async {
+        await example("docs/api/scene/toon_material/highlight_size.md") {
+            let wet = try ToonMaterial().highlight([1.0, 1.0, 1.0]).highlightSize(0.15)
+        }
+    }
+
+    func test_scene_toon_material_new() async {
+        await example("docs/api/scene/toon_material/new.md") {
+            let grass = try ToonMaterial().baseColor([0.3, 0.7, 0.2, 1.0])
+        }
+    }
+
+    func test_scene_toon_material_ramp_map() async {
+        await example("docs/api/scene/toon_material/ramp_map.md") {
+            // Deep blue shadows, a warm middle tone and full light, one texel each.
+            let ramp = [
+                20, 30, 90, 255, 20, 30, 90, 255,
+                200, 140, 110, 255, 255, 255, 255, 255,
+            ]
+            let material = ToonMaterial()
+            let map = try material.rampMap().texture(ramp, [4, 1])
+        }
+    }
+
+    func test_scene_toon_material_rim() async {
+        await example("docs/api/scene/toon_material/rim.md") {
+            let ghost = try ToonMaterial().rim([0.4, 0.8, 1.0])
+        }
+    }
+
+    func test_scene_toon_material_rim_width() async {
+        await example("docs/api/scene/toon_material/rim_width.md") {
+            let glow = try ToonMaterial().rim([1.0, 0.6, 0.2]).rimWidth(0.35)
+        }
+    }
+
+    func test_scene_toon_material_shader() async {
+        await example("docs/api/scene/toon_material/shader.md") {
+            let material = ToonMaterial()
+            try material.shader().set("material.alpha_cutoff", 0.25)
+        }
+    }
+
     func test_scene_unlit_material_UnlitMaterial() async {
         await example("docs/api/scene/unlit_material/unlit_material.md") {
             let mesh = Mesh()

@@ -4638,6 +4638,261 @@ public func FfiConverterTypeTextureTarget_lower(_ value: TextureTarget) -> UInt6
 
 
 
+public protocol ToonMaterialProtocol: AnyObject, Sendable {
+    
+    func alphaCutoff(value: Float) throws  -> ToonMaterial
+    
+    func alphaMode(mode: AlphaMode)  -> ToonMaterial
+    
+    func bands(count: UInt32) throws  -> ToonMaterial
+    
+    func baseColor(color: [Float]) throws  -> ToonMaterial
+    
+    func baseColorMap()  -> MaterialMap
+    
+    func doubleSided(value: Bool)  -> ToonMaterial
+    
+    func highlight(color: [Float]) throws  -> ToonMaterial
+    
+    func highlightSize(value: Float) throws  -> ToonMaterial
+    
+    func rampMap()  -> MaterialMap
+    
+    func rim(color: [Float]) throws  -> ToonMaterial
+    
+    func rimWidth(value: Float) throws  -> ToonMaterial
+    
+    func shader()  -> Shader
+    
+}
+open class ToonMaterial: ToonMaterialProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_fragmentcolor_fn_clone_toonmaterial(self.handle, $0) }
+    }
+public convenience init() {
+    let handle =
+        try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_constructor_toonmaterial_new(uniffiCallStatus
+    )
+}
+    self.init(unsafeFromHandle: handle)
+}
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_fragmentcolor_fn_free_toonmaterial(handle, $0) }
+    }
+
+    
+
+    
+open func alphaCutoff(value: Float)throws  -> ToonMaterial  {
+    return try  FfiConverterTypeToonMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_toonmaterial_alphacutoff(
+            self.uniffiCloneHandle(),
+        FfiConverterFloat.lower(value),uniffiCallStatus
+    )
+})
+}
+    
+open func alphaMode(mode: AlphaMode) -> ToonMaterial  {
+    return try!  FfiConverterTypeToonMaterial_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_toonmaterial_alphamode(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeAlphaMode_lower(mode),uniffiCallStatus
+    )
+})
+}
+    
+open func bands(count: UInt32)throws  -> ToonMaterial  {
+    return try  FfiConverterTypeToonMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_toonmaterial_bands(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt32.lower(count),uniffiCallStatus
+    )
+})
+}
+    
+open func baseColor(color: [Float])throws  -> ToonMaterial  {
+    return try  FfiConverterTypeToonMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_toonmaterial_basecolor(
+            self.uniffiCloneHandle(),
+        FfiConverterSequenceFloat.lower(color),uniffiCallStatus
+    )
+})
+}
+    
+open func baseColorMap() -> MaterialMap  {
+    return try!  FfiConverterTypeMaterialMap_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_toonmaterial_basecolormap(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func doubleSided(value: Bool) -> ToonMaterial  {
+    return try!  FfiConverterTypeToonMaterial_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_toonmaterial_doublesided(
+            self.uniffiCloneHandle(),
+        FfiConverterBool.lower(value),uniffiCallStatus
+    )
+})
+}
+    
+open func highlight(color: [Float])throws  -> ToonMaterial  {
+    return try  FfiConverterTypeToonMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_toonmaterial_highlight(
+            self.uniffiCloneHandle(),
+        FfiConverterSequenceFloat.lower(color),uniffiCallStatus
+    )
+})
+}
+    
+open func highlightSize(value: Float)throws  -> ToonMaterial  {
+    return try  FfiConverterTypeToonMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_toonmaterial_highlightsize(
+            self.uniffiCloneHandle(),
+        FfiConverterFloat.lower(value),uniffiCallStatus
+    )
+})
+}
+    
+open func rampMap() -> MaterialMap  {
+    return try!  FfiConverterTypeMaterialMap_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_toonmaterial_rampmap(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func rim(color: [Float])throws  -> ToonMaterial  {
+    return try  FfiConverterTypeToonMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_toonmaterial_rim(
+            self.uniffiCloneHandle(),
+        FfiConverterSequenceFloat.lower(color),uniffiCallStatus
+    )
+})
+}
+    
+open func rimWidth(value: Float)throws  -> ToonMaterial  {
+    return try  FfiConverterTypeToonMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_toonmaterial_rimwidth(
+            self.uniffiCloneHandle(),
+        FfiConverterFloat.lower(value),uniffiCallStatus
+    )
+})
+}
+    
+open func shader() -> Shader  {
+    return try!  FfiConverterTypeShader_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_toonmaterial_shader(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeToonMaterial: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = ToonMaterial
+
+    public static func lift(_ handle: UInt64) throws -> ToonMaterial {
+        return ToonMaterial(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: ToonMaterial) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ToonMaterial {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: ToonMaterial, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeToonMaterial_lift(_ handle: UInt64) throws -> ToonMaterial {
+    return try FfiConverterTypeToonMaterial.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeToonMaterial_lower(_ value: ToonMaterial) -> UInt64 {
+    return FfiConverterTypeToonMaterial.lower(value)
+}
+
+
+
+
+
+
 public protocol UnlitMaterialProtocol: AnyObject, Sendable {
     
     func alphaCutoff(value: Float) throws  -> UnlitMaterial
@@ -6875,6 +7130,8 @@ public enum Material {
     )
     case unlit(UnlitMaterial
     )
+    case toon(ToonMaterial
+    )
     case custom(Shader
     )
 
@@ -6904,7 +7161,10 @@ public struct FfiConverterTypeMaterial: FfiConverterRustBuffer {
         case 2: return .unlit(try FfiConverterTypeUnlitMaterial.read(from: &buf)
         )
         
-        case 3: return .custom(try FfiConverterTypeShader.read(from: &buf)
+        case 3: return .toon(try FfiConverterTypeToonMaterial.read(from: &buf)
+        )
+        
+        case 4: return .custom(try FfiConverterTypeShader.read(from: &buf)
         )
         
         default: throw UniffiInternalError.unexpectedEnumCase
@@ -6925,8 +7185,13 @@ public struct FfiConverterTypeMaterial: FfiConverterRustBuffer {
             FfiConverterTypeUnlitMaterial.write(v1, into: &buf)
             
         
-        case let .custom(v1):
+        case let .toon(v1):
             writeInt(&buf, Int32(3))
+            FfiConverterTypeToonMaterial.write(v1, into: &buf)
+            
+        
+        case let .custom(v1):
+            writeInt(&buf, Int32(4))
             FfiConverterTypeShader.write(v1, into: &buf)
             
         }
@@ -10015,6 +10280,42 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_scene_setpasses() != 7841) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_fragmentcolor_checksum_method_toonmaterial_alphacutoff() != 55458) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_toonmaterial_alphamode() != 53830) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_toonmaterial_bands() != 11831) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_toonmaterial_basecolor() != 10497) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_toonmaterial_basecolormap() != 25075) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_toonmaterial_doublesided() != 11161) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_toonmaterial_highlight() != 45219) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_toonmaterial_highlightsize() != 11536) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_toonmaterial_rampmap() != 6638) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_toonmaterial_rim() != 52979) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_toonmaterial_rimwidth() != 64396) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_toonmaterial_shader() != 60023) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_fragmentcolor_checksum_method_unlitmaterial_alphacutoff() != 10912) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -10172,6 +10473,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_constructor_scene_new() != 58352) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_constructor_toonmaterial_new() != 52054) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_constructor_unlitmaterial_new() != 13372) {
