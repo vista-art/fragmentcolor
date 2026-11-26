@@ -28,7 +28,7 @@ use pyo3::prelude::*;
 use wasm_bindgen::prelude::*;
 
 use crate::core::UniformInput;
-use crate::scene::material::{LIGHT, LINEAR_TO_SRGB, MESH_TRANSFORM, write_values};
+use crate::scene::material::{LIGHT, LIGHT_LOOPS, LINEAR_TO_SRGB, MESH_TRANSFORM, write_values};
 use crate::scene::{MapSlot, UvSet, UvTransform, check_finite};
 use crate::{AlphaMode, MaterialError, MaterialMap, Shader};
 
@@ -39,9 +39,6 @@ mod platform;
 /// parts at construction time. They declare no bindings of their own, only
 /// helper functions, so they slot in cleanly alongside this main body.
 const PBR_MAIN: &str = include_str!("pbr_main.wgsl");
-
-/// The light roots and the loops that read them.
-const PBR_LIGHTS: &str = include_str!("pbr_lights.wgsl");
 
 /// The `material/pbr` registry snippet, baked in directly rather than resolved through the
 /// shader registry, as `MESH_TRANSFORM` and `LINEAR_TO_SRGB` are (see `scene::material`).
@@ -86,7 +83,7 @@ impl PbrMaterial {
             MATERIAL_PBR,
             LINEAR_TO_SRGB,
             LIGHT,
-            PBR_LIGHTS,
+            LIGHT_LOOPS,
             PBR_MAIN,
         ])
         .expect("SAFETY: built-in PBR shader parts are compiled-in WGSL source; a parse failure is a build-time error, not a runtime fault");

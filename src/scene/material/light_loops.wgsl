@@ -1,5 +1,8 @@
-// The PBR shader's lights: the two roots the renderer fills and the loops
-// that read them. Composes after `light.wgsl` and `material/pbr`.
+// The lights of the built-in material shaders: the two roots the renderer
+// fills and the loops that read them. Composes after `light.wgsl`. Each
+// shader that composes it declares a `Surface` struct, with what its shading
+// reads at a fragment, and a `shade_light(lt, world, n, v, surface)` that
+// returns the light `lt` sends toward the eye from that surface.
 
 // Every light that reaches the shader. Lights without a range come first,
 // `global_count` of them, then the lights with one. `grid` locates each
@@ -19,21 +22,20 @@ struct Lights {
 @group(0) @binding(1) var<storage, read> lights: Lights;
 @group(0) @binding(2) var<storage, read> light_grid: array<u32>;
 
-// The light `lt` reflects from a surface at `world` with normal `n`, seen
-// along `v`. KHR_lights_punctual falloff:
+// The direction from `world` toward the light `lt`, and the light that
+// arrives there. KHR_lights_punctual falloff:
 //   directional: unattenuated parallel rays from `-direction`
 //   point: inverse-square distance from `position`, with the
 //          (1 - (d/range)^4) window when `range` is above 0
 //   spot: point falloff times a smooth cone between the cone cosines
-fn shade_light(
-  lt: Light,
-  world: vec3<f32>,
-  n: vec3<f32>,
-  v: vec3<f32>,
-  albedo: vec3<f32>,
-  metallic: f32,
-  roughness: f32,
-) -> vec3<f32> {
+// The light grid relies on it: no light arrives past a light's range, or
+// outside a spot light's outer cone.
+struct LightRay {
+  direction: vec3<f32>,
+  radiance: vec3<f32>,
+}
+
+fn light_ray(lt: Light, world: vec3<f32>) -> LightRay {
   var l: vec3<f32>;
   var attenuation: f32 = 1.0;
   if (lt.kind == 0u) {
@@ -61,8 +63,7 @@ fn shade_light(
       attenuation = attenuation * cone;
     }
   }
-  let radiance = lt.color * lt.intensity * attenuation;
-  return pbr_shade(n, l, v, albedo, metallic, roughness, radiance);
+  return LightRay(l, lt.color * lt.intensity * attenuation);
 }
 
 // The cluster that holds `world`, or CELL_GLOBAL past every light's reach,
@@ -94,37 +95,35 @@ fn light_cell(world: vec3<f32>) -> u32 {
   return index.x + grid.size.x * (index.y + grid.size.y * index.z);
 }
 
-// The light every light that reaches `world` reflects toward `v`.
+// The light every light that reaches `world` sends toward `v` from `surface`.
 fn accumulate_lights(
   world: vec3<f32>,
   n: vec3<f32>,
   v: vec3<f32>,
-  albedo: vec3<f32>,
-  metallic: f32,
-  roughness: f32,
+  surface: Surface,
 ) -> vec3<f32> {
   var total = vec3<f32>(0.0);
   let cell = light_cell(world);
   if (cell == CELL_EVERY) {
     for (var i: u32 = 0u; i < lights.count; i = i + 1u) {
-      total = total + shade_light(lights.lights[i], world, n, v, albedo, metallic, roughness);
+      total = total + shade_light(lights.lights[i], world, n, v, surface);
     }
     return total;
   }
   for (var i: u32 = 0u; i < lights.global_count; i = i + 1u) {
-    total = total + shade_light(lights.lights[i], world, n, v, albedo, metallic, roughness);
+    total = total + shade_light(lights.lights[i], world, n, v, surface);
   }
   if (cell == CELL_GLOBAL) {
     return total;
   }
   for (var k: u32 = 0u; k < lights.promoted_count; k = k + 1u) {
-    total = total + shade_light(lights.lights[light_grid[k]], world, n, v, albedo, metallic, roughness);
+    total = total + shade_light(lights.lights[light_grid[k]], world, n, v, surface);
   }
   let entry = lights.promoted_count + 2u * cell;
   let first = light_grid[entry];
   let listed = light_grid[entry + 1u];
   for (var k: u32 = 0u; k < listed; k = k + 1u) {
-    total = total + shade_light(lights.lights[light_grid[first + k]], world, n, v, albedo, metallic, roughness);
+    total = total + shade_light(lights.lights[light_grid[first + k]], world, n, v, surface);
   }
   return total;
 }

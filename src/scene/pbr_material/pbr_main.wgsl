@@ -1,10 +1,10 @@
 // Material::pbr default complete shader.
 //
 // Composes the `mesh/transform`, `material/pbr` and `color/linear_to_srgb`
-// registry snippets, then `light.wgsl` and `pbr_lights.wgsl`, with this main
+// registry snippets, then `light.wgsl` and `light_loops.wgsl`, with this main
 // body. Bindings (overridable via shader.set):
 //   group 0 binding 0: camera   (view_proj, position)
-//   group 0 binding 1: lights   (filled by the renderer, see pbr_lights.wgsl)
+//   group 0 binding 1: lights   (filled by the renderer, see light_loops.wgsl)
 //   group 0 binding 2: light_grid (filled by the renderer)
 //   group 1 binding 0: material (PBR factors, alpha_mode flag, and the UV
 //                                set and transform of each texture slot)
@@ -84,6 +84,19 @@ fn slot_uv(slot: TextureUv, uv0: vec2<f32>, uv1: vec2<f32>) -> vec2<f32> {
 // sRGB format, which encodes on write, and for a float format, which keeps
 // linear light for the passes after it.
 override ENCODE_SRGB: bool = true;
+
+// What `shade_light` reads at a fragment, which `accumulate_lights` passes it.
+struct Surface {
+  albedo: vec3<f32>,
+  metallic: f32,
+  roughness: f32,
+}
+
+// The light `lt` reflects from a surface at `world` with normal `n`, seen along `v`.
+fn shade_light(lt: Light, world: vec3<f32>, n: vec3<f32>, v: vec3<f32>, surface: Surface) -> vec3<f32> {
+  let ray = light_ray(lt, world);
+  return pbr_shade(n, ray.direction, v, surface.albedo, surface.metallic, surface.roughness, ray.radiance);
+}
 
 @group(0) @binding(0) var<uniform> camera: Camera;
 @group(1) @binding(0) var<uniform> material: PbrMaterial;
@@ -202,8 +215,9 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
 
   let v = normalize(camera.position - in.world);
 
-  // Direct light from every light that reaches the fragment, see pbr_lights.wgsl.
-  let lit_total = accumulate_lights(in.world, world_normal, v, albedo, metallic, roughness);
+  // Direct light from every light that reaches the fragment, see light_loops.wgsl.
+  let surface = Surface(albedo, metallic, roughness);
+  let lit_total = accumulate_lights(in.world, world_normal, v, surface);
   // The scene's ambient light, tinted by the albedo,
   // keeps unlit faces from reading pitch-black.
   let ambient = albedo * lights.ambient;

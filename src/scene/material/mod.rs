@@ -21,6 +21,10 @@ pub(crate) mod platform;
 /// The light types and grid constants, which the light binning pass shares.
 pub(crate) const LIGHT: &str = include_str!("light.wgsl");
 
+/// The light roots and the loops that read them, which the shaded material types share.
+/// Each shader that composes them declares its own `Surface` and `shade_light`.
+pub(crate) const LIGHT_LOOPS: &str = include_str!("light_loops.wgsl");
+
 /// The registry snippets the built-in material shaders compose from, baked in
 /// directly rather than resolved through the shader registry. They power the
 /// engine's own `PbrMaterial::new()` and `UnlitMaterial::new()`, so they must be
