@@ -70,9 +70,9 @@ doesn't:
 Without `model_0` to `model_3`, every Model draws at its Mesh's own
 coordinates, whatever its transform.
 
-A shader draws both faces of each triangle, with no blending, unlike a
-`PbrMaterial`, which culls back faces until `double_sided(true)`. Change either
-on the shader itself with
+A shader culls back faces, as a `PbrMaterial` does, with counter-clockwise
+winding as the front, and draws with no blending. Change either on the shader
+itself with
 [`Shader::double_sided`](https://fragmentcolor.org/api/core/shader#double_sided) and
 [`Shader::alpha_mode`](https://fragmentcolor.org/api/core/shader#alpha_mode).
 
