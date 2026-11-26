@@ -42,10 +42,14 @@ what the Model draws with:
 - **JavaScript and Python:** the Model takes the material object itself, and
   `model.material()` returns that object, a `PbrMaterial`, an `UnlitMaterial`,
   a `ToonMaterial` or a `Shader`.
-- **Swift and Kotlin:** `Material` is an enum that holds the object, as
-  `.pbr(PbrMaterial)`, `.unlit(UnlitMaterial)`, `.toon(ToonMaterial)` and
-  `.custom(Shader)` in Swift, and `Material.Pbr`, `Material.Unlit`,
-  `Material.Toon` and `Material.Custom` in Kotlin. The `Model` constructor also
+- **Swift and Kotlin:** `Material` is an enum that holds the object, which is
+  how both languages spell a value of one of four types. Swift has
+  `.pbr(material:)`, `.unlit(material:)`, `.toon(material:)` and
+  `.custom(shader:)`, so `if case .pbr(let gold) = model.material()` reads the
+  `PbrMaterial`. Kotlin has `Material.Pbr`, `Material.Unlit` and
+  `Material.Toon`, each with a `material` property, and `Material.Custom`, with
+  a `shader` property, so `(model.material() as Material.Pbr).material` reads
+  it, or a `when` with an `is` branch per case. The `Model` constructor also
   takes a `PbrMaterial`, an `UnlitMaterial`, a `ToonMaterial` or a `Shader`
   directly.
 

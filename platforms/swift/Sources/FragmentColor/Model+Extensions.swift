@@ -30,22 +30,22 @@ extension Model {
 
     /// A Model that draws `mesh` with a PbrMaterial, which the generated initializer takes as `.pbr`.
     public convenience init(_ mesh: Mesh, _ material: PbrMaterial) {
-        self.init(mesh: mesh, material: .pbr(material))
+        self.init(mesh: mesh, material: .pbr(material: material))
     }
 
     /// A Model that draws `mesh` with an UnlitMaterial, which the generated initializer takes as `.unlit`.
     public convenience init(_ mesh: Mesh, _ material: UnlitMaterial) {
-        self.init(mesh: mesh, material: .unlit(material))
+        self.init(mesh: mesh, material: .unlit(material: material))
     }
 
     /// A Model that draws `mesh` with a ToonMaterial, which the generated initializer takes as `.toon`.
     public convenience init(_ mesh: Mesh, _ material: ToonMaterial) {
-        self.init(mesh: mesh, material: .toon(material))
+        self.init(mesh: mesh, material: .toon(material: material))
     }
 
     /// A Model that draws `mesh` with a Shader of your own, which the generated initializer takes as `.custom`.
     public convenience init(_ mesh: Mesh, _ material: Shader) {
-        self.init(mesh: mesh, material: .custom(material))
+        self.init(mesh: mesh, material: .custom(shader: material))
     }
 
     // MARK: - Setters

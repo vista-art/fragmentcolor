@@ -17,6 +17,17 @@
 #
 # Lines starting with `#` are comments. Blank lines are ignored.
 
+# ---- Return shapes ----
+#
+# Rule 12 in AGENTS.md: a getter returns the same shape in every language, never a
+# tagged enum. One getter differs on purpose, recorded here as a comment since every
+# platform has the call:
+#
+#   docs/api/scene/model/material.md: Model::material returns the material object in
+#   JavaScript and Python, and the `Material` enum that holds it in Swift and Kotlin
+#   (`.pbr(material:)`, `Material.Pbr.material`, and `shader` on the custom case),
+#   since an enum is how both spell a value of one of four types.
+
 # ---- Aliases (hidden override → canonical) ----
 #
 # These declare which canonical doc a hidden override credits when its

@@ -3489,8 +3489,11 @@ class Model:
         In Rust it returns `&Material`, the enum with a variant per material type,
         such as `Material::Pbr(PbrMaterial)`, `Material::Toon(ToonMaterial)` or
         `Material::Custom(Shader)`. JavaScript and Python return the material object
-        itself, a `PbrMaterial`, an `UnlitMaterial`, a `ToonMaterial` or a `Shader`. Swift and Kotlin return the `Material` enum, which holds the
-        object.
+        itself, a `PbrMaterial`, an `UnlitMaterial`, a `ToonMaterial` or a `Shader`.
+        Swift and Kotlin return the `Material` enum, which holds the object: Swift
+        reads it with `if case .pbr(let gold) = model.material()`, and Kotlin with
+        `(model.material() as Material.Pbr).material`, or a `when` with an `is` branch
+        per case. A custom one holds a `shader` in both.
 
         To give a Model a look of its own, build a fresh material, such as a new
         `PbrMaterial::new()`, rather than cloning one.

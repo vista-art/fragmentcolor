@@ -7120,19 +7120,22 @@ public func FfiConverterTypeLogLevel_lower(_ value: LogLevel) -> RustBuffer {
 
 /**
  * What a `Model` draws with, as Swift and Kotlin see it: an enum that holds the
- * material object. Uniffi marshals objects as `Arc`s, which the Rust `Material`
- * holds by value, so this mirror carries the same cases under the same name.
+ * material object, which is how both languages spell a value of one of four types.
+ * Each case names its object, `material`, or `shader` for a custom one, so Kotlin
+ * reads `Material.Pbr.material` where uniffi would name a tuple field `v1`.
+ * Uniffi marshals objects as `Arc`s, which the Rust `Material` holds by value,
+ * so this mirror carries the same cases under the same name.
  */
 
 public enum Material {
     
-    case pbr(PbrMaterial
+    case pbr(material: PbrMaterial
     )
-    case unlit(UnlitMaterial
+    case unlit(material: UnlitMaterial
     )
-    case toon(ToonMaterial
+    case toon(material: ToonMaterial
     )
-    case custom(Shader
+    case custom(shader: Shader
     )
 
 
@@ -7155,16 +7158,16 @@ public struct FfiConverterTypeMaterial: FfiConverterRustBuffer {
         let variant: Int32 = try readInt(&buf)
         switch variant {
         
-        case 1: return .pbr(try FfiConverterTypePbrMaterial.read(from: &buf)
+        case 1: return .pbr(material: try FfiConverterTypePbrMaterial.read(from: &buf)
         )
         
-        case 2: return .unlit(try FfiConverterTypeUnlitMaterial.read(from: &buf)
+        case 2: return .unlit(material: try FfiConverterTypeUnlitMaterial.read(from: &buf)
         )
         
-        case 3: return .toon(try FfiConverterTypeToonMaterial.read(from: &buf)
+        case 3: return .toon(material: try FfiConverterTypeToonMaterial.read(from: &buf)
         )
         
-        case 4: return .custom(try FfiConverterTypeShader.read(from: &buf)
+        case 4: return .custom(shader: try FfiConverterTypeShader.read(from: &buf)
         )
         
         default: throw UniffiInternalError.unexpectedEnumCase
@@ -7175,24 +7178,24 @@ public struct FfiConverterTypeMaterial: FfiConverterRustBuffer {
         switch value {
         
         
-        case let .pbr(v1):
+        case let .pbr(material):
             writeInt(&buf, Int32(1))
-            FfiConverterTypePbrMaterial.write(v1, into: &buf)
+            FfiConverterTypePbrMaterial.write(material, into: &buf)
             
         
-        case let .unlit(v1):
+        case let .unlit(material):
             writeInt(&buf, Int32(2))
-            FfiConverterTypeUnlitMaterial.write(v1, into: &buf)
+            FfiConverterTypeUnlitMaterial.write(material, into: &buf)
             
         
-        case let .toon(v1):
+        case let .toon(material):
             writeInt(&buf, Int32(3))
-            FfiConverterTypeToonMaterial.write(v1, into: &buf)
+            FfiConverterTypeToonMaterial.write(material, into: &buf)
             
         
-        case let .custom(v1):
+        case let .custom(shader):
             writeInt(&buf, Int32(4))
-            FfiConverterTypeShader.write(v1, into: &buf)
+            FfiConverterTypeShader.write(shader, into: &buf)
             
         }
     }
