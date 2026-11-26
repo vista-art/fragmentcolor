@@ -136,7 +136,7 @@ No user sees these names, so renaming breaks nothing.
 
 ## 0.12.8: materials
 
-Today one `Material` type covers every look. `Material::pbr()` and `Material::custom(shader)` share one set of setters, so a custom shader takes a `metallic` it never reads, and a texture slot is an enum argument, `TextureSlot`, passed beside the setter that binds it. 0.12.8 gives each shading model a type of its own, the way `Target` has `WindowTarget` and `TextureTarget`, and each type offers only the settings its shader reads. Signatures change in every language, as in 0.12.7, and the CHANGELOG opens with an upgrade list. Ranged storage uploads, under Bug fixes, land in this release too.
+Before 0.12.8, one `Material` type covered every look. `Material::pbr()` and `Material::custom(shader)` shared one set of setters, so a custom shader took a `metallic` it never read, and a texture slot was an enum argument, `TextureSlot`, passed beside the setter that bound it. 0.12.8 gives each shading model a type of its own, the way `Target` has `WindowTarget` and `TextureTarget`, and each type offers only the settings its shader reads. Signatures change in every language, as in 0.12.7, and the CHANGELOG opens with an upgrade list. Ranged storage uploads, under Bug fixes, land in this release too.
 
 ### Material types
 
@@ -149,7 +149,7 @@ Today one `Material` type covers every look. `Material::pbr()` and `Material::cu
 - [x] `MaterialMap`, the handle each map call returns, with `texture`, `uv` and `transform`, as in `gold.normal_map().texture(&tiles)?.uv(1)?.transform([0.0, 0.0], [4.0, 4.0], 0.0)?`. `texture` takes the inputs the texture setters take today, and 0.13.0 narrows it to a `Texture`. `TextureSlot`, `texture_uv`, `texture_transform` and the five `*_texture` setters go
 - [x] The glTF loader builds an `UnlitMaterial` for `KHR_materials_unlit` and a `PbrMaterial` for every other material
 - [x] An outline example: a second pass that draws edges from depth and normals. An outline needs a draw of its own, so it ships as a pass, never as a `ToonMaterial` setting. `examples/rust/examples/toon_outline.rs` draws it
-- [ ] A page for each type and one for `MaterialMap` in the Scene category, with examples in every language. The `Material` page lists the types, as the `Target` page lists the targets
+- [x] A page for each type and one for `MaterialMap` in the Scene category, with examples in every language. The `Material` page lists the types, as the `Target` page lists the targets
 
 No type is planned for Lambert or Blinn-Phong shading, which costs about what PBR costs on current GPUs and looks dated. The glTF extensions, such as clearcoat, sheen, transmission, iridescence and anisotropy, extend the PBR model, as three.js, Bevy and glTF itself treat them, so they arrive as `PbrMaterial` settings. Transmission carries the 0.14 glass preset.
 
@@ -657,17 +657,11 @@ Sources, read 2026-10-22: github.com/mmp/pbrt-v4-scenes, github.com/mmp/pbrt-v4,
 
 The plan follows each recommended answer until the question is settled.
 
-Settled: the earlier open questions, each on its recommendation, except the per-object API. `Camera` and `Light` stay handles that push nothing into shaders, `Renderer::load` is warm-up for any renderable, `Scene` is one pass through `scene.pass()`, USD lands in a 0.13.x patch after a license review and a wasm and mobile trial, and the custom data rules hold. Instancing lives on `Mesh`, with index views as documented sugar, a plain range on `pass.add_mesh` beside the shader's own mesh list, and a `Model` with no instance calls. `write_vertices`, `write_instances`, `set` and `layout()` are the verbs. A later shader never widens a mesh's instance slots: adding it fails with an error that names both shaders, unless a compelling case turns up. `Texture::write_region` stays beside `write`, which writes the whole texture through the same path. The parts of a model live one level up: `Model` stays one mesh and one material, and `SceneNode`, a handle in the scene layer, groups models, cameras, lights and child nodes, with `scene.nodes()` returning root nodes in place of the planned record. Nodes hold cameras and lights from 0.13.0, and a kept group draws mirrored instances with the opposite `front_face`. Also settled: the 0.13.0 additions, the 0.13.x tracks, 0.14 as light and surfaces, and the Reference scenes goal.
+Settled: the earlier open questions, each on its recommendation, except the per-object API. `Camera` and `Light` stay handles that push nothing into shaders, `Renderer::load` is warm-up for any renderable, `Scene` is one pass through `scene.pass()`, USD lands in a 0.13.x patch after a license review and a wasm and mobile trial, and the custom data rules hold. Instancing lives on `Mesh`, with index views as documented sugar, a plain range on `pass.add_mesh` beside the shader's own mesh list, and a `Model` with no instance calls. `write_vertices`, `write_instances`, `set` and `layout()` are the verbs. A later shader never widens a mesh's instance slots: adding it fails with an error that names both shaders, unless a compelling case turns up. `Texture::write_region` stays beside `write`, which writes the whole texture through the same path. The parts of a model live one level up: `Model` stays one mesh and one material, and `SceneNode`, a handle in the scene layer, groups models, cameras, lights and child nodes, with `scene.nodes()` returning root nodes in place of the planned record. Nodes hold cameras and lights from 0.13.0, and a kept group draws mirrored instances with the opposite `front_face`. Also settled: the 0.13.0 additions, the 0.13.x tracks, 0.14 as light and surfaces, and the Reference scenes goal. Then the three Materials questions, on their recommendations: `Material` is an enum built with `From`, with no public trait. Toon light takes both, three `bands` by default and a `ramp_map()` that takes over once its texture is wider than one texel, so a ramp one texel wide reads as no ramp. The demo is the walk scene with a style switcher, still to build.
 
 Settled before that: one 0.13.0 with every item; `Scene`, `SceneObject`, `Pass::add`, `Renderer::load` and `Model` kept; no public `Batch`; `set_pipeline` with `pipeline()`; override constants through `set`; `add_plugin`; a sync `submit` with `initialize`; the JavaScript throw with `set_source`; magic uniforms; the mobile renames; HDR; the restart of `v0.13.0-dev`; the full package on every platform; the layers with a `build.rs` check; Cargo features for dependencies only, on by default; and loaders that return `Scene`, with no `Asset`. Settled earlier still: `Pipeline` and `Compare`, `Buffer` with write-through `set`, runtime-sized arrays first, core names in Swift and Kotlin with no aliases, plain JavaScript objects when possible, and integrations as platform-specific examples.
 
-A few more questions on `Pipeline`, shared data and the bindings are still open. The three under Materials shape the 0.12.8 types, the ones under Scene nodes set rules the scene work needs, and the Reference scenes goal raises the three under its heading below.
-
-### Materials
-
-- **`Material`: an enum or a trait?** Recommended: an enum built with `From`, and no public trait. Why: no binding can implement a Rust trait, a `Shader` already covers a custom look, and a getter needs one type to return either way, as `RenderTarget` shows beside `Target`.
-- **Toon light: bands, a ramp, or both?** Recommended: both, with `bands(n)` by default and `ramp_map()` in charge once set. Why: bands need no asset, and a gradient texture is how three.js and Godot let artists tune the look.
-- **The demo: the walk scene or one model?** Recommended: the walk scene with a style switcher. Why: it reuses the 0.12.7 world and swaps many glTF materials at once, which exercises the loader's mapping and the enum. One model stays the fallback.
+A few more questions on `Pipeline`, shared data and the bindings are still open. The ones under Scene nodes set rules the scene work needs, and the Reference scenes goal raises the three under its heading below.
 
 ### Scene nodes
 
@@ -685,6 +679,7 @@ A few more questions on `Pipeline`, shared data and the bindings are still open.
 
 Latest moves:
 
+- **Settled:** the three questions on materials, on their recommendations: the `Material` enum built with `From`, toon bands with a ramp that takes over when wider than one texel, and the walk scene with a style switcher as the demo.
 - **New in 0.12.8:** `PbrMaterial`, `UnlitMaterial` and `ToonMaterial`, a `Shader` as the custom material, the `Material` enum, `MaterialMap`, the outline example, one error shape with one Errors page, and the style switcher demo.
 - **Moved to 0.12.8:** the unlit and toon presets from 0.13.x, now types. Skinned PBR leaves the material list in 0.13.x for a feature of the mesh and the model, and the 0.14 glass preset becomes transmission settings on `PbrMaterial`.
 - **Dropped with it:** `TextureSlot`, `Material::custom`, `texture_uv`, `texture_transform` and the five `*_texture` setters.

@@ -272,15 +272,15 @@ let flat = Shader::new(r#"
         return vec4<f32>(glow, 1.0);
     }
 "#)?;
-# assert!(flat.list_uniforms().contains(&"camera".to_string()));
-# assert!(!flat.list_uniforms().contains(&"lights".to_string()));
 let plain = Mesh::new();
 plain.add_vertices([
     Vertex::pbr([-0.5, -0.5, 0.0]),
     Vertex::pbr([0.5, -0.5, 0.0]),
     Vertex::pbr([0.5, 0.5, 0.0]),
 ]);
-let glowing = Model::new(plain, flat);
+let glowing = Model::new(plain, &flat);
+# assert!(flat.list_uniforms().contains(&"camera".to_string()));
+# assert!(!flat.list_uniforms().contains(&"lights".to_string()));
 # let _ = (shiny, glowing);
 # Ok(())
 # }

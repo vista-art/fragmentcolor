@@ -2,7 +2,7 @@
 
 ## 0.12.8: Materials
 
-The materials release. Each shading model gets a type of its own, and errors take one shape in every language. Signatures change in every language, as in 0.12.7.
+The materials release. Each shading model gets a type of its own. Signatures change in every language, as in 0.12.7.
 
 ### Upgrading from 0.12.7
 
@@ -15,6 +15,7 @@ The materials release. Each shading model gets a type of its own, and errors tak
 - Every `Shader` culls back faces, where one drawn on its own drew both. A triangle whose vertices run clockwise on screen no longer draws: a flat shape wound clockwise, a `Quad` whose `min` lies above or right of its `max`, or a Model mirrored by a negative scale. Call `shader.double_sided(true)` to draw both faces again, or wind the triangle counter-clockwise. `Shader::default()` and the hello triangle examples now wind counter-clockwise, and fullscreen triangles already did.
 - `Scene::load` builds an `UnlitMaterial` for a glTF material with `KHR_materials_unlit`, where it built a `PbrMaterial` that lit it.
 - `MaterialError::UvSet` is a struct variant, `{ call, set }`, whose message names the map: `PbrMaterial::normal_map().uv takes UV set 0 or 1, got 2`.
+- `MaterialError` gains `Bands`, for `bands(0)`, and `NoUv`, for a UV set or transform on the toon ramp. The enum isn't `#[non_exhaustive]`, so a Rust `match` that lists every variant needs new arms.
 
 ### Materials
 
