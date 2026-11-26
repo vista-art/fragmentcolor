@@ -4,6 +4,24 @@
 
 The materials release. Each shading model gets a type of its own, and errors take one shape in every language. Signatures change in every language, as in 0.12.7.
 
+### Upgrading from 0.12.7
+
+0.12.8 changes code in every language. Cargo's `0.12`, npm's `^0.12.7`, pip's `~=0.12.7` and SwiftPM's `.upToNextMinor(from: "0.12.7")` all pick it up, so pin `0.12.7` exactly until your code follows these changes:
+
+- `Material::pbr()` is `PbrMaterial::new()`: `new PbrMaterial()` in JavaScript, `PbrMaterial()` in Python, Swift and Kotlin. Its number setters keep their names and arguments.
+- `Material::custom(shader)` goes. Pass the `Shader` to `Model::new` as it is. The renderer fills the `camera`, `lights` and `model_0` to `model_3` slots it declares, as before. A custom shader no longer turns back-face culling on: it draws both faces, as any `Shader` does, until `shader.double_sided(false)`. Set blending on it with `shader.alpha_mode(AlphaMode::Blend)`.
+- Each texture setter becomes a map: `base_color_texture(input)` is `base_color_map().texture(input)`, and the same goes for `metallic_roughness`, `normal`, `occlusion` and `emissive`. `texture_uv(slot, set)` is `map.uv(set)` and `texture_transform(slot, offset, scale, rotation)` is `map.transform(offset, scale, rotation)`, so `TextureSlot` goes. On Swift and Kotlin, `baseColorSource(input, options)` and the other four are `map.source(input, options)`, and `map.texture(...)` takes the same inputs.
+- `model.material()` returns what the Model draws with. Rust gets the `Material` enum, `Material::Pbr(PbrMaterial)` or `Material::Custom(Shader)`, which is `#[non_exhaustive]`. Swift and Kotlin get the same enum, as `.pbr` and `.custom` in Swift and `Material.Pbr` and `Material.Custom` in Kotlin, and JavaScript and Python get the `PbrMaterial` or the `Shader` itself.
+- `MaterialError::UvSet` is a struct variant, `{ call, set }`, whose message names the map: `PbrMaterial::normal_map().uv takes UV set 0 or 1, got 2`.
+
+### Materials
+
+- `PbrMaterial` is glTF's metallic-roughness model, what `Material::pbr()` built, with the number setters `base_color`, `metallic`, `roughness`, `normal_scale`, `occlusion_strength`, `emissive`, `alpha_cutoff`, `uv_transform`, `alpha_mode` and `double_sided`.
+- Its five maps, `base_color_map()`, `metallic_roughness_map()`, `normal_map()`, `occlusion_map()` and `emissive_map()`, each return a `MaterialMap`, whose `texture`, `uv` and `transform` set what that map samples and chain: `gold.normal_map().texture(&tiles)?.uv(1)?.transform([0.0, 0.0], [4.0, 4.0], 0.0)?`. A refused call names the map, such as `PbrMaterial::normal_map().transform: rotation must be finite, got NaN`, and changes nothing.
+- A `Shader` is the custom material. `Model::new` takes a `PbrMaterial`, a `Shader` or the `Material` enum in Rust, and the material object in every binding.
+- `Shader::alpha_mode` and `Shader::double_sided` set a shader's blending and face culling, in every language, whether it draws a Model or draws on its own.
+- The `Material` page lists the material types and what the renderer fills in a custom shader, and `PbrMaterial` and `MaterialMap` get pages of their own.
+
 ### Shaders and uniforms
 
 - A `Shader.set` on a field or an item of a storage root uploads only those bytes at the next render, in every language, so the rest of the root keeps what a compute pass wrote there. It uploaded the whole root from the shader's copy, so a compute pass that kept state in a root, such as counts beside a `step` the app sets each frame, lost that state on every `set`. An upload covers whole 4-byte words, so a `set` of one `f16` also writes the `f16` that shares its word. Raw bytes on the root still replace all of it.
