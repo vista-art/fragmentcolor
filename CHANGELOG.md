@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.12.8: Materials
+
+The materials release. Each shading model gets a type of its own, and errors take one shape in every language. Signatures change in every language, as in 0.12.7.
+
+### Shaders and uniforms
+
+- A `Shader.set` on a field or an item of a storage root uploads only those bytes at the next render, in every language, so the rest of the root keeps what a compute pass wrote there. It uploaded the whole root from the shader's copy, so a compute pass that kept state in a root, such as counts beside a `step` the app sets each frame, lost that state on every `set`. An upload covers whole 4-byte words, so a `set` of one `f16` also writes the `f16` that shares its word. Raw bytes on the root still replace all of it.
+
 ## 0.12.7: Device checks and typed errors
 
 A patch release that checks shaders, meshes, textures and passes against the device before the GPU sees them, and returns every failure as a typed error that matches across Rust, JavaScript, Python, Swift and Kotlin. Lights lose their fixed cap, a texture a pass draws into can resize, and each PBR texture slot picks its own UV set.
