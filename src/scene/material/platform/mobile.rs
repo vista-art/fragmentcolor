@@ -5,47 +5,40 @@ use std::sync::Arc;
 use crate::errors::platform::mobile::FragmentColorError;
 use crate::{Material, MaterialError, PbrMaterial, Shader, ToonMaterial, UnlitMaterial};
 
-/// What a `Model` draws with, as Swift and Kotlin see it: an enum that holds the
-/// material object, which is how both languages spell a value of one of four types.
-/// Each case names its object, `material`, or `shader` for a custom one, so Kotlin
-/// reads `Material.Pbr.material` where uniffi would name a tuple field `v1`.
-/// Uniffi marshals objects as `Arc`s, which the Rust `Material` holds by value,
-/// so this mirror carries the same cases under the same name.
+/// What a `Model` draws with, as the uniffi plumbing carries it: one case per
+/// material type, holding the object. Uniffi can't marshal `impl Into<Material>` or
+/// return one of several object types, so the raw `Model(mesh:material:)` constructor
+/// and `materialHandle()` take and return this enum. The Swift and Kotlin extensions
+/// take and return the material object itself, as JavaScript and Python do, and no
+/// doc shows the handle.
 #[derive(Debug, Clone, uniffi::Enum)]
-#[uniffi(name = "Material")]
-pub enum MobileMaterial {
-    Pbr { material: Arc<PbrMaterial> },
-    Unlit { material: Arc<UnlitMaterial> },
-    Toon { material: Arc<ToonMaterial> },
-    Custom { shader: Arc<Shader> },
+pub enum MaterialHandle {
+    Pbr(Arc<PbrMaterial>),
+    Unlit(Arc<UnlitMaterial>),
+    Toon(Arc<ToonMaterial>),
+    Custom(Arc<Shader>),
 }
 
-impl From<MobileMaterial> for Material {
-    fn from(material: MobileMaterial) -> Self {
-        match material {
-            MobileMaterial::Pbr { material } => (*material).clone().into(),
-            MobileMaterial::Unlit { material } => (*material).clone().into(),
-            MobileMaterial::Toon { material } => (*material).clone().into(),
-            MobileMaterial::Custom { shader } => (*shader).clone().into(),
+impl MaterialHandle {
+    /// The material the handle holds. A method rather than a `From` impl, so the
+    /// transpilers don't read the handle as the Swift and Kotlin spelling of `Material`.
+    pub(crate) fn into_material(self) -> Material {
+        match self {
+            Self::Pbr(material) => (*material).clone().into(),
+            Self::Unlit(material) => (*material).clone().into(),
+            Self::Toon(material) => (*material).clone().into(),
+            Self::Custom(shader) => (*shader).clone().into(),
         }
     }
 }
 
-impl From<&Material> for MobileMaterial {
+impl From<&Material> for MaterialHandle {
     fn from(material: &Material) -> Self {
         match material {
-            Material::Pbr(material) => Self::Pbr {
-                material: Arc::new(material.clone()),
-            },
-            Material::Unlit(material) => Self::Unlit {
-                material: Arc::new(material.clone()),
-            },
-            Material::Toon(material) => Self::Toon {
-                material: Arc::new(material.clone()),
-            },
-            Material::Custom(shader) => Self::Custom {
-                shader: Arc::new(shader.clone()),
-            },
+            Material::Pbr(material) => Self::Pbr(Arc::new(material.clone())),
+            Material::Unlit(material) => Self::Unlit(Arc::new(material.clone())),
+            Material::Toon(material) => Self::Toon(Arc::new(material.clone())),
+            Material::Custom(shader) => Self::Custom(Arc::new(shader.clone())),
         }
     }
 }

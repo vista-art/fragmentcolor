@@ -687,17 +687,18 @@ final class Healthcheck: ExampleCase {
         return mesh
     }
 
-    // An UnlitMaterial draws its base color times its map with no lighting,
-    // and a Model hands it back in the `.unlit` case.
+    // An UnlitMaterial draws its base color times its map with no lighting. A Model hands
+    // the material back itself, and a Model built from what it handed back draws the same.
     func testUnlitMaterialDrawsWithNoLighting() async throws {
         let material = try UnlitMaterial().baseColor([1, 1, 0.5, 1]).doubleSided(true)
         _ = try material.baseColorMap().texture([0, 255, 255, 255] as [UInt8], [1, 1])
         let model = Model(try fullTarget(), material)
-        guard case .unlit = model.material() else {
-            throw HealthcheckError.assertion("Model.material() returned \(model.material()), not .unlit")
+        guard model.material() is UnlitMaterial else {
+            throw HealthcheckError.assertion("Model.material() returned \(type(of: model.material())), not UnlitMaterial")
         }
+        let again = Model(try fullTarget(), model.material())
         // A black light would darken a PbrMaterial, and leaves an unlit one as it is.
-        let pixel = try await drawOver(model, try Light.directional([0, 0, -1] as [Float], [0, 0, 0]))
+        let pixel = try await drawOver(again, try Light.directional([0, 0, -1] as [Float], [0, 0, 0]))
         // Linear 0.5 encodes as sRGB 188 on the 8-bit target.
         guard pixel[0] == 0 && pixel[1] == 255 && abs(Int(pixel[2]) - 188) <= 1 else {
             throw HealthcheckError.assertion("an UnlitMaterial drew \(pixel), not [0, 255, 188]")
@@ -705,15 +706,15 @@ final class Healthcheck: ExampleCase {
     }
 
     // A ToonMaterial lights in bands from the lights a PbrMaterial reads, a Model
-    // hands it back in the `.toon` case, and it refuses 0 bands and a UV set on its ramp.
+    // hands it back itself, and it refuses 0 bands and a UV set on its ramp.
     func testToonMaterialLightsInBands() async throws {
         let material = try ToonMaterial().bands(3).doubleSided(true)
         let shader = material.shader()
         try shader.set("camera.position", [0, 0, 1] as [Float])
         try shader.set("lights.ambient", [0, 0, 0] as [Float])
         let model = Model(try fullTarget(), material)
-        guard case .toon(let held) = model.material() else {
-            throw HealthcheckError.assertion("Model.material() returned \(model.material()), not .toon")
+        guard let held = model.material() as? ToonMaterial else {
+            throw HealthcheckError.assertion("Model.material() returned \(type(of: model.material())), not ToonMaterial")
         }
         // Rays at the cosine 0.6 to the face's normal, with a color that cancels the shader's 1/pi.
         let pi = Float.pi
@@ -722,7 +723,7 @@ final class Healthcheck: ExampleCase {
         guard pixel.prefix(3).allSatisfy({ abs(Int($0) - 213) <= 2 }) else {
             throw HealthcheckError.assertion("three bands drew \(pixel), not 213 in each channel")
         }
-        // The case holds the ToonMaterial, so the refusals run on the one it hands back.
+        // The refusals run on the ToonMaterial the Model handed back.
         let refusals: [(String, () throws -> Void)] = [
             ("ToonMaterial::bands", { _ = try held.bands(0) }),
             ("ToonMaterial::ramp_map().uv", { _ = try held.rampMap().uv(0) }),

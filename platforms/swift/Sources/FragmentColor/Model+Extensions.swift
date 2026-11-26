@@ -21,31 +21,50 @@ private func flattenColumns(_ columns: [[Float]], _ label: String) throws -> [Fl
     return columns.flatMap { $0 }
 }
 
+/// What a Model draws with: a PbrMaterial, an UnlitMaterial, a ToonMaterial or a Shader.
+/// `Model(mesh, material)` takes one, and `model.material()` returns it, which `as?` narrows,
+/// as in `model.material() as? PbrMaterial`. Only those four types conform.
+public protocol Material: AnyObject {
+    /// The material as the generated `Model` initializer takes it.
+    var materialHandle: MaterialHandle { get }
+}
+
+extension PbrMaterial: Material {
+    public var materialHandle: MaterialHandle { .pbr(self) }
+}
+
+extension UnlitMaterial: Material {
+    public var materialHandle: MaterialHandle { .unlit(self) }
+}
+
+extension ToonMaterial: Material {
+    public var materialHandle: MaterialHandle { .toon(self) }
+}
+
+extension Shader: Material {
+    public var materialHandle: MaterialHandle { .custom(self) }
+}
+
 extension Model {
     // MARK: - Constructors
 
-    public convenience init(_ mesh: Mesh, _ material: Material) {
-        self.init(mesh: mesh, material: material)
+    /// A Model that draws `mesh` with a PbrMaterial, an UnlitMaterial, a ToonMaterial or a Shader,
+    /// including what another Model's `material()` returned.
+    public convenience init(_ mesh: Mesh, _ material: any Material) {
+        self.init(mesh: mesh, material: material.materialHandle)
     }
 
-    /// A Model that draws `mesh` with a PbrMaterial, which the generated initializer takes as `.pbr`.
-    public convenience init(_ mesh: Mesh, _ material: PbrMaterial) {
-        self.init(mesh: mesh, material: .pbr(material: material))
-    }
+    // MARK: - Getters
 
-    /// A Model that draws `mesh` with an UnlitMaterial, which the generated initializer takes as `.unlit`.
-    public convenience init(_ mesh: Mesh, _ material: UnlitMaterial) {
-        self.init(mesh: mesh, material: .unlit(material: material))
-    }
-
-    /// A Model that draws `mesh` with a ToonMaterial, which the generated initializer takes as `.toon`.
-    public convenience init(_ mesh: Mesh, _ material: ToonMaterial) {
-        self.init(mesh: mesh, material: .toon(material: material))
-    }
-
-    /// A Model that draws `mesh` with a Shader of your own, which the generated initializer takes as `.custom`.
-    public convenience init(_ mesh: Mesh, _ material: Shader) {
-        self.init(mesh: mesh, material: .custom(shader: material))
+    /// What the Model draws with: the PbrMaterial, UnlitMaterial, ToonMaterial or Shader itself,
+    /// as JavaScript and Python return it. Narrow it with `as?`, as in `model.material() as? PbrMaterial`.
+    public func material() -> any Material {
+        switch materialHandle() {
+        case .pbr(let material): return material
+        case .unlit(let material): return material
+        case .toon(let material): return material
+        case .custom(let shader): return shader
+        }
     }
 
     // MARK: - Setters

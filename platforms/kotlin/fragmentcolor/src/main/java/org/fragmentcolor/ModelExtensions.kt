@@ -5,17 +5,34 @@ package org.fragmentcolor
 // List<Float>; these take Double, FloatArray and DoubleArray as well,
 // and a 4x4 matrix as its four columns.
 
-/** A Model that draws `mesh` with a PbrMaterial, which the generated constructor takes as `Material.Pbr`. */
-fun Model(mesh: Mesh, material: PbrMaterial): Model = Model(mesh, Material.Pbr(material))
+/**
+ * A Model that draws `mesh` with a PbrMaterial, an UnlitMaterial, a ToonMaterial or a Shader,
+ * including what another Model's [material] returned, as JavaScript and Python take it.
+ * Throws [FragmentColorException] for any other object.
+ */
+fun Model(mesh: Mesh, material: Any): Model {
+    val handle = when (material) {
+        is PbrMaterial -> MaterialHandle.Pbr(material)
+        is UnlitMaterial -> MaterialHandle.Unlit(material)
+        is ToonMaterial -> MaterialHandle.Toon(material)
+        is Shader -> MaterialHandle.Custom(material)
+        else -> throw FragmentColorException.Render(
+            "Model: expected a PbrMaterial, an UnlitMaterial, a ToonMaterial or a Shader, got ${material::class.simpleName}",
+        )
+    }
+    return Model(mesh, handle)
+}
 
-/** A Model that draws `mesh` with an UnlitMaterial, which the generated constructor takes as `Material.Unlit`. */
-fun Model(mesh: Mesh, material: UnlitMaterial): Model = Model(mesh, Material.Unlit(material))
-
-/** A Model that draws `mesh` with a ToonMaterial, which the generated constructor takes as `Material.Toon`. */
-fun Model(mesh: Mesh, material: ToonMaterial): Model = Model(mesh, Material.Toon(material))
-
-/** A Model that draws `mesh` with a Shader of your own, which the generated constructor takes as `Material.Custom`. */
-fun Model(mesh: Mesh, material: Shader): Model = Model(mesh, Material.Custom(material))
+/**
+ * What the Model draws with: the PbrMaterial, UnlitMaterial, ToonMaterial or Shader itself,
+ * as JavaScript and Python return it. Narrow it with `is` or `as`, as in `model.material() as PbrMaterial`.
+ */
+fun Model.material(): Any = when (val handle = materialHandle()) {
+    is MaterialHandle.Pbr -> handle.v1
+    is MaterialHandle.Unlit -> handle.v1
+    is MaterialHandle.Toon -> handle.v1
+    is MaterialHandle.Custom -> handle.v1
+}
 
 /** Replace the model's transform with a column-major 4x4 matrix of 16 numbers. */
 fun Model.setTransform(matrix: FloatArray) {

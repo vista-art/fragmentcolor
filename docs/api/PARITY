@@ -17,17 +17,6 @@
 #
 # Lines starting with `#` are comments. Blank lines are ignored.
 
-# ---- Return shapes ----
-#
-# Rule 12 in AGENTS.md: a getter returns the same shape in every language, never a
-# tagged enum. One getter differs on purpose, recorded here as a comment since every
-# platform has the call:
-#
-#   docs/api/scene/model/material.md: Model::material returns the material object in
-#   JavaScript and Python, and the `Material` enum that holds it in Swift and Kotlin
-#   (`.pbr(material:)`, `Material.Pbr.material`, and `shader` on the custom case),
-#   since an enum is how both spell a value of one of four types.
-
 # ---- Aliases (hidden override → canonical) ----
 #
 # These declare which canonical doc a hidden override credits when its
@@ -81,6 +70,11 @@ docs/api/core/pass/hidden/set_target_texture_mobile.md=>docs/api/core/pass/set_t
 # spell both as texture(...).
 docs/api/scene/material_map/hidden/source_mobile.md=>docs/api/scene/material_map/texture.md: Mobile splits the texture input form of MaterialMap::texture into a separate source method.
 
+# Model::material returns one of four object types. uniffi can't return one of
+# several object types, so the raw materialHandle method returns the MaterialHandle
+# enum, and the Swift and Kotlin extensions spell it material(), returning the object.
+docs/api/scene/model/hidden/material_handle_mobile.md=>docs/api/scene/model/material.md: Mobile returns the material through the raw materialHandle method; Swift/Kotlin extensions spell it material() and return the PbrMaterial, UnlitMaterial, ToonMaterial or Shader itself.
+
 # ---- Types documented through their methods (no page of their own) ----
 #
 # `AlphaMode` exists in every binding. Its three values are documented on
@@ -130,6 +124,7 @@ type SceneObjectHandle:swift,kotlin:uniffi can't marshal &impl SceneObject, so m
 type PassTarget:swift,kotlin:uniffi can't marshal impl Into<PassRef>, so the mobile Scene methods that pick a pass take this index-or-name enum.
 type MobileTextureInput:swift,kotlin:uniffi can't marshal impl Into<TextureInput>, so the mobile texture inputs take this enum, which mirrors TextureData without Empty.
 type UniformValue:swift,kotlin:uniffi can't marshal impl Into<UniformData>, so mobile Shader.set takes this enum; the Swift and Kotlin extensions overload set on top.
+type MaterialHandle:swift,kotlin:uniffi can't marshal impl Into<Material> or return one of several object types, so the raw Model constructor and materialHandle take and return this enum; the Swift and Kotlin extensions take and return the material object itself.
 type RenderCanvasFrame:python:the frame object of the rendercanvas present protocol, which only Python uses.
 type InvalidInputError:python:Python raises a FragmentColorError subclass for a value the call can't take, such as an int past u32, a bad size, or texture bytes that don't match their size; Rust reports a TextureError, SizeError, ScreenRegionError, ColorError or PassError, and JavaScript an Error named InvalidInputError.
 type UnsupportedMipmapFormatError:python:Python raises a FragmentColorError subclass for a format the CPU mipmap builder can't fill; Rust reports a TextureError, and JavaScript an Error of that name.

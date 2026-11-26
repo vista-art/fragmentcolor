@@ -39,19 +39,13 @@ what the Model draws with:
   type: `Material::Pbr(PbrMaterial)`, `Material::Unlit(UnlitMaterial)`,
   `Material::Toon(ToonMaterial)` and `Material::Custom(Shader)`. It is `#[non_exhaustive]`, so a `match` on
   it needs a `_` arm, and a later material type lands without breaking it.
-- **JavaScript and Python:** the Model takes the material object itself, and
-  `model.material()` returns that object, a `PbrMaterial`, an `UnlitMaterial`,
-  a `ToonMaterial` or a `Shader`.
-- **Swift and Kotlin:** `Material` is an enum that holds the object, which is
-  how both languages spell a value of one of four types. Swift has
-  `.pbr(material:)`, `.unlit(material:)`, `.toon(material:)` and
-  `.custom(shader:)`, so `if case .pbr(let gold) = model.material()` reads the
-  `PbrMaterial`. Kotlin has `Material.Pbr`, `Material.Unlit` and
-  `Material.Toon`, each with a `material` property, and `Material.Custom`, with
-  a `shader` property, so `(model.material() as Material.Pbr).material` reads
-  it, or a `when` with an `is` branch per case. The `Model` constructor also
-  takes a `PbrMaterial`, an `UnlitMaterial`, a `ToonMaterial` or a `Shader`
-  directly.
+- **JavaScript, Python, Swift and Kotlin:** the Model takes the material
+  object itself, and `model.material()` returns that object, a `PbrMaterial`,
+  an `UnlitMaterial`, a `ToonMaterial` or a `Shader`. Narrow it as the
+  language narrows any value: `instanceof` in JavaScript, `isinstance` in
+  Python, `as?` in Swift and `is` or `as` in Kotlin, as in
+  `model.material() as? PbrMaterial`. Swift types it as `any Material`, a
+  protocol only those four conform to.
 
 A material is a handle. The Model holds the same material you passed it, so
 a setter on that material changes every Model that draws with it.

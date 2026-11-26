@@ -1896,7 +1896,7 @@ public func FfiConverterTypeMipmap_lower(_ value: Mipmap) -> UInt64 {
 
 public protocol ModelProtocol: AnyObject, Sendable {
     
-    func material()  -> Material
+    func materialHandle()  -> MaterialHandle
     
     func mesh()  -> Mesh
     
@@ -1954,13 +1954,13 @@ open class Model: ModelProtocol, @unchecked Sendable {
     public func uniffiCloneHandle() -> UInt64 {
         return try! rustCall { uniffi_fragmentcolor_fn_clone_model(self.handle, $0) }
     }
-public convenience init(mesh: Mesh, material: Material) {
+public convenience init(mesh: Mesh, material: MaterialHandle) {
     let handle =
         try! rustCall() {
         uniffiCallStatus in
     uniffi_fragmentcolor_fn_constructor_model_new(
         FfiConverterTypeMesh_lower(mesh),
-        FfiConverterTypeMaterial_lower(material),uniffiCallStatus
+        FfiConverterTypeMaterialHandle_lower(material),uniffiCallStatus
     )
 }
     self.init(unsafeFromHandle: handle)
@@ -1978,10 +1978,10 @@ public convenience init(mesh: Mesh, material: Material) {
     
 
     
-open func material() -> Material  {
-    return try!  FfiConverterTypeMaterial_lift(try! rustCall() {
+open func materialHandle() -> MaterialHandle  {
+    return try!  FfiConverterTypeMaterialHandle_lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_fragmentcolor_fn_method_model_material(
+    uniffi_fragmentcolor_fn_method_model_materialhandle(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -7119,23 +7119,23 @@ public func FfiConverterTypeLogLevel_lower(_ value: LogLevel) -> RustBuffer {
 
 
 /**
- * What a `Model` draws with, as Swift and Kotlin see it: an enum that holds the
- * material object, which is how both languages spell a value of one of four types.
- * Each case names its object, `material`, or `shader` for a custom one, so Kotlin
- * reads `Material.Pbr.material` where uniffi would name a tuple field `v1`.
- * Uniffi marshals objects as `Arc`s, which the Rust `Material` holds by value,
- * so this mirror carries the same cases under the same name.
+ * What a `Model` draws with, as the uniffi plumbing carries it: one case per
+ * material type, holding the object. Uniffi can't marshal `impl Into<Material>` or
+ * return one of several object types, so the raw `Model(mesh:material:)` constructor
+ * and `materialHandle()` take and return this enum. The Swift and Kotlin extensions
+ * take and return the material object itself, as JavaScript and Python do, and no
+ * doc shows the handle.
  */
 
-public enum Material {
+public enum MaterialHandle {
     
-    case pbr(material: PbrMaterial
+    case pbr(PbrMaterial
     )
-    case unlit(material: UnlitMaterial
+    case unlit(UnlitMaterial
     )
-    case toon(material: ToonMaterial
+    case toon(ToonMaterial
     )
-    case custom(shader: Shader
+    case custom(Shader
     )
 
 
@@ -7145,57 +7145,57 @@ public enum Material {
 }
 
 #if compiler(>=6)
-extension Material: Sendable {}
+extension MaterialHandle: Sendable {}
 #endif
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public struct FfiConverterTypeMaterial: FfiConverterRustBuffer {
-    typealias SwiftType = Material
+public struct FfiConverterTypeMaterialHandle: FfiConverterRustBuffer {
+    typealias SwiftType = MaterialHandle
 
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Material {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MaterialHandle {
         let variant: Int32 = try readInt(&buf)
         switch variant {
         
-        case 1: return .pbr(material: try FfiConverterTypePbrMaterial.read(from: &buf)
+        case 1: return .pbr(try FfiConverterTypePbrMaterial.read(from: &buf)
         )
         
-        case 2: return .unlit(material: try FfiConverterTypeUnlitMaterial.read(from: &buf)
+        case 2: return .unlit(try FfiConverterTypeUnlitMaterial.read(from: &buf)
         )
         
-        case 3: return .toon(material: try FfiConverterTypeToonMaterial.read(from: &buf)
+        case 3: return .toon(try FfiConverterTypeToonMaterial.read(from: &buf)
         )
         
-        case 4: return .custom(shader: try FfiConverterTypeShader.read(from: &buf)
+        case 4: return .custom(try FfiConverterTypeShader.read(from: &buf)
         )
         
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
 
-    public static func write(_ value: Material, into buf: inout [UInt8]) {
+    public static func write(_ value: MaterialHandle, into buf: inout [UInt8]) {
         switch value {
         
         
-        case let .pbr(material):
+        case let .pbr(v1):
             writeInt(&buf, Int32(1))
-            FfiConverterTypePbrMaterial.write(material, into: &buf)
+            FfiConverterTypePbrMaterial.write(v1, into: &buf)
             
         
-        case let .unlit(material):
+        case let .unlit(v1):
             writeInt(&buf, Int32(2))
-            FfiConverterTypeUnlitMaterial.write(material, into: &buf)
+            FfiConverterTypeUnlitMaterial.write(v1, into: &buf)
             
         
-        case let .toon(material):
+        case let .toon(v1):
             writeInt(&buf, Int32(3))
-            FfiConverterTypeToonMaterial.write(material, into: &buf)
+            FfiConverterTypeToonMaterial.write(v1, into: &buf)
             
         
-        case let .custom(shader):
+        case let .custom(v1):
             writeInt(&buf, Int32(4))
-            FfiConverterTypeShader.write(shader, into: &buf)
+            FfiConverterTypeShader.write(v1, into: &buf)
             
         }
     }
@@ -7205,15 +7205,15 @@ public struct FfiConverterTypeMaterial: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public func FfiConverterTypeMaterial_lift(_ buf: RustBuffer) throws -> Material {
-    return try FfiConverterTypeMaterial.lift(buf)
+public func FfiConverterTypeMaterialHandle_lift(_ buf: RustBuffer) throws -> MaterialHandle {
+    return try FfiConverterTypeMaterialHandle.lift(buf)
 }
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public func FfiConverterTypeMaterial_lower(_ value: Material) -> RustBuffer {
-    return FfiConverterTypeMaterial.lower(value)
+public func FfiConverterTypeMaterialHandle_lower(_ value: MaterialHandle) -> RustBuffer {
+    return FfiConverterTypeMaterialHandle.lower(value)
 }
 
 
@@ -10157,7 +10157,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_materialmap_uv() != 38390) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_model_material() != 14993) {
+    if (uniffi_fragmentcolor_checksum_method_model_materialhandle() != 63467) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_model_mesh() != 40171) {
@@ -10463,7 +10463,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_constructor_light_spot() != 42725) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_constructor_model_new() != 13923) {
+    if (uniffi_fragmentcolor_checksum_constructor_model_new() != 45183) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_constructor_pbrmaterial_new() != 63415) {
