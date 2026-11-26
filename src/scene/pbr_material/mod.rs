@@ -89,11 +89,7 @@ impl PbrMaterial {
         .expect("SAFETY: built-in PBR shader parts are compiled-in WGSL source; a parse failure is a build-time error, not a runtime fault");
         let material = Self { shader };
         material.apply_defaults();
-        // The default ShaderObject double_sided is `true` (no culling for raw
-        // Shader callers); a material flips it to `false` to follow glTF 2.0's
-        // single-sided default.
         material.shader.object.set_alpha_mode(AlphaMode::default());
-        material.shader.object.set_double_sided(false);
         material
     }
 

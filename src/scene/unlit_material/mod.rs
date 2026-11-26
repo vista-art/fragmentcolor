@@ -58,9 +58,7 @@ impl UnlitMaterial {
             .expect("SAFETY: built-in unlit shader parts are compiled-in WGSL source; a parse failure is a build-time error, not a runtime fault");
         let material = Self { shader };
         material.apply_defaults();
-        // A raw Shader draws both faces; a material follows glTF 2.0's single-sided default.
         material.shader.object.set_alpha_mode(AlphaMode::default());
-        material.shader.object.set_double_sided(false);
         material
     }
 

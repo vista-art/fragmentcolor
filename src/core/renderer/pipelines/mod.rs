@@ -227,11 +227,9 @@ pub(super) fn create_render_pipeline(
             compilation_options: wgpu::PipelineCompilationOptions::default(),
         }),
         primitive: wgpu::PrimitiveState {
-            // `double_sided=true` (the ShaderObject default) leaves
-            // `cull_mode: None`, so a bare Shader draws both faces.
-            // `Material::pbr` (and `Material::custom`) flip it to
-            // `false`, which engages standard back-face culling, the
-            // glTF 2.0 default for single-sided materials.
+            // Single-sided, the default of every Shader and material, culls
+            // back faces, glTF 2.0's default. `double_sided(true)` leaves
+            // `cull_mode: None`, so the shader draws both faces.
             cull_mode: if double_sided {
                 None
             } else {

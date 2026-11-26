@@ -443,7 +443,7 @@ impl ShaderObject {
     }
 
     /// Set the pipeline-state double-sided flag for this shader. Called by
-    /// `Shader::double_sided` and `PbrMaterial::double_sided`; the renderer reads it to flip the
+    /// `Shader::double_sided` and the materials' `double_sided`; the renderer reads it to flip the
     /// `cull_mode` and key it into the pipeline cache.
     pub(crate) fn set_double_sided(&self, value: bool) {
         *self.double_sided.write() = value;
@@ -540,13 +540,9 @@ impl ShaderObject {
             pending: DashMap::new(),
             meshes: RwLock::new(Vec::new()),
             alpha_mode: RwLock::new(AlphaMode::default()),
-            // Default `double_sided=true` for shaders used directly: this
-            // preserves the pre-Material renderer behavior (no back-face
-            // cull) for callers who build a Shader without going through
-            // Material. `PbrMaterial::new()` flips it back to `false` so that
-            // path follows the glTF 2.0 default (single-sided = back-face
-            // cull on).
-            double_sided: RwLock::new(true),
+            // Single-sided, glTF 2.0's default: back faces are culled, with
+            // counter-clockwise winding as the front, until `double_sided(true)`.
+            double_sided: RwLock::new(false),
             maps: RwLock::new(Vec::new()),
             light_roots,
             lights: RwLock::new(ShaderLights::default()),
