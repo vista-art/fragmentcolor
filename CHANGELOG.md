@@ -29,6 +29,10 @@ The materials release. Each shading model gets a type of its own, and errors tak
 
 - A `Shader.set` on a field or an item of a storage root uploads only those bytes at the next render, in every language, so the rest of the root keeps what a compute pass wrote there. It uploaded the whole root from the shader's copy, so a compute pass that kept state in a root, such as counts beside a `step` the app sets each frame, lost that state on every `set`. An upload covers whole 4-byte words, so a `set` of one `f16` also writes the `f16` that shares its word. Raw bytes on the root still replace all of it.
 
+### Website and examples
+
+- The `toon_outline` example inks the outlines of toon-shaded shapes in a pass of its own, after the scene. A first pass draws each shape's normals and depth into two textures, and a fullscreen pass blends ink over the pixels where the depth jumps, along a silhouette, or the normal turns, along a crease. It opens a window, or saves one frame with `--png`.
+
 ## 0.12.7: Device checks and typed errors
 
 A patch release that checks shaders, meshes, textures and passes against the device before the GPU sees them, and returns every failure as a typed error that matches across Rust, JavaScript, Python, Swift and Kotlin. Lights lose their fixed cap, a texture a pass draws into can resize, and each PBR texture slot picks its own UV set.
