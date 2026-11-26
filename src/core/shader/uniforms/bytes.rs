@@ -784,6 +784,8 @@ fn locate<'a>(
 }
 
 #[cfg(test)]
+// The expected uploads hold one byte range, such as `vec![0..4]`, which this lint reads as a typo.
+#[allow(clippy::single_range_in_vec_init)]
 mod tests {
     use super::*;
 
