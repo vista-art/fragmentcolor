@@ -99,9 +99,11 @@ jobs:
         continue-on-error: true
         run: |
           sudo apt-get install -y -qq gdb
-          BIN=$(cargo test --lib --no-run --message-format=json 2>/dev/null | jq -r 'select(.executable != null and (.target.kind | index("lib"))) | .executable' | tail -1)
+          grep PRETTY_NAME /etc/os-release
+          dpkg-query -W -f='${Package} ${Version}\n' mesa-vulkan-drivers libgl1-mesa-dri libllvm* 2>/dev/null || true
+          BIN=$(cargo test --lib --no-run --color never 2>&1 | sed -n 's/.*Executable unittests src\/lib.rs (\(.*\))/\1/p' | tail -1)
           echo "test binary: $BIN"
-          gdb -q -batch -ex "set pagination off" -ex "handle SIGPIPE nostop noprint" -ex run -ex "bt 40" -ex "info threads" --args "$BIN" --test-threads=4 2>&1 | grep -v -E '^\[(New Thread|Thread .* exited)' | tail -150
+          gdb -q -batch -ex "set pagination off" -ex "handle SIGPIPE nostop noprint" -ex run -ex "bt 40" -ex "info sharedlibrary (lvp|LLVM|vulkan|gallium)" --args "$BIN" --test-threads=4 2>&1 | grep -v -E '^\[(New Thread|Thread .* exited)' | tail -200
 
       - name: Tests
         run: cargo test
