@@ -1308,15 +1308,17 @@ def check_toon_material(renderer):
     assert all(abs(channel - 213) <= 2 for channel in pixel[:3]), pixel
 
     def raises_material(label, call):
+        """Checks that `call` raises a MaterialError whose message names `label`."""
         try:
             call()
         except MaterialError as e:
+            assert label in str(e), f"{label} raised '{e}', which doesn't name the call"
             print(f"{label} raised MaterialError: {e}")
             return
         raise AssertionError(f"{label} should raise MaterialError")
 
-    raises_material("ToonMaterial.bands(0)", lambda: material.bands(0))
-    raises_material("ToonMaterial.ramp_map().uv(0)", lambda: material.ramp_map().uv(0))
+    raises_material("ToonMaterial::bands", lambda: material.bands(0))
+    raises_material("ToonMaterial::ramp_map().uv", lambda: material.ramp_map().uv(0))
     print("A ToonMaterial lights in bands, and refuses 0 bands and a UV set on its ramp")
 
 

@@ -582,10 +582,13 @@ await withModule('platforms.web.healthcheck.parity', async () => {
 
     // A color or vector item that is NaN, an infinity or past the 32-bit float range
     // throws, and the message names the call, as in every binding.
-    const named = (label, run) => {
+    // Checks that `run` throws an error whose message names `label`, and, given `name`,
+    // whose class is `name`.
+    const named = (label, run, name) => {
       try { run(); } catch (e) {
         caught(label, e);
         if (!e.message.includes(label)) fail(`${label} threw "${e.message}", which doesn't name the call`);
+        if (name && e.name !== name) fail(`${label} threw a ${e.name}, not a ${name}`);
         return;
       }
       fail(`${label} should throw`);
@@ -1021,8 +1024,8 @@ struct Data { items: array<vec4<f32>, 2> };
     throws('PbrMaterial.alphaMode(undefined)', () => new PbrMaterial().alphaMode(undefined));
     throws('PbrMaterial.alphaMode(0.5)', () => new PbrMaterial().alphaMode(0.5));
     throws('UnlitMaterial.alphaMode(3)', () => new UnlitMaterial().alphaMode(3));
-    named('ToonMaterial::bands', () => new ToonMaterial().bands(0));
-    named('ToonMaterial::ramp_map().uv', () => new ToonMaterial().rampMap().uv(0));
+    named('ToonMaterial::bands', () => new ToonMaterial().bands(0), 'MaterialError');
+    named('ToonMaterial::ramp_map().uv', () => new ToonMaterial().rampMap().uv(0), 'MaterialError');
     throws('Shader.alphaMode(3)', () => Shader.default().alphaMode(3));
     throws('MaterialMap.uv(undefined)', () => new PbrMaterial().normalMap().uv(undefined));
     await rejects('createStorageTexture with a format string', () =>
