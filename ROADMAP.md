@@ -75,7 +75,7 @@ Items found while reviewing 0.12.6, and the checks and error model that 0.13.0 b
 ### Bug fixes
 
 - [x] JavaScript `renderer.render([...])` records the whole list as one frame, as Rust and Python do, and `renderer.load([...])` loads every item (0.12.6)
-- [ ] A storage `set` uploads only the bytes that changed. Today it uploads the whole root from its CPU copy, which overwrites what a compute pass wrote since the last `read_storage`, and the `set` and `read_storage` pages say so (0.12.8)
+- [x] A storage `set` uploads only the bytes that changed, so the rest of the root keeps what a compute pass wrote. It uploaded the whole root from its CPU copy (0.12.8)
 - [x] Compute pipelines take immediates, as render pipelines do (0.12.7)
 - [x] A shader whose meshes have different vertex layouts gets one pipeline per layout, and meshes with equal layouts share one (0.12.7)
 - [x] Swift and Kotlin `Scene.load` take glTF bytes as well as a path: Swift `Scene.load(_ bytes: Data)` and Kotlin `Scene.load(bytes: ByteArray)`, so the generated examples pass the bytes their comment describes (0.12.6)
