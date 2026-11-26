@@ -14,6 +14,9 @@ import Foundation
 @available(*, deprecated, renamed: "TextureRegion")
 public typealias TextureRegionMobile = TextureRegion
 
+@available(*, deprecated, renamed: "TextureData")
+public typealias MobileTextureInput = TextureData
+
 extension TextureRegion {
     // MARK: - From rectangle / box
 

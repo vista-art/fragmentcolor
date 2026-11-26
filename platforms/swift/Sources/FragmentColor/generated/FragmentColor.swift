@@ -1256,7 +1256,7 @@ public protocol MaterialMapProtocol: AnyObject, Sendable {
      * The texture input form of `texture`, uploaded when the scene loads.
      * Swift and Kotlin reach it through the `texture` overloads, which match `createTexture`.
      */
-    func source(input: MobileTextureInput, options: TextureOptions?) throws  -> MaterialMap
+    func source(input: TextureData, options: TextureOptions?) throws  -> MaterialMap
     
     func texture(texture: Texture) throws  -> MaterialMap
     
@@ -1322,12 +1322,12 @@ open class MaterialMap: MaterialMapProtocol, @unchecked Sendable {
      * The texture input form of `texture`, uploaded when the scene loads.
      * Swift and Kotlin reach it through the `texture` overloads, which match `createTexture`.
      */
-open func source(input: MobileTextureInput, options: TextureOptions? = nil)throws  -> MaterialMap  {
+open func source(input: TextureData, options: TextureOptions? = nil)throws  -> MaterialMap  {
     return try  FfiConverterTypeMaterialMap_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
         uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_materialmap_source(
             self.uniffiCloneHandle(),
-        FfiConverterTypeMobileTextureInput_lower(input),
+        FfiConverterTypeTextureData_lower(input),
         FfiConverterOptionTypeTextureOptions.lower(options),uniffiCallStatus
     )
 })
@@ -2996,7 +2996,7 @@ public protocol RendererProtocol: AnyObject, Sendable {
      * extension files supply the natural overloads (e.g. `renderer.createTexture(bytes)`,
      * `renderer.createTexture(chain)`) by wrapping the enum invisibly.
      */
-    func createTexture(input: MobileTextureInput, options: TextureOptions?) async throws  -> Texture
+    func createTexture(input: TextureData, options: TextureOptions?) async throws  -> Texture
     
     /**
      * Create a headless `TextureTarget` of `size`. Uniffi can't marshal
@@ -3173,12 +3173,12 @@ open func createStorageTexture(size: Size, format: TextureFormat, data: Data? = 
      * extension files supply the natural overloads (e.g. `renderer.createTexture(bytes)`,
      * `renderer.createTexture(chain)`) by wrapping the enum invisibly.
      */
-open func createTexture(input: MobileTextureInput, options: TextureOptions?)async throws  -> Texture  {
+open func createTexture(input: TextureData, options: TextureOptions?)async throws  -> Texture  {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_fragmentcolor_fn_method_renderer_createtexture(
-                        self.uniffiCloneHandle(),FfiConverterTypeMobileTextureInput_lower(input),FfiConverterOptionTypeTextureOptions.lower(options)
+                        self.uniffiCloneHandle(),FfiConverterTypeTextureData_lower(input),FfiConverterOptionTypeTextureOptions.lower(options)
                 )
             },
             pollFunc: ffi_fragmentcolor_rust_future_poll_u64,
@@ -3760,7 +3760,11 @@ public protocol ShaderProtocol: AnyObject, Sendable {
      */
     func fetchCompose(parts: [String]) async throws  -> Shader
     
-    func get(key: String) throws  -> UniformData
+    /**
+     * The raw read behind the Swift and Kotlin `get`, which returns the plain value.
+     * A struct, array or buffer root comes back as its bytes, as JavaScript and Python read it.
+     */
+    func getData(key: String) throws  -> UniformData
     
     func isCompute()  -> Bool
     
@@ -4015,10 +4019,14 @@ open func fetchCompose(parts: [String])async throws  -> Shader  {
         )
 }
     
-open func get(key: String)throws  -> UniformData  {
+    /**
+     * The raw read behind the Swift and Kotlin `get`, which returns the plain value.
+     * A struct, array or buffer root comes back as its bytes, as JavaScript and Python read it.
+     */
+open func getData(key: String)throws  -> UniformData  {
     return try  FfiConverterTypeUniformData_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
         uniffiCallStatus in
-    uniffi_fragmentcolor_fn_method_shader_get(
+    uniffi_fragmentcolor_fn_method_shader_getdata(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(key),uniffiCallStatus
     )
@@ -7219,147 +7227,6 @@ public func FfiConverterTypeMaterialHandle_lower(_ value: MaterialHandle) -> Rus
 
 
 /**
- * Uniffi mirror of [`TextureData`], which it converts into.
- *
- * It leaves out `Empty`. Paths travel as `String`, handles as `Arc`.
- *
- * The Rust core stays on `TextureData`. This enum exists only so the mobile
- * bindings can carry a concrete variant. Web and Python use their own dispatch
- * (`TryFrom<JsValue>` and Python kwargs) and never see this type.
- */
-
-public enum MobileTextureInput {
-    
-    case bytes(Data
-    )
-    case path(String
-    )
-    case url(String
-    )
-    case cloneOf(Texture
-    )
-    case prepared(Mipmap
-    )
-    case ktx2Bytes(Data
-    )
-    case ktx2Path(String
-    )
-    case ktx2Url(String
-    )
-
-
-
-
-
-}
-
-#if compiler(>=6)
-extension MobileTextureInput: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeMobileTextureInput: FfiConverterRustBuffer {
-    typealias SwiftType = MobileTextureInput
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MobileTextureInput {
-        let variant: Int32 = try readInt(&buf)
-        switch variant {
-        
-        case 1: return .bytes(try FfiConverterData.read(from: &buf)
-        )
-        
-        case 2: return .path(try FfiConverterString.read(from: &buf)
-        )
-        
-        case 3: return .url(try FfiConverterString.read(from: &buf)
-        )
-        
-        case 4: return .cloneOf(try FfiConverterTypeTexture.read(from: &buf)
-        )
-        
-        case 5: return .prepared(try FfiConverterTypeMipmap.read(from: &buf)
-        )
-        
-        case 6: return .ktx2Bytes(try FfiConverterData.read(from: &buf)
-        )
-        
-        case 7: return .ktx2Path(try FfiConverterString.read(from: &buf)
-        )
-        
-        case 8: return .ktx2Url(try FfiConverterString.read(from: &buf)
-        )
-        
-        default: throw UniffiInternalError.unexpectedEnumCase
-        }
-    }
-
-    public static func write(_ value: MobileTextureInput, into buf: inout [UInt8]) {
-        switch value {
-        
-        
-        case let .bytes(v1):
-            writeInt(&buf, Int32(1))
-            FfiConverterData.write(v1, into: &buf)
-            
-        
-        case let .path(v1):
-            writeInt(&buf, Int32(2))
-            FfiConverterString.write(v1, into: &buf)
-            
-        
-        case let .url(v1):
-            writeInt(&buf, Int32(3))
-            FfiConverterString.write(v1, into: &buf)
-            
-        
-        case let .cloneOf(v1):
-            writeInt(&buf, Int32(4))
-            FfiConverterTypeTexture.write(v1, into: &buf)
-            
-        
-        case let .prepared(v1):
-            writeInt(&buf, Int32(5))
-            FfiConverterTypeMipmap.write(v1, into: &buf)
-            
-        
-        case let .ktx2Bytes(v1):
-            writeInt(&buf, Int32(6))
-            FfiConverterData.write(v1, into: &buf)
-            
-        
-        case let .ktx2Path(v1):
-            writeInt(&buf, Int32(7))
-            FfiConverterString.write(v1, into: &buf)
-            
-        
-        case let .ktx2Url(v1):
-            writeInt(&buf, Int32(8))
-            FfiConverterString.write(v1, into: &buf)
-            
-        }
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeMobileTextureInput_lift(_ buf: RustBuffer) throws -> MobileTextureInput {
-    return try FfiConverterTypeMobileTextureInput.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeMobileTextureInput_lower(_ value: MobileTextureInput) -> RustBuffer {
-    return FfiConverterTypeMobileTextureInput.lower(value)
-}
-
-
-
-/**
  * Mobile-marshallable target for [`Scene::add_to`]: a pass index or a pass
  * name. Uniffi can't marshal `impl Into<PassRef>`, so Swift / Kotlin pick a
  * variant; the `Scene+Extensions` / `SceneExtensions` files wrap it behind
@@ -7926,6 +7793,149 @@ public func FfiConverterTypeTextureClass_lift(_ buf: RustBuffer) throws -> Textu
 #endif
 public func FfiConverterTypeTextureClass_lower(_ value: TextureClass) -> RustBuffer {
     return FfiConverterTypeTextureClass.lower(value)
+}
+
+
+
+/**
+ * Uniffi mirror of [`TextureData`], which it converts into.
+ *
+ * It leaves out `Empty`. Paths travel as `String`, handles as `Arc`.
+ *
+ * The Rust core stays on `TextureData`. This enum exists only so the mobile
+ * bindings can carry a concrete variant. Web and Python use their own dispatch
+ * (`TryFrom<JsValue>` and Python kwargs) and never see this type.
+ *
+ * Swift and Kotlin see it as `TextureData`, the Rust name.
+ */
+
+public enum TextureData {
+    
+    case bytes(Data
+    )
+    case path(String
+    )
+    case url(String
+    )
+    case cloneOf(Texture
+    )
+    case prepared(Mipmap
+    )
+    case ktx2Bytes(Data
+    )
+    case ktx2Path(String
+    )
+    case ktx2Url(String
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension TextureData: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeTextureData: FfiConverterRustBuffer {
+    typealias SwiftType = TextureData
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TextureData {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .bytes(try FfiConverterData.read(from: &buf)
+        )
+        
+        case 2: return .path(try FfiConverterString.read(from: &buf)
+        )
+        
+        case 3: return .url(try FfiConverterString.read(from: &buf)
+        )
+        
+        case 4: return .cloneOf(try FfiConverterTypeTexture.read(from: &buf)
+        )
+        
+        case 5: return .prepared(try FfiConverterTypeMipmap.read(from: &buf)
+        )
+        
+        case 6: return .ktx2Bytes(try FfiConverterData.read(from: &buf)
+        )
+        
+        case 7: return .ktx2Path(try FfiConverterString.read(from: &buf)
+        )
+        
+        case 8: return .ktx2Url(try FfiConverterString.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: TextureData, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case let .bytes(v1):
+            writeInt(&buf, Int32(1))
+            FfiConverterData.write(v1, into: &buf)
+            
+        
+        case let .path(v1):
+            writeInt(&buf, Int32(2))
+            FfiConverterString.write(v1, into: &buf)
+            
+        
+        case let .url(v1):
+            writeInt(&buf, Int32(3))
+            FfiConverterString.write(v1, into: &buf)
+            
+        
+        case let .cloneOf(v1):
+            writeInt(&buf, Int32(4))
+            FfiConverterTypeTexture.write(v1, into: &buf)
+            
+        
+        case let .prepared(v1):
+            writeInt(&buf, Int32(5))
+            FfiConverterTypeMipmap.write(v1, into: &buf)
+            
+        
+        case let .ktx2Bytes(v1):
+            writeInt(&buf, Int32(6))
+            FfiConverterData.write(v1, into: &buf)
+            
+        
+        case let .ktx2Path(v1):
+            writeInt(&buf, Int32(7))
+            FfiConverterString.write(v1, into: &buf)
+            
+        
+        case let .ktx2Url(v1):
+            writeInt(&buf, Int32(8))
+            FfiConverterString.write(v1, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTextureData_lift(_ buf: RustBuffer) throws -> TextureData {
+    return try FfiConverterTypeTextureData.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTextureData_lower(_ value: TextureData) -> RustBuffer {
+    return FfiConverterTypeTextureData.lower(value)
 }
 
 
@@ -9989,7 +9999,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_renderer_createstoragetexture() != 28418) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_renderer_createtexture() != 15126) {
+    if (uniffi_fragmentcolor_checksum_method_renderer_createtexture() != 47893) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_renderer_createtexturetarget() != 21423) {
@@ -10031,7 +10041,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_shader_fetchcompose() != 16273) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_shader_get() != 13530) {
+    if (uniffi_fragmentcolor_checksum_method_shader_getdata() != 39159) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_shader_iscompute() != 665) {
@@ -10145,7 +10155,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_light_setrange() != 31032) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_materialmap_source() != 7449) {
+    if (uniffi_fragmentcolor_checksum_method_materialmap_source() != 25991) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_materialmap_texture() != 1737) {

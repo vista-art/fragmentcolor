@@ -110,19 +110,19 @@ fun MaterialMap.transform(offset: DoubleArray, scale: DoubleArray, rotation: Dou
 // The generated `texture(texture)` takes the Texture, and these reach `source` for the rest.
 
 fun MaterialMap.texture(bytes: ByteArray, usage: TextureUsage? = null): MaterialMap =
-    source(MobileTextureInput.Bytes(bytes), textureOptions(usage = usage))
+    source(TextureData.Bytes(bytes), textureOptions(usage = usage))
 
 fun MaterialMap.texture(bytes: List<Int>, usage: TextureUsage? = null): MaterialMap =
     texture(byteArray(bytes, "MaterialMap.texture"), usage)
 
 fun MaterialMap.texture(bytes: ByteArray, format: TextureFormat, usage: TextureUsage? = null): MaterialMap =
-    source(MobileTextureInput.Bytes(bytes), textureOptions(format = format, usage = usage))
+    source(TextureData.Bytes(bytes), textureOptions(format = format, usage = usage))
 
 fun MaterialMap.texture(bytes: List<Int>, format: TextureFormat, usage: TextureUsage? = null): MaterialMap =
     texture(byteArray(bytes, "MaterialMap.texture"), format, usage)
 
 fun MaterialMap.texture(bytes: ByteArray, size: Size, usage: TextureUsage? = null): MaterialMap =
-    source(MobileTextureInput.Bytes(bytes), textureOptions(size = size, usage = usage))
+    source(TextureData.Bytes(bytes), textureOptions(size = size, usage = usage))
 
 fun MaterialMap.texture(bytes: List<Int>, size: Size, usage: TextureUsage? = null): MaterialMap =
     texture(byteArray(bytes, "MaterialMap.texture"), size, usage)
@@ -134,7 +134,7 @@ fun MaterialMap.texture(bytes: List<Int>, size: List<UInt>, usage: TextureUsage?
     texture(byteArray(bytes, "MaterialMap.texture"), size, usage)
 
 fun MaterialMap.texture(bytes: ByteArray, options: TextureOptions): MaterialMap =
-    source(MobileTextureInput.Bytes(bytes), options)
+    source(TextureData.Bytes(bytes), options)
 
 fun MaterialMap.texture(bytes: List<Int>, options: TextureOptions): MaterialMap =
     texture(byteArray(bytes, "MaterialMap.texture"), options)
@@ -146,7 +146,7 @@ fun MaterialMap.texture(path: String, format: TextureFormat): MaterialMap =
 
 fun MaterialMap.texture(path: String, options: TextureOptions): MaterialMap = source(pathInput(path), options)
 
-fun MaterialMap.texture(chain: Mipmap): MaterialMap = source(MobileTextureInput.Prepared(chain))
+fun MaterialMap.texture(chain: Mipmap): MaterialMap = source(TextureData.Prepared(chain))
 
 fun MaterialMap.texture(chain: Mipmap, options: TextureOptions): MaterialMap =
-    source(MobileTextureInput.Prepared(chain), options)
+    source(TextureData.Prepared(chain), options)

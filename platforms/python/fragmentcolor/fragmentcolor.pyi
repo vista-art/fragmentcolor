@@ -826,7 +826,7 @@ class Shader:
         shader.set("gain", 0.5)
         ```
         """
-    def get(self, key: str) -> bool | int | float | bytes | _SamplerInfo | _TextureMeta | list[float] | list[int]:
+    def get(self, key: str) -> bool | int | float | bytes | TextureId | _SamplerInfo | list[float] | list[int]:
         """
         Returns the current value of the uniform identified by the given key.
 
@@ -837,8 +837,15 @@ class Shader:
 
         An `f16` uniform reads back as `f32` numbers that hold the value rounded to `f16`, so `0.1` reads back as `0.0999755859375`.
 
-        A texture slot reads back the id of what it binds. A `Material` map's slot
+        A texture slot reads back the `TextureId` of what it binds. A `Material` map's slot
         holds the map's id from the setter call on, before any `Renderer` loads it.
+
+        Rust names the type it reads into, as in `let res: [f32; 2] = shader.get("resolution")?`.
+        JavaScript, Python, Swift and Kotlin return the plain value: a number or a bool
+        for a scalar, a list of numbers for a vector or a matrix, column by column (a
+        typed array in JavaScript), a `TextureId` for a texture, and bytes for a struct,
+        array or buffer root. Swift and Kotlin type it as `Any`, which `as?` or `as`
+        narrows, as in `try shader.get("resolution") as? [Float]`.
 
         Example:
 
@@ -6902,8 +6909,5 @@ class RenderCanvasFrame: ...
 
 @final
 class _SamplerInfo: ...
-
-@final
-class _TextureMeta: ...
 
 def rendercanvas_context_hook(canvas: Any, present_methods: Any) -> WindowTarget: ...

@@ -170,10 +170,30 @@ extension Shader {
         try set(key: key, value: .texture(texture.id()))
     }
 
-    /// Get the value of a uniform by key (unlabeled overload).
-    /// The `float`, `floats` and `bytes` accessors read the result.
-    public func get(_ key: String) throws -> UniformData {
-        try get(key: key)
+    /// The current value of the uniform at `key`, as JavaScript and Python return it:
+    /// a `Bool`, `UInt32`, `Int32` or `Float` for a scalar, `[Float]`, `[UInt32]` or `[Int32]`
+    /// for a vector or a matrix, column by column, the `TextureId` a texture slot binds,
+    /// a `SamplerInfo` for a sampler, and `Data` for a struct, array or buffer root.
+    /// Narrow it with `as?`, as in `try shader.get("resolution") as? [Float]`.
+    public func get(_ key: String) throws -> Any {
+        switch try getData(key: key) {
+        case let .bool(flag): return flag
+        case let .uInt(value): return value
+        case let .int(value): return value
+        case let .float(value), let .half(value): return value
+        case let .vec2(values), let .vec3(values), let .vec4(values),
+             let .mat2(values), let .mat3(values), let .mat4(values),
+             let .halfVec2(values), let .halfVec3(values), let .halfVec4(values),
+             let .halfMat2(values), let .halfMat3(values), let .halfMat4(values):
+            return values
+        case let .uVec2(values), let .uVec3(values), let .uVec4(values): return values
+        case let .iVec2(values), let .iVec3(values), let .iVec4(values): return values
+        case let .texture(meta): return meta.id
+        case let .sampler(info): return info
+        case let .bytes(data): return data
+        case .array, .struct, .storage, .pushConstant:
+            throw FragmentColorError.Render("Shader.get: \(key) read back as a shape, not as its bytes")
+        }
     }
 
     // MARK: - fromVertex / fromMesh (unlabeled overloads)
@@ -215,45 +235,5 @@ extension Shader {
     /// ```
     public static func fetch(_ parts: [String]) async throws -> Shader {
         return try await Shader.default().fetchCompose(parts: parts)
-    }
-}
-
-extension UniformData {
-    /// The number a scalar uniform holds, as a `Float`.
-    /// `nil` for anything but a bool, float, half, int or uint.
-    public var float: Float? {
-        switch self {
-        case let .float(value), let .half(value): return value
-        case let .int(value): return Float(value)
-        case let .uInt(value): return Float(value)
-        case let .bool(flag): return flag ? 1 : 0
-        default: return nil
-        }
-    }
-
-    /// The numbers a scalar, vector or matrix uniform holds, as `Float`s.
-    /// Matrices come column by column. `nil` for textures, samplers and bytes.
-    public var floats: [Float]? {
-        switch self {
-        case let .vec2(values), let .vec3(values), let .vec4(values),
-             let .mat2(values), let .mat3(values), let .mat4(values),
-             let .halfVec2(values), let .halfVec3(values), let .halfVec4(values),
-             let .halfMat2(values), let .halfMat3(values), let .halfMat4(values):
-            return values
-        case let .uVec2(values), let .uVec3(values), let .uVec4(values):
-            return values.map { Float($0) }
-        case let .iVec2(values), let .iVec3(values), let .iVec4(values):
-            return values.map { Float($0) }
-        default:
-            return float.map { [$0] }
-        }
-    }
-
-    /// The bytes of a storage-buffer or push-constant root. `nil` for anything else.
-    public var bytes: Data? {
-        if case let .bytes(data) = self {
-            return data
-        }
-        return nil
     }
 }

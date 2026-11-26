@@ -212,7 +212,7 @@ pub enum PyUniformData {
     Floats(Vec<f32>),
     UInts(Vec<u32>),
     Ints(Vec<i32>),
-    Texture(crate::texture::TextureMeta),
+    Texture(crate::texture::TextureId),
     Sampler(crate::texture::SamplerInfo),
     Bytes(Vec<u8>),
 }
@@ -232,7 +232,7 @@ impl From<UniformData> for PyUniformData {
             U::HalfMat2(v) | U::HalfMat3(v) | U::HalfMat4(v) => Self::Floats(v),
             U::UVec2(v) | U::UVec3(v) | U::UVec4(v) => Self::UInts(v),
             U::IVec2(v) | U::IVec3(v) | U::IVec4(v) => Self::Ints(v),
-            U::Texture(meta) => Self::Texture(meta),
+            U::Texture(meta) => Self::Texture(meta.id),
             U::Sampler(info) => Self::Sampler(info),
             U::Bytes(bytes) => Self::Bytes(bytes),
             shape @ (U::Array(_) | U::Struct(_) | U::Storage(_) | U::PushConstant(_)) => {

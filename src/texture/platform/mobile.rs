@@ -24,7 +24,10 @@ use crate::{
 /// The Rust core stays on `TextureData`. This enum exists only so the mobile
 /// bindings can carry a concrete variant. Web and Python use their own dispatch
 /// (`TryFrom<JsValue>` and Python kwargs) and never see this type.
+///
+/// Swift and Kotlin see it as `TextureData`, the Rust name.
 #[derive(Debug, Clone, uniffi::Enum)]
+#[uniffi(name = "TextureData")]
 pub enum MobileTextureInput {
     Bytes(Vec<u8>),
     Path(String),

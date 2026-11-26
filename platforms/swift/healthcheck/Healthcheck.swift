@@ -810,13 +810,13 @@ final class Healthcheck: ExampleCase {
         """)
 
         try shader.set("count", 3)
-        try assertEqual(shader.get("count"), .uInt(3), "u32 from an Int literal")
+        try assertEqual(shader.get("count") as? UInt32, 3, "u32 from an Int literal")
         try shader.set("cell", [2, -1])
-        try assertEqual(shader.get("cell"), .iVec2([2, -1]), "vec2<i32> from [Int]")
+        try assertEqual(shader.get("cell") as? [Int32], [2, -1], "vec2<i32> from [Int]")
         try shader.set("rot", [1.0, 2.0, 3.0, 4.0])
-        try assertEqual(shader.get("rot"), .mat2([1, 2, 3, 4]), "mat2x2 from four numbers")
+        try assertEqual(shader.get("rot") as? [Float], [1, 2, 3, 4], "mat2x2 from four numbers")
         try shader.set("offset", [Int32(5), Int32(6)])
-        try assertEqual(shader.get("offset"), .vec2([5, 6]), "vec2<f32> from [Int32]")
+        try assertEqual(shader.get("offset") as? [Float], [5, 6], "vec2<f32> from [Int32]")
 
         for (label, value) in [("three numbers", [1.0, 2.0, 3.0]), ("an empty list", [])] {
             do {
@@ -824,11 +824,11 @@ final class Healthcheck: ExampleCase {
                 throw HealthcheckError.assertion("set(\"offset\", \(label)) should throw")
             } catch is FragmentColorError {}
         }
-        try assertEqual(shader.get("offset"), .vec2([5, 6]), "vec2 kept after rejected sets")
+        try assertEqual(shader.get("offset") as? [Float], [5, 6], "vec2 kept after rejected sets")
 
         let blob = Data((0..<32).map { UInt8($0) })
         try shader.set("particles", blob)
-        try assertEqual(shader.get("particles"), .bytes(blob), "storage root from Data")
+        try assertEqual(shader.get("particles") as? Data, blob, "storage root from Data")
     }
 
     // f16 uniforms take plain numbers rounded to the nearest f16 and read back as floats,
@@ -849,18 +849,16 @@ final class Healthcheck: ExampleCase {
         """)
 
         try shader.set("gain", 0.1)
-        try assertEqual(shader.get("gain"), .float(0.0999755859375), "f16 from a Double")
-        try assertEqual(try shader.get("gain").float, Float(0.0999755859375), "the float accessor")
+        try assertEqual(shader.get("gain") as? Float, 0.0999755859375, "f16 from a Double")
         try shader.set("tint", [0.25, 0.5, 0.75, 1.0])
-        try assertEqual(shader.get("tint"), .vec4([0.25, 0.5, 0.75, 1]), "vec4<f16> reads back as a vec4")
+        try assertEqual(shader.get("tint") as? [Float], [0.25, 0.5, 0.75, 1], "vec4<f16> reads back as floats")
         for value in [70000.0, Double.nan, Double.infinity] {
             do {
                 try shader.set("gain", value)
                 throw HealthcheckError.assertion("set(\"gain\", \(value)) should throw")
             } catch is FragmentColorError {}
         }
-        try assertEqual(shader.get("gain"), .float(0.0999755859375), "gain kept after rejected sets")
-        try assertEqual(UniformData.halfVec2([1, 2]).floats, [1, 2], "the floats accessor")
+        try assertEqual(shader.get("gain") as? Float, 0.0999755859375, "gain kept after rejected sets")
 
         try shader.set("gain", 1)
         do {

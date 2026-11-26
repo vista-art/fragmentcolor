@@ -92,7 +92,7 @@ suspend fun Renderer.createStorageTexture(
  * [usage] adds to the `TEXTURE_BINDING | COPY_DST` every texture gets.
  */
 suspend fun Renderer.createTexture(bytes: ByteArray, usage: TextureUsage? = null): Texture =
-    createTexture(MobileTextureInput.Bytes(bytes), textureOptions(usage = usage))
+    createTexture(TextureData.Bytes(bytes), textureOptions(usage = usage))
 
 /** Create a texture from encoded image bytes, one [Int] per byte. */
 suspend fun Renderer.createTexture(bytes: List<Int>, usage: TextureUsage? = null): Texture =
@@ -100,7 +100,7 @@ suspend fun Renderer.createTexture(bytes: List<Int>, usage: TextureUsage? = null
 
 /** Create a texture from encoded image bytes, decoded into [format]. */
 suspend fun Renderer.createTexture(bytes: ByteArray, format: TextureFormat, usage: TextureUsage? = null): Texture =
-    createTexture(MobileTextureInput.Bytes(bytes), textureOptions(format = format, usage = usage))
+    createTexture(TextureData.Bytes(bytes), textureOptions(format = format, usage = usage))
 
 /** Create a texture from encoded image bytes, one [Int] per byte, decoded into [format]. */
 suspend fun Renderer.createTexture(bytes: List<Int>, format: TextureFormat, usage: TextureUsage? = null): Texture =
@@ -108,7 +108,7 @@ suspend fun Renderer.createTexture(bytes: List<Int>, format: TextureFormat, usag
 
 /** Create a texture from raw RGBA pixels and their [Size], so the bytes are never decoded. */
 suspend fun Renderer.createTexture(bytes: ByteArray, size: Size, usage: TextureUsage? = null): Texture =
-    createTexture(MobileTextureInput.Bytes(bytes), textureOptions(size = size, usage = usage))
+    createTexture(TextureData.Bytes(bytes), textureOptions(size = size, usage = usage))
 
 /** Create a texture from raw RGBA pixels, one [Int] per byte, and their [Size]. */
 suspend fun Renderer.createTexture(bytes: List<Int>, size: Size, usage: TextureUsage? = null): Texture =
@@ -124,7 +124,7 @@ suspend fun Renderer.createTexture(bytes: List<Int>, size: List<UInt>, usage: Te
 
 /** Create a texture from bytes with every option spelled out. */
 suspend fun Renderer.createTexture(bytes: ByteArray, options: TextureOptions): Texture =
-    createTexture(MobileTextureInput.Bytes(bytes), options)
+    createTexture(TextureData.Bytes(bytes), options)
 
 /** Create a texture from bytes, one [Int] per byte, with every option spelled out. */
 suspend fun Renderer.createTexture(bytes: List<Int>, options: TextureOptions): Texture =
@@ -143,14 +143,14 @@ suspend fun Renderer.createTexture(path: String, options: TextureOptions): Textu
 
 /** Create a texture from a [Mipmap] chain, which uploads without decoding. */
 suspend fun Renderer.createTexture(chain: Mipmap): Texture =
-    createTexture(MobileTextureInput.Prepared(chain), null)
+    createTexture(TextureData.Prepared(chain), null)
 
 /** Create a texture from a [Mipmap] chain, with a sampler and usage from [options]. */
 suspend fun Renderer.createTexture(chain: Mipmap, options: TextureOptions): Texture =
-    createTexture(MobileTextureInput.Prepared(chain), options)
+    createTexture(TextureData.Prepared(chain), options)
 
-/** Create a texture from any [MobileTextureInput] with the default options. */
-suspend fun Renderer.createTexture(input: MobileTextureInput): Texture = createTexture(input, null)
+/** Create a texture from any [TextureData] with the default options. */
+suspend fun Renderer.createTexture(input: TextureData): Texture = createTexture(input, null)
 
 // ── render / load ────────────────────────────────────────────────────────────
 
@@ -328,11 +328,11 @@ internal fun byteArray(bytes: List<Int>, method: String): ByteArray =
     }
 
 /** A URL input for `http(s)`, otherwise a file path. */
-internal fun pathInput(path: String): MobileTextureInput =
+internal fun pathInput(path: String): TextureData =
     if (path.startsWith("http://") || path.startsWith("https://")) {
-        MobileTextureInput.Url(path)
+        TextureData.Url(path)
     } else {
-        MobileTextureInput.Path(path)
+        TextureData.Path(path)
     }
 
 /**

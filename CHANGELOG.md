@@ -16,6 +16,9 @@ The materials release. Each shading model gets a type of its own. Signatures cha
 - `Scene::load` builds an `UnlitMaterial` for a glTF material with `KHR_materials_unlit`, where it built a `PbrMaterial` that lit it.
 - `MaterialError::UvSet` is a struct variant, `{ call, set }`, whose message names the map: `PbrMaterial::normal_map().uv takes UV set 0 or 1, got 2`.
 - `MaterialError` gains `Bands`, for `bands(0)`, and `NoUv`, for a UV set or transform on the toon ramp. The enum isn't `#[non_exhaustive]`, so a Rust `match` that lists every variant needs new arms.
+- Swift's and Kotlin's `MobileTextureInput` is `TextureData`, the Rust name, as in `TextureData.bytes(data)`. The old name stays as a deprecated alias until 0.13.0.
+- Swift's and Kotlin's `shader.get(key)` returns the plain value, as JavaScript and Python do: a `Bool`, `UInt32`, `Int32` or `Float`, a list of numbers, a `TextureId`, a `SamplerInfo` or bytes, typed `Any`, as in `try shader.get("resolution") as? [Float]`. It returned the `UniformData` enum, and the `float`, `floats` and `bytes` accessors on that enum go.
+- A texture slot reads back as its `TextureId` in every language. JavaScript returned the number inside it, and Python a `TextureMeta`.
 
 ### Materials
 

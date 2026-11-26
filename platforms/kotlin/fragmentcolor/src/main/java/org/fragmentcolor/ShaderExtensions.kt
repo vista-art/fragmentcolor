@@ -78,52 +78,43 @@ fun Shader.set(key: String, bytes: ByteArray) = set(key, UniformValue.Bytes(byte
 /** Bind a [Texture] created by a [Renderer] to a texture uniform. */
 fun Shader.set(key: String, texture: Texture) = set(key, UniformValue.Texture(texture.id()))
 
-// `Shader.get` returns a [UniformData]. These accessors read it.
-
 /**
- * The number a scalar uniform holds, as a [Float].
- * `null` for anything but a bool, float, half, int or uint.
+ * The current value of the uniform at [key], as JavaScript and Python return it:
+ * a [Boolean], [UInt], [Int] or [Float] for a scalar, a `List<Float>`, `List<UInt>` or `List<Int>`
+ * for a vector or a matrix, column by column, the [TextureId] a texture slot binds,
+ * a [SamplerInfo] for a sampler, and a [ByteArray] for a struct, array or buffer root.
+ * Narrow it with `is` or `as`, as in `shader.get("resolution") as List<*>`.
  */
-val UniformData.float: Float?
-    get() = when (this) {
-        is UniformData.Float -> v1
-        is UniformData.Half -> v1
-        is UniformData.Int -> v1.toFloat()
-        is UniformData.UInt -> v1.toFloat()
-        is UniformData.Bool -> if (v1) 1f else 0f
-        else -> null
-    }
-
-/**
- * The numbers a scalar, vector or matrix uniform holds, as [Float]s.
- * Matrices come column by column. `null` for textures, samplers and bytes.
- */
-val UniformData.floats: List<Float>?
-    get() = when (this) {
-        is UniformData.Vec2 -> v1
-        is UniformData.Vec3 -> v1
-        is UniformData.Vec4 -> v1
-        is UniformData.Mat2 -> v1
-        is UniformData.Mat3 -> v1
-        is UniformData.Mat4 -> v1
-        is UniformData.HalfVec2 -> v1
-        is UniformData.HalfVec3 -> v1
-        is UniformData.HalfVec4 -> v1
-        is UniformData.HalfMat2 -> v1
-        is UniformData.HalfMat3 -> v1
-        is UniformData.HalfMat4 -> v1
-        is UniformData.UVec2 -> v1.map { it.toFloat() }
-        is UniformData.UVec3 -> v1.map { it.toFloat() }
-        is UniformData.UVec4 -> v1.map { it.toFloat() }
-        is UniformData.IVec2 -> v1.map { it.toFloat() }
-        is UniformData.IVec3 -> v1.map { it.toFloat() }
-        is UniformData.IVec4 -> v1.map { it.toFloat() }
-        else -> float?.let { listOf(it) }
-    }
-
-/** The bytes of a storage-buffer or push-constant root. `null` for anything else. */
-val UniformData.bytes: ByteArray?
-    get() = (this as? UniformData.Bytes)?.v1
+fun Shader.get(key: String): Any = when (val data = getData(key)) {
+    is UniformData.Bool -> data.v1
+    is UniformData.UInt -> data.v1
+    is UniformData.Int -> data.v1
+    is UniformData.Float -> data.v1
+    is UniformData.Half -> data.v1
+    is UniformData.Vec2 -> data.v1
+    is UniformData.Vec3 -> data.v1
+    is UniformData.Vec4 -> data.v1
+    is UniformData.Mat2 -> data.v1
+    is UniformData.Mat3 -> data.v1
+    is UniformData.Mat4 -> data.v1
+    is UniformData.HalfVec2 -> data.v1
+    is UniformData.HalfVec3 -> data.v1
+    is UniformData.HalfVec4 -> data.v1
+    is UniformData.HalfMat2 -> data.v1
+    is UniformData.HalfMat3 -> data.v1
+    is UniformData.HalfMat4 -> data.v1
+    is UniformData.UVec2 -> data.v1
+    is UniformData.UVec3 -> data.v1
+    is UniformData.UVec4 -> data.v1
+    is UniformData.IVec2 -> data.v1
+    is UniformData.IVec3 -> data.v1
+    is UniformData.IVec4 -> data.v1
+    is UniformData.Texture -> data.v1.id
+    is UniformData.Sampler -> data.v1
+    is UniformData.Bytes -> data.v1
+    is UniformData.Array, is UniformData.Struct, is UniformData.Storage, is UniformData.PushConstant ->
+        throw FragmentColorException.Render("Shader.get: $key read back as a shape, not as its bytes")
+}
 
 // ---------------------------------------------------------------------------
 // Async fetch factory helpers

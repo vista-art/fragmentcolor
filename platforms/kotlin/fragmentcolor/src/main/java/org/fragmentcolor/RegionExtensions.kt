@@ -8,6 +8,9 @@ package org.fragmentcolor
 @Deprecated("Use TextureRegion", ReplaceWith("TextureRegion"))
 typealias TextureRegionMobile = TextureRegion
 
+@Deprecated("Use TextureData", ReplaceWith("TextureData"))
+typealias MobileTextureInput = TextureData
+
 /**
  * A texture region from `[width, height]`, `[x, y, width, height]`
  * or `[x, y, z, width, height, depth]`, as Rust's `TextureRegion::from` reads them.

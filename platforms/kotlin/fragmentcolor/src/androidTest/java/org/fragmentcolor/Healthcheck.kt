@@ -516,7 +516,7 @@ class Healthcheck : ExampleCase() {
         assertTrue(empty.message.orEmpty().contains("it got an empty byte list"), "an empty byte list threw ${empty.message}")
         val options = TextureOptions(format = TextureFormat.RGBA8_UNORM)
         val beside = assertFailsWith<FragmentColorException> {
-            PbrMaterial().baseColorMap().source(MobileTextureInput.CloneOf(texture), options)
+            PbrMaterial().baseColorMap().source(TextureData.CloneOf(texture), options)
         }
         assertTrue(
             beside.message.orEmpty().contains("PbrMaterial::base_color_map().texture"),
@@ -647,23 +647,22 @@ class Healthcheck : ExampleCase() {
         )
 
         shader.set("count", 3)
-        assertEquals(UniformData.UInt(3u), shader.get("count"))
+        assertEquals(3u, shader.get("count"))
         shader.set("cell", intArrayOf(2, -1))
-        assertEquals(UniformData.IVec2(listOf(2, -1)), shader.get("cell"))
+        assertEquals(listOf(2, -1), shader.get("cell"))
         shader.set("rot", floatArrayOf(1f, 2f, 3f, 4f))
-        assertEquals(UniformData.Mat2(listOf(1f, 2f, 3f, 4f)), shader.get("rot"))
+        assertEquals(listOf(1f, 2f, 3f, 4f), shader.get("rot"))
         shader.set("offset", intArrayOf(5, 6))
-        assertEquals(UniformData.Vec2(listOf(5f, 6f)), shader.get("offset"))
+        assertEquals(listOf(5f, 6f), shader.get("offset"))
 
         assertFailsWith<FragmentColorException> { shader.set("offset", floatArrayOf(1f, 2f, 3f)) }
-        assertEquals(UniformData.Vec2(listOf(5f, 6f)), shader.get("offset"))
+        assertEquals(listOf(5f, 6f), shader.get("offset"))
         assertFailsWith<FragmentColorException> { shader.set("count", -1) }
         assertFailsWith<FragmentColorException> { shader.set("offset", ByteArray(8)) }
 
         val blob = ByteArray(32) { it.toByte() }
         shader.set("particles", blob)
-        val (bytes) = shader.get("particles") as UniformData.Bytes
-        assertContentEquals(blob, bytes)
+        assertContentEquals(blob, shader.get("particles") as ByteArray)
     }
 
     // f16 uniforms take plain numbers rounded to the nearest f16 and read back as floats,
@@ -687,15 +686,13 @@ class Healthcheck : ExampleCase() {
         )
 
         shader.set("gain", 0.1)
-        assertEquals(UniformData.Float(0.099975586f), shader.get("gain"))
-        assertEquals(0.099975586f, shader.get("gain").float)
+        assertEquals(0.099975586f, shader.get("gain"))
         shader.set("tint", listOf(0.25f, 0.5f, 0.75f, 1f))
-        assertEquals(UniformData.Vec4(listOf(0.25f, 0.5f, 0.75f, 1f)), shader.get("tint"))
+        assertEquals(listOf(0.25f, 0.5f, 0.75f, 1f), shader.get("tint"))
         for (value in listOf(70000.0, Double.NaN, Double.POSITIVE_INFINITY)) {
             assertFailsWith<FragmentColorException> { shader.set("gain", value) }
         }
-        assertEquals(UniformData.Float(0.099975586f), shader.get("gain"))
-        assertEquals(listOf(1f, 2f), UniformData.HalfVec2(listOf(1f, 2f)).floats)
+        assertEquals(0.099975586f, shader.get("gain"))
 
         shader.set("gain", 1.0)
         try {

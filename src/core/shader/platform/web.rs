@@ -228,7 +228,7 @@ fn uniform_value(data: UniformData) -> JsValue {
         U::HalfMat2(v) | U::HalfMat3(v) | U::HalfMat4(v) => Float32Array::from(&v[..]).into(),
         U::IVec2(v) | U::IVec3(v) | U::IVec4(v) => Int32Array::from(&v[..]).into(),
         U::UVec2(v) | U::UVec3(v) | U::UVec4(v) => Uint32Array::from(&v[..]).into(),
-        U::Texture(meta) => JsValue::from_f64(meta.id.id as f64),
+        U::Texture(meta) => meta.id.into(),
         U::Sampler(info) => {
             let object = Object::new();
             let comparison = JsValue::from_bool(info.comparison);

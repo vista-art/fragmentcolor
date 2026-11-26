@@ -238,10 +238,10 @@ Core holds `Renderer`, the targets, `Shader` with `Pipeline`, `Pass`, `Mesh`, `T
 
 0.12.6 gives Swift and Kotlin the core names for the targets and `TextureRegion`, and gives JavaScript and Python `WindowTarget`, each with an alias for the old name. 0.13.0 removes every alias.
 
-- [ ] The deprecated Swift and Kotlin typealiases go: `MobileWindowTarget`, `MobileTextureTarget` and `TextureRegionMobile`
+- [ ] The deprecated Swift and Kotlin typealiases go: `MobileWindowTarget`, `MobileTextureTarget`, `TextureRegionMobile` and `MobileTextureInput`
 - [ ] The other forms 0.12.6 deprecates go too: Swift's `Shader.new([...])` and `Shader.setRegistry(baseUrl:)`, its one-tuple `createTexture` and `createStorageTexture`, and Kotlin's top-level `ShaderFetch`
 - [ ] JavaScript's `CanvasTarget` alias and Python's `RenderCanvasTarget` alias go
-- [ ] Swift and Kotlin see `TextureData` for `MobileTextureInput`, through a uniffi `name`. `stand_ins` in `scripts/reflect.rs` then drops the pair, so the stand-in rewrite for `TextureData` leaves the transpilers
+- [x] Swift and Kotlin see `TextureData` for `MobileTextureInput`, through a uniffi `name`. `stand_ins` in `scripts/reflect.rs` then drops the pair, so the stand-in rewrite for `TextureData` leaves the transpilers. `MobileTextureInput` stays as a deprecated alias until 0.13.0 (0.12.8)
 - [ ] The Swift and Kotlin `TextureRegion` fields are `x`, `y`, `z`, `width`, `height` and `depth`, the keys JavaScript and Python read
 - [x] Rust idents put the qualifier first: `MobileTextureRegion` and `MobileTextureInput` (0.12.7)
 - [ ] The mobile `SceneObjectHandle` becomes Rust `MobileSceneObject`, exported to Swift and Kotlin as `SceneObject`. `PassTarget` leaves with `PassRef`

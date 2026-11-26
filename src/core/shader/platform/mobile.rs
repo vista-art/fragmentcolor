@@ -127,10 +127,18 @@ impl Shader {
         Ok(self.object.set_input(&key, value.into())?)
     }
 
-    #[uniffi::method(name = "get")]
-    #[lsp_doc("docs/api/core/shader/get.md")]
-    pub fn get_mobile(&self, key: String) -> Result<UniformData, FragmentColorError> {
-        Ok(self.object.get_uniform_data(&key)?)
+    /// The raw read behind the Swift and Kotlin `get`, which returns the plain value.
+    /// A struct, array or buffer root comes back as its bytes, as JavaScript and Python read it.
+    #[uniffi::method(name = "getData")]
+    #[lsp_doc("docs/api/core/shader/hidden/get_data_mobile.md")]
+    pub fn get_data_mobile(&self, key: String) -> Result<UniformData, FragmentColorError> {
+        Ok(match self.object.get_uniform_data(&key)? {
+            shape @ (UniformData::Array(_)
+            | UniformData::Struct(_)
+            | UniformData::Storage(_)
+            | UniformData::PushConstant(_)) => UniformData::Bytes(shape.to_bytes()),
+            data => data,
+        })
     }
 
     #[uniffi::method(name = "listUniforms")]
