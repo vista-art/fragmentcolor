@@ -40,6 +40,7 @@ from fragmentcolor import (
     TextureFormat,
     TextureUsage,
     Quad,
+    ToonMaterial,
     UnlitMaterial,
     Vertex,
     WindowTarget,
@@ -657,6 +658,7 @@ def check_number_errors(renderer):
         "ScreenRegion": lambda n: ScreenRegion((0, 0), (n, 4)),
         "ScreenRegion origin": lambda n: ScreenRegion((n, 0), (4, 4)),
         "MaterialMap.uv": lambda n: occlusion.uv(n),
+        "ToonMaterial.bands": lambda n: ToonMaterial().bands(n),
     }
     # An int of any size outside 0 to 2**32 - 1 is a value error, never OverflowError.
     for name, call in calls.items():
@@ -778,6 +780,9 @@ def check_scalars_and_pairs():
         "PbrMaterial.occlusion_strength": lambda v: PbrMaterial().occlusion_strength(v),
         "PbrMaterial.alpha_cutoff": lambda v: PbrMaterial().alpha_cutoff(v),
         "UnlitMaterial.alpha_cutoff": lambda v: UnlitMaterial().alpha_cutoff(v),
+        "ToonMaterial.alpha_cutoff": lambda v: ToonMaterial().alpha_cutoff(v),
+        "ToonMaterial.highlight_size": lambda v: ToonMaterial().highlight_size(v),
+        "ToonMaterial.rim_width": lambda v: ToonMaterial().rim_width(v),
         "PbrMaterial.uv_transform": lambda v: PbrMaterial().uv_transform([0, 0], [1, 1], v),
         "MaterialMap.transform": lambda v: PbrMaterial().normal_map().transform([0, 0], [1, 1], v),
         "Model.rotate": lambda v: model.rotate([0, 1, 0], v),
@@ -803,7 +808,7 @@ def check_scalars_and_pairs():
     material = PbrMaterial().metallic(0.25)
     finite = ("Model.rotate", "Light.set_intensity", "Light.set_cone_angles")
     for name, call in scalars.items():
-        if name.startswith(("PbrMaterial.", "UnlitMaterial.", "MaterialMap.")) or name in finite:
+        if name.startswith(("PbrMaterial.", "UnlitMaterial.", "ToonMaterial.", "MaterialMap.")) or name in finite:
             for bad in (float("nan"), float("inf"), 1e39):
                 raises_invalid(f"{name}({bad})", lambda: call(bad))
     light.set_intensity(2.5)
@@ -918,6 +923,9 @@ def check_colors(renderer):
         "PbrMaterial.base_color": (material.base_color, 4),
         "PbrMaterial.emissive": (material.emissive, 3),
         "UnlitMaterial.base_color": (UnlitMaterial().base_color, 4),
+        "ToonMaterial.base_color": (ToonMaterial().base_color, 4),
+        "ToonMaterial.highlight": (ToonMaterial().highlight, 3),
+        "ToonMaterial.rim": (ToonMaterial().rim, 3),
         "Light.point": (lambda color: Light.point([0.0, 0.0, 0.0], color), 3),
         "Light.directional": (lambda color: Light.directional([0.0, -1.0, 0.0], color), 3),
         "Light.spot": (lambda color: Light.spot([0.0, 1.0, 0.0], [0.0, -1.0, 0.0], color), 3),
@@ -1277,6 +1285,39 @@ def check_unlit_material(renderer):
     # Linear 0.5 encodes as sRGB 188 on the 8-bit target.
     assert red == 0 and green == 255 and abs(blue - 188) <= 1, (red, green, blue)
     print("An UnlitMaterial draws its base color times its map, with no lighting")
+
+
+def check_toon_material(renderer):
+    """A ToonMaterial lights in bands from the lights a PbrMaterial reads, and a Model hands it back."""
+    material = ToonMaterial().bands(3).double_sided(True)
+    shader = material.shader()
+    shader.set("camera.position", [0.0, 0.0, 1.0])
+    shader.set("lights.ambient", [0.0, 0.0, 0.0])
+    mesh = Mesh()
+    mesh.add_vertices([Vertex.pbr(corner) for corner in ([-1.0, -1.0, 0.0], [3.0, -1.0, 0.0], [-1.0, 3.0, 0.0])])
+    model = Model(mesh, material)
+    assert isinstance(model.material(), ToonMaterial), type(model.material())
+    rpass = Pass("toon")
+    rpass.add(model)
+    # Rays at the cosine 0.6 to the face's normal, with a color that cancels the shader's 1/pi.
+    rpass.add(Light.directional([-0.8, 0.0, -0.6], [np.pi, np.pi, np.pi]))
+    target = renderer.create_texture_target([4, 4])
+    renderer.render(rpass, target)
+    pixel = target.get_image()[1, 1].tolist()
+    # Three bands light the face at 2/3, which encodes as sRGB 213 on the 8-bit target.
+    assert all(abs(channel - 213) <= 2 for channel in pixel[:3]), pixel
+
+    def raises_material(label, call):
+        try:
+            call()
+        except MaterialError as e:
+            print(f"{label} raised MaterialError: {e}")
+            return
+        raise AssertionError(f"{label} should raise MaterialError")
+
+    raises_material("ToonMaterial.bands(0)", lambda: material.bands(0))
+    raises_material("ToonMaterial.ramp_map().uv(0)", lambda: material.ramp_map().uv(0))
+    print("A ToonMaterial lights in bands, and refuses 0 bands and a UV set on its ramp")
 
 
 def check_invalid_textures(renderer):
@@ -1767,6 +1808,7 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
     check_material_textures(renderer)
     check_material_maps()
     check_unlit_material(renderer)
+    check_toon_material(renderer)
     check_invalid_textures(renderer)
     check_scene_errors()
     check_stub()

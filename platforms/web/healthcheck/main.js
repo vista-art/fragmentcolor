@@ -1,5 +1,5 @@
 import init, {
-  Renderer, Shader, Pass, Mesh, Vertex, Instance, Scene, Model, PbrMaterial, UnlitMaterial, MaterialMap, Camera, Light, Mipmap,
+  Renderer, Shader, Pass, Mesh, Vertex, Instance, Scene, Model, PbrMaterial, UnlitMaterial, ToonMaterial, MaterialMap, Camera, Light, Mipmap,
   TextureFormat, TextureUsage, ErrorKind, LightKind, LogLevel,
 } from "fragmentcolor";
 import * as fc from "fragmentcolor";
@@ -605,6 +605,9 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     named('PbrMaterial.alphaCutoff: value', () => new PbrMaterial().alphaCutoff(1e39));
     named('UnlitMaterial.baseColor', () => new UnlitMaterial().baseColor([1, NaN, 1, 1]));
     named('UnlitMaterial.alphaCutoff: value', () => new UnlitMaterial().alphaCutoff(Infinity));
+    named('ToonMaterial.highlight', () => new ToonMaterial().highlight([1, NaN, 1]));
+    named('ToonMaterial.rimWidth: value', () => new ToonMaterial().rimWidth(-Infinity));
+    named('ToonMaterial.bands: count', () => new ToonMaterial().bands(1.5));
     named('PbrMaterial.uvTransform: rotation', () => new PbrMaterial().uvTransform([0, 0], [1, 1], Infinity));
     named('MaterialMap.transform: rotation', () => occlusion().transform([0, 0], [1, 1], -Infinity));
     // So does a light's intensity or cone angle, and a rotation angle,
@@ -1018,6 +1021,8 @@ struct Data { items: array<vec4<f32>, 2> };
     throws('PbrMaterial.alphaMode(undefined)', () => new PbrMaterial().alphaMode(undefined));
     throws('PbrMaterial.alphaMode(0.5)', () => new PbrMaterial().alphaMode(0.5));
     throws('UnlitMaterial.alphaMode(3)', () => new UnlitMaterial().alphaMode(3));
+    named('ToonMaterial::bands', () => new ToonMaterial().bands(0));
+    named('ToonMaterial::ramp_map().uv', () => new ToonMaterial().rampMap().uv(0));
     throws('Shader.alphaMode(3)', () => Shader.default().alphaMode(3));
     throws('MaterialMap.uv(undefined)', () => new PbrMaterial().normalMap().uv(undefined));
     await rejects('createStorageTexture with a format string', () =>
@@ -1280,6 +1285,32 @@ await withModule('platforms.web.healthcheck.unlit_material', async () => {
     const expected = [0, 255, 188];
     if (pixel.some((channel, i) => Math.abs(channel - expected[i]) > 2)) {
       fail(`an UnlitMaterial drew [${pixel}], not [${expected}]`);
+    }
+});
+
+// A ToonMaterial lights in bands from the lights a PbrMaterial reads, and a Model
+// hands the same object back.
+await withModule('platforms.web.healthcheck.toon_material', async () => {
+    const fail = (message) => { throw new Error(message); };
+    const material = new ToonMaterial().bands(3).doubleSided(true);
+    material.shader().set('camera.position', [0, 0, 1]);
+    material.shader().set('lights.ambient', [0, 0, 0]);
+    const surface = new Mesh();
+    surface.addVertices([[-1, -1, 0], [3, -1, 0], [-1, 3, 0]].map((corner) => Vertex.pbr(corner)));
+    const model = new Model(surface, material);
+    if (!(model.material() instanceof ToonMaterial)) fail('Model.material lost the ToonMaterial');
+    const pass = new Pass('toon');
+    pass.add(model);
+    // Rays at the cosine 0.6 to the face's normal, with a color that cancels the shader's 1/pi.
+    pass.add(Light.directional([-0.8, 0, -0.6], [Math.PI, Math.PI, Math.PI]));
+    const renderer = new Renderer();
+    const target = await renderer.createTextureTarget([4, 4]);
+    await renderer.load(pass);
+    renderer.render(pass, target);
+    const pixel = Array.from((await target.getImage()).slice(0, 3));
+    // Three bands light the face at 2/3, which encodes as sRGB 213 on the 8-bit target.
+    if (pixel.some((channel) => Math.abs(channel - 213) > 2)) {
+      fail(`a ToonMaterial drew [${pixel}], not 213 in each channel`);
     }
 });
 
