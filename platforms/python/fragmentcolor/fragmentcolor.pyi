@@ -59,7 +59,6 @@ __all__ = [
 
 _PySize: TypeAlias = Size | Sequence[SupportsIndex] | Mapping[str, SupportsIndex] | npt.NDArray[numpy.integer[Any]]
 _PyTextureBytes: TypeAlias = bytes | npt.NDArray[numpy.uint8] | Sequence[SupportsIndex]
-_PyTextureSource: TypeAlias = str | bytearray | bytes | memoryview[Any] | Mipmap | Texture | list[int] | npt.NDArray[numpy.uint8] | os.PathLike[str] | tuple[Any, ...]
 _PyVertexPosition: TypeAlias = float | numpy.floating[Any] | numpy.integer[Any] | Vertex | npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat]
 _Renderable: TypeAlias = Mesh | Pass | Scene | Shader | Sequence[Mesh | Pass | Scene | Shader]
 _SceneObject: TypeAlias = Camera | Light | Model
@@ -226,7 +225,7 @@ class Renderer:
         image = target.get_image()
         ```
         """
-    def create_texture(self, input: _PyTextureSource, size: _PySize | None = ..., format: TextureFormat | None = ..., mipmaps: bool | None = ..., sampler: SamplerOptions | dict[str, Any] | None = ..., usage: SupportsIndex | TextureUsage | None = ...) -> Texture:
+    def create_texture(self, input: str | bytearray | bytes | memoryview[Any] | Mipmap | Texture | list[int] | npt.NDArray[numpy.uint8] | os.PathLike[str] | tuple[Any, ...], size: _PySize | None = ..., format: TextureFormat | None = ..., mipmaps: bool | None = ..., sampler: SamplerOptions | dict[str, Any] | None = ..., usage: SupportsIndex | TextureUsage | None = ...) -> Texture:
         """
         Create a [Texture](https://fragmentcolor.org/api/texture/texture) from bytes, a file path, a URL, a KTX2 container, or a pre-built [Mipmap](https://fragmentcolor.org/api/texture/mipmap).
 
@@ -485,7 +484,7 @@ class Renderer:
         depth = r.create_depth_texture([800, 600])
         ```
         """
-    def create_storage_texture(self, size: _PySize, format: TextureFormat, data: _PyTextureBytes | None = ..., usage: SupportsIndex | TextureUsage | None = ..., usage_bits: SupportsIndex | None = ...) -> Texture:
+    def create_storage_texture(self, size: _PySize, format: TextureFormat, data: _PyTextureBytes | None = ..., usage: SupportsIndex | TextureUsage | None = ...) -> Texture:
         """
         Create a storage-class texture for compute shaders, image store/load, or as a render target.
 
@@ -6036,8 +6035,8 @@ class MaterialMap:
     material the map came from and returns the map, so the calls chain:
 
     - [`texture`](https://fragmentcolor.org/api/scene/materialmap#texture) sets
-      the texture, from a `Texture` or from any input `Renderer::create_texture`
-      takes.
+      the texture, from a `Texture`, from any input `Renderer::create_texture`
+      takes, or from another map, whose texture both maps then sample.
     - [`uv`](https://fragmentcolor.org/api/scene/materialmap#uv) picks the UV set,
       `0` or `1`.
     - [`transform`](https://fragmentcolor.org/api/scene/materialmap#transform)
@@ -6059,7 +6058,7 @@ class MaterialMap:
     map = gold.normal_map().texture(flat, size=[1, 1]).uv(1).transform([0.0, 0.0], [4.0, 4.0], 0.0)
     ```
     """
-    def texture(self, input: _PyTextureSource, size: _PySize | None = ..., format: TextureFormat | None = ..., mipmaps: bool | None = ..., sampler: SamplerOptions | dict[str, Any] | None = ..., usage: SupportsIndex | TextureUsage | None = ...) -> MaterialMap:
+    def texture(self, input: str | bytearray | bytes | memoryview[Any] | MaterialMap | Mipmap | Texture | list[int] | npt.NDArray[numpy.uint8] | os.PathLike[str] | tuple[Any, ...], size: _PySize | None = ..., format: TextureFormat | None = ..., mipmaps: bool | None = ..., sampler: SamplerOptions | dict[str, Any] | None = ..., usage: SupportsIndex | TextureUsage | None = ...) -> MaterialMap:
         """
         Set the texture the map samples, and return the map. The material's shader
         reads it under the map's name, such as `base_color_map`, through the UV set
@@ -6067,18 +6066,21 @@ class MaterialMap:
         [`transform`](https://fragmentcolor.org/api/scene/materialmap#transform) the
         map applies.
 
-        Accepts any `Into<TextureInput>`, the inputs [`Renderer::create_texture`](https://fragmentcolor.org/api/core/renderer#create_texture) takes:
+        Accepts another map, or any input [`Renderer::create_texture`](https://fragmentcolor.org/api/core/renderer#create_texture) takes:
 
+        - Another [`&MaterialMap`](https://fragmentcolor.org/api/scene/materialmap), such as a loaded glTF material's `&pbr.base_color_map()`. The map samples the texture the given map samples, under the same `TextureId`. A `Texture` there binds here as it is. A source stays one source, which each `Renderer` uploads once for both maps, and a `Renderer` that loaded it for the given map draws it for this one at once. One upload can't serve two color spaces, so a map that reads its source in another one, such as a normal map given a base color map, keeps the same source and uploads a copy of its own in its own space. A format the caller picked stays, as a `Texture`'s does. The map keeps its own UV set and transform, since `texture` sets only the texture and the sampler that comes with it. Either map set again later takes a texture of its own and leaves the other as it was. A map with no texture, which draws its 1×1 default, has none to share, and the call refuses it.
         - A pre-built [`&Texture`](https://fragmentcolor.org/api/texture/texture). The map stores the texture's ID immediately and the GPU texture stays Arc-shared across every material that points at it. Passing the same `&shared_texture` to the maps of N materials produces one GPU upload and N shader-uniform references: the cheap way to reuse one texture across a scene full of objects without paying for N texture allocations. The texture belongs to the `Renderer` that created it, and another `Renderer` refuses to draw it. It keeps the options it was created with, and the call refuses options beside it.
         - Encoded bytes, raw pixels with their size as `(bytes, [w, h])`, bytes with a format as `(bytes, format)`, bytes with every option as `(bytes, options)`, a path or a URL, alone or as `(path, format)` or `(path, options)`, or a [`Mipmap`](https://fragmentcolor.org/api/texture/mipmap), alone or as `(chain, options)`. The material keeps this source in the map. Each `Renderer` that draws the material uploads a copy of its own at [`Renderer::load`](https://fragmentcolor.org/api/core/renderer#load), or on native targets at its first [`Renderer::render`](https://fragmentcolor.org/api/core/renderer#render), and frees it when the `Renderer` or the material drops. A map set again draws its old copy until the `Renderer` loads the new one.
 
         To share a map across Renderers, pass bytes, a path, a URL or a `Mipmap`.
 
-        Each language spells these inputs the way its `create_texture` does:
+        Each language takes another map as `texture(otherMap)`, or `texture(other_map)`
+        in Python, with no options, and spells the other inputs the way its
+        `create_texture` does:
 
         - **JavaScript:** `texture(input, options?)`, where `options` is a size such as `[w, h]`, a `TextureFormat`, or `{ size?, format?, mipmaps?, sampler?, usage? }`.
         - **Python:** `texture(input, size=None, format=None, mipmaps=None, sampler=None, usage=None)`. A NumPy array brings its own size, and a `size` that differs from it raises `InvalidInputError`.
-        - **Swift and Kotlin:** `texture(texture)`, `texture(bytes)`, `texture(bytes, format)`, `texture(bytes, [w, h])`, `texture(bytes, size)`, `texture(bytes, options)`, `texture(path)`, `texture(path, format)`, `texture(path, options)`, `texture(chain)` and `texture(chain, options)`. Bytes are `Data`, `[UInt8]` or `[Int]` in Swift and `ByteArray` or `List<Int>` in Kotlin, in every bytes form. The bytes forms without `options` take an optional `usage`. An `Int` outside 0 to 255 throws, and so does a `[w, h]` that isn't 2 or 3 numbers.
+        - **Swift and Kotlin:** `texture(map)`, `texture(texture)`, `texture(bytes)`, `texture(bytes, format)`, `texture(bytes, [w, h])`, `texture(bytes, size)`, `texture(bytes, options)`, `texture(path)`, `texture(path, format)`, `texture(path, options)`, `texture(chain)` and `texture(chain, options)`. Bytes are `Data`, `[UInt8]` or `[Int]` in Swift and `ByteArray` or `List<Int>` in Kotlin, in every bytes form. The bytes forms without `options` take an optional `usage`. An `Int` outside 0 to 255 throws, and so does a `[w, h]` that isn't 2 or 3 numbers.
 
         A source with no format of its own reads in the map's color space: sRGB in
         the base color and emissive maps, as glTF's color textures do, and linear in
@@ -6101,7 +6103,8 @@ class MaterialMap:
         for a `Mipmap`. A path or
         a URL holds only its string, and each `Renderer` reads or fetches it again.
         `renderer.create_texture` keeps nothing on the CPU, and the texture it returns
-        draws in that one `Renderer`.
+        draws in that one `Renderer`. A map that takes another map's texture holds the
+        same source, so it adds nothing to that.
 
         ## Errors
 
@@ -6110,11 +6113,12 @@ class MaterialMap:
         `InvalidInput` texture error that names the call, such as
         `PbrMaterial::base_color_map().texture`, and so does an input that holds no
         data: Rust's `TextureData::Empty`, or an empty byte list, path or URL in any
-        language.
+        language. So does a map with no texture, whose error names that map too, as in
+        `ToonMaterial::base_color_map().texture: PbrMaterial::normal_map() has no texture to share`.
 
         The bindings read their arguments before the setter runs and throw for one
         they can't use: a size that isn't 2 or 3 whole numbers, options of the wrong
-        type or shape, options beside a `Texture`, and in Python a `size` that
+        type or shape, options beside a `Texture` or a map, and in Python a `size` that
         differs from a NumPy array's own. Python raises `TypeError` for an argument
         of the wrong type and `InvalidInputError` for the rest. JavaScript throws an `Error`
         of the same name. Swift throws `FragmentColorError`, and each call needs
@@ -6140,7 +6144,7 @@ class MaterialMap:
         Example:
 
         ```python
-        from fragmentcolor import PbrMaterial, Renderer
+        from fragmentcolor import PbrMaterial, Renderer, ToonMaterial
 
         renderer = Renderer()
         albedo_bytes = [
@@ -6161,6 +6165,11 @@ class MaterialMap:
         tint = [255, 128, 0, 255]
         tinted = PbrMaterial()
         tinted_map = tinted.base_color_map().texture(tint, size=[1, 1])
+
+        # A toon material samples the tinted texture too, which each Renderer
+        # uploads once for both maps.
+        toon = ToonMaterial()
+        toon_map = toon.base_color_map().texture(tinted.base_color_map())
         ```
         """
     def uv(self, set: SupportsIndex) -> MaterialMap:
@@ -6318,9 +6327,11 @@ class Texture:
 
         A `Material` map set from bytes, a path, a URL or a `Mipmap` keeps one id
         in every `Renderer`, where it names the copy that `Renderer` loaded. The
-        copies go when the map does, so only the map's own slot binds that id, and
-        any other slot refuses it with `ShaderError::ForeignMap`. To share a map,
-        pass the same source to each Material.
+        copies go when the last map that samples them does, so only the slots of
+        those maps bind that id, and any other slot refuses it with
+        `ShaderError::ForeignMap`. To share a map's texture, pass the map to
+        [`MaterialMap::texture`](https://fragmentcolor.org/api/scene/materialmap#texture)
+        on another map.
 
         Example:
 
@@ -6839,9 +6850,9 @@ class TextureTarget:
 @final
 class WindowTarget:
     """
-    `RenderCanvasTarget` is a Python-specific wrapper around [WindowTarget](https://fragmentcolor.org/api/targets/windowtarget).
+    Python's [WindowTarget](https://fragmentcolor.org/api/targets/windowtarget), the target `Renderer.create_target` returns for a RenderCanvas canvas.
 
-    It adapts [FragmentColor](https://fragmentcolor.org) to work with the RenderCanvas Python project, forwarding all rendering to an internal [WindowTarget](https://fragmentcolor.org/api/targets/windowtarget). See [WindowTarget](https://fragmentcolor.org/api/targets/windowtarget) for the full [Target](https://fragmentcolor.org/api/targets/target) behavior and semantics.
+    It adapts [FragmentColor](https://fragmentcolor.org) to work with the RenderCanvas Python project, forwarding all rendering to the Rust [WindowTarget](https://fragmentcolor.org/api/targets/windowtarget) it holds. See [WindowTarget](https://fragmentcolor.org/api/targets/windowtarget) for the full [Target](https://fragmentcolor.org/api/targets/target) behavior and semantics.
 
     - Canonical object: [WindowTarget](https://fragmentcolor.org/api/targets/windowtarget)
     - [Target](https://fragmentcolor.org/api/targets/target) trait docs: [Target](https://fragmentcolor.org/api/targets/target)

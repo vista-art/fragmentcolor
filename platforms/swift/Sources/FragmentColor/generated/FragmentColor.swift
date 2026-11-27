@@ -1253,6 +1253,12 @@ public func FfiConverterTypeLight_lower(_ value: Light) -> UInt64 {
 public protocol MaterialMapProtocol: AnyObject, Sendable {
     
     /**
+     * The map form of `texture`, which samples the texture `map` samples.
+     * Swift and Kotlin reach it through the `texture(map)` overload.
+     */
+    func share(map: MaterialMap) throws  -> MaterialMap
+    
+    /**
      * The texture input form of `texture`, uploaded when the scene loads.
      * Swift and Kotlin reach it through the `texture` overloads, which match `createTexture`.
      */
@@ -1317,6 +1323,20 @@ open class MaterialMap: MaterialMapProtocol, @unchecked Sendable {
 
     
 
+    
+    /**
+     * The map form of `texture`, which samples the texture `map` samples.
+     * Swift and Kotlin reach it through the `texture(map)` overload.
+     */
+open func share(map: MaterialMap)throws  -> MaterialMap  {
+    return try  FfiConverterTypeMaterialMap_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_materialmap_share(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeMaterialMap_lower(map),uniffiCallStatus
+    )
+})
+}
     
     /**
      * The texture input form of `texture`, uploaded when the scene loads.
@@ -7203,8 +7223,8 @@ public func FfiConverterTypeSceneObjectHandle_lower(_ value: SceneObjectHandle) 
  * implementation matches and dispatches to the typed `Renderer::render`
  * underneath.
  *
- * Both variants are the mobile wrapper types (`MobileWindowTarget` /
- * `MobileTextureTarget`) that carry a `Mutex` / `RwLock` inside, allowing
+ * Both variants hold a target Swift and Kotlin see as `WindowTarget` or
+ * `TextureTarget`, which carries a `Mutex` / `RwLock` inside, allowing
  * `resize()` to be called on a shared `Arc` from Swift / Kotlin.
  */
 
@@ -8728,6 +8748,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_light_setrange() != 31032) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_materialmap_share() != 42702) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_materialmap_source() != 25991) {

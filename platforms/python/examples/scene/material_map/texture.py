@@ -1,4 +1,4 @@
-from fragmentcolor import PbrMaterial, Renderer
+from fragmentcolor import PbrMaterial, Renderer, ToonMaterial
 
 renderer = Renderer()
 albedo_bytes = [
@@ -19,3 +19,8 @@ map = material.base_color_map().texture(albedo)
 tint = [255, 128, 0, 255]
 tinted = PbrMaterial()
 tinted_map = tinted.base_color_map().texture(tint, size=[1, 1])
+
+# A toon material samples the tinted texture too, which each Renderer
+# uploads once for both maps.
+toon = ToonMaterial()
+toon_map = toon.base_color_map().texture(tinted.base_color_map())

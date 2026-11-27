@@ -14,3 +14,8 @@ val map = material.baseColorMap().texture(albedo)
 val tint = listOf(255, 128, 0, 255)
 val tinted = PbrMaterial()
 val tinted_map = tinted.baseColorMap().texture(tint, listOf(1u, 1u))
+
+// A toon material samples the tinted texture too, which each Renderer
+// uploads once for both maps.
+val toon = ToonMaterial()
+val toon_map = toon.baseColorMap().texture(tinted.baseColorMap())

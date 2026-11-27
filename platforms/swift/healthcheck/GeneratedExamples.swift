@@ -1311,6 +1311,11 @@ final class GeneratedExamples: ExampleCase {
             let tint = [255, 128, 0, 255]
             let tinted = PbrMaterial()
             let tinted_map = try tinted.baseColorMap().texture(tint, [1, 1])
+
+            // A toon material samples the tinted texture too, which each Renderer
+            // uploads once for both maps.
+            let toon = ToonMaterial()
+            let toon_map = try toon.baseColorMap().texture(tinted.baseColorMap())
         }
     }
 
