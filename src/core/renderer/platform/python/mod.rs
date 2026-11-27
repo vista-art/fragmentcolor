@@ -1,6 +1,5 @@
 //! The `Renderer` methods Python calls.
 
-use crate::bindings::python::PyUnsigned;
 use crate::{
     PySize, Renderer, Size,
     targets::{PyTextureTarget, RenderCanvasTarget},
@@ -238,22 +237,19 @@ impl Renderer {
     }
 
     // Storage texture: single entry, optional data + usage kwargs.
-    // `usage_bits` is the old name of `usage` and warns when used.
     #[pyo3(
         name = "create_storage_texture",
-        signature = (size, format, data=None, usage=None, usage_bits=None)
+        signature = (size, format, data=None, usage=None)
     )]
     #[lsp_doc("docs/api/core/renderer/hidden/create_storage_texture_py.md")]
     pub fn create_storage_texture_py(
         &self,
-        py: Python<'_>,
         size: PySize<'_>,
         format: crate::TextureFormat,
         data: Option<crate::texture::PyTextureBytes<'_>>,
         usage: Option<crate::texture::PyTextureUsage<'_>>,
-        usage_bits: Option<PyUnsigned<'_>>,
     ) -> Result<crate::texture::Texture, PyErr> {
-        let input = read_storage_input(py, size, format, data, usage, usage_bits)?;
+        let input = read_storage_input(size, format, data, usage)?;
         Ok(pollster::block_on(self.create_storage_texture(input))?)
     }
 
@@ -278,23 +274,13 @@ impl Renderer {
     }
 }
 
-/// Builds the `TextureInput` for `create_texture` and the Material texture setters.
-/// An ndarray brings its own size, which a `size` keyword must match, and the other kwargs apply to it too.
-/// A `Texture` keeps the options it was created with, so a kwarg beside one raises an error that names `call`.
 /// The input `create_storage_texture` passes on: its size, format, usage and seed bytes.
-/// `usage_bits`, the old spelling of `usage`, warns that it is deprecated.
 fn read_storage_input(
-    py: Python<'_>,
     size: PySize<'_>,
     format: crate::TextureFormat,
     data: Option<crate::texture::PyTextureBytes<'_>>,
     usage: Option<crate::texture::PyTextureUsage<'_>>,
-    usage_bits: Option<PyUnsigned<'_>>,
 ) -> PyResult<crate::TextureInput> {
-    if usage_bits.is_some() {
-        let warning = py.get_type::<pyo3::exceptions::PyDeprecationWarning>();
-        PyErr::warn(py, &warning, c"usage_bits is deprecated, pass usage", 1)?;
-    }
     Ok(crate::TextureInput {
         data: match data {
             Some(bytes) => {
@@ -305,16 +291,15 @@ fn read_storage_input(
         options: crate::TextureOptions {
             size: Some(Size::try_from(size)?),
             format,
-            usage: match (usage, usage_bits) {
-                (Some(usage), _) => Some(usage.read("usage")?),
-                (None, Some(bits)) => Some(bits.read("usage_bits")?),
-                (None, None) => None,
-            },
+            usage: usage.map(|usage| usage.read("usage")).transpose()?,
             ..Default::default()
         },
     })
 }
 
+/// Builds the `TextureInput` for `create_texture` and the Material texture setters.
+/// An ndarray brings its own size, which a `size` keyword must match, and the other kwargs apply to it too.
+/// A `Texture` keeps the options it was created with, so a kwarg beside one raises an error that names `call`.
 pub(crate) fn py_to_texture_spec(
     input: PyTextureSource<'_>,
     options: TextureKeywords<'_>,

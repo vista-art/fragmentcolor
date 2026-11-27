@@ -759,7 +759,7 @@ mod swift {
 
     /// `T.new(args)` → `T(args)`, nested calls too,
     /// wherever [`init_call`] finds an initializer to call.
-    /// Otherwise `T.new` stays, as for the static `Shader.new([...])`.
+    /// Otherwise `T.new` stays as written.
     fn rewrite_dot_new(line: &str) -> String {
         let mut out = String::with_capacity(line.len());
         let mut rest = line;

@@ -102,21 +102,6 @@ extension Renderer {
         try await createStorageTexture(size, format, try byteData(data, "createStorageTexture"), usage)
     }
 
-    @available(*, deprecated, message: "Pass the size and format as separate arguments: createStorageTexture(size, format)")
-    public func createStorageTexture(_ sizeAndFormat: ([UInt32], TextureFormat)) async throws -> Texture {
-        try await createStorageTexture(sizeAndFormat.0, sizeAndFormat.1)
-    }
-
-    @available(*, deprecated, message: "Pass the size, format and bytes as separate arguments: createStorageTexture(size, format, bytes)")
-    public func createStorageTexture(_ sizeFormatData: ([UInt32], TextureFormat, [Int])) async throws -> Texture {
-        try await createStorageTexture(sizeFormatData.0, sizeFormatData.1, sizeFormatData.2)
-    }
-
-    @available(*, deprecated, message: "Pass the size, format and bytes as separate arguments: createStorageTexture(size, format, bytes)")
-    public func createStorageTexture(_ sizeFormatData: ([UInt32], TextureFormat, [UInt8])) async throws -> Texture {
-        try await createStorageTexture(sizeFormatData.0, sizeFormatData.1, sizeFormatData.2)
-    }
-
     // MARK: - createTexture
 
     /// Create a texture from encoded image bytes (PNG, JPEG and the other formats FragmentColor decodes).
@@ -225,16 +210,6 @@ extension Renderer {
     /// `create_texture(input)` is fine without an explicit options arg.
     public func createTexture(input: TextureData) async throws -> Texture {
         try await createTexture(input: input, options: nil)
-    }
-
-    @available(*, deprecated, message: "Pass the bytes and size as separate arguments: createTexture(bytes, size)")
-    public func createTexture(_ bytesAndSize: ([UInt8], [UInt32])) async throws -> Texture {
-        try await createTexture(bytesAndSize.0, bytesAndSize.1)
-    }
-
-    @available(*, deprecated, message: "Pass the bytes and size as separate arguments: createTexture(bytes, size)")
-    public func createTexture(_ bytesAndSize: ([Int], [UInt32])) async throws -> Texture {
-        try await createTexture(bytesAndSize.0, bytesAndSize.1)
     }
 
     // MARK: - unregisterTexture convenience

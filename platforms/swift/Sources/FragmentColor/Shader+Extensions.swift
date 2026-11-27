@@ -31,18 +31,6 @@ extension Shader {
         _ = Shader.useRegistry(baseUrl: baseUrl)
     }
 
-    @available(*, deprecated, renamed: "setRegistry(_:)")
-    public static func setRegistry(baseUrl: String) {
-        setRegistry(baseUrl)
-    }
-
-    // MARK: - Compose (multi-part)
-
-    @available(*, deprecated, message: "Use Shader([...]), as JavaScript and Python do")
-    public static func new(_ parts: [String]) throws -> Shader {
-        return try Shader(parts)
-    }
-
     // MARK: - Mesh attachment
 
     /// Attach a mesh to this shader (unlabeled overload).

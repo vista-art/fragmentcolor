@@ -102,12 +102,6 @@ fun Shader.get(key: String): Any = when (val data = getData(key)) {
 // Async fetch factory helpers
 // ---------------------------------------------------------------------------
 
-@Deprecated("Use Shader.fetch(input)", ReplaceWith("Shader.fetch(input)"))
-suspend fun ShaderFetch(input: String): Shader = Shader.fetch(input)
-
-@Deprecated("Use Shader.fetch(parts)", ReplaceWith("Shader.fetch(parts)"))
-suspend fun ShaderFetch(parts: List<String>): Shader = Shader.fetch(parts)
-
 // Companion-object extensions that mirror the static-factory spelling used by
 // the JavaScript, Python, and Swift bindings: `Shader.fetch(input)` /
 // `Shader.fetch(parts)`. The underlying binding is an instance method on
