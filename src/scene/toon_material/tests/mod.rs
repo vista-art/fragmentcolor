@@ -408,6 +408,28 @@ fn a_mirrored_model_lights_its_outer_face() {
     });
 }
 
+// Story: a single-sided mirrored toon model lights each face it draws along that face's
+// own normal, as a model that keeps its handedness does. Culling leaves only the faces
+// whose corners run counter-clockwise on screen, so the shader takes none for a back face.
+#[test]
+fn a_single_sided_mirrored_model_keeps_its_normals() {
+    pollster::block_on(async {
+        let renderer = Renderer::new();
+        let model = Model::new(back_quad(), build_material());
+        model.scale([-1.0, 1.0, 1.0]).expect("mirror");
+
+        // The back quad's normal points along -z, away from the camera, and the light
+        // travels along +z, so it meets that normal head on.
+        let lit = draw_model_center(&renderer, &model, light_at(-1.0)).await;
+
+        assert_eq!(
+            lit,
+            [255, 255, 255, 255],
+            "the light meets the face's own normal"
+        );
+    });
+}
+
 // Story: on a pass with no Light, the placeholder light from above lights a toon model,
 // as it lights a PbrMaterial, so a fresh material doesn't draw near black.
 #[test]

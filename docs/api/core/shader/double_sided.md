@@ -21,6 +21,10 @@ and its siblings on `UnlitMaterial` and `ToonMaterial`.
 This is pipeline state. The renderer keeps one pipeline per shader, alpha mode and
 face setting, so a change builds a pipeline once and reuses it from then on.
 
+A shader that declares `override DOUBLE_SIDED: bool` gets this setting as its value.
+The `PbrMaterial` and `ToonMaterial` shaders read it to light the outer faces of a
+mirrored `Model` as the front.
+
 ## Example
 
 ```rust

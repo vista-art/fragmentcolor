@@ -85,6 +85,10 @@ fn slot_uv(slot: TextureUv, uv0: vec2<f32>, uv1: vec2<f32>) -> vec2<f32> {
 // linear light for the passes after it.
 override ENCODE_SRGB: bool = true;
 
+// Whether the pipeline draws both faces of each triangle, the material's
+// `double_sided`. The renderer sets it per pipeline.
+override DOUBLE_SIDED: bool = false;
+
 // What `shade_light` reads at a fragment, which `accumulate_lights` passes it.
 struct Surface {
   albedo: vec3<f32>,
@@ -205,10 +209,12 @@ fn fs_main(in: VsOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f
   // normal, so the whole frame flips, as glTF asks, and it lights as the side
   // the camera sees. `front` reads the winding on screen against a
   // counter-clockwise front face. A mirrored model winds its outer faces
-  // clockwise, and its handedness of -1 turns them back to the front.
+  // clockwise, and on a double-sided material its handedness of -1 turns them
+  // back to the front. A single-sided material culls every back face, so each
+  // face it draws keeps its own frame.
   let n_sample = textureSample(normal_map, pbr_sampler, normal_uv).xyz * 2.0 - 1.0;
   let tn = vec3<f32>(n_sample.xy * material.normal_scale, n_sample.z);
-  let facing = select(-1.0, 1.0, front) * in.handedness;
+  let facing = select(-1.0, 1.0, front) * select(1.0, in.handedness, DOUBLE_SIDED);
   let outward = normalize(in.world_normal);
   let along = normalize(in.world_tangent.xyz);
   let n = outward * facing;

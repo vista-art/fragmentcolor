@@ -1104,3 +1104,29 @@ fn a_mirrored_normal_map_lights_as_the_mirror_image() {
         );
     });
 }
+
+// Story: a single-sided mirrored model lights each face it draws along that face's own
+// normal, as a model that keeps its handedness does. Culling leaves only the faces whose
+// corners run counter-clockwise on screen, so the shader takes none of them for a back face.
+#[test]
+fn a_single_sided_mirrored_model_keeps_its_normals() {
+    pollster::block_on(async move {
+        // Arrange
+        let renderer = Renderer::new();
+        let material = build_sheet().double_sided(false);
+        let model = Model::new(back_quad(), &material);
+        model.scale([-1.0, 1.0, 1.0]).expect("mirror");
+
+        // Act
+        // Mirrored, the back quad's corners run counter-clockwise on screen, and its
+        // normal still points along -z, away from the camera, where the light comes from.
+        let image = draw_lit(&renderer, &model, [0.0, 0.0, 1.0]).await;
+
+        // Assert
+        let pixel = &image[..4];
+        assert!(
+            pixel[0] > 230,
+            "the light meets the face's own normal: {pixel:?}"
+        );
+    });
+}

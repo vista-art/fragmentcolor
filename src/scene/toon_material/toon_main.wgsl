@@ -77,6 +77,10 @@ fn slot_uv(slot: TextureUv, uv0: vec2<f32>, uv1: vec2<f32>) -> vec2<f32> {
 // from the target's format, as for the PBR shader.
 override ENCODE_SRGB: bool = true;
 
+// Whether the pipeline draws both faces of each triangle, the material's
+// `double_sided`. The renderer sets it per pipeline, as for the PBR shader.
+override DOUBLE_SIDED: bool = false;
+
 @group(0) @binding(0) var<uniform> camera: Camera;
 @group(1) @binding(0) var<uniform> material: ToonMaterial;
 
@@ -171,9 +175,11 @@ fn fs_main(in: VsOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f
   // A back face, drawn when the material is double-sided, faces away from its
   // normal, so it lights, bands and takes the rim as the side the camera sees.
   // `front` reads the winding on screen against a counter-clockwise front face.
-  // A mirrored model winds its outer faces clockwise, and its handedness of -1
-  // turns them back to the front.
-  let n = normalize(in.world_normal) * select(-1.0, 1.0, front) * in.handedness;
+  // A mirrored model winds its outer faces clockwise, and on a double-sided
+  // material its handedness of -1 turns them back to the front. A single-sided
+  // material culls every back face, so each face it draws keeps its own normal.
+  let facing = select(-1.0, 1.0, front) * select(1.0, in.handedness, DOUBLE_SIDED);
+  let n = normalize(in.world_normal) * facing;
   let v = normalize(camera.position - in.world);
   let lit = accumulate_lights(in.world, n, v, Surface(base.rgb));
   // The scene's ambient light, tinted by the albedo, as on PbrMaterial.
