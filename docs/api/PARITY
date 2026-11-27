@@ -76,8 +76,9 @@ docs/api/scene/material_map/hidden/source_mobile.md=>docs/api/scene/material_map
 docs/api/scene/model/hidden/material_handle_mobile.md=>docs/api/scene/model/material.md: Mobile returns the material through the raw materialHandle method; Swift/Kotlin extensions spell it material() and return the PbrMaterial, UnlitMaterial, ToonMaterial or Shader itself.
 
 # Shader::get returns one of several value types. uniffi can't return one of
-# several types, so the raw getData method returns the UniformData enum, and the
-# Swift and Kotlin extensions spell it get(key), returning the plain value.
+# several types, so the raw getData method returns the mobile UniformData enum,
+# with one case per plain value get returns, and the Swift and Kotlin extensions
+# spell it get(key), returning the plain value.
 docs/api/core/shader/hidden/get_data_mobile.md=>docs/api/core/shader/get.md: Mobile reads the value through the raw getData method; Swift/Kotlin extensions spell it get(key) and return the plain value, as JavaScript and Python do.
 
 # ---- Types documented through their methods (no page of their own) ----

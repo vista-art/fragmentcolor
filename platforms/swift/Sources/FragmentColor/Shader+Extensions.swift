@@ -180,19 +180,13 @@ extension Shader {
         case let .bool(flag): return flag
         case let .uInt(value): return value
         case let .int(value): return value
-        case let .float(value), let .half(value): return value
-        case let .vec2(values), let .vec3(values), let .vec4(values),
-             let .mat2(values), let .mat3(values), let .mat4(values),
-             let .halfVec2(values), let .halfVec3(values), let .halfVec4(values),
-             let .halfMat2(values), let .halfMat3(values), let .halfMat4(values):
-            return values
-        case let .uVec2(values), let .uVec3(values), let .uVec4(values): return values
-        case let .iVec2(values), let .iVec3(values), let .iVec4(values): return values
-        case let .texture(meta): return meta.id
+        case let .float(value): return value
+        case let .floats(values): return values
+        case let .uInts(values): return values
+        case let .ints(values): return values
+        case let .texture(id): return id
         case let .sampler(info): return info
         case let .bytes(data): return data
-        case .array, .struct, .storage, .pushConstant:
-            throw FragmentColorError.Other(message: "Shader.get: \(key) read back as a shape, not as its bytes")
         }
     }
 

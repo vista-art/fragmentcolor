@@ -19,7 +19,7 @@ use lsp_doc::lsp_doc;
 use crate::UniformData;
 use crate::core::shader::UniformInput;
 use crate::errors::platform::mobile::FragmentColorError;
-use crate::texture::TextureId;
+use crate::texture::{SamplerInfo, TextureId};
 use crate::{AlphaMode, Shader};
 use crate::{Mesh, Vertex};
 
@@ -47,6 +47,61 @@ impl From<UniformValue> for UniformInput {
             UniformValue::Numbers(numbers) => Self::Numbers(numbers),
             UniformValue::Texture(id) => Self::Texture(id),
             UniformValue::Bytes(bytes) => Self::Bytes(bytes),
+        }
+    }
+}
+
+/// A `Shader.get` value as Swift and Kotlin receive it, which they name `UniformData`.
+/// A vector or matrix arrives as its numbers, and a struct, array or buffer root as its bytes.
+#[derive(uniffi::Enum, Debug, Clone, PartialEq)]
+#[uniffi(name = "UniformData")]
+pub enum MobileUniformData {
+    Bool(bool),
+    UInt(u32),
+    Int(i32),
+    Float(f32),
+    /// A float vector, or a matrix column by column.
+    Floats(Vec<f32>),
+    UInts(Vec<u32>),
+    Ints(Vec<i32>),
+    /// The texture a texture slot binds.
+    Texture(TextureId),
+    Sampler(SamplerInfo),
+    Bytes(Vec<u8>),
+}
+
+impl From<UniformData> for MobileUniformData {
+    fn from(data: UniformData) -> Self {
+        match data {
+            UniformData::Bool(value) => Self::Bool(value),
+            UniformData::UInt(value) => Self::UInt(value),
+            UniformData::Int(value) => Self::Int(value),
+            UniformData::Float(value) | UniformData::Half(value) => Self::Float(value),
+            UniformData::Vec2(values)
+            | UniformData::Vec3(values)
+            | UniformData::Vec4(values)
+            | UniformData::Mat2(values)
+            | UniformData::Mat3(values)
+            | UniformData::Mat4(values)
+            | UniformData::HalfVec2(values)
+            | UniformData::HalfVec3(values)
+            | UniformData::HalfVec4(values)
+            | UniformData::HalfMat2(values)
+            | UniformData::HalfMat3(values)
+            | UniformData::HalfMat4(values) => Self::Floats(values),
+            UniformData::UVec2(values)
+            | UniformData::UVec3(values)
+            | UniformData::UVec4(values) => Self::UInts(values),
+            UniformData::IVec2(values)
+            | UniformData::IVec3(values)
+            | UniformData::IVec4(values) => Self::Ints(values),
+            UniformData::Texture(meta) => Self::Texture(meta.id),
+            UniformData::Sampler(info) => Self::Sampler(info),
+            UniformData::Bytes(bytes) => Self::Bytes(bytes),
+            shape @ (UniformData::Array(_)
+            | UniformData::Struct(_)
+            | UniformData::Storage(_)
+            | UniformData::PushConstant(_)) => Self::Bytes(shape.to_bytes()),
         }
     }
 }
@@ -128,17 +183,10 @@ impl Shader {
     }
 
     /// The raw read behind the Swift and Kotlin `get`, which returns the plain value.
-    /// A struct, array or buffer root comes back as its bytes, as JavaScript and Python read it.
     #[uniffi::method(name = "getData")]
     #[lsp_doc("docs/api/core/shader/hidden/get_data_mobile.md")]
-    pub fn get_data_mobile(&self, key: String) -> Result<UniformData, FragmentColorError> {
-        Ok(match self.object.get_uniform_data(&key)? {
-            shape @ (UniformData::Array(_)
-            | UniformData::Struct(_)
-            | UniformData::Storage(_)
-            | UniformData::PushConstant(_)) => UniformData::Bytes(shape.to_bytes()),
-            data => data,
-        })
+    pub fn get_data_mobile(&self, key: String) -> Result<MobileUniformData, FragmentColorError> {
+        Ok(self.object.get_uniform_data(&key)?.into())
     }
 
     #[uniffi::method(name = "listUniforms")]

@@ -27,7 +27,6 @@ pub(crate) struct Uniform {
 }
 
 #[cfg_attr(python, derive(FromPyObject, IntoPyObject))]
-#[cfg_attr(mobile, derive(uniffi::Enum))]
 #[derive(Debug, Clone, PartialEq)]
 /// A uniform value, as `Shader::get` reads it back.
 /// A helper names it to forward one value to `Shader::set` on several shaders.
@@ -93,7 +92,6 @@ pub enum UniformData {
 }
 
 #[cfg_attr(python, derive(FromPyObject, IntoPyObject))]
-#[cfg_attr(mobile, derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq)]
 /// Element shape used inside `UniformData::Array`.
 pub struct ArrayElement {
@@ -103,7 +101,6 @@ pub struct ArrayElement {
 }
 
 #[cfg_attr(python, derive(FromPyObject, IntoPyObject))]
-#[cfg_attr(mobile, derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq)]
 /// Struct shape used inside `UniformData::Struct`.
 pub struct StructShape {
@@ -112,7 +109,6 @@ pub struct StructShape {
 }
 
 #[cfg_attr(python, derive(FromPyObject, IntoPyObject))]
-#[cfg_attr(mobile, derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq)]
 /// One member of a struct shape.
 pub struct StructField {
@@ -122,7 +118,6 @@ pub struct StructField {
 }
 
 #[cfg_attr(python, derive(FromPyObject, IntoPyObject))]
-#[cfg_attr(mobile, derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq)]
 /// Storage buffer root entry used inside `UniformData::Storage`.
 pub struct StorageEntry {
@@ -132,7 +127,6 @@ pub struct StorageEntry {
 }
 
 #[cfg_attr(python, derive(FromPyObject, IntoPyObject))]
-#[cfg_attr(mobile, derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq)]
 /// Push constant root entry used inside `UniformData::PushConstant`.
 pub struct PushEntry {
@@ -142,7 +136,6 @@ pub struct PushEntry {
 
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(python, pyclass(from_py_object))]
-#[cfg_attr(mobile, derive(uniffi::Enum))]
 pub enum StorageAccess {
     Read,
     Write,

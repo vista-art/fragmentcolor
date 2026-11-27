@@ -90,30 +90,12 @@ fun Shader.get(key: String): Any = when (val data = getData(key)) {
     is UniformData.UInt -> data.v1
     is UniformData.Int -> data.v1
     is UniformData.Float -> data.v1
-    is UniformData.Half -> data.v1
-    is UniformData.Vec2 -> data.v1
-    is UniformData.Vec3 -> data.v1
-    is UniformData.Vec4 -> data.v1
-    is UniformData.Mat2 -> data.v1
-    is UniformData.Mat3 -> data.v1
-    is UniformData.Mat4 -> data.v1
-    is UniformData.HalfVec2 -> data.v1
-    is UniformData.HalfVec3 -> data.v1
-    is UniformData.HalfVec4 -> data.v1
-    is UniformData.HalfMat2 -> data.v1
-    is UniformData.HalfMat3 -> data.v1
-    is UniformData.HalfMat4 -> data.v1
-    is UniformData.UVec2 -> data.v1
-    is UniformData.UVec3 -> data.v1
-    is UniformData.UVec4 -> data.v1
-    is UniformData.IVec2 -> data.v1
-    is UniformData.IVec3 -> data.v1
-    is UniformData.IVec4 -> data.v1
-    is UniformData.Texture -> data.v1.id
+    is UniformData.Floats -> data.v1
+    is UniformData.UInts -> data.v1
+    is UniformData.Ints -> data.v1
+    is UniformData.Texture -> data.v1
     is UniformData.Sampler -> data.v1
     is UniformData.Bytes -> data.v1
-    is UniformData.Array, is UniformData.Struct, is UniformData.Storage, is UniformData.PushConstant ->
-        throw FragmentColorException.Other("Shader.get: $key read back as a shape, not as its bytes")
 }
 
 // ---------------------------------------------------------------------------
