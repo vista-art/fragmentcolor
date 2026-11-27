@@ -1,14 +1,15 @@
 // The read-only index.js tab: the page code that runs main.js. It follows what
 // host.js does each build and each frame, without the playground's own editor,
 // controls, and error box. Every demo, the compute ones included, runs on it,
-// and a demo with `keys: true` also gets the keyboard, the touch stick, and a
-// touch button for each key in its `buttons`.
+// and a demo with `keys: true` also gets the keyboard, the touch stick unless
+// it sets `stick: false`, and a touch button for each key in its `buttons`.
 
 export function harness(demo) {
   const [before, after] = HARNESS.split(TICK);
   if (!demo?.keys) return HARNESS;
+  const stick = demo.stick === false ? "" : STICK;
   const buttons = demo.buttons?.length ? BUTTONS.replace(BUTTON_LIST, listButtons(demo.buttons)) : "";
-  return before + KEYS + buttons + TICK.replace(GESTURE_CALL, KEYS_CALL) + after;
+  return before + KEYS + stick + buttons + TICK.replace(GESTURE_CALL, KEYS_CALL) + after;
 }
 
 // The buttons as JavaScript source: a list of `[code, label]` pairs.
@@ -31,7 +32,7 @@ requestAnimationFrame(function tick(now) {
 });
 `;
 
-// Keys held while the canvas has focus, and a stick for touch screens.
+// Keys held while the canvas has focus, and where the touch stick points.
 const KEYS = /* js */ `// Every key held down while the canvas has focus, by KeyboardEvent.code, and
 // the touch stick as [x, y] from -1 to 1 with y up. A click or Tab gives the
 // canvas focus. Shortcuts with a modifier, Tab and Escape stay with the page.
@@ -75,7 +76,10 @@ canvas.addEventListener("keydown", (event) => {
 canvas.addEventListener("keyup", (event) => releaseKey(event.code));
 canvas.addEventListener("blur", () => clearKeys());
 
-// The stick shows on touch screens, over the canvas's lower left corner.
+`;
+
+// The touch stick, for a demo that doesn't set `stick: false`.
+const STICK = /* js */ `// The stick shows on touch screens, over the canvas's lower left corner.
 if (matchMedia("(any-pointer: coarse)").matches) {
   const base = document.createElement("div");
   const knob = document.createElement("div");

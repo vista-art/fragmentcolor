@@ -781,13 +781,14 @@ export class Playground {
   }
 
   // Lets the canvas take focus and shows the touch stick when the demo takes
-  // keys. Any other demo leaves the keyboard and the touches to the page.
+  // keys, unless it sets `stick: false`. Any other demo leaves the keyboard and
+  // the touches to the page.
   takeKeys(on) {
     const { canvas, ui } = this;
     if (on) canvas.tabIndex = 0;
     else canvas.removeAttribute("tabindex");
     if (!on && document.activeElement === canvas) canvas.blur();
-    if (ui.stick) ui.stick.hidden = !on;
+    if (ui.stick) ui.stick.hidden = !on || this.demo?.stick === false;
     if (ui.keyHint) ui.keyHint.hidden = !on;
     this.clearKeys();
     this.releaseStick();
