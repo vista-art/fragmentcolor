@@ -906,6 +906,59 @@ def check_labels(renderer):
     print("Number errors name their parameter")
 
 
+def check_type_messages(renderer):
+    """A value of the wrong type raises a TypeError that names the call and what it takes, as JavaScript's does."""
+    texture = renderer.create_texture(bytes(16), size=[2, 2])
+    sources = (
+        "bytes (bytes, a bytearray, a memoryview or a list or tuple of ints), "
+        "a uint8 ndarray, a path, a URL, a Texture or a Mipmap"
+    )
+    attribute = "is a number or a list of 1 to 4 numbers"
+    instance = "expected an Instance, a Vertex, or a dict of named attributes"
+    cases = {
+        f"Renderer.create_texture takes {sources}, got int": lambda: renderer.create_texture(42),
+        f"MaterialMap.texture takes a MaterialMap, {sources}, got int":
+            lambda: PbrMaterial().base_color_map().texture(42),
+        "a size is [w, h], [w, h, d], a Size or a dict of width, height and an optional depth, got str":
+            lambda: renderer.create_texture_target("big"),
+        "sampler options must be a SamplerOptions or a dict of repeat_x, repeat_y, smooth and compare, got int":
+            lambda: texture.set_sampler_options(1),
+        "Texture.write_region: a region is [w, h], [x, y, w, h], [x, y, z, w, h, d], a ScreenRegion "
+        "or a dict with keys such as x, y, width and height, got str":
+            lambda: texture.write_region(bytes(16), "all"),
+        "Pass.set_viewport: a region is [w, h], [x, y, w, h], [[x, y], [w, h]] or a ScreenRegion, got str":
+            lambda: Pass("p").set_viewport("all"),
+        "Model: expected a PbrMaterial, an UnlitMaterial, a ToonMaterial or a Shader, got int":
+            lambda: Model(Mesh(), 42),
+        "Model.set_transform takes a list or an ndarray of numbers, got str":
+            lambda: Model(Mesh(), PbrMaterial()).set_transform("x"),
+        "Pass.set_clear_color takes a list or an ndarray of numbers, got str":
+            lambda: Pass("p").set_clear_color("x"),
+        f"Vertex.set: value {attribute}, got str": lambda: Vertex([0, 0]).set("w", "x"),
+        "Vertex.set: value: item 1 must be a number, got str": lambda: Vertex([0, 0]).set("w", [1, "x"]),
+        f"Instance.set: value {attribute}, got NoneType": lambda: Instance().set("w", None),
+        f"Mesh.add_instance: {instance}, got float": lambda: Mesh().add_instance(3.0),
+        f"Mesh.add_instance: offset {attribute}, got str": lambda: Mesh().add_instance({"offset": "x"}),
+        f"Mesh.add_instances: instance 1: {instance}, got float": lambda: Mesh().add_instances([Instance(), 3.0]),
+        "Shader input must be a string or a list of strings, got int": lambda: Shader(42),
+        "Shader input list contains a non-string element": lambda: Shader(["a", 1]),
+        "Shader.set: offset: expected a number, a list, an ndarray, bytes, or a Texture, got str":
+            lambda: Shader(SET_VALUES_SHADER).set("offset", "x"),
+        "Shader.set: offset: expected a list of numbers, or a list of number lists":
+            lambda: Shader(SET_VALUES_SHADER).set("offset", ["x", "y"]),
+        "Scene.load: expected a path, or the bytes of a .glb file as bytes or a bytearray, got int":
+            lambda: Scene.load(42),
+    }
+    for expected, call in cases.items():
+        try:
+            call()
+        except TypeError as e:
+            assert str(e) == expected, f"expected {expected!r}, got {str(e)!r}"
+            continue
+        raise AssertionError(f"{expected!r} should raise TypeError")
+    print("Type errors name the call and what it takes")
+
+
 def raises_invalid(label, call):
     try:
         call()
@@ -1856,6 +1909,7 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
     check_empty_regions()
     check_scalars_and_pairs()
     check_labels(renderer)
+    check_type_messages(renderer)
     check_colors(renderer)
     check_vectors()
     check_example_resize(renderer)
