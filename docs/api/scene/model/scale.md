@@ -4,10 +4,11 @@ Scale the Model by per-axis `factor` (in local space). Post-multiplies the
 current transform by a scale matrix, so the Model grows or shrinks around
 its own origin without sliding through space.
 
-Use uniform scales (`[s, s, s]`) when possible. Non-uniform scale breaks
-the cheap normal-transform path the default PBR shader uses, so a stretched
-Model will shade slightly off. For a correct non-uniform-scale normal, draw
-with a `Shader` of your own that ships the explicit cofactor matrix.
+Unequal factors are fine: the built-in materials light a stretched Model
+the way its surfaces face. A negative factor mirrors the Model, which turns
+its faces' winding around on screen. A single-sided material then culls the
+outer faces, so give a mirrored Model a double-sided material, which lights
+them as the front.
 
 A factor that is NaN or an infinity returns `ModelError::NotFinite`, which
 names the call and the item, and the Model keeps its size. The other

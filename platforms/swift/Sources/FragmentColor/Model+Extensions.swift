@@ -25,7 +25,7 @@ private func flattenColumns(_ columns: [[Float]], _ label: String) throws -> [Fl
 /// PbrMaterial, UnlitMaterial, ToonMaterial and Shader conform to it, and `model.material()`
 /// returns the one a Model holds, which `as?` narrows, as in `model.material() as? PbrMaterial`.
 public protocol Material: AnyObject {
-    /// The uniffi plumbing behind `Model(mesh, material)`, hidden by its leading underscore.
+    /// The uniffi plumbing behind `Model(mesh, material)`, which DocC leaves out.
     var _materialHandle: MaterialHandle { get }
 }
 
