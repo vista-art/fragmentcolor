@@ -98,7 +98,7 @@ docs/api/core/shader/hidden/get_data_mobile.md=>docs/api/core/shader/get.md: Mob
 #   JS:     CanvasTarget -> WindowTarget
 #   Python: RenderCanvasTarget -> WindowTarget
 #   Swift/Kotlin: MobileWindowTarget -> WindowTarget, MobileTextureTarget -> TextureTarget,
-#           TextureRegionMobile -> TextureRegion, MobileTextureInput -> TextureData
+#           TextureRegionMobile -> TextureRegion
 
 # ---- Trait-level docs (no platform binding required) ----
 #
