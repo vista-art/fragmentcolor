@@ -83,9 +83,13 @@ async fn draw_mesh_center(
     material: &ToonMaterial,
     light: Light,
 ) -> [u8; 4] {
+    draw_model_center(renderer, &Model::new(mesh, material), light).await
+}
+
+/// Draws `model` under `light`, as `draw_center` draws the quad.
+async fn draw_model_center(renderer: &Renderer, model: &Model, light: Light) -> [u8; 4] {
     let pass = Pass::new("toon");
-    pass.add(&Model::new(mesh, material))
-        .expect("add the model");
+    pass.add(model).expect("add the model");
     pass.add(&light).expect("add the light");
     let target = renderer
         .create_texture_target([SIZE, SIZE])
@@ -370,6 +374,37 @@ fn a_back_face_lights_as_the_side_the_camera_sees() {
             "the light reaches the side the camera sees"
         );
         assert_eq!(rim, [0, 0, 0, 255], "the back seen head on shows no rim");
+    });
+}
+
+// Story: a mirrored double-sided toon model lights its outer faces, which mirroring
+// winds clockwise on screen, and seen head on they show no rim. Taken for back faces,
+// they would sit in the darkest band and fill with the rim's color.
+#[test]
+fn a_mirrored_model_lights_its_outer_face() {
+    pollster::block_on(async {
+        let renderer = Renderer::new();
+        let white = build_material().double_sided(true);
+        let rimmed = build_material()
+            .double_sided(true)
+            .base_color([0.0, 0.0, 0.0, 1.0])
+            .expect("base color")
+            .rim([0.0, 0.0, 1.0])
+            .expect("rim");
+        let mirrored = [Model::new(quad(), &white), Model::new(quad(), &rimmed)];
+        for model in &mirrored {
+            model.scale([-1.0, 1.0, 1.0]).expect("mirror");
+        }
+
+        let lit = draw_model_center(&renderer, &mirrored[0], light_at(1.0)).await;
+        let rim = draw_model_center(&renderer, &mirrored[1], light_at(1.0)).await;
+
+        assert_eq!(
+            lit,
+            [255, 255, 255, 255],
+            "the light reaches the side the camera sees"
+        );
+        assert_eq!(rim, [0, 0, 0, 255], "the face seen head on shows no rim");
     });
 }
 

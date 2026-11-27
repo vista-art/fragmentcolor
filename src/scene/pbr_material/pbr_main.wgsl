@@ -122,6 +122,9 @@ struct VsOut {
   // World-space tangent in .xyz, and the bitangent sign in .w, the spec's
   // handedness flag: `B = cross(N, T) * tangent.w`.
   @location(5) world_tangent: vec4<f32>,
+  // -1 for a mirrored model, whose transform has a negative determinant, and 1
+  // otherwise. The three corners of a triangle share their model, so it is flat.
+  @location(6) @interpolate(flat) handedness: f32,
 }
 
 @vertex
@@ -146,11 +149,12 @@ fn vs_main(
   out.uv0 = uv0;
   out.vertex_color = color0;
   out.uv1 = uv1;
+  let upper = mat3x3<f32>(model_0.xyz, model_1.xyz, model_2.xyz);
+  out.handedness = select(1.0, -1.0, determinant(upper) < 0.0);
   // Tangents are direction vectors, transformed by the model matrix's
   // upper 3×3 with no inverse transpose, and the bitangent sign in .w
   // stays untouched.
-  let t_world = (model * vec4<f32>(tangent.xyz, 0.0)).xyz;
-  out.world_tangent = vec4<f32>(t_world, tangent.w);
+  out.world_tangent = vec4<f32>(upper * tangent.xyz, tangent.w);
   return out;
 }
 
@@ -199,10 +203,12 @@ fn fs_main(in: VsOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f
   // through model transform + the `tangent.w` sign).
   // A back face, drawn when the material is double-sided, faces away from its
   // normal, so the whole frame flips, as glTF asks, and it lights as the side
-  // the camera sees.
+  // the camera sees. `front` reads the winding on screen against a
+  // counter-clockwise front face. A mirrored model winds its outer faces
+  // clockwise, and its handedness of -1 turns them back to the front.
   let n_sample = textureSample(normal_map, pbr_sampler, normal_uv).xyz * 2.0 - 1.0;
   let tn = vec3<f32>(n_sample.xy * material.normal_scale, n_sample.z);
-  let facing = select(-1.0, 1.0, front);
+  let facing = select(-1.0, 1.0, front) * in.handedness;
   let outward = normalize(in.world_normal);
   let along = normalize(in.world_tangent.xyz);
   let n = outward * facing;

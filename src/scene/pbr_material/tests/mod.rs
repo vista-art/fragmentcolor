@@ -962,6 +962,23 @@ fn pbr_layout_survives_the_web_round_trip() {
 /// tangent and the bitangent, so the light it takes depends on every axis of the frame.
 const TILTED: [u8; 4] = [204, 204, 195, 255];
 
+/// A quad over the whole target whose corners run counter-clockwise seen from
+/// `[0, 0, 1]`, with the normal along +z and the tangent along +x of `Vertex::pbr`.
+fn front_quad() -> Mesh {
+    let mesh = Mesh::new();
+    for position in [
+        [-1.0, 1.0, 0.0],
+        [-1.0, -1.0, 0.0],
+        [1.0, -1.0, 0.0],
+        [-1.0, 1.0, 0.0],
+        [1.0, -1.0, 0.0],
+        [1.0, 1.0, 0.0],
+    ] {
+        mesh.add_vertex(Vertex::pbr(position));
+    }
+    mesh
+}
+
 /// The quad's back: the same corners wound clockwise, with a normal along -z, away from the eye.
 fn back_quad() -> Mesh {
     let mesh = Mesh::new();
@@ -1028,6 +1045,29 @@ fn a_back_face_lights_as_the_side_the_camera_sees() {
         assert!(
             pixel[0] > 230,
             "the light meets the mapped normal head on: {pixel:?}"
+        );
+    });
+}
+
+// Story: a mirrored double-sided model lights its outer faces. Mirroring turns its
+// winding around, so the outer faces run clockwise on screen, and the shader takes
+// them as the front all the same.
+#[test]
+fn a_mirrored_model_lights_its_outer_face() {
+    pollster::block_on(async move {
+        // Arrange
+        let renderer = Renderer::new();
+        let model = Model::new(front_quad(), build_sheet());
+        model.scale([-1.0, 1.0, 1.0]).expect("mirror");
+
+        // Act
+        let image = draw_lit(&renderer, &model, [0.0, 0.0, -1.0]).await;
+
+        // Assert
+        let pixel = &image[..4];
+        assert!(
+            pixel[0] > 230,
+            "the light reaches the side the camera sees: {pixel:?}"
         );
     });
 }

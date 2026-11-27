@@ -130,6 +130,9 @@ struct VsOut {
   @location(2) uv0: vec2<f32>,
   @location(3) vertex_color: vec4<f32>,
   @location(4) uv1: vec2<f32>,
+  // -1 for a mirrored model, whose transform has a negative determinant, and 1
+  // otherwise. The three corners of a triangle share their model, so it is flat.
+  @location(5) @interpolate(flat) handedness: f32,
 }
 
 @vertex
@@ -153,6 +156,8 @@ fn vs_main(
   out.uv0 = uv0;
   out.vertex_color = color0;
   out.uv1 = uv1;
+  let upper = mat3x3<f32>(model_0.xyz, model_1.xyz, model_2.xyz);
+  out.handedness = select(1.0, -1.0, determinant(upper) < 0.0);
   return out;
 }
 
@@ -165,7 +170,10 @@ fn fs_main(in: VsOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f
   }
   // A back face, drawn when the material is double-sided, faces away from its
   // normal, so it lights, bands and takes the rim as the side the camera sees.
-  let n = normalize(in.world_normal) * select(-1.0, 1.0, front);
+  // `front` reads the winding on screen against a counter-clockwise front face.
+  // A mirrored model winds its outer faces clockwise, and its handedness of -1
+  // turns them back to the front.
+  let n = normalize(in.world_normal) * select(-1.0, 1.0, front) * in.handedness;
   let v = normalize(camera.position - in.world);
   let lit = accumulate_lights(in.world, n, v, Surface(base.rgb));
   // The scene's ambient light, tinted by the albedo, as on PbrMaterial.
