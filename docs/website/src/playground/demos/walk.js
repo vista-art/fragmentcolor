@@ -433,9 +433,7 @@ const VALUES = {
   "sky.night": [0.002, 0.004, 0.012],
 };
 
-// From 0.12.8, PbrMaterial is the material type: Material.pbr() is gone. Since 0.12.7 it encodes its colors
-// for display and lights the unevenly scaled rocks the way they face, and a pass that draws models gets a
-// depth buffer of its own.
+// Each tab draws with PbrMaterial, which needs 0.12.8.
 const NEEDS = "Needs FragmentColor 0.12.8 or later.";
 
 function quote(text) {
@@ -1721,10 +1719,10 @@ func light(_ state: State) throws {
     let low = 1 - smoothstep(0, 0.35, abs(sun[1]))
     let warm: [Float] = [1, 0.95 - low * 0.4, 0.85 - low * 0.6]
     try state.sun.setDirection(sun.map { -$0 }).setColor(warm).setIntensity(3.2 * day)
-    state.moon.setIntensity(0.35 * (1 - day))
+    try state.moon.setIntensity(0.35 * (1 - day))
     try state.scene.ambient(mix([0.025, 0.03, 0.06], [0.28, 0.32, 0.4], day))
     for lamp in state.lamps {
-        lamp.setIntensity(5 * (1 - day))
+        try lamp.setIntensity(5 * (1 - day))
     }
     try state.bulb.emissive(mix([0.3, 0.24, 0.14], [1.2, 0.75, 0.3], 1 - day))
     try state.sky.set("sky.sun", sun)
