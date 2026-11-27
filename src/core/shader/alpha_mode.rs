@@ -1,26 +1,22 @@
-//! Material alpha mode: glTF 2.0 PBR-MR `alphaMode` semantics for the pipeline state.
-//!
-//! `AlphaMode` is a pipeline-state flag carried on `Material`. The renderer
-//! bakes it into the `RenderPipelineKey` so different modes for the same
-//! shader cache to distinct pipelines (wgpu requires the depth/blend state
-//! at pipeline-build time).
+//! `AlphaMode`, the blend setting a shader keeps.
+//! The renderer keys each pipeline by it, since wgpu
+//! fixes the blend and depth state when it builds one.
 
 #[cfg(python)]
 use pyo3::prelude::*;
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
-/// How the renderer interprets the alpha channel of a Material's output.
+/// How the renderer treats the alpha channel a shader writes.
 ///
-/// Mirrors the glTF 2.0 `alphaMode` field (`OPAQUE`, `MASK`, `BLEND`) with
-/// the same semantics:
+/// The values follow glTF 2.0's `alphaMode` (`OPAQUE`, `MASK`, `BLEND`):
 ///
 /// - `Opaque`: depth-test on, blending off. Alpha bits go to the framebuffer
 ///   but the blend equation ignores them. Cheapest path; the only one where
 ///   the depth buffer fully describes the geometry.
-/// - `Mask`: depth-test on, blending off, but fragments with
-///   `material.base_color.a < material.alpha_cutoff` are `discard`ed in the
-///   fragment shader. Hard-edged cut-out; perf profile matches opaque.
+/// - `Mask`: the opaque pipeline, with the cut-out left to the fragment shader.
+///   The built-in materials `discard` a fragment whose alpha falls below
+///   `material.alpha_cutoff`. Hard-edged cut-out; perf profile matches opaque.
 /// - `Blend`: depth-test on but depth-write **off**, color target uses
 ///   standard `SrcAlpha / OneMinusSrcAlpha` over-blend. The renderer sorts
 ///   Models with this mode back-to-front by eye-space Z before drawing,
@@ -35,8 +31,7 @@ pub enum AlphaMode {
     /// Depth-test on, blending off, no alpha cutoff. Default.
     #[default]
     Opaque,
-    /// Depth-test on, blending off, fragment discarded if
-    /// `material.base_color.a < material.alpha_cutoff`.
+    /// Depth-test on, blending off, and the fragment shader discards the cut-out.
     Mask,
     /// Depth-test on (depth-write off), standard `SrcAlpha / OneMinusSrcAlpha`
     /// over-blend.
@@ -44,9 +39,8 @@ pub enum AlphaMode {
 }
 
 impl AlphaMode {
-    /// Numeric flag the WGSL fragment shader uses to gate the mask discard.
-    /// `Opaque = 0`, `Mask = 1`, `Blend = 2`. Stored in the `alpha_mode_flag`
-    /// field of the `PbrMaterial` uniform.
+    /// The mode's number in variant order: `Opaque` is 0, `Mask` 1 and `Blend` 2.
+    /// The material shaders read it from `material.alpha_mode_flag` to gate the discard.
     pub(crate) fn flag(self) -> u32 {
         match self {
             AlphaMode::Opaque => 0,
