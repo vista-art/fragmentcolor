@@ -1,11 +1,20 @@
 // The read-only index.js tab: the page code that runs main.js. It follows what
 // host.js does each build and each frame, without the playground's own editor,
 // controls, and error box. Every demo, the compute ones included, runs on it,
-// and a demo with `keys: true` also gets the keyboard and the touch stick.
+// and a demo with `keys: true` also gets the keyboard, the touch stick, and a
+// touch button for each key in its `buttons`.
 
 export function harness(demo) {
   const [before, after] = HARNESS.split(TICK);
-  return demo?.keys ? before + KEYS + TICK.replace(GESTURE_CALL, KEYS_CALL) + after : HARNESS;
+  if (!demo?.keys) return HARNESS;
+  const buttons = demo.buttons?.length ? BUTTONS.replace(BUTTON_LIST, listButtons(demo.buttons)) : "";
+  return before + KEYS + buttons + TICK.replace(GESTURE_CALL, KEYS_CALL) + after;
+}
+
+// The buttons as JavaScript source: a list of `[code, label]` pairs.
+function listButtons(buttons) {
+  const pairs = buttons.map(({ code, label }) => `[${JSON.stringify(code)}, ${JSON.stringify(label)}]`);
+  return `[${pairs.join(", ")}]`;
 }
 
 const GESTURE_CALL = "pointer ?? [size[0] / 2, size[1] / 2], input);";
@@ -26,9 +35,12 @@ requestAnimationFrame(function tick(now) {
 const KEYS = /* js */ `// Every key held down while the canvas has focus, by KeyboardEvent.code, and
 // the touch stick as [x, y] from -1 to 1 with y up. A click or Tab gives the
 // canvas focus. Shortcuts with a modifier, Tab and Escape stay with the page.
+// A key lets go a frame after its keyup, so a tap shorter than a frame still
+// reaches frame.
 const down = new Set();
 let stick = [0, 0];
 const held = () => ({ down: new Set(down), stick: [...stick] });
+const releaseKey = (code) => requestAnimationFrame(() => down.delete(code));
 const scrolling = new Set(["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "PageUp", "PageDown", "Home", "End"]);
 canvas.tabIndex = 0;
 canvas.addEventListener("pointerdown", () => canvas.focus({ preventScroll: true }));
@@ -40,7 +52,7 @@ canvas.addEventListener("keydown", (event) => {
   down.add(event.code);
   if (scrolling.has(event.code)) event.preventDefault();
 });
-canvas.addEventListener("keyup", (event) => down.delete(event.code));
+canvas.addEventListener("keyup", (event) => releaseKey(event.code));
 canvas.addEventListener("blur", () => down.clear());
 
 // The stick shows on touch screens, over the canvas's lower left corner.
@@ -79,6 +91,40 @@ if (matchMedia("(any-pointer: coarse)").matches) {
   base.addEventListener("pointermove", (event) => event.pointerId === finger && push(event));
   base.addEventListener("pointerup", release);
   base.addEventListener("pointercancel", release);
+}
+
+`;
+
+// Touch buttons that hold a key down, for a demo with `buttons`.
+const BUTTON_LIST = "BUTTON_LIST";
+const BUTTONS = /* js */ `// On touch screens, each button below holds its key down while a finger is on
+// it, over the canvas's lower right corner, and lets go as a keyup does.
+if (matchMedia("(any-pointer: coarse)").matches) {
+  const column = document.createElement("div");
+  column.style.cssText = "position: fixed; right: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 12px";
+  for (const [code, label] of BUTTON_LIST) {
+    const button = document.createElement("button");
+    button.textContent = label;
+    button.style.cssText =
+      "width: 64px; height: 64px; border-radius: 50%; background: rgba(255, 255, 255, 0.08); color: rgba(255, 255, 255, 0.85); " +
+      "border: 1px solid rgba(255, 255, 255, 0.28); touch-action: none";
+    let finger = null;
+    button.addEventListener("pointerdown", (event) => {
+      event.preventDefault();
+      button.setPointerCapture(event.pointerId);
+      finger = event.pointerId;
+      down.add(code);
+    });
+    const lift = (event) => {
+      if (event.pointerId !== finger) return;
+      finger = null;
+      releaseKey(code);
+    };
+    button.addEventListener("pointerup", lift);
+    button.addEventListener("pointercancel", lift);
+    column.append(button);
+  }
+  document.body.append(column);
 }
 
 `;

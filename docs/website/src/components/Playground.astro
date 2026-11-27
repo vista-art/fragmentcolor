@@ -205,6 +205,7 @@ const installs = [
         <canvas></canvas>
         <p class="fcp-key-hint" hidden>Click to use the keyboard</p>
         <div class="fcp-stick" hidden aria-hidden="true"><span></span></div>
+        <div class="fcp-buttons" hidden></div>
         <div class="fcp-poster" hidden>
           <img alt="" />
           <p>This demo runs compute shaders, which need WebGPU. This browser is drawing with WebGL2, so it shows a recording. The code is still yours to read and edit.</p>
@@ -874,8 +875,42 @@ const installs = [
     display: none;
   }
 
+  /* And a button for each key the demo lists, above the fullscreen button. */
+  .fcp-buttons {
+    position: absolute;
+    right: 16px;
+    bottom: 52px;
+    z-index: 4;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .fcp-buttons button {
+    width: 64px;
+    height: 64px;
+    padding: 0;
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 13px;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  .fcp-buttons button[data-held] {
+    background: rgba(255, 255, 255, 0.3);
+  }
+
+  .fcp-buttons[hidden] {
+    display: none;
+  }
+
   @media not (any-pointer: coarse) {
-    .fcp-stick {
+    .fcp-stick,
+    .fcp-buttons {
       display: none;
     }
   }
