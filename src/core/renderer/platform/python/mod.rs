@@ -3,7 +3,7 @@
 use crate::{
     PySize, Renderer, Size,
     targets::{PyTextureTarget, RenderCanvasTarget},
-    texture::{PyTextureId, PyTextureSource},
+    texture::{PyTextureId, PyTextureSource, TEXTURE_INPUTS},
 };
 use lsp_doc::lsp_doc;
 use pyo3::exceptions::PyTypeError;
@@ -179,7 +179,8 @@ impl Renderer {
         usage: Option<crate::texture::PyTextureUsage<'py>>,
     ) -> Result<crate::texture::Texture, PyErr> {
         let keywords = TextureKeywords::new(size, format, mipmaps, sampler, usage);
-        let spec = py_to_texture_spec(input, keywords, "Renderer.create_texture")?;
+        let call = "Renderer.create_texture";
+        let spec = py_to_texture_spec(input, keywords, call, TEXTURE_INPUTS)?;
         Ok(pollster::block_on(self.create_texture(spec))?)
     }
 
@@ -300,10 +301,12 @@ fn read_storage_input(
 /// Builds the `TextureInput` for `create_texture` and the Material texture setters.
 /// An ndarray brings its own size, which a `size` keyword must match, and the other kwargs apply to it too.
 /// A `Texture` keeps the options it was created with, so a kwarg beside one raises an error that names `call`.
+/// A value no source takes raises a `TypeError` that names `call` and lists `inputs`, what it takes.
 pub(crate) fn py_to_texture_spec(
     input: PyTextureSource<'_>,
     options: TextureKeywords<'_>,
     call: &str,
+    inputs: &str,
 ) -> Result<crate::texture::TextureInput, PyErr> {
     if matches!(input, PyTextureSource::Texture(_)) && !options.is_empty() {
         return Err(crate::texture::TextureError::InvalidInput(format!(
@@ -316,7 +319,7 @@ pub(crate) fn py_to_texture_spec(
         PyTextureSource::Array(array) => {
             crate::texture::read_ndarray(&array, size, options.format)?
         }
-        source => source.read(call)?,
+        source => source.read(call, inputs)?,
     };
     spec.options.size = spec.options.size.or(size);
     if let Some(format) = options.format {

@@ -5,21 +5,23 @@ use pyo3::prelude::*;
 use pyo3::types::PyString;
 
 use crate::bindings::numbers::read_floats;
-use crate::bindings::python::{PyChannels, PyFloat, PyUnsigned, read_numbers, read_unsigned};
+use crate::bindings::python::{
+    PyChannels, PyFloat, PyUnsigned, read_items, read_numbers, read_unsigned, refuse,
+};
 use crate::errors::InvalidInputError;
 use crate::scene::material::platform::python::PyMaterial;
 use crate::scene::{
     Camera, CameraError, Light, LightError, LightKind, Model, ModelError, PassRef, Scene,
     SceneLoadError,
 };
-use crate::{Material, Mesh, Pass};
+use crate::{Mesh, Pass};
 
 #[pymethods]
 impl Model {
     #[new]
     #[lsp_doc("docs/api/scene/model/new.md")]
-    pub fn new_py(mesh: Mesh, material: PyMaterial) -> Self {
-        Model::new(mesh, Material::from(material))
+    pub fn new_py(mesh: Mesh, material: PyMaterial) -> PyResult<Self> {
+        Ok(Model::new(mesh, material.read("Model")?))
     }
 
     #[pyo3(name = "mesh")]
@@ -167,10 +169,10 @@ pub enum PyMatrix<'py> {
 impl PyMatrix<'_> {
     /// The matrix's columns. A list of another length, or a number that isn't finite or
     /// is past the `f32` range, raises `InvalidInputError` that names `label`, and an item
-    /// that isn't a number raises `TypeError`.
+    /// that isn't a number, or a value that is no list, raises `TypeError`.
     pub(crate) fn read(&self, label: &str) -> PyResult<[[f32; 4]; 4]> {
         let PyMatrix::Numbers(value) = self;
-        let items = value.extract::<Vec<Bound<'_, PyAny>>>()?;
+        let items = read_items(value, label)?;
         let columns = match items.first() {
             Some(first) if !first.is_instance_of::<PyString>() && first.len().is_ok() => items,
             _ => return read_flat(value, label),
@@ -282,14 +284,22 @@ pub enum PySceneSource<'py> {
     Bytes(Bound<'py, pyo3::types::PyBytes>),
     #[pyo3(annotation = "bytearray")]
     ByteArray(Bound<'py, pyo3::types::PyByteArray>),
+    Other(Bound<'py, PyAny>),
 }
 
-impl From<PySceneSource<'_>> for crate::scene::GltfSource {
-    fn from(source: PySceneSource<'_>) -> Self {
+/// Any other value raises a `TypeError` that names the call, as JavaScript throws one.
+impl TryFrom<PySceneSource<'_>> for crate::scene::GltfSource {
+    type Error = PyErr;
+
+    fn try_from(source: PySceneSource<'_>) -> PyResult<Self> {
         match source {
-            PySceneSource::Path(path) => path.into(),
-            PySceneSource::Bytes(bytes) => bytes.as_bytes().into(),
-            PySceneSource::ByteArray(bytes) => bytes.to_vec().into(),
+            PySceneSource::Path(path) => Ok(path.into()),
+            PySceneSource::Bytes(bytes) => Ok(bytes.as_bytes().into()),
+            PySceneSource::ByteArray(bytes) => Ok(bytes.to_vec().into()),
+            PySceneSource::Other(value) => Err(refuse(
+                &value,
+                "Scene.load: expected a path, or the bytes of a .glb file as bytes or a bytearray",
+            )),
         }
     }
 }
@@ -437,7 +447,7 @@ impl Scene {
     #[pyo3(name = "load", signature = (source, cameras=true, lights=true))]
     #[lsp_doc("docs/api/scene/scene/load.md")]
     pub fn load_py(source: PySceneSource<'_>, cameras: bool, lights: bool) -> PyResult<Self> {
-        let source = crate::scene::GltfSource::from(source)
+        let source = crate::scene::GltfSource::try_from(source)?
             .cameras(cameras)
             .lights(lights);
         Ok(Scene::load(source)?)

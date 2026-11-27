@@ -1,6 +1,6 @@
 #![cfg(python)]
 
-use crate::bindings::python::{PyChannels, PyUnsigned, read_list, read_pair};
+use crate::bindings::python::{PyChannels, PyUnsigned, read_list, read_pair, refuse};
 use crate::{Pass, PassObject, PassType, ScreenRegion, Shader};
 use lsp_doc::lsp_doc;
 use pyo3::prelude::*;
@@ -191,15 +191,21 @@ pub enum PyViewport<'py> {
     Region(ScreenRegion),
     Pairs([Vec<PyUnsigned<'py>>; 2]),
     Numbers(Vec<PyUnsigned<'py>>),
+    Other(Bound<'py, PyAny>),
 }
 
 /// Reads each number as an int that [`PyUnsigned::read`] checks.
+/// Any other value raises a `TypeError` that lists the forms.
 impl TryFrom<PyViewport<'_>> for ScreenRegion {
     type Error = PyErr;
 
     fn try_from(viewport: PyViewport<'_>) -> Result<Self, Self::Error> {
         match viewport {
             PyViewport::Region(region) => Ok(region),
+            PyViewport::Other(value) => {
+                let forms = "Pass.set_viewport: a region is [w, h], [x, y, w, h], [[x, y], [w, h]] or a ScreenRegion";
+                Err(refuse(&value, forms))
+            }
             PyViewport::Pairs([origin, size]) => {
                 let origin = read_pair(&origin, "Pass.set_viewport: origin")?;
                 let size = read_pair(&size, "Pass.set_viewport: size")?;

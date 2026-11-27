@@ -2,25 +2,34 @@
 
 use pyo3::prelude::*;
 
+use crate::bindings::python::refuse;
 use crate::{Material, MaterialError, PbrMaterial, Shader, ToonMaterial, UnlitMaterial};
 
 /// A material from Python, or one handed back: the material object itself,
-/// since Python has no `Material` class.
+/// since Python has no `Material` class. `Other` keeps any other value a caller passes,
+/// and no material handed back is one.
 #[derive(FromPyObject, IntoPyObject)]
 pub enum PyMaterial {
     Pbr(PbrMaterial),
     Unlit(UnlitMaterial),
     Toon(ToonMaterial),
     Custom(Shader),
+    Other(Py<PyAny>),
 }
 
-impl From<PyMaterial> for Material {
-    fn from(material: PyMaterial) -> Self {
-        match material {
-            PyMaterial::Pbr(material) => material.into(),
-            PyMaterial::Unlit(material) => material.into(),
-            PyMaterial::Toon(material) => material.into(),
-            PyMaterial::Custom(shader) => shader.into(),
+impl PyMaterial {
+    /// The material, or a `TypeError` that names `label` for a value that is no material,
+    /// as JavaScript throws one.
+    pub(crate) fn read(self, label: &str) -> PyResult<Material> {
+        match self {
+            PyMaterial::Pbr(material) => Ok(material.into()),
+            PyMaterial::Unlit(material) => Ok(material.into()),
+            PyMaterial::Toon(material) => Ok(material.into()),
+            PyMaterial::Custom(shader) => Ok(shader.into()),
+            PyMaterial::Other(value) => Python::attach(|py| {
+                let forms = "expected a PbrMaterial, an UnlitMaterial, a ToonMaterial or a Shader";
+                Err(refuse(value.bind(py), format_args!("{label}: {forms}")))
+            }),
         }
     }
 }

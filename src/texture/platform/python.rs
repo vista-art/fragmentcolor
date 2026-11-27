@@ -1,6 +1,6 @@
 #![cfg(python)]
 
-use crate::bindings::python::{PyUnsigned, read_bytes, read_list, read_unsigned};
+use crate::bindings::python::{PyUnsigned, read_bytes, read_list, read_unsigned, refuse};
 use crate::texture::loading::decode::array_pixels;
 use crate::texture::{Mipmap, Texture, TextureError, TextureId, TextureRegion};
 use crate::texture::{measure_texel, read_pixels};
@@ -62,6 +62,9 @@ pub(crate) fn ndarray_bytes(array: &numpy::PyReadonlyArrayDyn<'_, u8>) -> Vec<u8
     }
 }
 
+/// What `create_texture` takes, as the `TypeError` for a value it can't read lists it.
+pub(crate) const TEXTURE_INPUTS: &str = "bytes (bytes, a bytearray, a memoryview or a list or tuple of ints), a uint8 ndarray, a path, a URL, a Texture or a Mipmap";
+
 /// A `create_texture` source from Python. Raw bytes come only as `bytes`,
 /// `bytearray`, `memoryview`, or a `list` or `tuple` of ints, so an int ndarray
 /// never reads as bytes. A `str` is a URL with an http(s) scheme and a path otherwise.
@@ -87,12 +90,14 @@ pub enum PyTextureSource<'py> {
     Array(numpy::PyReadonlyArrayDyn<'py, u8>),
     #[pyo3(annotation = "Mipmap")]
     Mipmap(Mipmap),
+    Other(Bound<'py, PyAny>),
 }
 
 impl PyTextureSource<'_> {
     /// The texture input the source stands for, or an error that names `label`.
     /// An ndarray brings its own size, and each int of a list or tuple must be a byte.
-    pub(crate) fn read(self, label: &str) -> PyResult<crate::TextureInput> {
+    /// Any other value raises a `TypeError` that lists `inputs`, what the call takes.
+    pub(crate) fn read(self, label: &str, inputs: &str) -> PyResult<crate::TextureInput> {
         use crate::TextureData;
         let data = match self {
             PyTextureSource::Texture(texture) => TextureData::CloneOf(texture),
@@ -107,6 +112,9 @@ impl PyTextureSource<'_> {
             PyTextureSource::Path(path) => TextureData::Path(path),
             PyTextureSource::Array(array) => return Ok(read_ndarray(&array, None, None)?),
             PyTextureSource::Mipmap(chain) => TextureData::Prepared(chain),
+            PyTextureSource::Other(value) => {
+                return Err(refuse(&value, format_args!("{label} takes {inputs}")));
+            }
         };
         Ok(data.into())
     }
@@ -165,6 +173,7 @@ pub enum PyTextureRegion<'py> {
     Screen(crate::ScreenRegion),
     #[pyo3(annotation = "dict[str, int | None]")]
     Layout(Bound<'py, PyDict>),
+    Other(Bound<'py, PyAny>),
 }
 
 impl TryFrom<PyTextureRegion<'_>> for TextureRegion {
@@ -175,6 +184,7 @@ impl TryFrom<PyTextureRegion<'_>> for TextureRegion {
             PyTextureRegion::Numbers(items) => items,
             PyTextureRegion::Screen(screen) => return Ok(TextureRegion::try_from(screen)?),
             PyTextureRegion::Layout(layout) => return layout_region(&layout),
+            PyTextureRegion::Other(value) => return Err(refuse(&value, REGION_FORMS)),
         };
         let numbers = read_list(&items, "Texture.write_region")?;
         match *numbers {
@@ -189,6 +199,9 @@ impl TryFrom<PyTextureRegion<'_>> for TextureRegion {
         }
     }
 }
+
+/// The forms `Texture.write_region` reads a region from, as its `TypeError` lists them.
+const REGION_FORMS: &str = "Texture.write_region: a region is [w, h], [x, y, w, h], [x, y, z, w, h, d], a ScreenRegion or a dict with keys such as x, y, width and height";
 
 /// Reads the dict form through the reader the bindings share.
 /// A key like `bytes_per_row` also takes its camelCase form, `bytesPerRow`.
@@ -214,6 +227,7 @@ pub enum PySamplerOptions<'py> {
     Options(SamplerOptions),
     #[pyo3(annotation = "dict[str, bool | CompareFunction | None]")]
     Dict(Bound<'py, PyDict>),
+    Other(Bound<'py, PyAny>),
 }
 
 impl TryFrom<PySamplerOptions<'_>> for SamplerOptions {
@@ -224,6 +238,10 @@ impl TryFrom<PySamplerOptions<'_>> for SamplerOptions {
         let dict = match input {
             PySamplerOptions::Options(options) => return Ok(options),
             PySamplerOptions::Dict(dict) => dict,
+            PySamplerOptions::Other(value) => {
+                let forms = "sampler options must be a SamplerOptions or a dict of repeat_x, repeat_y, smooth and compare";
+                return Err(refuse(&value, forms));
+            }
         };
         let defaults = Self::default();
         let flag = |key: &str, default: bool| -> PyResult<bool> {

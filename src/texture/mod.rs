@@ -26,7 +26,8 @@ mod platform;
 pub use platform::{MobileTextureInput, MobileTextureRegion};
 #[cfg(python)]
 pub(crate) use platform::{
-    PySamplerOptions, PyTextureBytes, PyTextureId, PyTextureSource, PyTextureUsage, read_ndarray,
+    PySamplerOptions, PyTextureBytes, PyTextureId, PyTextureSource, PyTextureUsage, TEXTURE_INPUTS,
+    read_ndarray,
 };
 #[cfg(wasm)]
 pub(crate) use platform::{

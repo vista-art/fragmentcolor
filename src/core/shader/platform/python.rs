@@ -1,7 +1,9 @@
 #![cfg(python)]
 
+use crate::bindings::python::{is_list, refuse};
 use crate::core::shader::{UniformInput, lsp_doc};
-use crate::{AlphaMode, Shader, ShaderError, UniformData};
+use crate::{AlphaMode, Shader, ShaderError, ShaderInput, UniformData};
+use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
 use pyo3::types::{PyAnyMethods, PyByteArray, PyBytes, PyMemoryView};
 
@@ -9,8 +11,8 @@ use pyo3::types::{PyAnyMethods, PyByteArray, PyBytes, PyMemoryView};
 impl Shader {
     #[new]
     #[lsp_doc("docs/api/core/shader/new.md")]
-    pub fn new_py(input: PyShaderInput) -> Result<Self, ShaderError> {
-        Shader::new(input)
+    pub fn new_py(input: PyShaderInput<'_>) -> PyResult<Self> {
+        Ok(Shader::new(ShaderInput::try_from(input)?)?)
     }
 
     /// Async-shaped constructor: fetches each part of `input` from the network
@@ -20,8 +22,9 @@ impl Shader {
     #[staticmethod]
     #[pyo3(name = "fetch")]
     #[lsp_doc("docs/api/core/shader/fetch.md")]
-    pub fn fetch_py(input: PyShaderInput) -> Result<Self, ShaderError> {
-        pollster::block_on(Shader::fetch(input))
+    pub fn fetch_py(input: PyShaderInput<'_>) -> PyResult<Self> {
+        let input = ShaderInput::try_from(input)?;
+        Ok(pollster::block_on(Shader::fetch(input))?)
     }
 
     #[staticmethod]
@@ -34,7 +37,7 @@ impl Shader {
     #[pyo3(name = "set")]
     #[lsp_doc("docs/api/core/shader/set.md")]
     pub fn set_py(&self, key: &str, value: PyUniformValue<'_>) -> Result<(), PyErr> {
-        Ok(self.object.set_input(key, value.into_input()?)?)
+        Ok(self.object.set_input(key, value.into_input(key)?)?)
     }
 
     #[pyo3(name = "get")]
@@ -141,20 +144,30 @@ impl Shader {
 }
 
 /// A `Shader(...)` or `Shader.fetch(...)` input from Python: one source, or a list of parts.
-/// Any other type raises `TypeError`.
+/// Any other type raises `TypeError`, as JavaScript throws one.
 #[derive(FromPyObject)]
-pub enum PyShaderInput {
+pub enum PyShaderInput<'py> {
     #[pyo3(annotation = "str")]
     Source(String),
     #[pyo3(annotation = "list[str]")]
     Parts(Vec<String>),
+    Other(Bound<'py, PyAny>),
 }
 
-impl From<PyShaderInput> for crate::ShaderInput {
-    fn from(input: PyShaderInput) -> Self {
+impl TryFrom<PyShaderInput<'_>> for crate::ShaderInput {
+    type Error = PyErr;
+
+    fn try_from(input: PyShaderInput<'_>) -> PyResult<Self> {
         match input {
-            PyShaderInput::Source(source) => source.into(),
-            PyShaderInput::Parts(parts) => parts.into(),
+            PyShaderInput::Source(source) => Ok(source.into()),
+            PyShaderInput::Parts(parts) => Ok(parts.into()),
+            PyShaderInput::Other(value) if is_list(&value) => Err(PyTypeError::new_err(
+                "Shader input list contains a non-string element",
+            )),
+            PyShaderInput::Other(value) => Err(refuse(
+                &value,
+                "Shader input must be a string or a list of strings",
+            )),
         }
     }
 }
@@ -181,13 +194,24 @@ pub enum PyUniformValue<'py> {
     Matrix(Vec<Vec<f64>>),
     #[pyo3(annotation = "float")]
     Number(f64),
+    Other(Bound<'py, PyAny>),
 }
 
 impl PyUniformValue<'_> {
     /// The loose input this value stands for.
     /// A memoryview is copied out with `tobytes`, whatever its item format.
-    fn into_input(self) -> PyResult<UniformInput> {
+    /// Any other value raises a `TypeError` that names the call and `key`, as JavaScript throws one.
+    fn into_input(self, key: &str) -> PyResult<UniformInput> {
         Ok(match self {
+            Self::Other(value) if is_list(&value) => {
+                return Err(PyTypeError::new_err(format!(
+                    "Shader.set: {key}: expected a list of numbers, or a list of number lists"
+                )));
+            }
+            Self::Other(value) => {
+                let forms = "expected a number, a list, an ndarray, bytes, or a Texture";
+                return Err(refuse(&value, format_args!("Shader.set: {key}: {forms}")));
+            }
             Self::Texture(texture) => UniformInput::Texture(*texture.id()),
             Self::Bool(flag) => UniformInput::Bool(flag),
             Self::Bytes(bytes) => UniformInput::Bytes(bytes.as_bytes().to_vec()),

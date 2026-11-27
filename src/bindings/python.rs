@@ -252,21 +252,33 @@ impl PyChannels<'_> {
     }
 }
 
-/// Each item of a Python sequence as an `f64`. A bytes form, a `bool` or a value that isn't
-/// a number raises `TypeError`, and an int too large for a float raises `InvalidInputError`.
+/// Each item of a Python sequence as an `f64`. A value that is no list, a `bool` or an item that
+/// isn't a number raises `TypeError`, and an int too large for a float raises `InvalidInputError`.
 pub(crate) fn read_numbers(value: &Bound<'_, PyAny>, label: &str) -> PyResult<Vec<f64>> {
-    if is_bytes(value) {
-        return Err(PyTypeError::new_err(format!(
-            "{label} takes numbers, got {}",
-            name_type(value)
-        )));
-    }
-    value
-        .extract::<Vec<Bound<'_, PyAny>>>()?
+    read_items(value, label)?
         .iter()
         .enumerate()
         .map(|(index, item)| read_number(item, label, index))
         .collect()
+}
+
+/// The items of a list of numbers, such as a Python list or an ndarray.
+/// A bytes form or any other value raises a `TypeError` that names `label`.
+pub(crate) fn read_items<'py>(
+    value: &Bound<'py, PyAny>,
+    label: &str,
+) -> PyResult<Vec<Bound<'py, PyAny>>> {
+    if is_bytes(value) {
+        return Err(refuse(value, format_args!("{label} takes numbers")));
+    }
+    match value.extract::<Vec<Bound<'py, PyAny>>>() {
+        Ok(items) => Ok(items),
+        Err(error) if !error.is_instance_of::<PyTypeError>(value.py()) => Err(error),
+        Err(_) => Err(refuse(
+            value,
+            format_args!("{label} takes a list or an ndarray of numbers"),
+        )),
+    }
 }
 
 /// The bytes of a `bytes`, `bytearray` or `memoryview`, or of a sequence of ints, each read by
@@ -351,6 +363,19 @@ fn show(value: &Bound<'_, PyAny>) -> String {
         Ok(text) => text.to_string(),
         Err(_) => "an int too long to print".to_string(),
     }
+}
+
+/// A `TypeError` for a value the call can't take.
+/// Its message reads `{expected}, got {type}`, as JavaScript's does.
+/// An argument enum keeps such a value in a last `Bound<PyAny>` or `Py<PyAny>` variant,
+/// which the stub leaves out, so its reader raises this in place of pyo3's message, which names the enum.
+pub(crate) fn refuse(value: &Bound<'_, PyAny>, expected: impl Display) -> PyErr {
+    PyTypeError::new_err(format!("{expected}, got {}", name_type(value)))
+}
+
+/// Whether the value is a list of items: a sequence other than a `str` or a bytes form.
+pub(crate) fn is_list(value: &Bound<'_, PyAny>) -> bool {
+    !value.is_instance_of::<PyString>() && !is_bytes(value) && value.cast::<PySequence>().is_ok()
 }
 
 /// The name of the value's type, such as `float`.

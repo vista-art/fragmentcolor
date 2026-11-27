@@ -10,7 +10,7 @@ use crate::errors::WebError;
 use wasm_bindgen::prelude::*;
 
 #[cfg(python)]
-use crate::bindings::python::{PyUnsigned, read_list};
+use crate::bindings::python::{PyUnsigned, read_list, refuse};
 #[cfg(python)]
 use pyo3::FromPyObject;
 #[cfg(python)]
@@ -323,6 +323,7 @@ impl Size {
 /// A size from Python: a `Size`, a mapping of its fields such as a dict,
 /// or `[w, h]` or `[w, h, d]` in any sequence, each number an int that [`PyUnsigned::read`] checks.
 /// pyo3 tries them in that order, so a mapping such as `UserDict` isn't read as a list of its keys.
+/// Any other value reads as `Other`, which raises a `TypeError` that lists the forms.
 #[cfg(python)]
 #[derive(FromPyObject)]
 pub enum PySize<'py> {
@@ -330,6 +331,7 @@ pub enum PySize<'py> {
     #[pyo3(annotation = "Mapping[str, int]")]
     Fields(Bound<'py, PyMapping>),
     Numbers(Vec<PyUnsigned<'py>>),
+    Other(Bound<'py, PyAny>),
 }
 
 /// Checks a size from Python with the same rule as every other binding.
@@ -340,6 +342,10 @@ impl TryFrom<PySize<'_>> for Size {
     fn try_from(value: PySize<'_>) -> Result<Self, Self::Error> {
         let dimensions = match value {
             PySize::Size(size) => return Ok(size),
+            PySize::Other(value) => {
+                let forms = "a size is [w, h], [w, h, d], a Size or a dict of width, height and an optional depth";
+                return Err(refuse(&value, forms));
+            }
             PySize::Numbers(items) => read_list(&items, "size")?,
             PySize::Fields(fields) => {
                 let field = |name: &str| -> PyResult<Option<u32>> {

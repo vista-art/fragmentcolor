@@ -6,7 +6,8 @@ pub use mobile::{MobileTextureInput, MobileTextureRegion};
 mod python;
 #[cfg(python)]
 pub(crate) use python::{
-    PySamplerOptions, PyTextureBytes, PyTextureId, PyTextureSource, PyTextureUsage, read_ndarray,
+    PySamplerOptions, PyTextureBytes, PyTextureId, PyTextureSource, PyTextureUsage, TEXTURE_INPUTS,
+    read_ndarray,
 };
 #[cfg(wasm)]
 mod web;
