@@ -241,7 +241,6 @@ pub(super) fn create_render_pipeline(
                     AlphaMode::Opaque | AlphaMode::Mask => None,
                     AlphaMode::Blend => Some(wgpu::BlendState::ALPHA_BLENDING),
                 },
-                // Material's AlphaMode covers the three glTF 2.0 modes.
                 write_mask: checks::pass::pick_writes(shader),
             })],
             compilation_options: wgpu::PipelineCompilationOptions::default(),
