@@ -157,9 +157,14 @@ Link an error class by its heading on the Errors page:
 ## Root and hidden pages
 
 A folder at the root of `docs/api` that holds a page of its own name,
-such as `errors/errors.md`, becomes a page at the root of the API menu,
-after the categories: `/api/errors`. The Errors page gives every error
-class a `###` heading, with when it's raised and the fields it carries.
+such as `errors/errors.md`, becomes a page at the root of the API menu:
+`/api/errors`. The Errors page gives every error class a `###` heading,
+with when it's raised and the fields it carries.
+
+A root page has no sidebar order, so the menu lists it after the
+categories. A category takes its order from its `_index.md`, and one
+without that file sorts by name among the root pages, so every category
+keeps an `_index.md`.
 
 An item with no page on the site keeps its `#[lsp_doc]` page under
 `docs/api/hidden/`, in a folder of its own name, such as
