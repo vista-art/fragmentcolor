@@ -12,7 +12,7 @@ use crate::texture::{TextureId, TextureMeta, TextureObject, TextureSource};
 use parking_lot::Mutex;
 use std::collections::BTreeSet;
 use std::mem::replace;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Weak};
 
 /// The ids of the map textures alive now. A texture's copies go when the last slot
@@ -20,10 +20,12 @@ use std::sync::{Arc, Weak};
 static LIVE: Mutex<BTreeSet<u64>> = parking_lot::const_mutex(BTreeSet::new());
 
 /// A texture uniform filled from a source the shader keeps.
+/// It counts among the slots that hold its texture (`MapTexture::slots`) while it lives.
 #[derive(Debug)]
 pub(crate) struct TextureMap {
     pub(crate) key: String,
     /// The texture the slot samples, which the slots of other maps may share.
+    /// Only `hold` swaps it, so the texture's count of slots stays right.
     pub(crate) texture: Arc<MapTexture>,
 }
 
@@ -36,6 +38,9 @@ pub(crate) struct MapTexture {
     /// Taken when the texture is made and kept for its life,
     /// so every slot that holds it names the same copy in every Renderer.
     pub(crate) id: TextureId,
+    /// How many slots hold the texture. A job or a lookup that holds it for a moment
+    /// doesn't count, so only another slot makes the texture shared.
+    slots: AtomicUsize,
     state: Mutex<MapState>,
 }
 
@@ -61,6 +66,33 @@ struct Upload {
 /// What a new map lets go of: the source it replaced, or the texture the slot held,
 /// which the caller drops after its locks.
 type Replaced = (Option<TextureSource>, Option<Arc<MapTexture>>);
+
+impl TextureMap {
+    /// The slot `key`, which holds `texture`.
+    fn new(key: &str, texture: Arc<MapTexture>) -> Self {
+        texture.slots.fetch_add(1, Ordering::AcqRel);
+        Self {
+            key: key.to_string(),
+            texture,
+        }
+    }
+
+    /// Makes the slot hold `texture` and returns the texture it held,
+    /// which the caller drops after its locks.
+    fn hold(&mut self, texture: Arc<MapTexture>) -> Arc<MapTexture> {
+        texture.slots.fetch_add(1, Ordering::AcqRel);
+        let held = replace(&mut self.texture, texture);
+        held.slots.fetch_sub(1, Ordering::AcqRel);
+        held
+    }
+}
+
+impl Drop for TextureMap {
+    /// The slot lets go of its texture.
+    fn drop(&mut self) {
+        self.texture.slots.fetch_sub(1, Ordering::AcqRel);
+    }
+}
 
 impl Drop for MapTexture {
     /// Each context still alive drops its copy.
@@ -88,8 +120,14 @@ impl MapTexture {
         };
         Arc::new(Self {
             id,
+            slots: AtomicUsize::new(0),
             state: Mutex::new(state),
         })
+    }
+
+    /// Whether more than one slot holds the texture.
+    fn is_shared(&self) -> bool {
+        self.slots.load(Ordering::Acquire) > 1
     }
 
     /// A texture of `source` under a new id. Each context that holds a copy of this one
@@ -216,16 +254,13 @@ fn keep_source(
     let Some(map) = maps.iter_mut().find(|map| map.key == key) else {
         let texture = MapTexture::create(source, stamp);
         let id = texture.id;
-        maps.push(TextureMap {
-            key: key.to_string(),
-            texture,
-        });
+        maps.push(TextureMap::new(key, texture));
         return (id, (None, None));
     };
-    if Arc::strong_count(&map.texture) > 1 {
+    if map.texture.is_shared() {
         let texture = map.texture.branch(source, stamp);
         let id = texture.id;
-        return (id, (None, Some(replace(&mut map.texture, texture))));
+        return (id, (None, Some(map.hold(texture))));
     }
     let mut state = map.texture.state.lock();
     state.stamp = stamp;
@@ -241,13 +276,10 @@ fn hold_texture(
 ) -> (TextureId, Replaced) {
     let id = texture.id;
     let Some(map) = maps.iter_mut().find(|map| map.key == key) else {
-        maps.push(TextureMap {
-            key: key.to_string(),
-            texture,
-        });
+        maps.push(TextureMap::new(key, texture));
         return (id, (None, None));
     };
-    (id, (None, Some(replace(&mut map.texture, texture))))
+    (id, (None, Some(map.hold(texture))))
 }
 
 impl ShaderObject {
@@ -319,14 +351,15 @@ impl ShaderObject {
     }
 
     /// Ends `key`'s map, unless `id` is the map's own, as when a `get` comes back through `set`.
-    /// Returns the map, which the caller drops after its locks, and its copies go with it
-    /// unless another slot shares its texture.
-    pub(crate) fn remove_map(&self, key: &str, id: TextureId) -> Option<TextureMap> {
+    /// Returns the texture the map held, which the caller drops after its locks,
+    /// and its copies go with it unless another slot shares it.
+    pub(crate) fn remove_map(&self, key: &str, id: TextureId) -> Option<Arc<MapTexture>> {
         let mut maps = self.maps.write();
         let index = maps
             .iter()
-            .position(|map| map.key == key && map.texture.id != id);
-        index.map(|index| maps.swap_remove(index))
+            .position(|map| map.key == key && map.texture.id != id)?;
+        let map = maps.swap_remove(index);
+        Some(map.texture.clone())
     }
 
     /// Whether `key` is a map, which a Renderer that hasn't loaded it holds no copy of.
@@ -511,6 +544,25 @@ mod tests {
             object.find_jobs(&context, &mut jobs);
             assert!(jobs.is_empty(), "a job for the ended map");
         });
+    }
+
+    // Story: a load holds the texture for a moment, as `keep_upload` does, which makes
+    // it no shared texture. A new source keeps the key's texture and its id.
+    #[test]
+    fn a_texture_held_for_a_moment_keeps_its_id() {
+        let shader = build_shader();
+        let object = &shader.object;
+        object
+            .set_map("image", build_source([255, 0, 0, 255]))
+            .expect("a map");
+        let held = object.find_map("image").expect("the texture");
+
+        object
+            .set_map("image", build_source([0, 0, 255, 255]))
+            .expect("a new source");
+
+        let texture = object.find_map("image").expect("the texture");
+        assert!(Arc::ptr_eq(&held, &texture), "the slot took a new texture");
     }
 
     // Story: an explicit texture that ends a map drops the map after `texture_writes`,

@@ -283,6 +283,36 @@ fn a_new_source_leaves_the_shared_texture_to_the_other_map() {
     });
 }
 
+// Story: once the other maps let go of a shared texture, one by a new source and one
+// by dropping, the map left with it keeps its id when it takes a new source.
+#[test]
+fn a_texture_no_other_map_holds_keeps_its_id() {
+    let pbr = PbrMaterial::new();
+    pbr.base_color_map()
+        .texture(paint(RED))
+        .expect("base color");
+    let id = read_id(&pbr.base_color_map());
+    let toon = ToonMaterial::new();
+    toon.base_color_map()
+        .texture(&pbr.base_color_map())
+        .expect("the toon map");
+    let unlit = UnlitMaterial::new();
+    unlit
+        .base_color_map()
+        .texture(&pbr.base_color_map())
+        .expect("the unlit map");
+
+    toon.base_color_map()
+        .texture(paint(GREEN))
+        .expect("a new toon source");
+    drop(unlit);
+    pbr.base_color_map()
+        .texture(paint(GREEN))
+        .expect("a new source");
+
+    assert_eq!(read_id(&pbr.base_color_map()), id, "the map took a new id");
+}
+
 // Story: a shared copy stays in a Renderer while any map that samples it is alive,
 // and goes when the last one drops.
 #[test]

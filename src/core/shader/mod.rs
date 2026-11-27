@@ -255,11 +255,11 @@ impl Drop for ShaderObject {
     }
 }
 
-/// What a texture write lets go of: the registration bound before, and the key's map.
+/// What a texture write lets go of: the bound registration and the map's texture.
 /// The caller drops it after `texture_writes`, so no GPU copy is freed under that lock.
 type Released = (
     Option<Arc<Registration>>,
-    Option<uniforms::texture_maps::TextureMap>,
+    Option<Arc<uniforms::texture_maps::MapTexture>>,
 );
 
 /// A `set` queued while the storage was busy, applied by `flush_pending`.
@@ -387,7 +387,7 @@ impl ShaderObject {
     }
 
     /// Holds the texture `id` names for `key` and ends the key's map, unless `id` is
-    /// that map's own. Returns the registration bound before and the map it ended.
+    /// that map's own. Returns the registration bound before and the texture of the map it ended.
     fn bind_texture(&self, key: &str, id: TextureId) -> Released {
         let bound = match Registration::find(id) {
             Some(registration) => self.bound_textures.insert(key.to_string(), registration),
