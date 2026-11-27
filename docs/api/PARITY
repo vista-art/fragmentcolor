@@ -82,9 +82,10 @@ docs/api/core/shader/hidden/get_data_mobile.md=>docs/api/core/shader/get.md: Mob
 
 # ---- Types documented through their methods (no page of their own) ----
 #
-# `AlphaMode` exists in every binding. Its three values are documented on
-# docs/api/scene/pbr_material/alpha_mode.md, the one method that takes it, like the
-# other value enums (`TextureFormat`, `CompareFunction`).
+# `AlphaMode` exists in every binding. Its three values are documented on each
+# method that takes it, like the other value enums (`TextureFormat`, `CompareFunction`):
+# docs/api/core/shader/alpha_mode.md, and the alpha_mode.md pages of PbrMaterial,
+# UnlitMaterial and ToonMaterial under docs/api/scene/.
 #
 # `LightKind` exists in every binding and is what `Light.kind()` returns.
 # Its three values are documented on docs/api/scene/light/kind.md.
