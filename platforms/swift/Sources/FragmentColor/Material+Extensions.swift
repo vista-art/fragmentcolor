@@ -25,6 +25,7 @@ extension PbrMaterial {
         return try metallic(value: value)
     }
     @discardableResult
+    @_disfavoredOverload
     public func metallic(_ value: Double) throws -> PbrMaterial {
         return try metallic(value: readFinite(value, "PbrMaterial.metallic: value"))
     }
@@ -34,6 +35,7 @@ extension PbrMaterial {
         return try roughness(value: value)
     }
     @discardableResult
+    @_disfavoredOverload
     public func roughness(_ value: Double) throws -> PbrMaterial {
         return try roughness(value: readFinite(value, "PbrMaterial.roughness: value"))
     }
@@ -43,6 +45,7 @@ extension PbrMaterial {
         return try normalScale(value: value)
     }
     @discardableResult
+    @_disfavoredOverload
     public func normalScale(_ value: Double) throws -> PbrMaterial {
         return try normalScale(value: readFinite(value, "PbrMaterial.normalScale: value"))
     }
@@ -52,6 +55,7 @@ extension PbrMaterial {
         return try occlusionStrength(value: value)
     }
     @discardableResult
+    @_disfavoredOverload
     public func occlusionStrength(_ value: Double) throws -> PbrMaterial {
         return try occlusionStrength(value: readFinite(value, "PbrMaterial.occlusionStrength: value"))
     }
@@ -61,6 +65,7 @@ extension PbrMaterial {
         return try alphaCutoff(value: value)
     }
     @discardableResult
+    @_disfavoredOverload
     public func alphaCutoff(_ value: Double) throws -> PbrMaterial {
         return try alphaCutoff(value: readFinite(value, "PbrMaterial.alphaCutoff: value"))
     }
@@ -120,6 +125,7 @@ extension UnlitMaterial {
         return try alphaCutoff(value: value)
     }
     @discardableResult
+    @_disfavoredOverload
     public func alphaCutoff(_ value: Double) throws -> UnlitMaterial {
         return try alphaCutoff(value: readFinite(value, "UnlitMaterial.alphaCutoff: value"))
     }
@@ -153,6 +159,7 @@ extension ToonMaterial {
         return try alphaCutoff(value: value)
     }
     @discardableResult
+    @_disfavoredOverload
     public func alphaCutoff(_ value: Double) throws -> ToonMaterial {
         return try alphaCutoff(value: readFinite(value, "ToonMaterial.alphaCutoff: value"))
     }
@@ -162,6 +169,7 @@ extension ToonMaterial {
         return try highlightSize(value: value)
     }
     @discardableResult
+    @_disfavoredOverload
     public func highlightSize(_ value: Double) throws -> ToonMaterial {
         return try highlightSize(value: readFinite(value, "ToonMaterial.highlightSize: value"))
     }
@@ -171,6 +179,7 @@ extension ToonMaterial {
         return try rimWidth(value: value)
     }
     @discardableResult
+    @_disfavoredOverload
     public func rimWidth(_ value: Double) throws -> ToonMaterial {
         return try rimWidth(value: readFinite(value, "ToonMaterial.rimWidth: value"))
     }

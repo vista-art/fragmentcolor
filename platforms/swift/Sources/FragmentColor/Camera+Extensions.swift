@@ -21,6 +21,7 @@ extension Camera {
         return try Camera.perspective(fovyRadians: fovyRadians, aspect: aspect, near: near, far: far)
     }
 
+    @_disfavoredOverload
     public static func perspective(
         _ fovyRadians: Double,
         _ aspect: Double,
@@ -48,6 +49,7 @@ extension Camera {
         )
     }
 
+    @_disfavoredOverload
     public static func orthographic(
         _ left: Double,
         _ right: Double,
@@ -87,6 +89,7 @@ extension Camera {
         return try setAspect(aspect: aspect)
     }
     @discardableResult
+    @_disfavoredOverload
     public func setAspect(_ aspect: Double) throws -> Camera {
         return try setAspect(aspect: Float(aspect))
     }
