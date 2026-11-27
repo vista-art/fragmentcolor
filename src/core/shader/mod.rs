@@ -198,10 +198,10 @@ impl Shader {
 /// The ShaderObject is wrapped in an Arc and managed by the Shader struct.
 /// This allows it to be shared between multiple passes and render pipelines.
 ///
-/// `alpha_mode` and `double_sided` are pipeline state. `Shader::alpha_mode` and
-/// `Shader::double_sided` set them, as do the material setters of the same names.
-/// The renderer reads both into the `RenderPipelineKey`, which gives each
-/// combination a pipeline of its own.
+/// `alpha_mode` and `double_sided` are pipeline state.
+/// `Shader::alpha_mode` and `Shader::double_sided` set them,
+/// as do the material setters of the same names. The renderer reads both
+/// into the `RenderPipelineKey`, which gives each combination a pipeline of its own.
 #[derive(Debug)]
 pub(crate) struct ShaderObject {
     /// Tells this shader from every other one, so a mesh keeps
@@ -437,9 +437,9 @@ impl ShaderObject {
         Ok(shader)
     }
 
-    /// Set the pipeline-state alpha mode for this shader. Called by
-    /// `Shader::alpha_mode` and the materials' `alpha_mode`; the renderer reads it when building a
-    /// `RenderPipelineKey`. See [`AlphaMode`].
+    /// Sets the alpha mode this shader's pipelines use.
+    /// `Shader::alpha_mode` and the materials' `alpha_mode` call it,
+    /// and the renderer reads it into the `RenderPipelineKey`. See [`AlphaMode`].
     pub(crate) fn set_alpha_mode(&self, mode: AlphaMode) {
         *self.alpha_mode.write() = mode;
     }
