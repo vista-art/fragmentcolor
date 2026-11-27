@@ -37,8 +37,9 @@ struct Look {
 // The fish pass's depth buffer, which the ink reads one texel at a time. WebGL2
 // reads it as zeros, so there the ink follows the silhouette alone.
 @group(0) @binding(3) var depth: texture_2d<f32>;
-// What shade.wgsl drew for each pixel of the fish: in red, how far it lies in its own
-// shadow, in green, the ripples of light on it, and in blue, the rim light that comes through it.
+// What shade.wgsl drew for each pixel of the fish: in red, how much
+// of the key light its fins and body keep off it; in green, the ripples
+// of light on it; in blue, the rim light that comes through it.
 @group(0) @binding(4) var lighting: texture_2d<f32>;
 
 // The camera's near and far planes in main.js, which turn a depth back into a distance.
@@ -289,8 +290,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 `;
 
 const SHADE = /* wgsl */ `// Draws the fish as the camera sees it, with what the two lights do at each point:
-// how far it lies in the shadow its own fins and body cast from the key light, the
-// ripples the key light lays on it, and the rim light that comes through where it is thin.
+// how much of the key light its own fins and body keep off it, the ripples the key
+// light lays on it, and the rim light that comes through where the fish is thin.
 
 struct Camera {
   view_proj: mat4x4<f32>,
@@ -376,8 +377,8 @@ fn hidden(spot: vec4<f32>) -> f32 {
   return count / 25.0;
 }
 
-// How far the rim light travels through the fish to reach the point \`spot\` in its view,
-// as a fraction of the depth its camera sees.
+// How far the rim light travels through the fish to reach the point
+// \`spot\` in its view, as a fraction of the depth its camera sees.
 fn thickness(spot: vec4<f32>) -> f32 {
   let size = vec2<f32>(textureDimensions(rim_map));
   let at = clamp(vec2<i32>(texel(spot) * size), vec2<i32>(0), vec2<i32>(size) - 1);
@@ -389,7 +390,7 @@ fn texel(spot: vec4<f32>) -> vec2<f32> {
   return vec2<f32>(spot.x * 0.5 + 0.5, 0.5 - spot.y * 0.5);
 }
 
-// Light through a rippled water surface gathers in bright lines that drift. Two
+// Light through a rippled water surface focuses into bright lines that drift. Two
 // layers of cells slide past each other, and the light gathers along the edges of both.
 fn ripples(spot: vec2<f32>, time: f32) -> f32 {
   let point = spot * 6.0;
@@ -412,11 +413,13 @@ const MODEL = "/playground/models/BarramundiFish.glb";
 // The middle of the fish and how far the camera starts from it, in meters.
 const CENTER = [0, 0.143, 0];
 const DISTANCE = 1.3;
-// The key light shines down on the fish as daylight through the water would,
-// from above and to the camera's right, and the rim light from behind the fish. The
-// toon fish takes its key light from nearer overhead, which lays its shadow band along
-// the belly, and more ambient light, since a cartoon shades with a darker tone of the same
-// color. Unlit takes no light at all. KEY and AMBIENT list the styles in turn: PBR, toon, unlit.
+// Where the lights shine from and how much ambient light falls, in each style.
+//
+// The key light shines down on the fish as daylight through the water would, from
+// above and to the camera's right, and the rim light from behind the fish. The toon
+// fish takes its key light from nearer overhead, which lays its shadow band along the belly,
+// and more ambient light, since a cartoon shades with a darker tone of the same color. Unlit
+// takes no light at all. KEY and AMBIENT list the styles in turn: PBR, toon, unlit.
 const KEY = [[-0.6, -1, -0.5], [-0.3, -1, -0.35], [-0.5, -0.6, -1]];
 const RIM = [0.6, 0.2, 1];
 const AMBIENT = [[0.1, 0.1, 0.12], [0.3, 0.32, 0.36], [0.1, 0.1, 0.12]];
@@ -436,7 +439,8 @@ const MAP_SIZE = 1024;
 
 export async function setup(renderer, target) {
   const response = await fetch(MODEL);
-  const scene = Scene.load(new Uint8Array(await response.arrayBuffer()));
+  // The scene adds no stock camera or light, since the demo brings its own.
+  const scene = Scene.load(new Uint8Array(await response.arrayBuffer())).noDefaults();
   // Upload the textures now, so the first frame only draws.
   await renderer.load(scene);
 
@@ -444,10 +448,10 @@ export async function setup(renderer, target) {
   const fish = scene.getPass(0);
   fish.setClearColor([0, 0, 0, 0]);
 
-  // A camera along each light draws the fish into a map in a pass of its own: the key
-  // light's for the shadows, and the rim light's for the light that comes through the
-  // fins. The shade pass draws the fish again from the camera, with what both maps say
-  // of each point, for present.wgsl to use.
+  // A camera along each light draws the fish into a map in a pass of its
+  // own: the key light's for the shadows, and the rim light's for the light
+  // that comes through the fins. The shade pass draws the fish again from the
+  // camera, with what both maps say of each point, for present.wgsl to use.
   const keyView = await createView(renderer, scene, "key");
   const rimView = await createView(renderer, scene, "rim");
   const receiver = await Shader.fetch(["noise/worley2", SHADE_SOURCE]);
@@ -457,10 +461,10 @@ export async function setup(renderer, target) {
   shadePass.setClearColor([0, 0, 0, 0]);
   scene.addPass(shadePass);
 
-  // Each part of the fish draws in PBR, wetter than the file describes it, and in the
-  // key, rim and shade passes. It gets a toon and an unlit Model over its mesh too, which
-  // both sample its base color texture, so that stays one upload. The lists follow the
-  // styles in turn, and so does present.wgsl's look.style.
+  // Each part of the fish draws in PBR, wetter than the file describes it, and
+  // in the key, rim and shade passes. It gets a toon and an unlit Model over its
+  // mesh too, which both sample its base color texture, so that stays one upload.
+  // The lists follow the styles in turn, and so does present.wgsl's look.style.
   const styles = [[], [], []];
   for (const model of scene.models()) {
     const pbr = model.material();
@@ -565,8 +569,8 @@ export function frame(state, renderer, target, time, size, pointer, gesture = { 
     CENTER[2] + reach * Math.cos(state.yaw),
   ];
   state.camera.setAspect(state.size[0] / state.size[1]).lookAt(eye, CENTER, [0, 1, 0]);
-  // Both lights turn with the camera, so the side in view stays lit, and each
-  // light's camera follows its light.
+  // Both lights turn with the camera, so the side in view
+  // stays lit, and each light's camera follows its light.
   const keyDirection = turn(KEY[state.style], state.yaw);
   const rimDirection = turn(RIM, state.yaw);
   state.key.setDirection(keyDirection);
@@ -577,9 +581,8 @@ export function frame(state, renderer, target, time, size, pointer, gesture = { 
   renderer.render(state.scene, target);
 }
 
-// A camera that looks along a light, with the pass \`name\` in which it draws the fish
-// into a map of how far along the light each point lies: the camera, the shader the
-// fish draws with in that pass, and the map.
+// A camera that looks along a light, the shader the fish draws with in the light's
+// pass \`name\`, and the map that pass draws: how far along the light each point lies.
 async function createView(renderer, scene, name) {
   const camera = Camera.orthographic(-REACH, REACH, -REACH, REACH, 1 - REACH, 1 + REACH);
   const caster = new Shader(DEPTH_SOURCE).doubleSided(true);
@@ -622,11 +625,12 @@ function show(state, style) {
   state.shown = 0;
 }
 
-// The fish draws into a 16-bit float image, so light brighter than white reaches
-// the tone map, and a depth texture keeps its far side behind its near side. The
-// shade pass draws into an image and a depth texture of its own. present.wgsl
-// reads all but the last. A new canvas size gets a new set, and the fish keeps
-// drawing at the old size until it is ready.
+// Makes the textures the fish and shade passes draw into, at the canvas's size.
+//
+// The fish draws into a 16-bit float image, so light brighter than white reaches the
+// tone map, and a depth texture keeps its far side behind its near side. The shade pass
+// draws into an image and a depth texture of its own. present.wgsl reads all but the last. A
+// new canvas size gets a new set, and the fish keeps drawing at the old size until it is ready.
 async function fit(state, renderer, size) {
   state.wanted = size;
   const usage = TextureUsage.RENDER_ATTACHMENT | TextureUsage.TEXTURE_BINDING;
@@ -636,8 +640,8 @@ async function fit(state, renderer, size) {
     lighting: await renderer.createStorageTexture(size, TextureFormat.Rgba8Unorm, null, usage),
     lightingDepth: await renderer.createDepthTexture(size),
   };
-  // When a newer size came in during the wait, these are already out of date.
-  // Unregistering frees them now, where a dropped handle waits for the collector.
+  // The old set goes, or these do when a newer size came in during the wait.
+  // Unregistering frees that set now, where a dropped handle waits for the collector.
   const stale = state.wanted !== size ? textures : state.textures;
   for (const texture of Object.values(stale ?? {})) renderer.unregisterTexture(texture.id());
   if (stale === textures) return;
@@ -724,11 +728,13 @@ function writeRust({ library, values }) {
     "/// The middle of the fish and how far the camera starts from it, in meters.",
     "const CENTER: [f32; 3] = [0.0, 0.143, 0.0];",
     "const DISTANCE: f32 = 1.3;",
+    "/// Where the lights shine from and how much ambient light falls, in each style.",
+    "///",
     "/// The key light shines down on the fish as daylight through the water would, from",
     "/// above and to the camera's right, and the rim light from behind the fish. The toon",
-    "/// fish takes its key light from nearer overhead, which lays its shadow band along the",
-    "/// belly, and more ambient light, since a cartoon shades with a darker tone of the same color.",
-    "/// Unlit takes no light at all. `KEY` and `AMBIENT` list the styles in turn: PBR, toon, unlit.",
+    "/// fish takes its key light from nearer overhead, which lays its shadow band along the belly,",
+    "/// and more ambient light, since a cartoon shades with a darker tone of the same color. Unlit",
+    "/// takes no light at all. `KEY` and `AMBIENT` list the styles in turn: PBR, toon, unlit.",
     "const KEY: [[f32; 3]; 3] = [[-0.6, -1.0, -0.5], [-0.3, -1.0, -0.35], [-0.5, -0.6, -1.0]];",
     "const RIM: [f32; 3] = [0.6, 0.2, 1.0];",
     "const AMBIENT: [[f32; 3]; 3] = [[0.1, 0.1, 0.12], [0.3, 0.32, 0.36], [0.1, 0.1, 0.12]];",
@@ -802,6 +808,8 @@ function writeRust({ library, values }) {
     "// Await setup once, then await frame on every redraw of your window.",
     "async fn setup(renderer: &Renderer) -> Result<State, Box<dyn Error>> {",
     "    let scene = Scene::load(MODEL)?;",
+    "    // The scene adds no stock camera or light, since the demo brings its own.",
+    "    scene.no_defaults();",
     "    // Upload the textures now, so the first frame only draws.",
     "    renderer.load(&scene).await?;",
     "",
@@ -810,10 +818,10 @@ function writeRust({ library, values }) {
     '    let fish = scene.get_pass(0).ok_or("the model loaded no pass")?;',
     "    fish.set_clear_color([0.0, 0.0, 0.0, 0.0])?;",
     "",
-    "    // A camera along each light draws the fish into a map in a pass of its own: the key",
-    "    // light's for the shadows, and the rim light's for the light that comes through the",
-    "    // fins. The shade pass draws the fish again from the camera, with what both maps say",
-    "    // of each point, for present.wgsl to use.",
+    "    // A camera along each light draws the fish into a map in a pass of its",
+    "    // own: the key light's for the shadows, and the rim light's for the light",
+    "    // that comes through the fins. The shade pass draws the fish again from the",
+    "    // camera, with what both maps say of each point, for present.wgsl to use.",
     '    let key_view = create_view(renderer, &scene, "key").await?;',
     '    let rim_view = create_view(renderer, &scene, "rim").await?;',
     '    let receiver = Shader::new(["noise/worley2", SHADE_SOURCE])?;',
@@ -823,10 +831,10 @@ function writeRust({ library, values }) {
     "    shade.set_clear_color([0.0, 0.0, 0.0, 0.0])?;",
     "    scene.add_pass(&shade);",
     "",
-    "    // Each part of the fish draws in PBR, wetter than the file describes it, and in the",
-    "    // key, rim and shade passes. It gets a toon and an unlit Model over its mesh too, which",
-    "    // both sample its base color texture, so that stays one upload. The lists follow the",
-    "    // styles in turn, and so does present.wgsl's look.style.",
+    "    // Each part of the fish draws in PBR, wetter than the file describes it, and",
+    "    // in the key, rim and shade passes. It gets a toon and an unlit Model over its",
+    "    // mesh too, which both sample its base color texture, so that stays one upload.",
+    "    // The lists follow the styles in turn, and so does present.wgsl's look.style.",
     "    let mut styles: [Vec<Model>; 3] = Default::default();",
     "    for model in scene.models() {",
     "        let Material::Pbr(pbr) = model.material() else {",
@@ -948,8 +956,8 @@ function writeRust({ library, values }) {
     "        .camera",
     "        .set_aspect(size[0].max(1.0) / height)?",
     "        .look_at(eye, CENTER, [0.0, 1.0, 0.0])?;",
-    "    // Both lights turn with the camera, so the side in view stays lit, and each",
-    "    // light's camera follows its light.",
+    "    // Both lights turn with the camera, so the side in view",
+    "    // stays lit, and each light's camera follows its light.",
     "    let key_direction = turn(KEY[state.style], state.yaw);",
     "    let rim_direction = turn(RIM, state.yaw);",
     "    state.key.set_direction(key_direction)?;",
@@ -1113,6 +1121,8 @@ function writePython({ library, values }) {
     "# The middle of the fish and how far the camera starts from it, in meters.",
     "CENTER = [0.0, 0.143, 0.0]",
     "DISTANCE = 1.3",
+    "# Where the lights shine from and how much ambient light falls, in each style.",
+    "#",
     "# The key light shines down on the fish as daylight through the water",
     "# would, from above and to the camera's right, and the rim light from",
     "# behind the fish. The toon fish takes its key light from nearer overhead,",
@@ -1142,7 +1152,8 @@ function writePython({ library, values }) {
     "# (positive zooms in) and pan in canvas pixels. Its keys hold the keys held down,",
     '# named the way KeyboardEvent.code names them, such as "KeyM".',
     "def setup(renderer):",
-    "    scene = Scene.load(str(MODEL))",
+    "    # The scene adds no stock camera or light, since the demo brings its own.",
+    "    scene = Scene.load(str(MODEL)).no_defaults()",
     "    # Upload the textures now, so the first frame only draws.",
     "    renderer.load(scene)",
     "",
@@ -1152,10 +1163,10 @@ function writePython({ library, values }) {
     "    fish = scene.get_pass(0)",
     "    fish.set_clear_color([0.0, 0.0, 0.0, 0.0])",
     "",
-    "    # A camera along each light draws the fish into a map in a pass of its own: the",
-    "    # key light's for the shadows, and the rim light's for the light that comes",
-    "    # through the fins. The shade pass draws the fish again from the camera, with",
-    "    # what both maps say of each point, for present.wgsl to use.",
+    "    # A camera along each light draws the fish into a map in a pass of its",
+    "    # own: the key light's for the shadows, and the rim light's for the light",
+    "    # that comes through the fins. The shade pass draws the fish again from the",
+    "    # camera, with what both maps say of each point, for present.wgsl to use.",
     '    key_view = create_view(renderer, scene, "key")',
     '    rim_view = create_view(renderer, scene, "rim")',
     '    receiver = Shader(["noise/worley2", SHADE_SOURCE])',
@@ -1165,10 +1176,10 @@ function writePython({ library, values }) {
     "    shade.set_clear_color([0.0, 0.0, 0.0, 0.0])",
     "    scene.add_pass(shade)",
     "",
-    "    # Each part of the fish draws in PBR, wetter than the file describes it, and in",
-    "    # the key, rim and shade passes. It gets a toon and an unlit Model over its mesh",
-    "    # too, which both sample its base color texture, so that stays one upload. The",
-    "    # lists follow the styles in turn, and so does present.wgsl's look.style.",
+    "    # Each part of the fish draws in PBR, wetter than the file describes it, and",
+    "    # in the key, rim and shade passes. It gets a toon and an unlit Model over its",
+    "    # mesh too, which both sample its base color texture, so that stays one upload.",
+    "    # The lists follow the styles in turn, and so does present.wgsl's look.style.",
     "    styles = [[], [], []]",
     "    for model in scene.models():",
     "        pbr = model.material()",
@@ -1274,8 +1285,8 @@ function writePython({ library, values }) {
     "    ]",
     "    aspect = max(size[0], 1) / height",
     "    state.camera.set_aspect(aspect).look_at(eye, CENTER, [0.0, 1.0, 0.0])",
-    "    # Both lights turn with the camera, so the side in view stays lit, and each",
-    "    # light's camera follows its light.",
+    "    # Both lights turn with the camera, so the side in view",
+    "    # stays lit, and each light's camera follows its light.",
     "    key_direction = turn(KEY[state.style], state.yaw)",
     "    rim_direction = turn(RIM, state.yaw)",
     "    state.key.set_direction(key_direction)",
@@ -1286,8 +1297,8 @@ function writePython({ library, values }) {
     "    renderer.render(state.scene, target)",
     "",
     "",
-    "# A camera that looks along a light, with the pass name in which it draws the fish",
-    "# into a map of how far along the light each point lies.",
+    "# A camera that looks along a light, with the pass `name` in which it",
+    "# draws the fish into a map of how far along the light each point lies.",
     "def create_view(renderer, scene, name):",
     "    camera = Camera.orthographic(-REACH, REACH, -REACH, REACH, 1 - REACH, 1 + REACH)",
     "    caster = Shader(DEPTH_SOURCE).double_sided(True)",
@@ -1304,8 +1315,8 @@ function writePython({ library, values }) {
     "    return SimpleNamespace(camera=camera, caster=caster, map=depth_map)",
     "",
     "",
-    "# Points the camera of view, the light name's, at the fish along direction from",
-    "# a meter away, and tells the shade pass's receiver how that camera sees.",
+    "# Points the camera of `view`, the light `name`'s, at the fish along `direction`",
+    "# from a meter away, and tells the shade pass's `receiver` how that camera sees.",
     "def aim(receiver, name, view, direction):",
     "    length = math.hypot(*direction)",
     "    position = [center - axis / length for center, axis in zip(CENTER, direction)]",
@@ -1314,8 +1325,8 @@ function writePython({ library, values }) {
     '    receiver.set(f"{name}.direction", direction)',
     "",
     "",
-    "# A Model in the pass named pass_name that draws the mesh of model with material,",
-    "# where model is.",
+    "# A Model in the pass named `pass_name` that draws the",
+    "# mesh of `model` with `material`, where `model` is.",
     "def restyle(scene, pass_name, model, material):",
     "    copy = Model(model.mesh(), material)",
     "    copy.set_transform(model.transform())",
@@ -1390,6 +1401,8 @@ function writeSwift({ library, values }) {
     "/// The middle of the fish and how far the camera starts from it, in meters.",
     "let center: [Float] = [0, 0.143, 0]",
     "let startDistance: Float = 1.3",
+    "/// Where the lights shine from and how much ambient light falls, in each style.",
+    "///",
     "/// The key light shines down on the fish as daylight through the water would, from",
     "/// above and to the camera's right, and the rim light from behind the fish. The toon",
     "/// fish takes its key light from nearer overhead, which lays its shadow band along the",
@@ -1466,7 +1479,8 @@ function writeSwift({ library, values }) {
     "// Await setup once, then await frame from a task your MTKView or CADisplayLink callback starts.",
     "func setup(renderer: Renderer) async throws -> State {",
     '    let modelURL = Bundle.main.url(forResource: modelName, withExtension: "glb")!',
-    "    let scene = try Scene.load(modelURL.path)",
+    "    // The scene adds no stock camera or light, since the demo brings its own.",
+    "    let scene = try Scene.load(modelURL.path).noDefaults()",
     "    // Upload the textures now, so the first frame only draws.",
     "    try await renderer.load(scene)",
     "",
@@ -1475,10 +1489,10 @@ function writeSwift({ library, values }) {
     "    let fish = scene.getPass(0)!",
     "    try fish.setClearColor([0, 0, 0, 0])",
     "",
-    "    // A camera along each light draws the fish into a map in a pass of its own: the key",
-    "    // light's for the shadows, and the rim light's for the light that comes through the",
-    "    // fins. The shade pass draws the fish again from the camera, with what both maps say",
-    "    // of each point, for present.wgsl to use.",
+    "    // A camera along each light draws the fish into a map in a pass of its",
+    "    // own: the key light's for the shadows, and the rim light's for the light",
+    "    // that comes through the fins. The shade pass draws the fish again from the",
+    "    // camera, with what both maps say of each point, for present.wgsl to use.",
     '    let keyView = try await createView(renderer, scene, "key")',
     '    let rimView = try await createView(renderer, scene, "rim")',
     '    let receiver = try Shader(["noise/worley2", readSource("shade")])',
@@ -1488,10 +1502,10 @@ function writeSwift({ library, values }) {
     "    try shade.setClearColor([0, 0, 0, 0])",
     "    scene.addPass(shade)",
     "",
-    "    // Each part of the fish draws in PBR, wetter than the file describes it, and in the",
-    "    // key, rim and shade passes. It gets a toon and an unlit Model over its mesh too, which",
-    "    // both sample its base color texture, so that stays one upload. The lists follow the",
-    "    // styles in turn, and so does present.wgsl's look.style.",
+    "    // Each part of the fish draws in PBR, wetter than the file describes it, and",
+    "    // in the key, rim and shade passes. It gets a toon and an unlit Model over its",
+    "    // mesh too, which both sample its base color texture, so that stays one upload.",
+    "    // The lists follow the styles in turn, and so does present.wgsl's look.style.",
     "    var styles: [[Model]] = [[], [], []]",
     "    for model in scene.models() {",
     "        guard let pbr = model.material() as? PbrMaterial else {",
@@ -1596,8 +1610,8 @@ function writeSwift({ library, values }) {
     "    ]",
     "    let aspect = max(size[0], 1) / height",
     "    try state.camera.setAspect(aspect).lookAt(eye, center, [0, 1, 0])",
-    "    // Both lights turn with the camera, so the side in view stays lit, and each",
-    "    // light's camera follows its light.",
+    "    // Both lights turn with the camera, so the side in view",
+    "    // stays lit, and each light's camera follows its light.",
     "    let turnedKey = turn(keyDirections[state.style], state.yaw)",
     "    let turnedRim = turn(rimDirection, state.yaw)",
     "    try state.key.setDirection(turnedKey)",
@@ -1721,11 +1735,13 @@ function writeKotlin({ library, values }) {
     "private val CENTER = listOf(0.0, 0.143, 0.0)",
     "private const val DISTANCE = 1.3",
     "/**",
-    " * The key light shines down on the fish as daylight through the water would,",
-    " * from above and to the camera's right, and the rim light from behind the fish. The",
-    " * toon fish takes its key light from nearer overhead, which lays its shadow band along",
-    " * the belly, and more ambient light, since a cartoon shades with a darker tone of the same",
-    " * color. Unlit takes no light at all. KEY and AMBIENT list the styles in turn: PBR, toon, unlit.",
+    " * Where the lights shine from and how much ambient light falls, in each style.",
+    " *",
+    " * The key light shines down on the fish as daylight through the water would, from",
+    " * above and to the camera's right, and the rim light from behind the fish. The toon",
+    " * fish takes its key light from nearer overhead, which lays its shadow band along the belly,",
+    " * and more ambient light, since a cartoon shades with a darker tone of the same color. Unlit",
+    " * takes no light at all. KEY and AMBIENT list the styles in turn: PBR, toon, unlit.",
     " */",
     "private val KEY = listOf(listOf(-0.6, -1.0, -0.5), listOf(-0.3, -1.0, -0.35), listOf(-0.5, -0.6, -1.0))",
     "private val RIM = listOf(0.6, 0.2, 1.0)",
@@ -1799,7 +1815,8 @@ function writeKotlin({ library, values }) {
     "",
     "// Call setup once, then frame on every frame, from a coroutine on your render thread.",
     "suspend fun setup(renderer: Renderer, assets: AssetManager): State {",
-    "    val scene = Scene.load(assets.open(MODEL).use { it.readBytes() })",
+    "    // The scene adds no stock camera or light, since the demo brings its own.",
+    "    val scene = Scene.load(assets.open(MODEL).use { it.readBytes() }).noDefaults()",
     "    // Upload the textures now, so the first frame only draws.",
     "    renderer.load(scene)",
     "",
@@ -1808,10 +1825,10 @@ function writeKotlin({ library, values }) {
     "    val fish = scene.getPass(0u)!!",
     "    fish.setClearColor(listOf(0f, 0f, 0f, 0f))",
     "",
-    "    // A camera along each light draws the fish into a map in a pass of its own: the key",
-    "    // light's for the shadows, and the rim light's for the light that comes through the",
-    "    // fins. The shade pass draws the fish again from the camera, with what both maps say",
-    "    // of each point, for present.wgsl to use.",
+    "    // A camera along each light draws the fish into a map in a pass of its",
+    "    // own: the key light's for the shadows, and the rim light's for the light",
+    "    // that comes through the fins. The shade pass draws the fish again from the",
+    "    // camera, with what both maps say of each point, for present.wgsl to use.",
     '    val depthSource = readText(assets, "depth.wgsl")',
     '    val keyView = createView(renderer, scene, "key", depthSource)',
     '    val rimView = createView(renderer, scene, "rim", depthSource)',
@@ -1822,10 +1839,10 @@ function writeKotlin({ library, values }) {
     "    shade.setClearColor(listOf(0f, 0f, 0f, 0f))",
     "    scene.addPass(shade)",
     "",
-    "    // Each part of the fish draws in PBR, wetter than the file describes it, and in the",
-    "    // key, rim and shade passes. It gets a toon and an unlit Model over its mesh too, which",
-    "    // both sample its base color texture, so that stays one upload. The lists follow the",
-    "    // styles in turn, and so does present.wgsl's look.style.",
+    "    // Each part of the fish draws in PBR, wetter than the file describes it, and",
+    "    // in the key, rim and shade passes. It gets a toon and an unlit Model over its",
+    "    // mesh too, which both sample its base color texture, so that stays one upload.",
+    "    // The lists follow the styles in turn, and so does present.wgsl's look.style.",
     "    val styles = List(3) { mutableListOf<Model>() }",
     "    for (model in scene.models()) {",
     "        val pbr = model.material() as? PbrMaterial ?: continue",
@@ -1905,8 +1922,8 @@ function writeKotlin({ library, values }) {
     "    )",
     "    val aspect = maxOf(size[0].toDouble(), 1.0) / height",
     "    state.camera.setAspect(aspect).lookAt(eye, CENTER, listOf(0.0, 1.0, 0.0))",
-    "    // Both lights turn with the camera, so the side in view stays lit, and each",
-    "    // light's camera follows its light.",
+    "    // Both lights turn with the camera, so the side in view",
+    "    // stays lit, and each light's camera follows its light.",
     "    val keyDirection = turn(KEY[state.style], state.yaw)",
     "    val rimDirection = turn(RIM, state.yaw)",
     "    state.key.setDirection(keyDirection)",
@@ -1918,8 +1935,8 @@ function writeKotlin({ library, values }) {
     "}",
     "",
     "/**",
-    " * A camera that looks along a light, with the pass [name] in which it draws the fish",
-    " * into a map of how far along the light each point lies, with the shader [source].",
+    " * A camera that looks along a light, with the pass [name] in which it draws the fish into a map",
+    " * of how far along the light each point lies, through a shader built from the WGSL [source].",
     " */",
     "suspend fun createView(renderer: Renderer, scene: Scene, name: String, source: String): LightView {",
     "    val camera = Camera.orthographic(-REACH, REACH, -REACH, REACH, 1 - REACH, 1 + REACH)",
@@ -2012,7 +2029,7 @@ export default {
   id: "model",
   title: "glTF Model",
   summary:
-    "Barramundi Fish by Microsoft (CC0), loaded from a glTF file and lit by two lights, in three styles: wet PBR with the shadows of its own fins, ripples of light over it and light glowing through its fins, toon with ink outlines, and unlit. The styles take turns until you click the canvas and press M, or tap Style on a touch screen, to switch yourself. Drag to turn the fish, and scroll or pinch to move closer.",
+    "Barramundi Fish by Microsoft (CC0), loaded from a glTF file and lit by two lights, in three styles: wet PBR, toon with ink outlines, and unlit. The PBR fish lies in the shadows of its own fins, under drifting ripples of light, and glows where light comes through them. The styles take turns until you click the canvas and press M, or tap Style on a touch screen, to switch yourself. Drag to turn the fish, and scroll or pinch to move closer.",
   category: "3D",
   thumbnail: "/playground/thumbs/model.webp",
   chip: { x: 0.12, y: 0.6, zoom: 2.2 },
