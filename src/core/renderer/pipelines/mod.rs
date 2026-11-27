@@ -124,16 +124,31 @@ fn is_display(format: wgpu::TextureFormat) -> bool {
     )
 }
 
-/// `module` with its `ENCODE_SRGB` override set for a target of `format`.
-/// FragmentColor resolves it here, because the WGSL that wgpu writes for the
-/// browser from a naga module doesn't carry overrides. A module without that
-/// override, or one whose overrides fail to resolve, comes back unchanged.
-fn set_encoding(module: &naga::Module, format: wgpu::TextureFormat) -> naga::Module {
-    let declared = module
-        .overrides
-        .iter()
-        .any(|(_, item)| item.name.as_deref() == Some(ENCODE_SRGB));
-    if !declared {
+/// The override a shader declares to learn whether its pipeline draws both faces.
+/// `PbrMaterial` and `ToonMaterial` light a mirrored model's outer faces as the front when it does.
+const DOUBLE_SIDED: &str = "DOUBLE_SIDED";
+
+/// `module` with the overrides its pipeline decides resolved.
+///
+/// `ENCODE_SRGB` takes whether a target of `format` stores colors for display,
+/// and `DOUBLE_SIDED` takes `double_sided`. FragmentColor resolves them here, because
+/// the WGSL that wgpu writes for the browser from a naga module doesn't carry overrides.
+/// A module that declares neither, or one whose overrides fail to resolve, comes back unchanged.
+fn set_overrides(
+    module: &naga::Module,
+    format: wgpu::TextureFormat,
+    double_sided: bool,
+) -> naga::Module {
+    let mut constants = naga::back::PipelineConstants::default();
+    for (name, value) in [
+        (ENCODE_SRGB, is_display(format)),
+        (DOUBLE_SIDED, double_sided),
+    ] {
+        if declares(module, name) {
+            constants.insert(name.to_string(), if value { 1.0 } else { 0.0 });
+        }
+    }
+    if constants.is_empty() {
         return module.clone();
     }
     let flags = naga::valid::ValidationFlags::all();
@@ -142,20 +157,25 @@ fn set_encoding(module: &naga::Module, format: wgpu::TextureFormat) -> naga::Mod
     {
         Ok(info) => info,
         Err(error) => {
-            log::error!("{ENCODE_SRGB} stays at its default: {error}");
+            log::error!("the pipeline overrides stay at their defaults: {error}");
             return module.clone();
         }
     };
-    let mut constants = naga::back::PipelineConstants::default();
-    let encode = if is_display(format) { 1.0 } else { 0.0 };
-    constants.insert(ENCODE_SRGB.to_string(), encode);
     match naga::back::pipeline_constants::process_overrides(module, &info, None, &constants) {
         Ok((resolved, _)) => resolved.into_owned(),
         Err(error) => {
-            log::error!("{ENCODE_SRGB} stays at its default: {error}");
+            log::error!("the pipeline overrides stay at their defaults: {error}");
             module.clone()
         }
     }
+}
+
+/// Whether `module` declares the override `name`.
+fn declares(module: &naga::Module, name: &str) -> bool {
+    module
+        .overrides
+        .iter()
+        .any(|(_, item)| item.name.as_deref() == Some(name))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -176,7 +196,7 @@ pub(super) fn create_render_pipeline(
     // Every CPU check comes before the first wgpu call, so a refusal builds nothing.
     let module = build_module(shader, layout, pad_uniforms, light_path.uniform_lights())?;
     let PipelineSource { source, entries } =
-        pick_source(set_encoding(&module, format), writes_wgsl)?;
+        pick_source(set_overrides(&module, format, double_sided), writes_wgsl)?;
     let vs_entry = find_entry(&entries, naga::ShaderStage::Vertex)?;
     let fs_entry = find_entry(&entries, naga::ShaderStage::Fragment)?;
 
