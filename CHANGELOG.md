@@ -12,7 +12,7 @@ A patch release that gives each shading model a type of its own: `PbrMaterial`, 
 - A `Shader` is the custom material, and sets its own blending and face culling.
 - A storage `set` uploads only the bytes it changes. What a compute pass wrote beside them stays.
 - Swift and Kotlin throw the error class Python raises, with the same message and fields.
-- The playground's glTF fish takes turns between PBR, toon and unlit.
+- The playground's glTF fish takes turns between PBR, toon and unlit, and the PBR fish lies in the shadows of its own fins.
 
 ### Upgrading from 0.12.7
 
@@ -52,6 +52,7 @@ A patch release that gives each shading model a type of its own: `PbrMaterial`, 
 - A double-sided `PbrMaterial` or `ToonMaterial` on a `Model` mirrored by a negative scale, such as `model.scale([-1, 1, 1])` or a glTF node with a negative scale, lights its outer faces as the front. `PbrMaterial` drew the sunlit side dark, and `ToonMaterial` filled it with the rim color. Single-sided materials light each face they draw along its own normal, as before.
 - A `PbrMaterial` on a mirrored `Model` reads its normal map as the mirror image of the unmirrored one, and its bumps light from the side they face. The bitangent ignored the mirroring, which turned the map's green channel upside down.
 - The `Material` page lists the material types and what the renderer fills in a custom shader, and `PbrMaterial`, `UnlitMaterial`, `ToonMaterial` and `MaterialMap` get pages of their own.
+- Swift takes an integer literal on every number setter of a material, a light or a camera, such as `light.setIntensity(3)`, `ToonMaterial().rimWidth(0)` and `Camera.perspective(1, 2, 0, 100)`, which the `Double` overloads made ambiguous.
 
 ### Shaders and uniforms
 
@@ -63,11 +64,13 @@ A patch release that gives each shading model a type of its own: `PbrMaterial`, 
 
 - One Errors page at /api/errors lists every error class, when it's raised and its fields, with `kind` among `DeviceError`'s. `DeviceError` and `ErrorKind` leave the API menu, the Errors link ends it, and /api/errors/deviceerror and /api/errors/errorkind redirect to its `DeviceError` section.
 - Python's errors pickle by their class, and one raised in a `multiprocessing` worker reaches the parent as the same class with its fields. That includes a `DeviceError`'s `kind`, which pickles as the `ErrorKind` variant it names.
+- A Python argument of the wrong type raises a `TypeError` that names the call and what it takes, as JavaScript's does, such as `MaterialMap.texture takes a MaterialMap, bytes (...), a uint8 ndarray, a path, a URL, a Texture or a Mipmap, got int`. It named a binding class such as `PyMapInput` or `PyTextureSource`.
 
 ### Website and examples
 
 - The `toon_outline` example inks the outlines of toon-shaded shapes in a pass of its own, after the scene. A first pass draws each shape's normals and depth into two textures, and a fullscreen pass blends ink over the pixels where the depth jumps, along a silhouette, or the normal turns, along a crease. It opens a window, or saves one frame with `--png`.
 - The playground's glTF fish takes turns between `PbrMaterial`, `ToonMaterial` and `UnlitMaterial`, four seconds each, until M or the Style button on a touch screen switches it by hand. For each Model the file loads, the demo adds a toon and an unlit Model over the same `Mesh`, whose maps take the PBR material's base color texture with `map.texture(map)`, and `set_visible` shows only the current style's Models. The pass that draws the fish to the screen paints the toon fish flat, inks its outline and the edges where a fin crosses the body, and names the style in a corner label. Every language's tab does the same and needs 0.12.8.
+- The PBR fish takes a third of the roughness its file gives the scales and twice the depth of their normal map, which reads wet. Two passes with a `Shader` of their own draw the shadows its fins and body cast on it: an orthographic `Camera` along the key light draws a shadow map, and the scene's camera draws the fish again with how far each point lies in that shadow. The same pass lays drifting ripples of light, from the registry's `noise/worley2`, over the points the key light reaches.
 - The walkable world's tabs build their materials with `PbrMaterial` and need 0.12.8, and the Swift tab marks `setIntensity` with `try`.
 - Playground demos that take keys can list touch `buttons`, each of which holds its key down while a finger is on it, in the playground and in the `index.js` tab. A released key stays down for one more frame, and a quick tap still reaches `frame()`. A demo with keys can set `stick: false` to leave out the touch stick, as the fish does.
 - /api/scene/textureslot redirects to `MaterialMap`, the Targets group lists Target, WindowTarget, then TextureTarget, and the 3D scenes blog post links to material anchors that exist.
