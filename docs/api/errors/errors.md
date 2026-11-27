@@ -11,13 +11,13 @@ Rust returns the error type of the call, such as `RendererError` from [`Renderer
 
 The message is the same text everywhere: `Error.message` in JavaScript, `str(error)` in Python, `message`, `localizedDescription` and `description` in Swift, and `message` and `toString()` in Kotlin. Each field holds the same value in every language. In JavaScript `ErrorKind` is a numeric enum, and a `kind` is the number to compare with `ErrorKind.Memory` and the other values.
 
-An argument of the wrong type, such as a string where a number goes, is a `TypeError` in JavaScript and Python. Swift and Kotlin refuse it when the code compiles.
+An argument of the wrong type, such as a string where a number goes, is a `TypeError` in JavaScript and Python. Swift refuses it when the code compiles, and so does Kotlin, except `Model(mesh, material)`, which throws `IllegalArgumentException` for an object that is no material.
 
 ## Classes
 
 ### FragmentColorError
 
-The base class, for an error with no class of its own: WGSL that fails to parse, a uniform the shader doesn't declare, a vertex the shader can't read, a target from another `Renderer`, or a GPU that fails to open. In Rust that is every `ShaderError` and `MeshError`, and each variant of `RendererError`, `PassError`, `TextureError` and `InitializationError` that no other class names. Swift throws it as `.Other`, and Kotlin as `FragmentColorException.Other`.
+The base class, for an error with no class of its own: WGSL that fails to parse, a uniform the shader doesn't declare, a vertex the shader can't read, a target from another `Renderer`, a window whose handle a target can't get, or a GPU that fails to open. In Rust that is every `ShaderError`, `MeshError` and `DisplayError`, and each variant of `RendererError`, `PassError`, `TextureError` and `InitializationError` that no other class names. Swift throws it as `.Other`, and Kotlin as `FragmentColorException.Other`.
 
 ### InvalidInputError
 
