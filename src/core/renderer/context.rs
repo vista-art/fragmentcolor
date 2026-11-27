@@ -12,12 +12,13 @@ use crate::core::renderer::{InitializationError, Renderer, checks, device, pools
 use crate::core::renderer::{
     ReadbackBufferPool, StorageBufferPool, TexturePool, UniformBufferPool,
 };
-use crate::core::shader::uniforms::StorageUpload;
 use crate::texture::{TextureId, TextureObject};
 use crate::{ShaderHash, ShaderObject};
 use dashmap::DashMap;
 use parking_lot::{RwLock, RwLockUpgradableReadGuard};
+use std::borrow::Cow;
 use std::collections::HashMap;
+use std::ops::Range;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 
@@ -32,6 +33,9 @@ pub(crate) struct RenderContext {
     /// Tells this context from every other one, so a mesh knows which device its
     /// buffers live on. wgpu compares the devices of two instances by an index both reuse.
     pub(crate) id: u64,
+    /// Lives as long as this context. A shader's storage changes keep a weak copy,
+    /// so they forget a context that is gone.
+    token: Arc<()>,
     /// The adapter the device came from. A texture checks its format and copies
     /// against what the adapter reports, since GLES and WebGL2 take less than WebGPU.
     pub(crate) adapter: Option<wgpu::Adapter>,
@@ -132,6 +136,7 @@ impl RenderContext {
             device,
             queue,
             id: NEXT_ID.fetch_add(1, Ordering::Relaxed),
+            token: Arc::default(),
             adapter: None,
 
             render_pipelines: Arc::default(),
@@ -168,12 +173,12 @@ impl RenderContext {
         }
     }
 
-    /// The persistent buffer behind the storage root `name`.
-    /// It is created, or recreated at a new `span`, with the shader's bytes. After that,
-    /// it takes only the word ranges a `set` changed since this context's last upload,
-    /// so the rest keeps what a compute pass wrote, or the whole root when another
-    /// Renderer's upload took changes this one hadn't seen (`UniformStorage::list_changes`).
-    /// It holds `span` rounded up to 4 bytes, the size the root binds and reads back at.
+    /// The persistent buffer behind the storage root `name`, with `shader`'s changes in it.
+    ///
+    /// It is created, or recreated at a new `span`, with the shader's whole root, and
+    /// holds `span` rounded up to 4 bytes, the size the root binds and reads back at. After
+    /// that, it takes only the word ranges `UniformStorage::list_changes` gives this context,
+    /// so the rest of the root keeps what a compute pass wrote, which a whole upload would lose.
     pub(super) fn storage_buffer(
         &self,
         shader: &ShaderObject,
@@ -199,39 +204,35 @@ impl RenderContext {
                 .insert(name.to_string(), (buffer.clone(), span));
             buffer
         });
-        // An upgradable read blocks a `set` until the changes are cleared, so no update is lost.
+        // An upgradable read blocks a `set` until the upload is recorded, so no change is lost.
         let storage = shader.storage.upgradable_read();
-        let upload = match created {
-            true => StorageUpload::Whole,
-            false => storage.list_changes(name, self.id),
-        };
-        let uploads = upload != StorageUpload::Nothing;
-        match (storage.get_bytes(name), upload) {
-            (Some(bytes), StorageUpload::Whole) => {
-                self.queue
-                    .write_buffer(&buffer, 0, &pools::pad_bytes(bytes))
+        let bytes = storage.get_bytes(name);
+        if created {
+            let whole = match bytes {
+                Some(bytes) => pools::pad_bytes(bytes),
+                None => Cow::Owned(vec![0u8; pools::align_size(span) as usize]),
+            };
+            self.queue.write_buffer(&buffer, 0, &whole);
+        } else {
+            let ranges = storage.list_changes(name, self.id);
+            if ranges.is_empty() {
+                return buffer;
             }
-            (Some(bytes), StorageUpload::Ranges(ranges)) => {
-                self.write_ranges(&buffer, &pools::pad_bytes(bytes), &ranges)
+            if let Some(bytes) = bytes {
+                self.write_ranges(&buffer, &pools::pad_bytes(bytes), &ranges);
             }
-            (None, StorageUpload::Whole) if created => {
-                let zeros = vec![0u8; pools::align_size(span) as usize];
-                self.queue.write_buffer(&buffer, 0, &zeros)
-            }
-            _ => {}
         }
-        if uploads {
-            RwLockUpgradableReadGuard::upgrade(storage).clear_changes(name, self.id);
-        }
+        RwLockUpgradableReadGuard::upgrade(storage).record_upload(name, self.id, &self.token);
         buffer
     }
 
-    /// Copies each of `ranges` of `bytes` to the same offset in `buffer`. One range
-    /// goes through `write_buffer`. More go into one staging buffer, packed, with one
-    /// copy each, since each `write_buffer` stages its bytes in a buffer of its own.
-    /// The ranges are word-aligned, as buffer copies need, and submitted before the
-    /// frame that binds `buffer`, as `write_buffer` is.
-    fn write_ranges(&self, buffer: &wgpu::Buffer, bytes: &[u8], ranges: &[std::ops::Range<usize>]) {
+    /// Copies each of `ranges` of `bytes` to the same offset in `buffer`.
+    ///
+    /// The ranges are word-aligned, as buffer copies need.
+    /// One range goes through `write_buffer`. More go into one staging buffer, packed,
+    /// with one copy each, since each `write_buffer` stages its bytes in a buffer of its own.
+    /// The copies are submitted before the frame that binds `buffer`, as `write_buffer` is too.
+    fn write_ranges(&self, buffer: &wgpu::Buffer, bytes: &[u8], ranges: &[Range<usize>]) {
         let slices: Vec<(usize, &[u8])> = ranges
             .iter()
             .filter_map(|range| {

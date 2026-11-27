@@ -184,8 +184,8 @@ fn setting_the_root_replaces_every_byte() {
 }
 
 // Story: Two Renderers draw the same simulation. The app sets a field and one Renderer
-// draws, then sets another and the other draws. Each Renderer ends up with both
-// fields: one that missed changes the other uploaded takes the whole root.
+// draws, then sets another and the other draws. Each Renderer takes both fields, the
+// one the other Renderer uploaded included, and keeps the counts its own pass wrote.
 #[test]
 fn a_second_renderer_gets_the_changes_the_first_one_uploaded() {
     pollster::block_on(async move {
@@ -212,13 +212,47 @@ fn a_second_renderer_gets_the_changes_the_first_one_uploaded() {
         // Assert
         assert_eq!(
             read_sim(&y, &shader).await,
-            [5, 5, 5, 5, 55],
-            "y takes the whole root, step 5 included, then one step"
+            [5, 6, 6, 6, 55],
+            "y takes step 5 and count 3 over its counts of 1, then one step"
         );
         assert_eq!(
             read_sim(&x, &shader).await,
-            [5, 5, 5, 5, 55],
-            "x takes the whole root, count 3 included, then one step"
+            [5, 11, 11, 11, 55],
+            "x takes count 3 over its counts of 6, then one step"
+        );
+    });
+}
+
+// Story: Two Renderers draw one simulation, and the app sets its step each frame.
+// Each Renderer uploads only the step, so the counts its own pass wrote add up.
+#[test]
+fn two_renderers_keep_what_their_passes_wrote() {
+    pollster::block_on(async move {
+        // Arrange
+        let x = Renderer::new();
+        let y = Renderer::new();
+        let x_probe = x.create_texture_target([8, 8]).await.expect("x target");
+        let y_probe = y.create_texture_target([8, 8]).await.expect("y target");
+        let shader = Shader::new(SIMULATION).expect("simulation shader failed");
+        let pass = Pass::from_shader("simulation", &shader);
+
+        // Act
+        for step in 1..=3u32 {
+            shader.set("ranged_sim.step", step).expect("set step");
+            x.render(&pass, &x_probe).expect("x render failed");
+            y.render(&pass, &y_probe).expect("y render failed");
+        }
+
+        // Assert
+        assert_eq!(
+            read_sim(&x, &shader).await,
+            [3, 6, 6, 6, 6],
+            "x: step 3, then counts of 1 + 2 + 3"
+        );
+        assert_eq!(
+            read_sim(&y, &shader).await,
+            [3, 6, 6, 6, 6],
+            "y: step 3, then counts of 1 + 2 + 3"
         );
     });
 }
@@ -295,6 +329,45 @@ fn shaders_that_share_a_root_upload_only_what_each_set() {
             read_sim(&renderer, &writer).await,
             [1, 3, 101, 3, 3],
             "the writer's step stays, and the other shader's count goes up"
+        );
+    });
+}
+
+// Story: Two shaders share a storage root, and two Renderers draw both. A count the
+// second shader sets reaches each Renderer's buffer, and the step the first one set stays.
+#[test]
+fn a_shared_root_takes_each_set_on_every_renderer() {
+    pollster::block_on(async move {
+        // Arrange
+        let x = Renderer::new();
+        let y = Renderer::new();
+        let x_probe = x.create_texture_target([8, 8]).await.expect("x target");
+        let y_probe = y.create_texture_target([8, 8]).await.expect("y target");
+        let writer = Shader::new(SIMULATION).expect("writer shader failed");
+        let other = Shader::new(SIMULATION).expect("other shader failed");
+        let writes = Pass::from_shader("writer", &writer);
+        let reads = Pass::from_shader("other", &other);
+        writer.set("ranged_sim.step", 1u32).expect("set step");
+        x.render(&writes, &x_probe).expect("x writer render failed");
+        y.render(&writes, &y_probe).expect("y writer render failed");
+
+        // Act
+        other
+            .set("ranged_sim.counts[1]", 100u32)
+            .expect("set one count");
+        x.render(&reads, &x_probe).expect("x other render failed");
+        y.render(&reads, &y_probe).expect("y other render failed");
+
+        // Assert
+        assert_eq!(
+            read_sim(&x, &writer).await,
+            [1, 2, 101, 2, 2],
+            "x: the writer's step, and the other shader's count, then two steps"
+        );
+        assert_eq!(
+            read_sim(&y, &writer).await,
+            [1, 2, 101, 2, 2],
+            "y: the writer's step, and the other shader's count, then two steps"
         );
     });
 }

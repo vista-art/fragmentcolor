@@ -8,7 +8,6 @@ use naga::{Module, ScalarKind, Type, TypeInner, VectorSize};
 use pyo3::prelude::*;
 
 pub(super) mod bytes;
-pub(crate) use bytes::StorageUpload;
 pub(super) mod input;
 pub(crate) mod texture_maps;
 
