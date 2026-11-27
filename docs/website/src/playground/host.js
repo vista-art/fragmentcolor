@@ -177,7 +177,8 @@ export class Playground {
     this.pointer = null;
     // Wheel, drag and pinch since the last frame, for demos with `gestures: true`.
     this.gestures = null;
-    // Keys held while the canvas has focus, and the touch stick, for demos with `keys: true`.
+    // Keys held while the canvas has focus, for demos with `keys: true`, and where
+    // the touch stick points, as [x, y], which stays [0, 0] for a demo that shows none.
     this.keys = { down: new Set(), stick: [0, 0] };
     // The frame request that lets go of each key released since the last frame.
     this.releases = new Map();

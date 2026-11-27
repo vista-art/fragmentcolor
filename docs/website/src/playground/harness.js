@@ -34,10 +34,10 @@ requestAnimationFrame(function tick(now) {
 
 // Keys held while the canvas has focus, and where the touch stick points.
 const KEYS = /* js */ `// Every key held down while the canvas has focus, by KeyboardEvent.code, and
-// the touch stick as [x, y] from -1 to 1 with y up. A click or Tab gives the
-// canvas focus. Shortcuts with a modifier, Tab and Escape stay with the page.
-// A key lets go a frame after its keyup, so a tap shorter than a frame still
-// reaches frame.
+// where a touch stick points, as [x, y] from -1 to 1 with y up, which stays
+// [0, 0] when the page shows no stick. A click or Tab gives the canvas focus.
+// Shortcuts with a modifier, Tab and Escape stay with the page. A key lets go
+// a frame after its keyup, so a tap shorter than a frame still reaches frame.
 const down = new Set();
 let stick = [0, 0];
 const held = () => ({ down: new Set(down), stick: [...stick] });
