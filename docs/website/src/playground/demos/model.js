@@ -111,7 +111,8 @@ fn flatten(pixel: vec2<i32>, reach: i32, last: vec2<i32>) -> vec3<f32> {
       }
     }
   }
-  var best = textureLoad(image, pixel, 0).rgb;
+  let own = textureLoad(image, pixel, 0).rgb;
+  var best = own;
   var least = 1e9;
   for (var quarter = 0; quarter < 4; quarter++) {
     if (counts[quarter] < 1.0) {
@@ -124,6 +125,10 @@ fn flatten(pixel: vec2<i32>, reach: i32, last: vec2<i32>) -> vec3<f32> {
       least = variance;
       best = mean;
     }
+  }
+  // A dark spot much smaller than the square, such as the eye, keeps its own color.
+  if (brightness(own) < 0.3 * brightness(best)) {
+    return own;
   }
   return best;
 }
