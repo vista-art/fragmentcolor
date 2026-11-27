@@ -1,8 +1,10 @@
 import os
+import pickle
 import platform
 import importlib
 from pathlib import Path
 import numpy as np
+import fragmentcolor
 from fragmentcolor import (
     BindingError,
     Camera,
@@ -42,6 +44,7 @@ from fragmentcolor import (
     Quad,
     ToonMaterial,
     UnlitMaterial,
+    UnsupportedMipmapFormatError,
     Vertex,
     WindowTarget,
 )
@@ -397,6 +400,10 @@ def check_shader_refusals(renderer):
         assert e.limit == "max_bind_groups", f"limit {e.limit}"
         assert e.value == 101 and e.max < 101, f"value {e.value}, max {e.max}"
         assert e.item.startswith("'tint'"), f"item {e.item}"
+        # A worker process sends its error back pickled, fields and all.
+        copy = pickle.loads(pickle.dumps(e))
+        assert type(copy) is LimitError and str(copy) == str(e), repr(copy)
+        assert (copy.item, copy.limit, copy.value, copy.max) == (e.item, e.limit, e.value, e.max)
         print(f"a group past the device raised LimitError: {e}")
     else:
         raise AssertionError("a group past the device should raise LimitError")
@@ -1381,6 +1388,42 @@ def check_scene_errors():
     print("Scene.load and Shader raise the documented errors")
 
 
+def check_error_names():
+    """Each exception class prints as Python imports it, such as
+    `fragmentcolor.InvalidInputError`, and pickles back by that name."""
+    classes = (
+        FragmentColorError,
+        InvalidInputError,
+        UnsupportedMipmapFormatError,
+        MalformedImageError,
+        OccludedSurfaceError,
+        DeviceError,
+        LimitError,
+        FeatureError,
+        BindingError,
+        EntryError,
+        SceneLoadError,
+        LightError,
+        CameraError,
+        MaterialError,
+    )
+    for error in classes:
+        name = error.__name__
+        assert error.__module__ == "fragmentcolor", f"{name} is in {error.__module__}"
+        assert getattr(fragmentcolor, name) is error, f"fragmentcolor.{name} is another class"
+        copy = pickle.loads(pickle.dumps(error("a message")))
+        assert type(copy) is error and str(copy) == "a message", repr(copy)
+    assert FragmentColorError.__qualname__ == "FragmentColorError"
+    try:
+        Size(-1, 2)
+    except InvalidInputError as e:
+        copy = pickle.loads(pickle.dumps(e))
+        assert type(copy) is InvalidInputError and str(copy) == str(e), repr(copy)
+    else:
+        raise AssertionError("Size(-1, 2) should raise InvalidInputError")
+    print("Every exception class is named as fragmentcolor exports it, and pickles")
+
+
 def check_stub():
     """The stub leaves out the binding plumbing that dispatch no longer calls,
     and gives each exception the builtin base it has at run time."""
@@ -1813,6 +1856,7 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
     check_toon_material(renderer)
     check_invalid_textures(renderer)
     check_scene_errors()
+    check_error_names()
     check_stub()
     check_typed_returns()
 

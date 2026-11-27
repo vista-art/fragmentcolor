@@ -1,65 +1,86 @@
 //! The Python exception classes, `raise_error` and `PythonError`.
 
+use crate::DisplayError;
 use crate::core::Field;
 use crate::errors::{Classify, ErrorClass, ErrorShape};
-use pyo3::{create_exception, exceptions::PyException, prelude::*};
+use pyo3::exceptions::{PyRuntimeError, PyValueError};
+use pyo3::prelude::*;
+use pyo3::sync::PyOnceLock;
+use pyo3::types::{PyDict, PyTuple, PyType};
 
-create_exception!(fragment_color, PyFragmentColorError, PyException);
-create_exception!(
-    fragment_color,
-    InvalidInputError,
-    PyFragmentColorError,
-    "A value the call can't take, such as a negative size or bytes that don't match their texture."
-);
-create_exception!(
-    fragment_color,
-    UnsupportedMipmapFormatError,
-    PyFragmentColorError,
-    "A texture format the CPU mipmap builder can't fill."
-);
-create_exception!(
-    fragment_color,
-    MalformedImageError,
-    PyFragmentColorError,
-    "Image bytes that can't be decoded."
-);
-create_exception!(
-    fragment_color,
-    OccludedSurfaceError,
-    PyFragmentColorError,
-    "A window that is hidden or minimized, so render skips the frame."
-);
-create_exception!(
-    fragment_color,
-    DeviceError,
-    PyFragmentColorError,
-    "A GPU error an error scope caught, with its kind, the label of the step that raised it and the device's own detail."
-);
+pub use classes::FragmentColorError as PyFragmentColorError;
+pub use classes::{
+    BindingError, DeviceError, EntryError, FeatureError, InvalidInputError, LimitError,
+    MalformedImageError, OccludedSurfaceError, UnsupportedMipmapFormatError,
+};
 
-create_exception!(
-    fragment_color,
-    LimitError,
-    PyFragmentColorError,
-    "Something in a shader or mesh past one of the device's limits, with the item, the limit's name, the value it needs and the device's maximum."
-);
-create_exception!(
-    fragment_color,
-    FeatureError,
-    PyFragmentColorError,
-    "Something in a shader that needs a feature the device lacks, with the item and the feature."
-);
-create_exception!(
-    fragment_color,
-    BindingError,
-    PyFragmentColorError,
-    "A texture uniform whose slot can't take its texture, or that was never set, with the uniform's name, what the slot takes and what it got."
-);
-create_exception!(
-    fragment_color,
-    EntryError,
-    PyFragmentColorError,
-    "A shader without the entry point its pass runs, with the stage."
-);
+/// The classes pyo3 builds, named as Python prints them.
+/// In a module of their own, the base class can take the name
+/// `FragmentColorError`, which the crate's error enum holds outside it.
+mod classes {
+    use pyo3::{create_exception, exceptions::PyException};
+
+    create_exception!(
+        fragmentcolor,
+        FragmentColorError,
+        PyException,
+        "The base class of every FragmentColor exception."
+    );
+    create_exception!(
+        fragmentcolor,
+        InvalidInputError,
+        FragmentColorError,
+        "A value the call can't take, such as a negative size or bytes that don't match their texture."
+    );
+    create_exception!(
+        fragmentcolor,
+        UnsupportedMipmapFormatError,
+        FragmentColorError,
+        "A texture format the CPU mipmap builder can't fill."
+    );
+    create_exception!(
+        fragmentcolor,
+        MalformedImageError,
+        FragmentColorError,
+        "Image bytes that can't be decoded."
+    );
+    create_exception!(
+        fragmentcolor,
+        OccludedSurfaceError,
+        FragmentColorError,
+        "A window that is hidden or minimized, so render skips the frame."
+    );
+    create_exception!(
+        fragmentcolor,
+        DeviceError,
+        FragmentColorError,
+        "A GPU error an error scope caught, with its kind, the label of the step that raised it and the device's own detail."
+    );
+    create_exception!(
+        fragmentcolor,
+        LimitError,
+        FragmentColorError,
+        "Something in a shader or mesh past one of the device's limits, with the item, the limit's name, the value it needs and the device's maximum."
+    );
+    create_exception!(
+        fragmentcolor,
+        FeatureError,
+        FragmentColorError,
+        "Something in a shader that needs a feature the device lacks, with the item and the feature."
+    );
+    create_exception!(
+        fragmentcolor,
+        BindingError,
+        FragmentColorError,
+        "A texture uniform whose slot can't take its texture, or that was never set, with the uniform's name, what the slot takes and what it got."
+    );
+    create_exception!(
+        fragmentcolor,
+        EntryError,
+        FragmentColorError,
+        "A shader without the entry point its pass runs, with the stage."
+    );
+}
 
 /// An exception of `class` with the full `message`.
 pub(crate) fn raise_class(class: ErrorClass, message: String) -> PyErr {
@@ -145,11 +166,7 @@ impl PythonError {
     }
 
     /// The class, built on first use.
-    pub(crate) fn class(self, py: Python<'_>) -> PyResult<Bound<'_, pyo3::types::PyType>> {
-        use pyo3::exceptions::{PyRuntimeError, PyValueError};
-        use pyo3::sync::PyOnceLock;
-        use pyo3::types::{PyDict, PyTuple, PyType};
-
+    pub(crate) fn class(self, py: Python<'_>) -> PyResult<Bound<'_, PyType>> {
         static SCENE_LOAD: PyOnceLock<Py<PyType>> = PyOnceLock::new();
         static LIGHT: PyOnceLock<Py<PyType>> = PyOnceLock::new();
         static CAMERA: PyOnceLock<Py<PyType>> = PyOnceLock::new();
@@ -181,14 +198,14 @@ impl PythonError {
     }
 }
 
-impl From<PyErr> for crate::DisplayError {
+impl From<PyErr> for DisplayError {
     fn from(e: PyErr) -> Self {
-        crate::DisplayError::Error(e.to_string())
+        DisplayError::Error(e.to_string())
     }
 }
 
-impl From<crate::DisplayError> for PyErr {
-    fn from(e: crate::DisplayError) -> Self {
+impl From<DisplayError> for PyErr {
+    fn from(e: DisplayError) -> Self {
         raise_error(&e)
     }
 }
