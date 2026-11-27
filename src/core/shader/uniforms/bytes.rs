@@ -933,31 +933,35 @@ mod tests {
     fn each_context_catches_up_on_its_own() {
         // Arrange
         let mut storage = UniformStorage::new(&HashMap::new()).expect("empty storage");
-        let (x, y) = (1, 2);
-        let (x_token, y_token) = (Arc::new(()), Arc::new(()));
-        storage.record_upload("root", x, &x_token);
-        storage.record_upload("root", y, &y_token);
+        let (first, second) = (1, 2);
+        let (first_token, second_token) = (Arc::new(()), Arc::new(()));
+        storage.record_upload("root", first, &first_token);
+        storage.record_upload("root", second, &second_token);
 
         // Act
         mark(&mut storage, 0..4);
-        let x_first = storage.list_changes("root", x);
-        storage.record_upload("root", x, &x_token);
+        let first_takes = storage.list_changes("root", first);
+        storage.record_upload("root", first, &first_token);
         mark(&mut storage, 8..12);
-        let y_after = storage.list_changes("root", y);
-        storage.record_upload("root", y, &y_token);
-        let x_after = storage.list_changes("root", x);
-        storage.record_upload("root", x, &x_token);
-        let x_again = storage.list_changes("root", x);
+        let second_takes = storage.list_changes("root", second);
+        storage.record_upload("root", second, &second_token);
+        let first_then = storage.list_changes("root", first);
+        storage.record_upload("root", first, &first_token);
+        let first_again = storage.list_changes("root", first);
 
         // Assert
-        assert_eq!(x_first, [0..4], "x takes its range");
+        assert_eq!(first_takes, [0..4], "first takes its range");
         assert_eq!(
-            y_after,
+            second_takes,
             [0..4, 8..12],
-            "y takes both, with 0..4, which x took"
+            "second takes both, with 0..4, which first took"
         );
-        assert_eq!(x_after, [8..12], "x takes only 8..12, which y took");
-        assert!(x_again.is_empty(), "x holds every change");
+        assert_eq!(
+            first_then,
+            [8..12],
+            "first takes only 8..12, which second took"
+        );
+        assert!(first_again.is_empty(), "first holds every change");
     }
 
     // Story: Another shader created the buffer a context binds, so this shader never
@@ -966,21 +970,21 @@ mod tests {
     fn a_new_context_takes_every_range_ever_set() {
         // Arrange
         let mut storage = UniformStorage::new(&HashMap::new()).expect("empty storage");
-        let (x, z) = (1, 3);
-        let x_token = Arc::new(());
+        let (first, third) = (1, 3);
+        let first_token = Arc::new(());
         mark(&mut storage, 0..4);
-        storage.record_upload("root", x, &x_token);
+        storage.record_upload("root", first, &first_token);
         mark(&mut storage, 8..12);
-        storage.record_upload("root", x, &x_token);
+        storage.record_upload("root", first, &first_token);
         mark(&mut storage, 16..20);
 
         // Act
-        let x_lacks = storage.list_changes("root", x);
-        let z_lacks = storage.list_changes("root", z);
+        let first_lacks = storage.list_changes("root", first);
+        let third_lacks = storage.list_changes("root", third);
 
         // Assert
-        assert_eq!(x_lacks, [16..20], "x took the others");
-        assert_eq!(z_lacks, [0..4, 8..12, 16..20], "z took none");
+        assert_eq!(first_lacks, [16..20], "first took the others");
+        assert_eq!(third_lacks, [0..4, 8..12, 16..20], "third took none");
     }
 
     // Story: One context uploads each frame and another lags behind. Once the log
@@ -989,16 +993,16 @@ mod tests {
     fn compaction_keeps_what_each_context_lacks() {
         // Arrange
         let mut storage = UniformStorage::new(&HashMap::new()).expect("empty storage");
-        let (x, y) = (1, 2);
-        let (x_token, y_token) = (Arc::new(()), Arc::new(()));
-        storage.record_upload("root", x, &x_token);
-        storage.record_upload("root", y, &y_token);
+        let (first, second) = (1, 2);
+        let (first_token, second_token) = (Arc::new(()), Arc::new(()));
+        storage.record_upload("root", first, &first_token);
+        storage.record_upload("root", second, &second_token);
 
         // Act
         for frame in 0..1000 {
             let start = (frame % 10) * 8;
             mark(&mut storage, start..start + 4);
-            storage.record_upload("root", x, &x_token);
+            storage.record_upload("root", first, &first_token);
         }
         mark(&mut storage, 200..204);
 
@@ -1007,11 +1011,15 @@ mod tests {
         let missed: Vec<Range<usize>> = places.chain([200..204]).collect();
         let kept = storage.storage_changes["root"].log.len();
         assert_eq!(
-            storage.list_changes("root", x),
+            storage.list_changes("root", first),
             [200..204],
-            "x took the rest"
+            "first took the rest"
         );
-        assert_eq!(storage.list_changes("root", y), missed, "y took none");
+        assert_eq!(
+            storage.list_changes("root", second),
+            missed,
+            "second took none"
+        );
         assert!(kept <= 128, "{kept} entries kept");
     }
 
@@ -1021,13 +1029,13 @@ mod tests {
     fn runs_every_context_holds_join() {
         // Arrange
         let mut storage = UniformStorage::new(&HashMap::new()).expect("empty storage");
-        let x = 1;
-        let x_token = Arc::new(());
+        let first = 1;
+        let first_token = Arc::new(());
 
         // Act
         for word in 0..1000 {
             mark(&mut storage, word * 4..word * 4 + 4);
-            storage.record_upload("root", x, &x_token);
+            storage.record_upload("root", first, &first_token);
         }
 
         // Assert
@@ -1038,8 +1046,8 @@ mod tests {
             changes.log.len()
         );
         assert!(
-            storage.list_changes("root", x).is_empty(),
-            "x holds them all"
+            storage.list_changes("root", first).is_empty(),
+            "first holds them all"
         );
         assert_eq!(
             storage.list_changes("root", 2),
@@ -1054,23 +1062,23 @@ mod tests {
     fn a_context_that_is_gone_is_forgotten() {
         // Arrange
         let mut storage = UniformStorage::new(&HashMap::new()).expect("empty storage");
-        let (x, y) = (1, 2);
-        let (x_token, y_token) = (Arc::new(()), Arc::new(()));
-        storage.record_upload("root", x, &x_token);
-        storage.record_upload("root", y, &y_token);
+        let (first, second) = (1, 2);
+        let (first_token, second_token) = (Arc::new(()), Arc::new(()));
+        storage.record_upload("root", first, &first_token);
+        storage.record_upload("root", second, &second_token);
 
         // Act
-        drop(y_token);
+        drop(second_token);
         mark(&mut storage, 0..4);
-        storage.record_upload("root", x, &x_token);
+        storage.record_upload("root", first, &first_token);
 
         // Assert
         let changes = &storage.storage_changes["root"];
         let known: Vec<u64> = changes.contexts.keys().copied().collect();
-        assert_eq!(known, [x], "only x is left");
+        assert_eq!(known, [first], "only first is left");
         assert_eq!(
-            changes.floor, changes.contexts[&x].epoch,
-            "the floor follows x alone"
+            changes.floor, changes.contexts[&first].epoch,
+            "the floor follows first alone"
         );
     }
 }

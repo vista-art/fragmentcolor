@@ -82,10 +82,10 @@ async fn read_sim(renderer: &Renderer, shader: &Shader) -> Vec<u32> {
         .read_storage(shader, "ranged_sim")
         .await
         .expect("read_storage failed");
-    integers(&bytes)
+    split_words(&bytes)
 }
 
-fn integers(bytes: &[u8]) -> Vec<u32> {
+fn split_words(bytes: &[u8]) -> Vec<u32> {
     bytes
         .as_chunks::<4>()
         .0
@@ -94,7 +94,7 @@ fn integers(bytes: &[u8]) -> Vec<u32> {
         .collect()
 }
 
-fn halves(bytes: &[u8]) -> Vec<u16> {
+fn split_halves(bytes: &[u8]) -> Vec<u16> {
     bytes
         .as_chunks::<2>()
         .0
@@ -131,7 +131,7 @@ fn setting_one_field_keeps_what_the_compute_pass_wrote() {
             .await
             .expect("read_storage failed");
         assert_eq!(
-            integers(&bytes),
+            split_words(&bytes),
             [10, 11, 11, 11, 11],
             "step, then counts of 1 + 10"
         );
@@ -169,7 +169,7 @@ fn setting_one_item_keeps_its_neighbors() {
             .await
             .expect("read_storage failed");
         assert_eq!(
-            integers(&bytes),
+            split_words(&bytes),
             [1, 3, 3, 101, 3],
             "step, then counts where only item 2 was set"
         );
@@ -207,7 +207,7 @@ fn setting_the_root_replaces_every_byte() {
             .await
             .expect("read_storage failed");
         assert_eq!(
-            integers(&bytes),
+            split_words(&bytes),
             [2, 52, 52, 52, 52],
             "the root's bytes, then one step of 2"
         );
@@ -221,35 +221,48 @@ fn setting_the_root_replaces_every_byte() {
 fn a_second_renderer_gets_the_changes_the_first_one_uploaded() {
     pollster::block_on(async move {
         // Arrange
-        let x = Renderer::new();
-        let y = Renderer::new();
-        let x_probe = x.create_texture_target([8, 8]).await.expect("x target");
-        let y_probe = y.create_texture_target([8, 8]).await.expect("y target");
+        let left = Renderer::new();
+        let right = Renderer::new();
+        let left_probe = left
+            .create_texture_target([8, 8])
+            .await
+            .expect("left target");
+        let right_probe = right
+            .create_texture_target([8, 8])
+            .await
+            .expect("right target");
         let shader = Shader::new(SIMULATION).expect("simulation shader failed");
         let pass = Pass::from_shader("simulation", &shader);
         shader.set("ranged_sim.step", 1u32).expect("set step 1");
-        x.render(&pass, &x_probe).expect("x first render failed");
-        y.render(&pass, &y_probe).expect("y first render failed");
+        left.render(&pass, &left_probe)
+            .expect("left first render failed");
+        right
+            .render(&pass, &right_probe)
+            .expect("right first render failed");
 
         // Act
         shader.set("ranged_sim.step", 5u32).expect("set step 5");
-        x.render(&pass, &x_probe).expect("x second render failed");
+        left.render(&pass, &left_probe)
+            .expect("left second render failed");
         shader
             .set("ranged_sim.counts[3]", 50u32)
             .expect("set one count");
-        y.render(&pass, &y_probe).expect("y second render failed");
-        x.render(&pass, &x_probe).expect("x third render failed");
+        right
+            .render(&pass, &right_probe)
+            .expect("right second render failed");
+        left.render(&pass, &left_probe)
+            .expect("left third render failed");
 
         // Assert
         assert_eq!(
-            read_sim(&y, &shader).await,
+            read_sim(&right, &shader).await,
             [5, 6, 6, 6, 55],
-            "y takes step 5 and count 3 over its counts of 1, then one step"
+            "right takes step 5 and count 3 over its counts of 1, then one step"
         );
         assert_eq!(
-            read_sim(&x, &shader).await,
+            read_sim(&left, &shader).await,
             [5, 11, 11, 11, 55],
-            "x takes count 3 over its counts of 6, then one step"
+            "left takes count 3 over its counts of 6, then one step"
         );
     });
 }
@@ -260,30 +273,38 @@ fn a_second_renderer_gets_the_changes_the_first_one_uploaded() {
 fn two_renderers_keep_what_their_passes_wrote() {
     pollster::block_on(async move {
         // Arrange
-        let x = Renderer::new();
-        let y = Renderer::new();
-        let x_probe = x.create_texture_target([8, 8]).await.expect("x target");
-        let y_probe = y.create_texture_target([8, 8]).await.expect("y target");
+        let left = Renderer::new();
+        let right = Renderer::new();
+        let left_probe = left
+            .create_texture_target([8, 8])
+            .await
+            .expect("left target");
+        let right_probe = right
+            .create_texture_target([8, 8])
+            .await
+            .expect("right target");
         let shader = Shader::new(SIMULATION).expect("simulation shader failed");
         let pass = Pass::from_shader("simulation", &shader);
 
         // Act
         for step in 1..=3u32 {
             shader.set("ranged_sim.step", step).expect("set step");
-            x.render(&pass, &x_probe).expect("x render failed");
-            y.render(&pass, &y_probe).expect("y render failed");
+            left.render(&pass, &left_probe).expect("left render failed");
+            right
+                .render(&pass, &right_probe)
+                .expect("right render failed");
         }
 
         // Assert
         assert_eq!(
-            read_sim(&x, &shader).await,
+            read_sim(&left, &shader).await,
             [3, 6, 6, 6, 6],
-            "x: step 3, then counts of 1 + 2 + 3"
+            "left: step 3, then counts of 1 + 2 + 3"
         );
         assert_eq!(
-            read_sim(&y, &shader).await,
+            read_sim(&right, &shader).await,
             [3, 6, 6, 6, 6],
-            "y: step 3, then counts of 1 + 2 + 3"
+            "right: step 3, then counts of 1 + 2 + 3"
         );
     });
 }
@@ -370,35 +391,47 @@ fn shaders_that_share_a_root_upload_only_what_each_set() {
 fn a_shared_root_takes_each_set_on_every_renderer() {
     pollster::block_on(async move {
         // Arrange
-        let x = Renderer::new();
-        let y = Renderer::new();
-        let x_probe = x.create_texture_target([8, 8]).await.expect("x target");
-        let y_probe = y.create_texture_target([8, 8]).await.expect("y target");
+        let left = Renderer::new();
+        let right = Renderer::new();
+        let left_probe = left
+            .create_texture_target([8, 8])
+            .await
+            .expect("left target");
+        let right_probe = right
+            .create_texture_target([8, 8])
+            .await
+            .expect("right target");
         let writer = Shader::new(SIMULATION).expect("writer shader failed");
         let other = Shader::new(SIMULATION).expect("other shader failed");
         let writes = Pass::from_shader("writer", &writer);
         let reads = Pass::from_shader("other", &other);
         writer.set("ranged_sim.step", 1u32).expect("set step");
-        x.render(&writes, &x_probe).expect("x writer render failed");
-        y.render(&writes, &y_probe).expect("y writer render failed");
+        left.render(&writes, &left_probe)
+            .expect("left writer render failed");
+        right
+            .render(&writes, &right_probe)
+            .expect("right writer render failed");
 
         // Act
         other
             .set("ranged_sim.counts[1]", 100u32)
             .expect("set one count");
-        x.render(&reads, &x_probe).expect("x other render failed");
-        y.render(&reads, &y_probe).expect("y other render failed");
+        left.render(&reads, &left_probe)
+            .expect("left other render failed");
+        right
+            .render(&reads, &right_probe)
+            .expect("right other render failed");
 
         // Assert
         assert_eq!(
-            read_sim(&x, &writer).await,
+            read_sim(&left, &writer).await,
             [1, 2, 101, 2, 2],
-            "x: the writer's step, and the other shader's count, then two steps"
+            "left: the writer's step, and the other shader's count, then two steps"
         );
         assert_eq!(
-            read_sim(&y, &writer).await,
+            read_sim(&right, &writer).await,
             [1, 2, 101, 2, 2],
-            "y: the writer's step, and the other shader's count, then two steps"
+            "right: the writer's step, and the other shader's count, then two steps"
         );
     });
 }
@@ -487,12 +520,12 @@ fn an_f16_set_uploads_its_whole_word() {
         // Assert
         let (one, two, three) = (0x3C00, 0x4000, 0x4200);
         assert_eq!(
-            halves(&after_a)[..3],
+            split_halves(&after_a)[..3],
             [two, one, 0],
             "a is 2, and b went back to its CPU 0 with a, then took one step"
         );
         assert_eq!(
-            halves(&after_c)[..3],
+            split_halves(&after_c)[..3],
             [two, two, three],
             "c is 3, and a and b keep what they held"
         );
@@ -537,7 +570,7 @@ fn halves_apart_reach_into_the_padding() {
             .expect("read_storage failed");
         let (two, three) = (0x4000, 0x4200);
         assert_eq!(
-            halves(&bytes),
+            split_halves(&bytes),
             [two, 0, three, three, three],
             "a is 2 and e is 3, and c and d took three steps"
         );
