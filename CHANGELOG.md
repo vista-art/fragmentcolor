@@ -2,7 +2,17 @@
 
 ## 0.12.8: Materials
 
-The materials release. Each shading model gets a type of its own. Signatures change in every language, as in 0.12.7.
+A patch release that gives each shading model a type of its own: `PbrMaterial`, `UnlitMaterial` and `ToonMaterial`, each with a `MaterialMap` for every texture it samples. A `Shader` is the custom material, a storage `set` uploads only the bytes it changes, and one Errors page lists every error class. Signatures change in every language, as in 0.12.7.
+
+### Highlights
+
+- `PbrMaterial`, `UnlitMaterial` and `ToonMaterial` replace `Material::pbr()`, and each takes only the settings its shading model reads.
+- `ToonMaterial` lights in flat steps, with a hard highlight, a rim along the edges and an optional ramp texture.
+- Each map is a `MaterialMap` that sets its texture, UV set and transform in one chain.
+- A `Shader` is the custom material, and sets its own blending and face culling.
+- A storage `set` uploads only the bytes it changes. What a compute pass wrote beside them stays.
+- Swift and Kotlin throw the error class Python raises, with the same message and fields.
+- The walkable world switches every model between PBR, toon and unlit while it runs.
 
 ### Upgrading from 0.12.7
 
@@ -11,17 +21,19 @@ The materials release. Each shading model gets a type of its own. Signatures cha
 - `Material::pbr()` is `PbrMaterial::new()`: `new PbrMaterial()` in JavaScript, `PbrMaterial()` in Python, Swift and Kotlin. Its number setters keep their names and arguments.
 - `Material::custom(shader)` goes. Pass the `Shader` to `Model::new` as it is. The renderer fills the `camera`, `lights` and `model_0` to `model_3` slots it declares, as before. A custom shader culls back faces, as it did. Set blending on it with `shader.alpha_mode(AlphaMode::Blend)`.
 - Each texture setter becomes a map: `base_color_texture(input)` is `base_color_map().texture(input)`, and the same goes for `metallic_roughness`, `normal`, `occlusion` and `emissive`. `texture_uv(slot, set)` is `map.uv(set)` and `texture_transform(slot, offset, scale, rotation)` is `map.transform(offset, scale, rotation)`, so `TextureSlot` goes. On Swift and Kotlin, `baseColorSource(input, options)` and the other four are `map.texture(...)`, as in every other language. It takes the `Texture`, bytes, path or `Mipmap` itself, where `baseColorSource` took it wrapped in a `TextureData`.
-- `model.material()` returns what the Model draws with. Rust gets the `Material` enum, `Material::Pbr(PbrMaterial)`, `Material::Unlit(UnlitMaterial)`, `Material::Toon(ToonMaterial)` or `Material::Custom(Shader)`, which is `#[non_exhaustive]`. JavaScript, Python, Swift and Kotlin get the material object or the `Shader` itself, which each narrows as it narrows any value: `instanceof`, `isinstance`, `as?` or `is`. Swift types it as `any Material`, a protocol only those four conform to, and Kotlin as `Any`.
+- `model.material()` returns what the Model draws with. Rust gets the `Material` enum, `Material::Pbr(PbrMaterial)`, `Material::Unlit(UnlitMaterial)`, `Material::Toon(ToonMaterial)` or `Material::Custom(Shader)`, which is `#[non_exhaustive]`. JavaScript, Python, Swift and Kotlin get the material object or the `Shader` itself, which each narrows as it narrows any value: `instanceof`, `isinstance`, `as?` or `is`. Swift types it as `any Material`, a protocol each of those four conforms to, and Kotlin as `Any`.
 - Every `Shader` culls back faces. One drawn on its own, without a Model, drew both. A triangle whose vertices run clockwise on screen no longer draws there: a flat shape wound clockwise, or a `Quad` whose `min` lies above or right of its `max`. Call `shader.double_sided(true)` to draw both faces again, or wind the triangle counter-clockwise. Models culled back faces already. `Shader::default()` and the hello triangle examples now wind counter-clockwise, and fullscreen triangles already did.
 - `Scene::load` builds an `UnlitMaterial` for a glTF material with `KHR_materials_unlit`, where it built a `PbrMaterial` that lit it.
 - `MaterialError::UvSet` is a struct variant, `{ call, set }`, whose message names the map: `PbrMaterial::normal_map().uv takes UV set 0 or 1, got 2`.
 - `MaterialError` gains `Bands`, for `bands(0)`, and `NoUv`, for a UV set or transform on the toon ramp. The enum isn't `#[non_exhaustive]`, so a Rust `match` that lists every variant needs new arms.
-- Swift's and Kotlin's `MobileTextureInput` is `TextureData`, the Rust name, as in `TextureData.bytes(data)`.
-- Swift's and Kotlin's `shader.get(key)` returns the plain value, as JavaScript and Python do: a `Bool`, `UInt32`, `Int32` or `Float`, a list of numbers, a `TextureId`, a `SamplerInfo` or bytes, typed `Any`, as in `try shader.get("resolution") as? [Float]`. It returned the `UniformData` enum, and the `float`, `floats` and `bytes` accessors on that enum go.
+- Swift's and Kotlin's `MobileTextureInput` is `TextureData`, the Rust name, as in `TextureData.bytes(data)`. The old name goes.
+- Swift's and Kotlin's `shader.get(key)` returns the plain value, the one JavaScript and Python return: a `Bool`, `UInt32`, `Int32` or `Float`, a list of numbers, a `TextureId`, a `SamplerInfo` or bytes, typed `Any`, as in `try shader.get("resolution") as? [Float]`. It returned the `UniformData` enum, and the `float`, `floats` and `bytes` accessors on that enum go. `TextureMeta` and its reflection enums leave the Swift and Kotlin bindings, as do the shape records `ArrayElement`, `StructShape`, `StructField`, `StorageEntry`, `PushEntry` and `StorageAccess`.
+- JavaScript's `shader.get(key)` on a sampler key returns a `SamplerInfo`, where it returned a plain `{ comparison }` object. `comparison` is a read-only getter on the class, which a spread copy or `JSON.stringify` doesn't see. Read `info.comparison`.
 - A texture slot reads back as its `TextureId` in every language. JavaScript returned the number inside it, and Python a `TextureMeta`.
 - Swift's `FragmentColorError` and Kotlin's `FragmentColorException` throw the class Python raises, as a case of the same name without its `Error` suffix, where they folded most errors into `Init`, `Render` and `Shader`. The cases are `Other`, for an error Python raises as the base `FragmentColorError`, `InvalidInput`, `UnsupportedMipmapFormat`, `MalformedImage`, `OccludedSurface`, `Device`, `Limit`, `Feature`, `Binding`, `Entry`, `SceneLoad`, `Light`, `Camera` and `Material`. `Occluded` is `OccludedSurface`. A `catch` or `when` on `Init`, `Render` or `Shader` catches `Other`, or the class the error now takes, such as `Material` for `ToonMaterial.bands(0)` and `InvalidInput` for a matrix of the wrong shape.
 - Every Swift and Kotlin case carries the error's text as its first field, `message`, before the fields it had, so a Swift pattern such as `case let .Limit(item, limit, value, max)` becomes `case let .Limit(_, item, limit, value, max)`. Kotlin's `message` is that text, where it listed the fields, as `kind=VALIDATION, label=frame, detail=...`. Each error's `name` in Swift and Kotlin is the class Python raises, as a JavaScript error's `name` is, such as `"MaterialError"`.
 - Kotlin's `Model(mesh, material)` throws `IllegalArgumentException` for an object that is no material, as JavaScript and Python throw a `TypeError`.
+- Python's exceptions take the names `fragmentcolor` exports: `fragmentcolor.FragmentColorError`, `fragmentcolor.InvalidInputError` and the rest. The base class was `fragment_color.PyFragmentColorError`, and the others sat in a `fragment_color` module that doesn't exist. `type(e).__name__` now matches the `name` JavaScript gives the same error.
 - JavaScript's and Python's errors take their text and fields from the error they pass on. A texture's error from `createTexture` or a material map reads as the texture's own message, where JavaScript added `Texture error: ` in front, and a device error there carries `kind`, `label` and `detail`, which JavaScript, and Python for a material map, left out.
 
 ### Materials
@@ -33,16 +45,27 @@ The materials release. Each shading model gets a type of its own. Signatures cha
 - A `Shader` is the custom material. `Model::new` takes a `PbrMaterial`, an `UnlitMaterial`, a `ToonMaterial`, a `Shader` or the `Material` enum in Rust, and the material object in every binding.
 - `Shader::alpha_mode` and `Shader::double_sided` set a shader's blending and face culling, in every language, whether it draws a Model or draws on its own. A `Shader` is single-sided by default, as the materials are.
 - A double-sided `PbrMaterial` or `ToonMaterial` lights a back face as the side the camera sees, with the normal turned toward the camera. `PbrMaterial` shaded a back face with the front's normal, so it drew dark where the camera's side was lit.
+- A double-sided `PbrMaterial` or `ToonMaterial` on a `Model` mirrored by a negative scale, such as `model.scale([-1, 1, 1])` or a glTF node with a negative scale, lights its outer faces as the front. `PbrMaterial` drew the sunlit side dark, and `ToonMaterial` filled it with the rim color. Single-sided materials light each face they draw along its own normal, as before.
+- A `PbrMaterial` on a mirrored `Model` reads its normal map as the mirror image of the unmirrored one, and its bumps light from the side they face. The bitangent ignored the mirroring, which turned the map's green channel upside down.
 - The `Material` page lists the material types and what the renderer fills in a custom shader, and `PbrMaterial`, `UnlitMaterial`, `ToonMaterial` and `MaterialMap` get pages of their own.
 
 ### Shaders and uniforms
 
-- A `Shader.set` on a field or an item of a storage root uploads only those bytes at the next render, in every language, so the rest of the root keeps what a compute pass wrote there. It uploaded the whole root from the shader's copy, so a compute pass that kept state in a root, such as counts beside a `step` the app sets each frame, lost that state on every `set`. An upload covers whole 4-byte words, so a `set` of one `f16` also writes the `f16` that shares its word. Raw bytes on the root still replace all of it, and so does a render that creates or recreates the root's buffer. Each Renderer catches up on its own, and one that missed changes another Renderer uploaded takes the whole root. Changes to items apart from each other go up through one staging buffer.
+- A `Shader.set` on a field or an item of a storage root uploads only those bytes at the next render, in every language, so the rest of the root keeps what a compute pass wrote there. It uploaded the whole root from the shader's copy, so a compute pass that kept state in a root, such as counts beside a `step` the app sets each frame, lost that state on every `set`. An upload covers whole 4-byte words, so a `set` of one `f16` also writes the `f16` that shares its word. Raw bytes on the root still replace all of it, and so does a render that creates or recreates the root's buffer. When two Renderers draw one shader, each uploads only the sets it hasn't taken yet and keeps what its own compute passes wrote. Two shaders that declare a root at the same size share one buffer, and the first render of either on a buffer the other created uploads each field and item it ever set. Changes to items apart from each other go up through one staging buffer.
+- `shader.get(key)` on a sampler key returns a `SamplerInfo` in every language, with a read-only `comparison` that says whether the slot is a `sampler_comparison`. Rust reads it as `let info: SamplerInfo = shader.get("shadow")?`. Python imports `SamplerInfo` from `fragmentcolor`, and it compares and hashes by value.
+- A `Shader` that declares `override DOUBLE_SIDED: bool` gets its `double_sided` setting as the value, as `ENCODE_SRGB` gets the target's encoding.
+
+### Errors
+
+- One Errors page at /api/errors lists every error class, when it's raised and its fields, with `kind` among `DeviceError`'s. `DeviceError` and `ErrorKind` leave the API menu, the Errors link ends it, and /api/errors/deviceerror and /api/errors/errorkind redirect to its `DeviceError` section.
+- Python's errors pickle by their class, and one raised in a `multiprocessing` worker reaches the parent as the same class with its fields. That includes a `DeviceError`'s `kind`, which pickles as the `ErrorKind` variant it names.
 
 ### Website and examples
 
 - The `toon_outline` example inks the outlines of toon-shaded shapes in a pass of its own, after the scene. A first pass draws each shape's normals and depth into two textures, and a fullscreen pass blends ink over the pixels where the depth jumps, along a silhouette, or the normal turns, along a crease. It opens a window, or saves one frame with `--png`.
-- The playground's walk demo builds its materials with `PbrMaterial` in every language's tab, and needs 0.12.8.
+- The playground's walkable world switches every model between `PbrMaterial`, `ToonMaterial` and `UnlitMaterial` while it runs: press M, or tap Style on a touch screen. Each spot holds one `Model` per style over the same `Mesh`. The switch hides one style's Models with `set_visible` and shows the next one's, and a label in the corner names the style. Every language's tab does the same and needs 0.12.8, and the Swift tab marks `setIntensity` with `try`.
+- Playground demos that take keys can list touch `buttons`, each of which holds its key down while a finger is on it, in the playground and in the `index.js` tab. A released key stays down for one more frame, and a quick tap still reaches `frame()`.
+- /api/scene/textureslot redirects to `MaterialMap`, the Targets group lists Target, WindowTarget, then TextureTarget, and the 3D scenes blog post links to material anchors that exist.
 
 ## 0.12.7: Device checks and typed errors
 
