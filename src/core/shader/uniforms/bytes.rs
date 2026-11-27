@@ -19,7 +19,7 @@ pub(crate) struct UniformStorage {
     pub(crate) uniforms: HashMap<String, (u32, u32, Uniform)>, // (offset, size, original data)
     // CPU-side blobs for storage buffers: root name -> raw bytes
     pub(crate) storage_blobs: HashMap<String, Vec<u8>>,
-    // What changed in each storage root on the CPU, and how far each RenderContext's buffer has caught up.
+    // What changed in each storage root on the CPU, and how far each buffer behind it has caught up.
     storage_changes: HashMap<String, StorageChanges>,
     // CPU-side blobs for push constants: root name -> raw bytes
     pub(crate) push_blobs: HashMap<String, Vec<u8>>,
@@ -494,27 +494,27 @@ impl UniformStorage {
         source.get(start..end)
     }
 
-    /// The word ranges of the storage root `root` that the RenderContext `context` lacks.
+    /// The word ranges of the storage root `root` that the buffer with the id `buffer` lacks.
     ///
-    /// A context this shader uploaded to lacks the bytes set since that upload.
-    /// One it never uploaded to, whose buffer another shader created, lacks each
+    /// A buffer this shader uploaded to lacks the bytes set since that upload.
+    /// One it never uploaded to, which another shader created, lacks each
     /// byte this shader ever set, and only those, so what the other shader keeps
     /// there stays. Ranges come sorted and apart, each starting and ending on a word,
     /// so the last one can reach past a root whose size isn't a multiple of 4, into its padding.
-    pub(crate) fn list_changes(&self, root: &str, context: u64) -> Vec<Range<usize>> {
+    pub(crate) fn list_changes(&self, root: &str, buffer: u64) -> Vec<Range<usize>> {
         self.storage_changes
             .get(root)
-            .map_or_else(Vec::new, |changes| changes.list(context))
+            .map_or_else(Vec::new, |changes| changes.list(buffer))
     }
 
-    /// Records that `context` holds every change to the storage root `root`
-    /// after an upload or the creation of its buffer. `token` lives as long as
-    /// the context, so the changes forget a context that is gone at the next upload.
-    pub(crate) fn record_upload(&mut self, root: &str, context: u64, token: &Arc<()>) {
+    /// Records that `buffer` holds every change to the storage root `root`
+    /// after an upload or its creation. `token` lives as long as the buffer,
+    /// so the next upload forgets a buffer that a Renderer replaced or dropped.
+    pub(crate) fn record_upload(&mut self, root: &str, buffer: u64, token: &Arc<()>) {
         self.storage_changes
             .entry(root.to_string())
             .or_default()
-            .record(context, token);
+            .record(buffer, token);
     }
 
     /// True iff the shader's source declared a top-level storage binding
@@ -540,11 +540,11 @@ fn allocate_zeros(name: &str, span: u32) -> Result<Vec<u8>, ShaderError> {
     Ok(vec![0u8; span as usize])
 }
 
-/// The changes to one storage root, and how far each RenderContext's buffer has caught up.
+/// The changes to one storage root, and how far each buffer behind it has caught up.
 ///
-/// Each set takes the current epoch, and each upload ends one. A context holds
+/// Each set takes the current epoch, and each upload ends one. A buffer holds
 /// every change up to the epoch of its last upload, so it takes only the words
-/// set after that, and never writes its CPU copy over what a compute pass wrote.
+/// set after that, and never takes the CPU copy over what a compute pass wrote.
 #[derive(Debug, Clone, Default)]
 struct StorageChanges {
     /// Each set, as whole 4-byte words and the epoch it came in, in epoch order.
@@ -553,10 +553,10 @@ struct StorageChanges {
     compacted: usize,
     /// The epoch of the sets made now.
     epoch: u64,
-    /// The oldest epoch a live context holds. Compaction raises older entries to it.
+    /// The oldest epoch a live buffer holds. Compaction raises older entries to it.
     floor: u64,
-    /// How far each live RenderContext's buffer has caught up, by context id.
-    contexts: HashMap<u64, Seen>,
+    /// How far each live buffer has caught up, by buffer id.
+    buffers: HashMap<u64, Seen>,
 }
 
 /// One set of a storage root: the words it changed, and the epoch it came in.
@@ -566,12 +566,12 @@ struct Change {
     epoch: u64,
 }
 
-/// How far one RenderContext's buffer has caught up.
+/// How far one buffer has caught up.
 #[derive(Debug, Clone)]
 struct Seen {
     /// The buffer holds every change up to this epoch.
     epoch: u64,
-    /// Dies with the context, so its entry can go.
+    /// Dies with the buffer, so its entry can go.
     token: Weak<()>,
 }
 
@@ -587,10 +587,10 @@ impl StorageChanges {
         }
     }
 
-    /// The ranges `context` lacks, sorted and apart:
-    /// the ones set after its last upload, or every one ever set for a context that never uploaded.
-    fn list(&self, context: u64) -> Vec<Range<usize>> {
-        let first = self.contexts.get(&context).map_or(0, |seen| {
+    /// The ranges `buffer` lacks, sorted and apart:
+    /// the ones set after its last upload, or every one ever set for a buffer that never took one.
+    fn list(&self, buffer: u64) -> Vec<Range<usize>> {
+        let first = self.buffers.get(&buffer).map_or(0, |seen| {
             self.log
                 .partition_point(|change| change.epoch <= seen.epoch)
         });
@@ -602,16 +602,15 @@ impl StorageChanges {
         merge_ranges(ranges.collect())
     }
 
-    /// Records that `context` holds every change so far, and starts a new epoch. It forgets
-    /// the contexts that are gone, and raises the floor to the oldest epoch a live context holds.
-    fn record(&mut self, context: u64, token: &Arc<()>) {
+    /// Records that `buffer` holds every change so far, and starts a new epoch. It forgets
+    /// the buffers that are gone, and raises the floor to the oldest epoch a live buffer holds.
+    fn record(&mut self, buffer: u64, token: &Arc<()>) {
         let token = Arc::downgrade(token);
         let epoch = self.epoch;
-        self.contexts.insert(context, Seen { epoch, token });
+        self.buffers.insert(buffer, Seen { epoch, token });
         self.epoch += 1;
-        self.contexts
-            .retain(|_, seen| seen.token.strong_count() > 0);
-        let oldest = self.contexts.values().map(|seen| seen.epoch).min();
+        self.buffers.retain(|_, seen| seen.token.strong_count() > 0);
+        let oldest = self.buffers.values().map(|seen| seen.epoch).min();
         self.floor = oldest.unwrap_or(self.floor);
     }
 }
@@ -632,9 +631,9 @@ fn mark_storage(changes: &mut HashMap<String, StorageChanges>, root: &str, range
 
 /// Rewrites `log` as one entry per run of words that share the epoch of their last set.
 ///
-/// Each word keeps the newest epoch that set it, so every context lacks the same
+/// Each word keeps the newest epoch that set it, so every buffer lacks the same
 /// words in the result as in `log`. An epoch below `floor` rises to it, since every
-/// live context holds it, so the runs they all hold join. The result is in epoch order.
+/// live buffer holds it, so the runs they all hold join. The result is in epoch order.
 fn compact(mut log: Vec<Change>, floor: u64) -> Vec<Change> {
     let mut points: Vec<usize> = log
         .iter()
@@ -862,7 +861,7 @@ fn locate<'a>(
 mod tests {
     use super::*;
 
-    /// The ranges a new context uploads after marking each `(start, end)` in order, as `(start, end)` pairs.
+    /// The ranges a new buffer takes after marking each `(start, end)` in order, as `(start, end)` pairs.
     fn marked(ranges: &[(usize, usize)]) -> Vec<(usize, usize)> {
         let mut storage = UniformStorage::new(&HashMap::new()).expect("empty storage");
         for &(start, end) in ranges {
@@ -927,10 +926,10 @@ mod tests {
         );
     }
 
-    // Story: Each context catches up on its own. It takes the ranges set since its last
-    // upload, the ones another context took included, and never one it already holds.
+    // Story: Each buffer catches up on its own. It takes the ranges set since its last
+    // upload, the ones another buffer took included, and never one it already holds.
     #[test]
-    fn each_context_catches_up_on_its_own() {
+    fn each_buffer_catches_up_on_its_own() {
         // Arrange
         let mut storage = UniformStorage::new(&HashMap::new()).expect("empty storage");
         let (first, second) = (1, 2);
@@ -964,10 +963,10 @@ mod tests {
         assert!(first_again.is_empty(), "first holds every change");
     }
 
-    // Story: Another shader created the buffer a context binds, so this shader never
-    // uploaded to it. The context takes every range this shader ever set, and no other.
+    // Story: Another shader created the buffer, so this shader never uploaded
+    // to it. The buffer takes every range this shader ever set, and no other.
     #[test]
-    fn a_new_context_takes_every_range_ever_set() {
+    fn a_new_buffer_takes_every_range_ever_set() {
         // Arrange
         let mut storage = UniformStorage::new(&HashMap::new()).expect("empty storage");
         let (first, third) = (1, 3);
@@ -987,10 +986,10 @@ mod tests {
         assert_eq!(third_lacks, [0..4, 8..12, 16..20], "third took none");
     }
 
-    // Story: One context uploads each frame and another lags behind. Once the log
-    // compacts, each still takes exactly what it lacks, and the log stays short.
+    // Story: One buffer takes an upload each frame and another lags behind. Once the
+    // log compacts, each still takes exactly what it lacks, and the log stays short.
     #[test]
-    fn compaction_keeps_what_each_context_lacks() {
+    fn compaction_keeps_what_each_buffer_lacks() {
         // Arrange
         let mut storage = UniformStorage::new(&HashMap::new()).expect("empty storage");
         let (first, second) = (1, 2);
@@ -1023,10 +1022,10 @@ mod tests {
         assert!(kept <= 128, "{kept} entries kept");
     }
 
-    // Story: Every context keeps up while the app sets touching words in turn, so
+    // Story: Every buffer keeps up while the app sets touching words in turn, so
     // compaction joins the runs they all hold and the log stays one entry long.
     #[test]
-    fn runs_every_context_holds_join() {
+    fn runs_every_buffer_holds_join() {
         // Arrange
         let mut storage = UniformStorage::new(&HashMap::new()).expect("empty storage");
         let first = 1;
@@ -1052,14 +1051,14 @@ mod tests {
         assert_eq!(
             storage.list_changes("root", 2),
             [0..4000],
-            "a new context takes every word"
+            "a new buffer takes every word"
         );
     }
 
-    // Story: A Renderer that is gone leaves its context's entry until the next upload,
-    // which forgets it, so the floor follows the contexts still alive.
+    // Story: A buffer a Renderer replaced or dropped leaves its entry until the next
+    // upload, which forgets it, so the floor follows the buffers still alive.
     #[test]
-    fn a_context_that_is_gone_is_forgotten() {
+    fn a_buffer_that_is_gone_is_forgotten() {
         // Arrange
         let mut storage = UniformStorage::new(&HashMap::new()).expect("empty storage");
         let (first, second) = (1, 2);
@@ -1074,10 +1073,10 @@ mod tests {
 
         // Assert
         let changes = &storage.storage_changes["root"];
-        let known: Vec<u64> = changes.contexts.keys().copied().collect();
+        let known: Vec<u64> = changes.buffers.keys().copied().collect();
         assert_eq!(known, [first], "only first is left");
         assert_eq!(
-            changes.floor, changes.contexts[&first].epoch,
+            changes.floor, changes.buffers[&first].epoch,
             "the floor follows first alone"
         );
     }

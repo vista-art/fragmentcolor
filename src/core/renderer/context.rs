@@ -33,9 +33,6 @@ pub(crate) struct RenderContext {
     /// Tells this context from every other one, so a mesh knows which device its
     /// buffers live on. wgpu compares the devices of two instances by an index both reuse.
     pub(crate) id: u64,
-    /// Lives as long as this context. A shader's storage changes keep a weak copy,
-    /// so they forget a context that is gone.
-    token: Arc<()>,
     /// The adapter the device came from. A texture checks its format and copies
     /// against what the adapter reports, since GLES and WebGL2 take less than WebGPU.
     pub(crate) adapter: Option<wgpu::Adapter>,
@@ -63,8 +60,8 @@ pub(crate) struct RenderContext {
     /// then goes as WGSL that keeps its layout (`layout::pick_source`).
     pub(super) writes_wgsl: AtomicBool,
 
-    // Persistent storage buffer registry: root name -> (buffer, span)
-    pub(super) storage_registry: DashMap<String, (wgpu::Buffer, u64)>,
+    // Persistent storage buffer registry: root name -> the buffer behind it
+    pub(super) storage_registry: DashMap<String, RootBuffer>,
     /// What `check_shader` decided for each shader source on this device,
     /// so a source is checked once, whether it passed or not.
     pub(super) checked: DashMap<ShaderHash, checks::shader::Verdict>,
@@ -109,6 +106,20 @@ pub(crate) struct RenderContext {
     pub(crate) late: Arc<device_errors::late::ErrorSlot>,
 }
 
+/// The persistent buffer behind a storage root, and what tells it from any other.
+#[derive(Debug)]
+pub(super) struct RootBuffer {
+    pub(super) buffer: wgpu::Buffer,
+    /// The root's size. The buffer holds it rounded up to 4 bytes.
+    pub(super) span: u64,
+    /// Tells this buffer from every other one, the one that replaces it included,
+    /// so a shader's storage changes know which of its sets this buffer holds.
+    id: u64,
+    /// Lives as long as the registry holds this buffer. A shader's storage
+    /// changes keep a weak copy, so they forget a buffer that was replaced or dropped.
+    token: Arc<()>,
+}
+
 /// Frame-local scratch allocations cached on `RenderContext`. Cleared at
 /// the start of each `build_pass_draws` invocation and reused across
 /// frames so the per-frame draw-queue build doesn't churn allocations.
@@ -136,7 +147,6 @@ impl RenderContext {
             device,
             queue,
             id: NEXT_ID.fetch_add(1, Ordering::Relaxed),
-            token: Arc::default(),
             adapter: None,
 
             render_pipelines: Arc::default(),
@@ -177,7 +187,7 @@ impl RenderContext {
     ///
     /// It is created, or recreated at a new `span`, with the shader's whole root, and
     /// holds `span` rounded up to 4 bytes, the size the root binds and reads back at. After
-    /// that, it takes only the word ranges `UniformStorage::list_changes` gives this context,
+    /// that, it takes only the word ranges `UniformStorage::list_changes` gives this buffer,
     /// so the rest of the root keeps what a compute pass wrote, which a whole upload would lose.
     pub(super) fn storage_buffer(
         &self,
@@ -188,22 +198,10 @@ impl RenderContext {
         let existing = self
             .storage_registry
             .get(name)
-            .filter(|entry| entry.value().1 == span)
-            .map(|entry| entry.value().0.clone());
+            .filter(|entry| entry.span == span)
+            .map(|entry| (entry.buffer.clone(), entry.id, entry.token.clone()));
         let created = existing.is_none();
-        let buffer = existing.unwrap_or_else(|| {
-            let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some(&format!("Persistent Storage Buffer: {name}")),
-                size: pools::align_size(span),
-                usage: wgpu::BufferUsages::STORAGE
-                    | wgpu::BufferUsages::COPY_DST
-                    | wgpu::BufferUsages::COPY_SRC,
-                mapped_at_creation: false,
-            });
-            self.storage_registry
-                .insert(name.to_string(), (buffer.clone(), span));
-            buffer
-        });
+        let (buffer, id, token) = existing.unwrap_or_else(|| self.create_root_buffer(name, span));
         // An upgradable read blocks a `set` until the upload is recorded, so no change is lost.
         let storage = shader.storage.upgradable_read();
         let bytes = storage.get_bytes(name);
@@ -214,7 +212,7 @@ impl RenderContext {
             };
             self.queue.write_buffer(&buffer, 0, &whole);
         } else {
-            let ranges = storage.list_changes(name, self.id);
+            let ranges = storage.list_changes(name, id);
             if ranges.is_empty() {
                 return buffer;
             }
@@ -222,8 +220,32 @@ impl RenderContext {
                 self.write_ranges(&buffer, &pools::pad_bytes(bytes), &ranges);
             }
         }
-        RwLockUpgradableReadGuard::upgrade(storage).record_upload(name, self.id, &self.token);
+        RwLockUpgradableReadGuard::upgrade(storage).record_upload(name, id, &token);
         buffer
+    }
+
+    /// Creates the buffer behind the storage root `name` at `span`, in place of any other,
+    /// and returns it with its id and token.
+    fn create_root_buffer(&self, name: &str, span: u64) -> (wgpu::Buffer, u64, Arc<()>) {
+        static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+        let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some(&format!("Persistent Storage Buffer: {name}")),
+            size: pools::align_size(span),
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: false,
+        });
+        let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
+        let token = Arc::new(());
+        let root = RootBuffer {
+            buffer: buffer.clone(),
+            span,
+            id,
+            token: token.clone(),
+        };
+        self.storage_registry.insert(name.to_string(), root);
+        (buffer, id, token)
     }
 
     /// Copies each of `ranges` of `bytes` to the same offset in `buffer`.

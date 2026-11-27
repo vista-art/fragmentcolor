@@ -476,6 +476,56 @@ fn a_recreated_buffer_takes_the_whole_root() {
     });
 }
 
+// Story: Two shaders share a storage root, and a third declares it at another size.
+// The third one's render recreates the buffer, then the writer's recreates it again
+// with the writer's copy. The buffer is new to the other shader, so its next render
+// brings back the count it set, over what the writer's copy held there.
+#[test]
+fn a_recreated_shared_buffer_takes_each_set_again() {
+    pollster::block_on(async move {
+        // Arrange
+        let renderer = Renderer::new();
+        let probe = renderer
+            .create_texture_target([8, 8])
+            .await
+            .expect("create_texture_target failed");
+        let writer = Shader::new(SIMULATION).expect("writer shader failed");
+        let other = Shader::new(SIMULATION).expect("other shader failed");
+        let wide = Shader::new(WIDER).expect("wide shader failed");
+        let writes = Pass::from_shader("writer", &writer);
+        let reads = Pass::from_shader("other", &other);
+        let widens = Pass::from_shader("wide", &wide);
+        writer.set("ranged_sim.step", 1u32).expect("set step");
+        other
+            .set("ranged_sim.counts[1]", 100u32)
+            .expect("set one count");
+        renderer
+            .render(&writes, &probe)
+            .expect("writer render failed");
+        renderer
+            .render(&reads, &probe)
+            .expect("other render failed");
+
+        // Act
+        renderer
+            .render(&widens, &probe)
+            .expect("wide render failed");
+        renderer
+            .render(&writes, &probe)
+            .expect("second writer render failed");
+        renderer
+            .render(&reads, &probe)
+            .expect("second other render failed");
+
+        // Assert
+        assert_eq!(
+            read_sim(&renderer, &writer).await,
+            [1, 2, 101, 2, 2],
+            "the writer's step, and the other shader's count again, then two steps"
+        );
+    });
+}
+
 // Story: An f16 set goes up as its whole 4-byte word, so the half that shares the
 // word is rewritten from the CPU copy. A set of the last half reaches into the
 // buffer's padding, past the root's six bytes. Runs where the device has SHADER_F16.
