@@ -9,7 +9,7 @@ Each light's diffuse term is cut into
 [`bands`](https://fragmentcolor.org/api/scene/toonmaterial#bands) even
 steps, three by default, or read from a
 [`ramp_map()`](https://fragmentcolor.org/api/scene/toonmaterial#ramp_map)
-gradient once one is set. A [`highlight`](https://fragmentcolor.org/api/scene/toonmaterial#highlight)
+gradient wider than one texel. A [`highlight`](https://fragmentcolor.org/api/scene/toonmaterial#highlight)
 color adds a hard spot where the light glints, and a
 [`rim`](https://fragmentcolor.org/api/scene/toonmaterial#rim) color marks
 the faces seen edge-on. Both start black, which turns them off.
