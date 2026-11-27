@@ -69,8 +69,8 @@ pub enum ShaderError {
         fixed: String,
         declared: String,
     },
-    /// A Material map's id set on a slot that doesn't hold the map.
-    /// The map's copies go when the map does, so the slot couldn't keep them.
+    /// A map texture's id set on a slot that doesn't hold the texture. Its copies go
+    /// when the last slot that holds it lets go, so this slot couldn't keep them.
     #[error(
         "Texture id {id} is a Material map of another slot, so '{key}' can't bind it. Set the map's source or a Texture on '{key}' instead"
     )]
