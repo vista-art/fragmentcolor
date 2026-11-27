@@ -34,7 +34,7 @@ for (const model of scene.models()) {
     .highlight([1, 1, 1])
     .highlightSize(0.012)
     .rim([0.2, 0.35, 0.4])
-    .rimWidth(0.3);
+    .rimWidth(0.12);
   toon.baseColorMap().texture(pbr.baseColorMap());
   const unlit = new UnlitMaterial();
   unlit.baseColorMap().texture(pbr.baseColorMap());
@@ -62,7 +62,7 @@ The corner label belongs to the same pass. A 5x5 bitmap font spells PBR, TOON or
 
 Unlit ignores both lights and shows the texture as its artist painted it.
 
-<img src="/blog/fish-styles-unlit.webp" alt="The fish in unlit shading: its texture's own colors, a grey-olive back, a pale belly and dark fins, with no light or shadow across the body. The label reads UNLIT." width="768" height="432" loading="lazy" style={{ width: "100%", height: "auto", borderRadius: "0.5rem" }} />
+<img src="/blog/fish-styles-unlit.webp" alt="The fish in unlit shading: its texture's own colors, a gray-olive back, a pale belly and dark fins, with no light or shadow across the body. The label reads UNLIT." width="768" height="432" loading="lazy" style={{ width: "100%", height: "auto", borderRadius: "0.5rem" }} />
 
 ## Maps that chain
 
