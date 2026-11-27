@@ -263,16 +263,22 @@ fn read_chain_input(
     })
 }
 
+/// What `createTexture` takes, as the `TypeError` for a value it can't read lists it.
+pub(crate) const TEXTURE_INPUTS: &str = "bytes (a Uint8Array, an ArrayBuffer or an array of numbers), an ImageData, a canvas, an image, a URL, a Texture or a Mipmap";
+
 /// Reads a texture source and its options, as `createTexture` and the Material setters take them.
+///
 /// An `ImageData` or canvas brings its own size and RGBA pixels, so the options may repeat
 /// that size and pick an 8-bit RGBA or BGRA format, which stores blue first. A `Texture` keeps
 /// the options it was created with, so options beside one throw an error that names `call`.
+/// A value no source takes throws a `TypeError` that lists `inputs`, what `call` takes.
 pub(crate) fn read_texture_input(
     source: &JsValue,
     options: Option<&JsValue>,
     call: &str,
+    inputs: &str,
 ) -> Result<TextureInput, WebError> {
-    let mut input = read_source(source, call)?;
+    let mut input = read_source(source, call, inputs)?;
     if let Some(options) = options.filter(|options| !options.is_undefined() && !options.is_null()) {
         if matches!(input.data, TextureData::CloneOf(_)) {
             return Err(WebError::new(
@@ -380,11 +386,13 @@ pub(crate) fn read_format(value: &JsValue) -> Result<TextureFormat, WebError> {
 }
 
 /// A texture source decoded from JS, for the call `label` names.
+///
 /// `ImageData` and canvases carry their pixel size in `options.size`,
-/// so their raw RGBA bytes upload without a size argument.
-/// A value no source takes, or an item of a byte list that isn't a number, is a `TypeError`,
-/// as Python raises, and a byte that isn't a whole number from 0 to 255 an `InvalidInputError`.
-fn read_source(value: &JsValue, label: &str) -> Result<TextureInput, WebError> {
+/// so their raw RGBA bytes upload without a size argument. A value no source takes
+/// is a `TypeError` that lists `inputs`, what the call takes, as Python raises one,
+/// and so is an item of a byte list that isn't a number. A byte that isn't a whole
+/// number from 0 to 255 is an `InvalidInputError`.
+fn read_source(value: &JsValue, label: &str, inputs: &str) -> Result<TextureInput, WebError> {
     let pixels = |bytes: Vec<u8>, width: u32, height: u32| TextureInput {
         data: TextureData::Bytes(bytes),
         options: TextureOptions::from(Size::from([width, height])),
@@ -480,7 +488,7 @@ fn read_source(value: &JsValue, label: &str) -> Result<TextureInput, WebError> {
     }
 
     Err(WebError::type_error(&format!(
-        "{label} takes bytes (a Uint8Array, an ArrayBuffer or an array of numbers), an ImageData, a canvas, an image, a URL, a Texture or a Mipmap, got {}",
+        "{label} takes {inputs}, got {}",
         describe(value)
     )))
 }
@@ -567,7 +575,7 @@ pub(crate) fn js_to_texture_bytes(
     format: wgpu::TextureFormat,
     label: &str,
 ) -> Result<(Vec<u8>, Option<Size>), WebError> {
-    let TextureInput { data, options } = read_source(value, label)?;
+    let TextureInput { data, options } = read_source(value, label, TEXTURE_INPUTS)?;
     let TextureData::Bytes(mut bytes) = data else {
         return Err(WebError::type_error(&format!(
             "{label} takes bytes (a Uint8Array, an ArrayBuffer or an array of numbers), an ImageData or a canvas, got {}",

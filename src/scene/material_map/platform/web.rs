@@ -7,7 +7,7 @@ use wasm_bindgen::prelude::*;
 use super::refuse_options;
 use crate::MaterialMap;
 use crate::bindings::web::{read_count, read_finite, read_vector};
-use crate::texture::read_texture_input;
+use crate::texture::{TEXTURE_INPUTS, read_texture_input};
 
 #[wasm_bindgen]
 impl MaterialMap {
@@ -42,7 +42,8 @@ impl MaterialMap {
 }
 
 /// Sets the texture of `map` from another map, which takes no options,
-/// or from any input `createTexture` takes, and returns `map`.
+/// or from any input `createTexture` takes, and returns `map`. Any other
+/// value throws a `TypeError` that lists a map beside the `createTexture` inputs.
 fn fill_map(
     map: &MaterialMap,
     input: &JsValue,
@@ -50,7 +51,8 @@ fn fill_map(
     call: &str,
 ) -> Result<MaterialMap, WebError> {
     let Ok(other) = MaterialMap::try_from(input) else {
-        let source = read_texture_input(input, options, call)?;
+        let inputs = format!("a MaterialMap, {TEXTURE_INPUTS}");
+        let source = read_texture_input(input, options, call, &inputs)?;
         return Ok(map.texture(source)?);
     };
     match options.filter(|options| !options.is_undefined() && !options.is_null()) {

@@ -3,7 +3,8 @@
 use crate::bindings::web::{describe, read_text, read_unsigned};
 use crate::errors::{ErrorClass, WebError, defer};
 use crate::texture::{
-    js_to_texture_bytes, js_to_texture_id, read_format, read_texture_input, read_usage,
+    TEXTURE_INPUTS, js_to_texture_bytes, js_to_texture_id, read_format, read_texture_input,
+    read_usage,
 };
 use crate::{
     InitializationError, LogLevel, Mesh, Pass, PassObject, Renderable, Renderer, Scene, Shader,
@@ -155,7 +156,8 @@ impl Renderer {
         input: &JsValue,
         options: Option<JsValue>,
     ) -> Result<Texture, WebError> {
-        let input = read_texture_input(input, options.as_ref(), "Renderer.createTexture")?;
+        let call = "Renderer.createTexture";
+        let input = read_texture_input(input, options.as_ref(), call, TEXTURE_INPUTS)?;
         Ok(self.create_texture(input).await?)
     }
 

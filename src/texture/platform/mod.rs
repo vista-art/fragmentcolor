@@ -12,6 +12,6 @@ pub(crate) use python::{
 mod web;
 #[cfg(wasm)]
 pub(crate) use web::{
-    js_to_texture_bytes, js_to_texture_id, parse_compare, read_format, read_texture_input,
-    read_usage,
+    TEXTURE_INPUTS, js_to_texture_bytes, js_to_texture_id, parse_compare, read_format,
+    read_texture_input, read_usage,
 };
