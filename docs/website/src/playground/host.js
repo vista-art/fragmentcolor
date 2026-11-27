@@ -179,6 +179,8 @@ export class Playground {
     this.gestures = null;
     // Keys held while the canvas has focus, and the touch stick, for demos with `keys: true`.
     this.keys = { down: new Set(), stick: [0, 0] };
+    // The frame request that lets go of each key released since the last frame.
+    this.releases = new Map();
     this.program = null;
     this.pending = null;
     this.buildToken = 0;
@@ -787,14 +789,33 @@ export class Playground {
     if (!on && document.activeElement === canvas) canvas.blur();
     if (ui.stick) ui.stick.hidden = !on;
     if (ui.keyHint) ui.keyHint.hidden = !on;
-    this.keys.down.clear();
+    this.clearKeys();
     this.releaseStick();
     this.placeButtons(on ? (this.demo?.buttons ?? []) : []);
   }
 
+  // Holds a key down, and drops any release still waiting for its frame.
+  pressKey(code) {
+    cancelAnimationFrame(this.releases.get(code));
+    this.releases.delete(code);
+    this.keys.down.add(code);
+  }
+
   // Lets go of a key after the next frame has seen it.
   releaseKey(code) {
-    requestAnimationFrame(() => this.keys.down.delete(code));
+    cancelAnimationFrame(this.releases.get(code));
+    const release = requestAnimationFrame(() => {
+      this.releases.delete(code);
+      this.keys.down.delete(code);
+    });
+    this.releases.set(code, release);
+  }
+
+  // Lets go of every key at once.
+  clearKeys() {
+    for (const release of this.releases.values()) cancelAnimationFrame(release);
+    this.releases.clear();
+    this.keys.down.clear();
   }
 
   // A touch screen gets a button for each key in the demo's `buttons`, which
@@ -814,7 +835,7 @@ export class Playground {
           button.setPointerCapture(e.pointerId);
           finger = e.pointerId;
           button.dataset.held = "";
-          this.keys.down.add(code);
+          this.pressKey(code);
         });
         const release = (e) => {
           if (e.pointerId !== finger) return;
@@ -854,12 +875,12 @@ export class Playground {
       if (!this.demo?.keys || e.code === "Tab") return;
       if (e.code === "Escape") return canvas.blur();
       // macOS sends no keyup for a key released while Cmd is down, so a modifier lifts every key.
-      if (e.metaKey || e.ctrlKey || e.altKey) return this.keys.down.clear();
-      this.keys.down.add(e.code);
+      if (e.metaKey || e.ctrlKey || e.altKey) return this.clearKeys();
+      this.pressKey(e.code);
       if (scrolling.has(e.code)) e.preventDefault();
     });
     this.on(canvas, "keyup", (e) => this.releaseKey(e.code));
-    this.on(canvas, "blur", () => this.keys.down.clear());
+    this.on(canvas, "blur", () => this.clearKeys());
 
     const stick = ui.stick;
     if (!stick) return;
