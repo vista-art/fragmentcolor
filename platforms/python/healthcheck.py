@@ -31,7 +31,6 @@ from fragmentcolor import (
     Model,
     Pass,
     PbrMaterial,
-    RenderCanvasTarget,
     Renderer,
     SamplerInfo,
     SamplerOptions,
@@ -269,7 +268,7 @@ def check_error_types(renderer):
     # A hidden window can't be made headless, so only the class is checked.
     assert issubclass(OccludedSurfaceError, FragmentColorError)
     # A WindowTarget made by its constructor has no surface until Renderer.create_target makes one.
-    unready = RenderCanvasTarget(object(), None)
+    unready = WindowTarget(object(), None)
     raises("WindowTarget.resize with no surface", lambda: unready.resize([4, 4]))
     # A texture target hands rendercanvas a frame in its own format, Rgba8Unorm.
     frame_format = renderer.create_texture_target([4, 4]).get_current_frame().format()
@@ -631,7 +630,7 @@ def check_value_types():
     assert region == ScreenRegion([1, 2], [32, 16]) and region != ScreenRegion((1, 2), (16, 32))
     assert (region.min_x, region.max_y, region.width(), region.height()) == (1, 18, 32, 16)
     assert SamplerOptions(smooth=False) == SamplerOptions(smooth=False)
-    assert RenderCanvasTarget is WindowTarget
+    assert not hasattr(fragmentcolor, "RenderCanvasTarget")
     print("Value types compare by value")
 
 

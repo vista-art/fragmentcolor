@@ -1,6 +1,6 @@
 # RenderCanvasTarget
 
-`RenderCanvasTarget` is a Python-specific wrapper around [WindowTarget](https://fragmentcolor.org/api/targets/windowtarget).
+Python's [WindowTarget](https://fragmentcolor.org/api/targets/windowtarget), the target `Renderer.create_target` returns for a RenderCanvas canvas.
 
 It adapts [FragmentColor](https://fragmentcolor.org) to work with the RenderCanvas Python project, forwarding all rendering to an internal [WindowTarget](https://fragmentcolor.org/api/targets/windowtarget). See [WindowTarget](https://fragmentcolor.org/api/targets/windowtarget) for the full [Target](https://fragmentcolor.org/api/targets/target) behavior and semantics.
 
