@@ -61,7 +61,7 @@ mod kotlin {
     struct Callable {
         /// The type it belongs to. `None` for a top-level function.
         owner: Option<String>,
-        /// How a call starts: `.render(`, `Vertex(`, `Vertex.new(` or `ShaderFetch(`.
+        /// How a call starts: `.render(`, `Vertex(` or `Vertex.new(`.
         needle: String,
         params: Vec<KType>,
         /// How many trailing parameters have a default.
