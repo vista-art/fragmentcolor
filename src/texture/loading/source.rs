@@ -72,28 +72,17 @@ impl TextureSource {
 }
 
 impl TextureInput {
-    /// Refuses options beside a `Texture`, which keeps the options it was created with,
-    /// and beside a `MaterialMap`, which shares its texture as it is.
+    /// Refuses options beside a `Texture`, which keeps the options it was created with.
     /// `call` names the call that took them, as the bindings name it.
     pub(crate) fn check_options(&self, call: &str) -> Result<(), TextureError> {
-        if self.options == TextureOptions::default() {
-            return Ok(());
-        }
-        match self.data {
-            TextureData::CloneOf(_) => Err(TextureError::InvalidInput(format!(
+        let given = self.options != TextureOptions::default();
+        match given && matches!(self.data, TextureData::CloneOf(_)) {
+            true => Err(TextureError::InvalidInput(format!(
                 "{call}: a Texture keeps the options it was created with, so it takes none"
             ))),
-            TextureData::Map(_) => Err(refuse_options(call)),
-            _ => Ok(()),
+            false => Ok(()),
         }
     }
-}
-
-/// The refusal of options beside a `MaterialMap`, for the call `call` names.
-pub(crate) fn refuse_options(call: &str) -> TextureError {
-    TextureError::InvalidInput(format!(
-        "{call}: a MaterialMap shares its texture as it is, so it takes no options"
-    ))
 }
 
 impl SourceData {
@@ -143,12 +132,6 @@ impl TryFrom<TextureInput> for TextureSource {
             TextureData::CloneOf(_) => {
                 return Err(TextureError::InvalidInput(
                     "a Texture already lives on a Renderer's device, so it's no source to upload"
-                        .into(),
-                ));
-            }
-            TextureData::Map(_) => {
-                return Err(TextureError::InvalidInput(
-                    "a MaterialMap shares its texture with another map only, so it's no source to upload"
                         .into(),
                 ));
             }

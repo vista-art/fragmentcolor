@@ -204,47 +204,6 @@ fn a_map_takes_its_own_texture() {
     );
 }
 
-// Story: a map shares its texture as it is, so options beside it are refused,
-// as they are beside a `Texture`, and the map keeps what it had.
-#[test]
-fn options_beside_a_map_are_refused() {
-    let pbr = PbrMaterial::new();
-    pbr.base_color_map()
-        .texture(paint(RED))
-        .expect("base color");
-    let toon = ToonMaterial::new();
-    let input = TextureInput {
-        data: TextureData::from(&pbr.base_color_map()),
-        options: TextureOptions::from(TextureFormat::Rgba8Unorm),
-    };
-
-    let refused = toon.base_color_map().texture(input);
-
-    assert_eq!(
-        refused.expect_err("options beside a map").to_string(),
-        "Invalid texture input: ToonMaterial::base_color_map().texture: a MaterialMap shares its texture as it is, so it takes no options"
-    );
-    assert!(!toon.shader().object.has_map("base_color_map"), "a map");
-}
-
-// Story: `create_texture` takes no map, which holds no source of its own to upload.
-#[test]
-fn create_texture_refuses_a_map() {
-    let pbr = PbrMaterial::new();
-    pbr.base_color_map()
-        .texture(paint(RED))
-        .expect("base color");
-    let renderer = Renderer::new();
-
-    let refused = pollster::block_on(renderer.create_texture(&pbr.base_color_map()));
-
-    let message = refused.expect_err("a map").to_string();
-    assert!(
-        message.contains("a MaterialMap shares its texture"),
-        "{message}"
-    );
-}
-
 // Story: a map that takes a new source while another map shares its texture gets a new
 // texture of its own. The other map keeps the old one, and the new one draws the old copy
 // in each Renderer until the next load uploads the new source, as a map set again does.

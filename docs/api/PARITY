@@ -64,10 +64,10 @@ docs/api/core/pass/hidden/set_depth_texture_mobile.md=>docs/api/core/pass/set_de
 # Swift/Kotlin extensions spell both as setTarget(...).
 docs/api/core/pass/hidden/set_target_texture_mobile.md=>docs/api/core/pass/set_target.md: Mobile splits the Texture form of Pass::set_target into a separate setTargetTexture method.
 
-# MaterialMap::texture takes impl Into<TextureInput>: a Texture, another MaterialMap, or
-# bytes, a path, a URL or a mipmap chain that upload when the scene loads. Mobile takes the
-# Texture through texture(texture), the map through share(map) and the other inputs through
-# source(input); Swift/Kotlin extensions spell all three as texture(...).
+# MaterialMap::texture takes another MaterialMap, a Texture, or bytes, a path, a URL or
+# a mipmap chain that upload when the scene loads. Mobile takes the Texture through
+# texture(texture), the map through share(map) and the other inputs through source(input);
+# Swift/Kotlin extensions spell all three as texture(...).
 docs/api/scene/material_map/hidden/source_mobile.md=>docs/api/scene/material_map/texture.md: Mobile splits the texture input form of MaterialMap::texture into a separate source method.
 docs/api/scene/material_map/hidden/share_mobile.md=>docs/api/scene/material_map/texture.md: Mobile splits the map form of MaterialMap::texture into a separate share method.
 

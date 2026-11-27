@@ -153,12 +153,6 @@ impl Mipmap {
                         .into(),
                 ));
             }
-            TextureData::Map(_) => {
-                return Err(TextureError::InvalidInput(
-                    "build: a MaterialMap shares its texture with another map only; nothing to chain"
-                        .into(),
-                ));
-            }
         };
         Self::from_dynamic_image(&image, public_format, format, raw)
     }

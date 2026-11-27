@@ -4,17 +4,17 @@ use crate::errors::WebError;
 use lsp_doc::lsp_doc;
 use wasm_bindgen::prelude::*;
 
+use super::refuse_options;
+use crate::MaterialMap;
 use crate::bindings::web::{read_count, read_finite, read_vector};
-use crate::texture::{read_texture_input, refuse_options};
-use crate::{MaterialMap, TextureData, TextureInput};
+use crate::texture::read_texture_input;
 
 #[wasm_bindgen]
 impl MaterialMap {
     #[wasm_bindgen(js_name = "texture")]
     #[lsp_doc("docs/api/scene/material_map/texture.md")]
     pub fn texture_js(&self, input: &JsValue, options: Option<JsValue>) -> Result<Self, WebError> {
-        let source = read_input(input, options.as_ref(), "MaterialMap.texture")?;
-        Ok(self.texture(source)?)
+        fill_map(self, input, options.as_ref(), "MaterialMap.texture")
     }
 
     #[wasm_bindgen(js_name = "uv")]
@@ -41,17 +41,20 @@ impl MaterialMap {
     }
 }
 
-/// Reads another map, which takes no options, or any input `createTexture` takes.
-fn read_input(
+/// Sets the texture of `map` from another map, which takes no options,
+/// or from any input `createTexture` takes, and returns `map`.
+fn fill_map(
+    map: &MaterialMap,
     input: &JsValue,
     options: Option<&JsValue>,
     call: &str,
-) -> Result<TextureInput, WebError> {
-    let Ok(map) = MaterialMap::try_from(input) else {
-        return read_texture_input(input, options, call);
+) -> Result<MaterialMap, WebError> {
+    let Ok(other) = MaterialMap::try_from(input) else {
+        let source = read_texture_input(input, options, call)?;
+        return Ok(map.texture(source)?);
     };
     match options.filter(|options| !options.is_undefined() && !options.is_null()) {
         Some(_) => Err(refuse_options(call).into()),
-        None => Ok(TextureData::Map(map).into()),
+        None => Ok(map.texture(&other)?),
     }
 }

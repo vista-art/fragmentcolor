@@ -2292,23 +2292,29 @@ mod parity {
                 }
             }
 
-            /// Whether a binding value meets a Rust `impl Trait` parameter: it names a type that
-            /// implements the trait, or a list of them where lists implement it, or has the
-            /// class of one of its implementors.
+            /// Whether a binding value meets a Rust `impl Trait` parameter.
+            ///
+            /// It meets it when it names a type that implements the trait,
+            /// or whose reference does, with `self` for the binding's own type,
+            /// when it is a list of them and lists implement the trait, or when it has the class
+            /// of an implementor. The `T` of a blanket `impl<T: Into<X>> Trait for T` has the class of its bound.
             fn implements(&self, b: &Class, raw: Option<&str>, name: &str, depth: usize) -> bool {
                 let build = self.build().unwrap_or(Build::Python);
                 let impls: Vec<&ImplDef> = self.model.trait_impls(name, build).collect();
                 let names = |ident: Option<&str>| {
                     ident.is_some_and(|ident| {
                         impls.iter().any(|imp| {
-                            imp.self_ident == ident
-                                || export_name(self.model, &imp.self_ident, build) == ident
+                            let own = read_ident(&imp.self_ty).unwrap_or_default();
+                            own == ident || export_name(self.model, &own, build) == ident
                         })
                     })
                 };
-                if let Class::Named(named) = b
-                    && (names(raw) || names(Some(named)))
-                {
+                let named = match b {
+                    Class::Named(named) => Some(named.as_str()),
+                    Class::This => Some(self.site.imp.self_ident.as_str()),
+                    _ => None,
+                };
+                if matches!(b, Class::Named(_) | Class::This) && (names(raw) || names(named)) {
                     return true;
                 }
                 if let Class::List(item) = b {
@@ -2321,13 +2327,13 @@ mod parity {
                     });
                     return lists && self.fits(item, None, &Class::Trait(name.to_string()), depth);
                 }
-                let rust_site = Site {
-                    imp: self.site.imp,
-                    f: self.site.f,
-                    build: None,
-                };
                 impls.iter().any(|imp| {
-                    let class = classify(self.model, &imp.self_ty, &rust_site);
+                    let impl_site = Site {
+                        imp,
+                        f: self.site.f,
+                        build: None,
+                    };
+                    let class = classify(self.model, &imp.self_ty, &impl_site);
                     !matches!(class, Class::Trait(_) | Class::Named(_) | Class::This)
                         && self.fits(b, raw, &class, depth)
                 })

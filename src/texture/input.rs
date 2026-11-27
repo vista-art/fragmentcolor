@@ -1,7 +1,7 @@
 //! `TextureData`, `TextureInput` and `TextureOptions`: what `create_texture` takes.
 
 use super::loading::ktx2_loader;
-use crate::{MaterialMap, Mipmap, SamplerOptions, Size, Texture, TextureFormat};
+use crate::{Mipmap, SamplerOptions, Size, Texture, TextureFormat};
 
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
@@ -40,14 +40,11 @@ pub enum TextureData {
     /// [`Mipmap`] straight to `Renderer::create_texture` and the unified
     /// entry point dispatches via `From<Mipmap> for TextureInput`.
     Prepared(Mipmap),
-    /// Another Material map, whose texture `MaterialMap::texture` shares.
-    /// No other call takes it.
-    Map(MaterialMap),
 }
 
 impl TextureData {
     /// Whether the data brings its own size, as every form but raw pixel bytes does.
-    /// `Empty`, `CloneOf` and `Map` hold no data to size.
+    /// `Empty` and `CloneOf` hold no data to size.
     pub(super) fn is_sized(&self) -> bool {
         match self {
             TextureData::Bytes(bytes) => ktx2_loader::is_ktx2(bytes),
@@ -57,7 +54,7 @@ impl TextureData {
             | TextureData::Ktx2Path(_)
             | TextureData::Ktx2Url(_)
             | TextureData::Prepared(_) => true,
-            TextureData::Empty | TextureData::CloneOf(_) | TextureData::Map(_) => false,
+            TextureData::Empty | TextureData::CloneOf(_) => false,
         }
     }
 }

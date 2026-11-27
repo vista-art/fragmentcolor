@@ -36,17 +36,23 @@ pub struct MaterialMap {
 crate::impl_fc_kind!(MaterialMap, "MaterialMap");
 crate::impl_js_bridge!(MaterialMap, crate::PassError);
 
-/// Another map, whose texture the map that takes it samples too.
-impl From<&MaterialMap> for TextureData {
-    fn from(map: &MaterialMap) -> Self {
-        TextureData::Map(map.clone())
+/// What `MaterialMap::texture` takes, another map or any `create_texture` input.
+/// No path outside the crate names it, so no type outside the crate implements it.
+pub trait MapInput {
+    /// Sets the texture of `map` from this input.
+    fn fill(self, map: &MaterialMap) -> Result<(), MaterialError>;
+}
+
+impl<T: Into<TextureInput>> MapInput for T {
+    fn fill(self, map: &MaterialMap) -> Result<(), MaterialError> {
+        map.take_input(self.into())
     }
 }
 
 /// Another map, whose texture the map that takes it samples too.
-impl From<&MaterialMap> for TextureInput {
-    fn from(map: &MaterialMap) -> Self {
-        TextureData::from(map).into()
+impl MapInput for &MaterialMap {
+    fn fill(self, map: &MaterialMap) -> Result<(), MaterialError> {
+        map.share(self)
     }
 }
 
@@ -61,8 +67,8 @@ impl MaterialMap {
     }
 
     #[lsp_doc("docs/api/scene/material_map/texture.md")]
-    pub fn texture(&self, source: impl Into<TextureInput>) -> Result<Self, MaterialError> {
-        self.take_input(source.into())?;
+    pub fn texture(&self, source: impl MapInput) -> Result<Self, MaterialError> {
+        source.fill(self)?;
         Ok(self.clone())
     }
 
@@ -103,17 +109,14 @@ impl MaterialMap {
         format!("{}::{}().{method}", self.owner, self.slot.pick_key())
     }
 
-    /// Sets the texture from `input`: a `Texture` binds as it is, another map shares
-    /// its texture, and every other input is a source each Renderer uploads.
+    /// Sets the texture from `input`: a `Texture` binds as it is,
+    /// and every other input is a source each Renderer uploads.
     fn take_input(&self, input: TextureInput) -> Result<(), MaterialError> {
         let call = self.name_call("texture");
         input.check_options(&call)?;
-        let TextureInput { data, options } = input;
-        match data {
+        match &input.data {
             TextureData::CloneOf(texture) => self.bind_id(*texture.id()),
-            TextureData::Map(map) => self.share(&map),
-            data => {
-                let input = TextureInput { data, options };
+            _ => {
                 let source = TextureSource::try_from(input).map_err(|error| error.name(&call))?;
                 self.set_map(source)
             }
