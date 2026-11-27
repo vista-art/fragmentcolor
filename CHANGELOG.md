@@ -2,17 +2,17 @@
 
 ## 0.12.8: Materials
 
-A patch release that gives each shading model a type of its own: `PbrMaterial`, `UnlitMaterial` and `ToonMaterial`, each with a `MaterialMap` for every texture it samples. A `Shader` is the custom material, a storage `set` uploads only the bytes it changes, and one Errors page lists every error class. Signatures change in every language, as in 0.12.7.
+A patch release that gives each shading model a type of its own: `PbrMaterial`, `UnlitMaterial` and `ToonMaterial`, each with a `MaterialMap` for every texture it samples. A `Shader` is the custom material, a storage `set` uploads only the bytes it changes, and one Errors page lists every error class. Signatures change in every language, as in 0.12.7, and the names kept for old ones go.
 
 ### Highlights
 
 - `PbrMaterial`, `UnlitMaterial` and `ToonMaterial` replace `Material::pbr()`, and each takes only the settings its shading model reads.
 - `ToonMaterial` lights in flat steps, with a hard highlight, a rim along the edges and an optional ramp texture.
-- Each map is a `MaterialMap` that sets its texture, UV set and transform in one chain.
+- Each map is a `MaterialMap` that sets its texture, UV set and transform in one chain, and takes another map's texture with one upload.
 - A `Shader` is the custom material, and sets its own blending and face culling.
 - A storage `set` uploads only the bytes it changes. What a compute pass wrote beside them stays.
 - Swift and Kotlin throw the error class Python raises, with the same message and fields.
-- The walkable world switches every model between PBR, toon and unlit while it runs.
+- The playground's glTF fish takes turns between PBR, toon and unlit.
 
 ### Upgrading from 0.12.7
 
@@ -27,6 +27,9 @@ A patch release that gives each shading model a type of its own: `PbrMaterial`, 
 - `MaterialError::UvSet` is a struct variant, `{ call, set }`, whose message names the map: `PbrMaterial::normal_map().uv takes UV set 0 or 1, got 2`.
 - `MaterialError` gains `Bands`, for `bands(0)`, and `NoUv`, for a UV set or transform on the toon ramp. The enum isn't `#[non_exhaustive]`, so a Rust `match` that lists every variant needs new arms.
 - Swift's and Kotlin's `MobileTextureInput` is `TextureData`, the Rust name, as in `TextureData.bytes(data)`. The old name goes.
+- The names kept for old ones go in every language. JavaScript's `CanvasTarget` and Python's `fragmentcolor.RenderCanvasTarget` are `WindowTarget`. Swift's and Kotlin's `MobileWindowTarget`, `MobileTextureTarget` and `TextureRegionMobile` are `WindowTarget`, `TextureTarget` and `TextureRegion`.
+- The forms 0.12.6 deprecated go too. Swift's `Shader.new([...])` is `Shader([...])`, and `Shader.setRegistry(baseUrl: url)` is `Shader.setRegistry(url)`. Swift's `createTexture` and `createStorageTexture` take their parts as separate arguments, as in `createTexture(bytes, size)`, where they also took one tuple. Kotlin's top-level `ShaderFetch(input)` is `Shader.fetch(input)`, and Python's `create_storage_texture` takes `usage=bits`, not `usage_bits=bits`.
+- Rust's `App::window_id()` is `App::primary_window_id()`.
 - Swift's and Kotlin's `shader.get(key)` returns the plain value, the one JavaScript and Python return: a `Bool`, `UInt32`, `Int32` or `Float`, a list of numbers, a `TextureId`, a `SamplerInfo` or bytes, typed `Any`, as in `try shader.get("resolution") as? [Float]`. It returned the `UniformData` enum, and the `float`, `floats` and `bytes` accessors on that enum go. `TextureMeta` and its reflection enums leave the Swift and Kotlin bindings, as do the shape records `ArrayElement`, `StructShape`, `StructField`, `StorageEntry`, `PushEntry` and `StorageAccess`.
 - JavaScript's `shader.get(key)` on a sampler key returns a `SamplerInfo`, where it returned a plain `{ comparison }` object. `comparison` is a read-only getter on the class, which a spread copy or `JSON.stringify` doesn't see. Read `info.comparison`.
 - A texture slot reads back as its `TextureId` in every language. JavaScript returned the number inside it, and Python a `TextureMeta`.
@@ -40,6 +43,7 @@ A patch release that gives each shading model a type of its own: `PbrMaterial`, 
 
 - `PbrMaterial` is glTF's metallic-roughness model, what `Material::pbr()` built, with the number setters `base_color`, `metallic`, `roughness`, `normal_scale`, `occlusion_strength`, `emissive`, `alpha_cutoff`, `uv_transform`, `alpha_mode` and `double_sided`.
 - Its five maps, `base_color_map()`, `metallic_roughness_map()`, `normal_map()`, `occlusion_map()` and `emissive_map()`, each return a `MaterialMap`, whose `texture`, `uv` and `transform` set what that map samples and chain: `gold.normal_map().texture(&tiles)?.uv(1)?.transform([0.0, 0.0], [4.0, 4.0], 0.0)?`. A refused call names the map, such as `PbrMaterial::normal_map().transform: rotation must be finite, got NaN`, and changes nothing.
+- A map takes another map's texture: `toon.base_color_map().texture(&pbr.base_color_map())?` in Rust, `toon.baseColorMap().texture(pbr.baseColorMap())` in JavaScript, Swift and Kotlin, and `toon.base_color_map().texture(pbr.base_color_map())` in Python. Both maps sample one texture under one `TextureId`, so each Renderer uploads it once, and a `ToonMaterial` or `UnlitMaterial` can draw the textures a glTF file gave its `PbrMaterial`. A map in the other color space, such as a normal map given a base color map, uploads a copy of its own from the same source. The receiving map keeps its own UV set and transform. A map with no texture to give raises `InvalidInputError`, and a map that later takes a new source gets a texture of its own while the other keeps the old one.
 - `UnlitMaterial` draws its base color times its one map, `base_color_map()`, and the vertex color, with no lighting, for UI, sprites, baked lighting and debug views. It has `base_color`, `alpha_cutoff`, `alpha_mode` and `double_sided`, which mean what they mean on `PbrMaterial`, and takes the same vertex layout. The glTF loader builds one for each material with `KHR_materials_unlit`.
 - `ToonMaterial` is cel shading. Each light's diffuse term steps up in `bands(n)` even steps, three by default, or reads a `ramp_map()` gradient wider than one texel, `highlight` and `highlight_size` add a hard highlight, and `rim` and `rim_width` color the faces seen edge-on. It has `base_color`, `base_color_map()`, `alpha_cutoff`, `alpha_mode` and `double_sided` as the other types do, takes the same vertex layout, and reads the lights `PbrMaterial` reads, through the same clustered light loops, at the same brightness. `bands(0)` returns `MaterialError::Bands`, and the ramp's `uv` and `transform` return `MaterialError::NoUv`, since it reads the light level, not the mesh's UVs.
 - A `Shader` is the custom material. `Model::new` takes a `PbrMaterial`, an `UnlitMaterial`, a `ToonMaterial`, a `Shader` or the `Material` enum in Rust, and the material object in every binding.
@@ -63,8 +67,9 @@ A patch release that gives each shading model a type of its own: `PbrMaterial`, 
 ### Website and examples
 
 - The `toon_outline` example inks the outlines of toon-shaded shapes in a pass of its own, after the scene. A first pass draws each shape's normals and depth into two textures, and a fullscreen pass blends ink over the pixels where the depth jumps, along a silhouette, or the normal turns, along a crease. It opens a window, or saves one frame with `--png`.
-- The playground's walkable world switches every model between `PbrMaterial`, `ToonMaterial` and `UnlitMaterial` while it runs: press M, or tap Style on a touch screen. Each spot holds one `Model` per style over the same `Mesh`. The switch hides one style's Models with `set_visible` and shows the next one's, and a label in the corner names the style. Every language's tab does the same and needs 0.12.8, and the Swift tab marks `setIntensity` with `try`.
-- Playground demos that take keys can list touch `buttons`, each of which holds its key down while a finger is on it, in the playground and in the `index.js` tab. A released key stays down for one more frame, and a quick tap still reaches `frame()`.
+- The playground's glTF fish takes turns between `PbrMaterial`, `ToonMaterial` and `UnlitMaterial`, four seconds each, until M or the Style button on a touch screen switches it by hand. For each Model the file loads, the demo adds a toon and an unlit Model over the same `Mesh`, whose maps take the PBR material's base color texture with `map.texture(map)`, and `set_visible` shows only the current style's Models. The pass that draws the fish to the screen paints the toon fish flat, inks its outline and the edges where a fin crosses the body, and names the style in a corner label. Every language's tab does the same and needs 0.12.8.
+- The walkable world's tabs build their materials with `PbrMaterial` and need 0.12.8, and the Swift tab marks `setIntensity` with `try`.
+- Playground demos that take keys can list touch `buttons`, each of which holds its key down while a finger is on it, in the playground and in the `index.js` tab. A released key stays down for one more frame, and a quick tap still reaches `frame()`. A demo with keys can set `stick: false` to leave out the touch stick, as the fish does.
 - /api/scene/textureslot redirects to `MaterialMap`, the Targets group lists Target, WindowTarget, then TextureTarget, and the 3D scenes blog post links to material anchors that exist.
 
 ## 0.12.7: Device checks and typed errors
