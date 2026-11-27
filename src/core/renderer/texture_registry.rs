@@ -205,9 +205,9 @@ impl Renderer {
             crate::testing::race_hooks::run("map uploaded");
             match upload {
                 Ok(object) => {
-                    job.shader.keep_upload(&job, &context, object);
+                    job.keep_upload(&context, object);
                 }
-                Err(error) if job.shader.is_current(&job) => {
+                Err(error) if job.is_current() => {
                     first.get_or_insert(RendererError::from(error));
                 }
                 Err(_) => {}

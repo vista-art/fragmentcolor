@@ -1,3 +1,5 @@
+mod share;
+
 use super::*;
 use crate::PbrMaterial;
 use crate::scene::Model;

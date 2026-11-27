@@ -3,35 +3,53 @@
 //! A map keeps its source on the CPU and one id for its key. Each Renderer that loads
 //! it uploads a copy of its own into its registry under that id, so the uniform names
 //! the right texture in every Renderer, and many Renderers hold a copy at once.
+//! Slots of several shaders may share one map's texture, and each Renderer then holds
+//! one copy for all of them.
 
 use crate::RenderContext;
 use crate::core::shader::{ShaderError, ShaderObject, UniformData};
 use crate::texture::{TextureId, TextureMeta, TextureObject, TextureSource};
 use parking_lot::Mutex;
 use std::collections::BTreeSet;
+use std::mem::replace;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Weak};
 
-/// The ids of the maps alive now. A map's copies go when the map does,
-/// so a slot that doesn't hold the map refuses its id (`check_bind`).
+/// The ids of the map textures alive now. A texture's copies go when the last slot
+/// that holds it lets go, so a slot that doesn't hold it refuses its id (`check_bind`).
 static LIVE: Mutex<BTreeSet<u64>> = parking_lot::const_mutex(BTreeSet::new());
 
 /// A texture uniform filled from a source the shader keeps.
-/// Each Renderer that loads it holds a copy under `id` in its own registry.
 #[derive(Debug)]
 pub(crate) struct TextureMap {
     pub(crate) key: String,
-    /// Taken when the key becomes a map and kept while it stays one,
-    /// so the uniform names the same copy in every Renderer.
+    /// The texture the slot samples, which the slots of other maps may share.
+    pub(crate) texture: Arc<MapTexture>,
+}
+
+/// The source of one or more map slots, and the copy each Renderer that loaded it holds.
+///
+/// Every slot that samples it holds it, under one id, so a Renderer uploads one copy
+/// for all of them. The last slot to let go frees every copy.
+#[derive(Debug)]
+pub(crate) struct MapTexture {
+    /// Taken when the texture is made and kept for its life,
+    /// so every slot that holds it names the same copy in every Renderer.
     pub(crate) id: TextureId,
-    pub(crate) source: TextureSource,
+    state: Mutex<MapState>,
+}
+
+/// What a map texture uploads from, and the contexts that hold a copy of it.
+#[derive(Debug)]
+struct MapState {
+    source: TextureSource,
     /// The setter call that gave `source`. A later call takes a newer one.
-    pub(crate) stamp: u64,
+    stamp: u64,
     /// The contexts that hold a copy, each with the stamp it came from.
     uploads: Vec<Upload>,
 }
 
-/// One context's copy of a map.
+/// One context's copy of a map texture.
 #[derive(Debug)]
 struct Upload {
     /// `RenderContext::id`, as a mesh tags its buffers.
@@ -40,13 +58,17 @@ struct Upload {
     stamp: u64,
 }
 
-impl Drop for TextureMap {
+/// What a new map lets go of: the source it replaced, or the texture the slot held,
+/// which the caller drops after its locks.
+type Replaced = (Option<TextureSource>, Option<Arc<MapTexture>>);
+
+impl Drop for MapTexture {
     /// Each context still alive drops its copy.
     fn drop(&mut self) {
         #[cfg(test)]
         crate::testing::race_hooks::run("map dropped");
         LIVE.lock().remove(&self.id.id);
-        for upload in &self.uploads {
+        for upload in &self.state.get_mut().uploads {
             if let Some(context) = upload.context.upgrade() {
                 context.release_texture(&self.id);
             }
@@ -54,22 +76,65 @@ impl Drop for TextureMap {
     }
 }
 
-impl TextureMap {
-    /// Whether `context` holds a copy of the latest source, still in its registry.
+impl MapTexture {
+    /// A texture of `source` under a new id, which no context holds a copy of yet.
+    fn create(source: TextureSource, stamp: u64) -> Arc<Self> {
+        let id = TextureId::create();
+        LIVE.lock().insert(id.id);
+        let state = MapState {
+            source,
+            stamp,
+            uploads: Vec::new(),
+        };
+        Arc::new(Self {
+            id,
+            state: Mutex::new(state),
+        })
+    }
+
+    /// A texture of `source` under a new id. Each context that holds a copy of this one
+    /// draws that copy under the new id too, until a load replaces it.
+    fn branch(&self, source: TextureSource, stamp: u64) -> Arc<Self> {
+        let texture = Self::create(source, stamp);
+        let held = self.state.lock();
+        let carried = held.uploads.iter().filter_map(|upload| {
+            let context = upload.context.upgrade()?;
+            let copy = context.get_texture(&self.id)?;
+            drop(context.insert_texture(texture.id, copy));
+            Some(Upload {
+                owner: upload.owner,
+                context: upload.context.clone(),
+                stamp: upload.stamp,
+            })
+        });
+        let carried: Vec<Upload> = carried.collect();
+        drop(held);
+        texture.state.lock().uploads = carried;
+        texture
+    }
+
+    /// The source the texture uploads from now.
+    pub(crate) fn read_source(&self) -> TextureSource {
+        self.state.lock().source.clone()
+    }
+}
+
+impl MapState {
+    /// Whether `context` holds a copy of the latest source under `id`, still in its registry.
     /// A copy that `unregister_texture` removed uploads again.
-    fn is_loaded(&self, context: &RenderContext) -> bool {
+    fn is_loaded(&self, id: TextureId, context: &RenderContext) -> bool {
         let current = self
             .uploads
             .iter()
             .any(|upload| upload.owner == context.id && upload.stamp == self.stamp);
-        current && context.has_texture(&self.id)
+        current && context.has_texture(&id)
     }
 
-    /// Whether an upload of the source from `stamp` should be `context`'s copy: it is the latest,
-    /// or the context holds no copy, or only one from an older set. Stamps only grow,
-    /// so an older upload never replaces a newer copy that another load kept first.
-    fn takes(&self, stamp: u64, context: &RenderContext) -> bool {
-        if stamp == self.stamp || !context.has_texture(&self.id) {
+    /// Whether an upload of the source from `stamp` should be `context`'s copy under `id`:
+    /// it is the latest, or the context holds no copy, or only one from an older set.
+    /// Stamps only grow, so an older upload never replaces a newer copy that another load kept first.
+    fn takes(&self, id: TextureId, stamp: u64, context: &RenderContext) -> bool {
+        if stamp == self.stamp || !context.has_texture(&id) {
             return true;
         }
         let held = self
@@ -82,10 +147,53 @@ impl TextureMap {
 
 /// An upload that `load` runs, read under the lock and run outside it.
 pub(crate) struct MapJob {
-    pub(crate) shader: Arc<ShaderObject>,
+    /// The texture to keep the upload in, while a slot still holds it.
+    texture: Weak<MapTexture>,
     pub(crate) id: TextureId,
     pub(crate) stamp: u64,
     pub(crate) source: TextureSource,
+}
+
+impl MapJob {
+    /// Keeps `object`, which this job uploaded, as `context`'s copy of the map texture.
+    ///
+    /// It refuses the copy when no slot holds the texture or the context holds a newer
+    /// one. An upload that a later set overtook stands in until the next load uploads
+    /// the latest, so a stream of sets can't leave a Renderer without a copy. It
+    /// returns whether it kept the copy. A copy it replaces drops after the texture's lock.
+    pub(crate) fn keep_upload(&self, context: &Arc<RenderContext>, object: TextureObject) -> bool {
+        let Some(texture) = self.texture.upgrade() else {
+            return false;
+        };
+        let replaced = {
+            let mut state = texture.state.lock();
+            if !state.takes(texture.id, self.stamp, context) {
+                return false;
+            }
+            let replaced = context.insert_texture(texture.id, Arc::new(object));
+            let alive = |upload: &Upload| upload.context.strong_count() > 0;
+            state
+                .uploads
+                .retain(|upload| upload.owner != context.id && alive(upload));
+            state.uploads.push(Upload {
+                owner: context.id,
+                context: Arc::downgrade(context),
+                stamp: self.stamp,
+            });
+            replaced
+        };
+        drop(replaced);
+        true
+    }
+
+    /// Whether this job still uploads the latest source of its texture.
+    pub(crate) fn is_current(&self) -> bool {
+        let Some(texture) = self.texture.upgrade() else {
+            return false;
+        };
+        let stamp = texture.state.lock().stamp;
+        stamp == self.stamp
+    }
 }
 
 /// Takes a stamp newer than every stamp before it.
@@ -94,16 +202,80 @@ fn take_stamp() -> u64 {
     NEXT.fetch_add(1, Ordering::Relaxed)
 }
 
+/// Gives `key`'s map `source` and a new stamp, or makes the key a map with a new id.
+///
+/// A texture that only this slot holds keeps its id, so each Renderer draws its old copy
+/// until a load replaces it. A texture another slot shares stays as it is for that slot,
+/// and this one takes a new texture, which draws the old copy until then.
+fn keep_source(
+    maps: &mut Vec<TextureMap>,
+    key: &str,
+    source: TextureSource,
+) -> (TextureId, Replaced) {
+    let stamp = take_stamp();
+    let Some(map) = maps.iter_mut().find(|map| map.key == key) else {
+        let texture = MapTexture::create(source, stamp);
+        let id = texture.id;
+        maps.push(TextureMap {
+            key: key.to_string(),
+            texture,
+        });
+        return (id, (None, None));
+    };
+    if Arc::strong_count(&map.texture) > 1 {
+        let texture = map.texture.branch(source, stamp);
+        let id = texture.id;
+        return (id, (None, Some(replace(&mut map.texture, texture))));
+    }
+    let mut state = map.texture.state.lock();
+    state.stamp = stamp;
+    let replaced = replace(&mut state.source, source);
+    (map.texture.id, (Some(replaced), None))
+}
+
+/// Makes `key` a map of `texture`, in place of the texture the key held.
+fn hold_texture(
+    maps: &mut Vec<TextureMap>,
+    key: &str,
+    texture: Arc<MapTexture>,
+) -> (TextureId, Replaced) {
+    let id = texture.id;
+    let Some(map) = maps.iter_mut().find(|map| map.key == key) else {
+        maps.push(TextureMap {
+            key: key.to_string(),
+            texture,
+        });
+        return (id, (None, None));
+    };
+    (id, (None, Some(replace(&mut map.texture, texture))))
+}
+
 impl ShaderObject {
     /// Makes `key` a map of `source`, which each Renderer that draws the shader uploads.
-    ///
-    /// A key that already is a map keeps its id, so each Renderer draws its old copy
-    /// until a load replaces it. The map is in place before the slot names its id,
-    /// so a plan that reads the id finds the map. An explicit texture the key held is released.
+    /// The key keeps its id when it already is a map that no other slot shares (`keep_source`).
     pub(crate) fn set_map(&self, key: &str, source: TextureSource) -> Result<(), ShaderError> {
+        self.write_map(key, |maps| keep_source(maps, key, source))
+    }
+
+    /// Makes `key` a map of `texture`, another map's, so both slots name one id and each
+    /// Renderer holds one copy for them. A Renderer that loaded the texture draws it at once.
+    pub(crate) fn share_map(&self, key: &str, texture: Arc<MapTexture>) -> Result<(), ShaderError> {
+        self.write_map(key, |maps| hold_texture(maps, key, texture))
+    }
+
+    /// Makes `key` a map through `place`, which returns the map's id.
+    ///
+    /// The map is in place before the slot names its id, so a plan that reads the id
+    /// finds the map. An explicit texture the key held is released. What the map
+    /// replaced drops after the locks.
+    fn write_map(
+        &self,
+        key: &str,
+        place: impl FnOnce(&mut Vec<TextureMap>) -> (TextureId, Replaced),
+    ) -> Result<(), ShaderError> {
         self.check_key(key)?;
         let writing = self.texture_writes.lock();
-        let (id, replaced) = self.keep_source(key, source);
+        let (id, replaced) = place(&mut self.maps.write());
         let written = self.write_slot(key, UniformData::Texture(TextureMeta::from(id)));
         let released = self.bound_textures.remove(key);
         drop(writing);
@@ -120,36 +292,22 @@ impl ShaderObject {
         }
     }
 
-    /// Gives `key`'s map `source` and a new stamp, or makes the key a map with a new id.
-    /// Returns the map's id and the source it replaced, which the caller drops after its locks.
-    fn keep_source(&self, key: &str, source: TextureSource) -> (TextureId, Option<TextureSource>) {
-        let stamp = take_stamp();
-        let mut maps = self.maps.write();
-        if let Some(map) = maps.iter_mut().find(|map| map.key == key) {
-            map.stamp = stamp;
-            return (map.id, Some(std::mem::replace(&mut map.source, source)));
-        }
-        let id = TextureId::create();
-        LIVE.lock().insert(id.id);
-        maps.push(TextureMap {
-            key: key.to_string(),
-            id,
-            source,
-            stamp,
-            uploads: Vec::new(),
-        });
-        (id, None)
+    /// The texture `key`'s map samples, when the key is a map.
+    pub(crate) fn find_map(&self, key: &str) -> Option<Arc<MapTexture>> {
+        let maps = self.maps.read();
+        let map = maps.iter().find(|map| map.key == key);
+        map.map(|map| map.texture.clone())
     }
 
-    /// Refuses `id` for `key` when it names a live map that `key` doesn't hold.
-    /// The map's copies go when the map does, so no other slot can keep them.
+    /// Refuses `id` for `key` when it names a live map texture that `key` doesn't hold.
+    /// The texture's copies go when the last slot that holds it lets go, so no other slot can keep them.
     pub(crate) fn check_bind(&self, key: &str, id: TextureId) -> Result<(), ShaderError> {
         let mapped = LIVE.lock().contains(&id.id);
         let owned = || {
             self.maps
                 .read()
                 .iter()
-                .any(|map| map.key == key && map.id == id)
+                .any(|map| map.key == key && map.texture.id == id)
         };
         match !mapped || owned() {
             true => Ok(()),
@@ -161,10 +319,13 @@ impl ShaderObject {
     }
 
     /// Ends `key`'s map, unless `id` is the map's own, as when a `get` comes back through `set`.
-    /// Returns the map, which the caller drops after its locks, and its copies go with it.
+    /// Returns the map, which the caller drops after its locks, and its copies go with it
+    /// unless another slot shares its texture.
     pub(crate) fn remove_map(&self, key: &str, id: TextureId) -> Option<TextureMap> {
         let mut maps = self.maps.write();
-        let index = maps.iter().position(|map| map.key == key && map.id != id);
+        let index = maps
+            .iter()
+            .position(|map| map.key == key && map.texture.id != id);
         index.map(|index| maps.swap_remove(index))
     }
 
@@ -178,61 +339,27 @@ impl ShaderObject {
         !self.maps.read().is_empty()
     }
 
-    /// Adds a job to `jobs` for each map that `context` lacks or holds from an older set.
-    /// A map that another job already names, from this shader in another pass, is skipped.
-    pub(crate) fn find_jobs(self: &Arc<Self>, context: &RenderContext, jobs: &mut Vec<MapJob>) {
+    /// Adds a job to `jobs` for each map texture that `context` lacks or holds from an older set.
+    /// A texture that another job already names, from this shader in another pass or from
+    /// another shader that shares it, is skipped, so a Renderer uploads it once.
+    pub(crate) fn find_jobs(&self, context: &RenderContext, jobs: &mut Vec<MapJob>) {
         let maps = self.maps.read();
         for map in maps.iter() {
-            if map.is_loaded(context) || jobs.iter().any(|job| job.id == map.id) {
+            let texture = &map.texture;
+            if jobs.iter().any(|job| job.id == texture.id) {
+                continue;
+            }
+            let state = texture.state.lock();
+            if state.is_loaded(texture.id, context) {
                 continue;
             }
             jobs.push(MapJob {
-                shader: self.clone(),
-                id: map.id,
-                stamp: map.stamp,
-                source: map.source.clone(),
+                texture: Arc::downgrade(texture),
+                id: texture.id,
+                stamp: state.stamp,
+                source: state.source.clone(),
             });
         }
-    }
-
-    /// Keeps `object`, which `job` uploaded, as `context`'s copy of the map.
-    ///
-    /// It refuses the copy when the map ended or the context holds a newer one.
-    /// An upload that a later set overtook stands in until the next load uploads
-    /// the latest, so a stream of sets can't leave a Renderer without a copy. It
-    /// returns whether it kept the copy, and takes only `maps.write()`. A copy it replaces drops after that lock.
-    pub(crate) fn keep_upload(
-        &self,
-        job: &MapJob,
-        context: &Arc<RenderContext>,
-        object: TextureObject,
-    ) -> bool {
-        let replaced = {
-            let mut maps = self.maps.write();
-            let found = maps.iter_mut().find(|map| map.id == job.id);
-            let Some(map) = found.filter(|map| map.takes(job.stamp, context)) else {
-                return false;
-            };
-            let replaced = context.insert_texture(map.id, Arc::new(object));
-            let alive = |upload: &Upload| upload.context.strong_count() > 0;
-            map.uploads
-                .retain(|upload| upload.owner != context.id && alive(upload));
-            map.uploads.push(Upload {
-                owner: context.id,
-                context: Arc::downgrade(context),
-                stamp: job.stamp,
-            });
-            replaced
-        };
-        drop(replaced);
-        true
-    }
-
-    /// Whether `job` still uploads the latest source of its map.
-    pub(crate) fn is_current(&self, job: &MapJob) -> bool {
-        let maps = self.maps.read();
-        maps.iter()
-            .any(|map| map.id == job.id && map.stamp == job.stamp)
     }
 }
 
@@ -303,7 +430,7 @@ mod tests {
             let uploaded = upload(&older, &context).await;
 
             assert!(
-                object.keep_upload(&older, &context, uploaded),
+                older.keep_upload(&context, uploaded),
                 "the older upload left the context without a copy"
             );
             assert!(context.has_texture(&older.id), "no copy stands in");
@@ -332,15 +459,12 @@ mod tests {
             let latest = take_job(object, &context);
 
             let newer = upload(&latest, &context).await;
-            assert!(
-                object.keep_upload(&latest, &context, newer),
-                "the latest upload"
-            );
+            assert!(latest.keep_upload(&context, newer), "the latest upload");
             let kept = context.get_texture(&latest.id).expect("a copy");
             let stale = upload(&older, &context).await;
 
             assert!(
-                !object.keep_upload(&older, &context, stale),
+                !older.keep_upload(&context, stale),
                 "the older upload replaced the newer copy"
             );
             let held = context.get_texture(&latest.id).expect("a copy");
@@ -375,10 +499,10 @@ mod tests {
             let uploaded = upload(&older, &context).await;
 
             assert!(
-                !object.keep_upload(&older, &context, uploaded),
+                !older.keep_upload(&context, uploaded),
                 "the upload of the ended map was kept"
             );
-            assert!(!object.is_current(&older), "the ended map's job is current");
+            assert!(!older.is_current(), "the ended map's job is current");
             assert!(!context.has_texture(&older.id), "a copy of the ended map");
             assert!(!object.has_map("image"), "the map stayed");
             assert!(object.bound_textures.contains_key("image"), "no binding");
@@ -514,9 +638,10 @@ mod tests {
         let maps = shader.object.maps.read();
         let map = maps.iter().find(|map| map.key == "image");
         let map = map.expect("the round trip ended the map");
-        assert!(Arc::ptr_eq(&map.source.data, &data), "{:?}", map.source);
+        let source = map.texture.read_source();
+        assert!(Arc::ptr_eq(&source.data, &data), "{source:?}");
         assert!(
-            matches!(&value, UniformData::Texture(meta) if meta.id == map.id),
+            matches!(&value, UniformData::Texture(meta) if meta.id == map.texture.id),
             "{value:?}"
         );
     }

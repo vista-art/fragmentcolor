@@ -10,11 +10,14 @@ use pyo3::prelude::*;
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
+use std::sync::Arc;
+
 use crate::core::UniformInput;
+use crate::core::shader::uniforms::texture_maps::MapTexture;
 use crate::scene::check_finite;
 use crate::scene::material::{skip_missing, write_values};
-use crate::texture::{TextureData, TextureMeta, TextureSource};
-use crate::{MaterialError, Shader, Texture, TextureInput, UniformData};
+use crate::texture::{TextureData, TextureError, TextureMeta, TextureSource};
+use crate::{MaterialError, Shader, TextureId, TextureInput, UniformData};
 
 mod platform;
 
@@ -31,6 +34,21 @@ pub struct MaterialMap {
 }
 
 crate::impl_fc_kind!(MaterialMap, "MaterialMap");
+crate::impl_js_bridge!(MaterialMap, crate::PassError);
+
+/// Another map, whose texture the map that takes it samples too.
+impl From<&MaterialMap> for TextureData {
+    fn from(map: &MaterialMap) -> Self {
+        TextureData::Map(map.clone())
+    }
+}
+
+/// Another map, whose texture the map that takes it samples too.
+impl From<&MaterialMap> for TextureInput {
+    fn from(map: &MaterialMap) -> Self {
+        TextureData::from(map).into()
+    }
+}
 
 impl MaterialMap {
     /// The handle to the map in `slot` of the `owner` material that draws with `shader`.
@@ -44,16 +62,7 @@ impl MaterialMap {
 
     #[lsp_doc("docs/api/scene/material_map/texture.md")]
     pub fn texture(&self, source: impl Into<TextureInput>) -> Result<Self, MaterialError> {
-        let input = source.into();
-        let call = self.name_call("texture");
-        input.check_options(&call)?;
-        match &input.data {
-            TextureData::CloneOf(texture) => self.bind_texture(texture)?,
-            _ => {
-                let source = TextureSource::try_from(input).map_err(|error| error.name(&call))?;
-                self.set_map(source)?;
-            }
-        }
+        self.take_input(source.into())?;
         Ok(self.clone())
     }
 
@@ -94,6 +103,55 @@ impl MaterialMap {
         format!("{}::{}().{method}", self.owner, self.slot.pick_key())
     }
 
+    /// Sets the texture from `input`: a `Texture` binds as it is, another map shares
+    /// its texture, and every other input is a source each Renderer uploads.
+    fn take_input(&self, input: TextureInput) -> Result<(), MaterialError> {
+        let call = self.name_call("texture");
+        input.check_options(&call)?;
+        let TextureInput { data, options } = input;
+        match data {
+            TextureData::CloneOf(texture) => self.bind_id(*texture.id()),
+            TextureData::Map(map) => self.share(&map),
+            data => {
+                let input = TextureInput { data, options };
+                let source = TextureSource::try_from(input).map_err(|error| error.name(&call))?;
+                self.set_map(source)
+            }
+        }
+    }
+
+    /// Makes this map sample the texture `other` samples, which is a map's or an explicit
+    /// `Texture`. A map with no texture of its own leaves nothing to share.
+    fn share(&self, other: &MaterialMap) -> Result<(), MaterialError> {
+        let object = &other.shader.object;
+        let key = other.slot.pick_key();
+        if let Some(texture) = object.find_map(key) {
+            return self.share_texture(texture);
+        }
+        let bound = object.bound_textures.get(key).map(|bound| bound.clone());
+        let Some(registration) = bound else {
+            let message = format!(
+                "{}: {}::{key}() has no texture to share",
+                self.name_call("texture"),
+                other.owner
+            );
+            return Err(TextureError::InvalidInput(message).into());
+        };
+        self.bind_id(*registration.id())
+    }
+
+    /// Makes this map sample `texture`, another map's, under its id when this slot reads the
+    /// source in the same color space, and from a copy of its own in this slot's space otherwise.
+    fn share_texture(&self, texture: Arc<MapTexture>) -> Result<(), MaterialError> {
+        match texture.read_source().swap_hint(self.slot.pick_format()) {
+            Some(source) => self.set_map(source),
+            None => {
+                let key = self.slot.pick_key();
+                skip_missing(key, self.shader.object.share_map(key, texture))
+            }
+        }
+    }
+
     /// Refuses `method`, `uv` or `transform`, on a map that samples no mesh UVs.
     fn check_uv(&self, method: &str) -> Result<(), MaterialError> {
         if self.slot.reads_uv() {
@@ -111,10 +169,11 @@ impl MaterialMap {
         write_values(&self.shader, values)
     }
 
-    /// Binds `texture` to this map as it is, so the slot holds its id and no source.
-    fn bind_texture(&self, texture: &Texture) -> Result<(), MaterialError> {
+    /// Binds the explicit texture `id` names to this map as it is, so the slot holds the id
+    /// and no source. The caller holds the texture, so its registration stays found.
+    fn bind_id(&self, id: TextureId) -> Result<(), MaterialError> {
         let key = self.slot.pick_key();
-        let meta = TextureMeta::from(*texture.id());
+        let meta = TextureMeta::from(id);
         skip_missing(key, self.shader.object.set(key, UniformData::Texture(meta)))
     }
 

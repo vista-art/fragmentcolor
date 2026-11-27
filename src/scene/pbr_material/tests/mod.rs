@@ -251,7 +251,7 @@ fn pbr_samples_base_color_texture() {
 fn read_map(material: &PbrMaterial, key: &str) -> TextureId {
     let maps = material.shader.object.maps.read();
     let map = maps.iter().find(|map| map.key == key);
-    map.map(|map| map.id).expect("a map")
+    map.map(|map| map.texture.id).expect("a map")
 }
 
 /// Whether the Renderer that made `target` holds a copy of `material`'s map for `key`.
@@ -432,9 +432,9 @@ fn latest_map_setter_wins() {
         {
             let maps = mat.shader.object.maps.read();
             assert_eq!(maps.len(), 1, "one map for the key");
-            assert_eq!(maps[0].id, id, "the map kept its id");
-            let latest = matches!(&*maps[0].source.data, SourceData::Bytes(_));
-            assert!(latest, "{:?}", maps[0].source);
+            assert_eq!(maps[0].texture.id, id, "the map kept its id");
+            let latest = matches!(&*maps[0].texture.read_source().data, SourceData::Bytes(_));
+            assert!(latest, "{:?}", maps[0].texture.read_source());
         }
         let model = Model::new(pbr_triangle_mesh(), mat.clone());
         let pass = Pass::new("replaced-upload");
@@ -617,8 +617,8 @@ fn an_input_with_no_data_leaves_the_slot() {
     );
     assert_eq!(read_map(&mat, "base_color_map"), id);
     let maps = mat.shader.object.maps.read();
-    let kept = matches!(&*maps[0].source.data, SourceData::Bytes(_));
-    assert!(kept, "{:?}", maps[0].source);
+    let kept = matches!(&*maps[0].texture.read_source().data, SourceData::Bytes(_));
+    assert!(kept, "{:?}", maps[0].texture.read_source());
 }
 
 /// A material whose shader declares `base_color_map` as a color.

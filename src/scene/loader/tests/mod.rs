@@ -6,7 +6,7 @@ use super::materials::map_sampler_options;
 use super::meshes::{compute_vertex_normals, reserve};
 use super::*;
 use crate::texture::SourceData;
-use crate::{Renderable, VertexData};
+use crate::{Renderable, Target, VertexData};
 
 /// The minimal triangle: positions only, read through accessor 0 from
 /// bufferView 0. Views 1 (12 bytes) and 2 (24 bytes) sit unused, so a
@@ -824,7 +824,7 @@ fn read_source(scene: &Scene) -> Arc<SourceData> {
     let models = scene.models();
     let maps = models[0].material().shader().object.maps.read();
     assert_eq!(maps.len(), 1, "the base color texture should be a map");
-    maps[0].source.data.clone()
+    maps[0].texture.read_source().data
 }
 
 /// The base color material of the textured triangle, which the UV tests replace.
@@ -889,7 +889,8 @@ fn two_slots_that_read_one_image_share_one_source() {
     let maps = models[0].material().shader().object.maps.read();
     let read = |key: &str| {
         let map = maps.iter().find(|map| map.key == key);
-        map.map(|map| map.source.data.clone()).expect("a map")
+        map.map(|map| map.texture.read_source().data)
+            .expect("a map")
     };
 
     let roughness = read("metallic_roughness_map");
@@ -1176,6 +1177,78 @@ fn an_external_image_keeps_its_path() {
             .expect("the image reads at load");
     });
     std::fs::remove_dir_all(&folder).expect("cleans up");
+}
+
+/// A quad over the whole target that faces +z, from `Vertex::pbr` corners with UV0.
+fn build_quad() -> crate::Mesh {
+    let mesh = crate::Mesh::new();
+    let corners = [
+        ([-1.0, 1.0, 0.0], [0.0, 0.0]),
+        ([-1.0, -1.0, 0.0], [0.0, 1.0]),
+        ([1.0, -1.0, 0.0], [1.0, 1.0]),
+        ([-1.0, 1.0, 0.0], [0.0, 0.0]),
+        ([1.0, -1.0, 0.0], [1.0, 1.0]),
+        ([1.0, 1.0, 0.0], [1.0, 0.0]),
+    ];
+    for (position, uv) in corners {
+        mesh.add_vertex(crate::Vertex::pbr(position).set(crate::Vertex::UV0, uv));
+    }
+    mesh
+}
+
+// Story: a ToonMaterial whose base color map takes the map a glTF file gave its
+// PbrMaterial draws the file's texture, from the copy the scene's load left in the
+// Renderer. Lit head on in one band, the toon shading gives back the texel's color.
+#[test]
+fn a_toon_material_draws_a_loaded_base_color_map() {
+    let color = [200u8, 60, 20, 255];
+    let image = image::ImageBuffer::from_pixel(2, 2, image::Rgba(color));
+    let png = encode_png(image::DynamicImage::ImageRgba8(image));
+    let scene = load_png(&png).expect("load");
+    let models = scene.models();
+    let Material::Pbr(pbr) = models[0].material() else {
+        panic!("the glTF material loads as {:?}", models[0].material());
+    };
+    let toon = crate::ToonMaterial::new().bands(1).expect("one band");
+    let shader = toon.shader();
+    shader
+        .set("camera.position", [0.0f32, 0.0, 1.0])
+        .expect("eye");
+    shader.set("lights.ambient", [0.0f32; 3]).expect("ambient");
+
+    let map = toon.base_color_map().texture(&pbr.base_color_map());
+
+    map.expect("the toon map takes the glTF map");
+    let pixel = pollster::block_on(async {
+        let renderer = crate::Renderer::new();
+        let target = renderer.create_texture_target([8, 8]).await;
+        let target = target.expect("a target");
+        renderer.load(&scene).await.expect("the scene's load");
+        let id = toon.shader().get::<crate::TextureId>("base_color_map");
+        let id = id.expect("the toon map's id");
+        assert!(
+            target.context.has_texture(&id),
+            "the scene's load kept no copy"
+        );
+        let light = [std::f32::consts::PI; 3];
+        let light = crate::Light::directional([0.0, 0.0, -1.0], light).expect("light");
+        let pass = crate::Pass::new("toon");
+        let model = Model::new(build_quad(), &toon);
+        pass.add(&model).expect("add the model");
+        pass.add(&light).expect("add the light");
+        renderer.render(&pass, &target).expect("render");
+        let image = target.get_image().await.expect("read back");
+        let start = ((4 * 8 + 4) * 4) as usize;
+        [
+            image[start],
+            image[start + 1],
+            image[start + 2],
+            image[start + 3],
+        ]
+    });
+    for (drawn, wanted) in pixel.iter().zip(color) {
+        assert!(drawn.abs_diff(wanted) <= 1, "{pixel:?} vs {color:?}");
+    }
 }
 
 #[test]
