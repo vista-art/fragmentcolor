@@ -146,7 +146,17 @@ jobs:
             pnpm --dir examples/javascript install --no-frozen-lockfile
           fi
 
+      # The same checks Docs CI runs, against the release just published.
+      # A failure still opens the pull request, but leaves it for a person.
+      - name: Check the website builds with the release
+        id: site
+        continue-on-error: true
+        run: |
+          pnpm --dir docs/website test
+          pnpm --dir docs/website build
+
       - name: Create pull request
+        id: pr
         uses: peter-evans/create-pull-request@v6
         with:
           commit-message: "chore: bump consumers to v${{ steps.vars.outputs.version }}"
@@ -159,6 +169,8 @@ jobs:
             - docs Examples.mdx: Kotlin/Maven snippet pinned to ${{ steps.vars.outputs.version }}
             - VersionBadge.astro updated
             - Package.swift: pin copied from the v${{ steps.vars.outputs.version }} tag (xcframework checksum ${{ steps.swift_pin.outputs.checksum }})
+
+            The workflow merges this pull request once the website builds with the release.
           branch: "chore/bump-consumers-v${{ steps.vars.outputs.version }}"
           labels: chore
           signoff: false
@@ -171,3 +183,20 @@ jobs:
             examples/javascript/pnpm-lock.yaml
             examples/python/requirements.txt
             Package.swift
+
+      # Vercel deploys main on push, so the website loads the release, and the
+      # playground shows the demos that need it, as soon as this merges.
+      - name: Merge the pull request
+        if: steps.site.outcome == 'success' && steps.pr.outputs.pull-request-number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ steps.pr.outputs.pull-request-number }}
+        run: gh pr merge "$PR" --repo "$GITHUB_REPOSITORY" --merge --delete-branch
+
+      - name: Fail when the website did not build
+        if: steps.site.outcome != 'success'
+        env:
+          PR: ${{ steps.pr.outputs.pull-request-number }}
+        run: |
+          echo "::error::The website failed to build with the release, so pull request #${PR} stays open. Fix main, then merge it."
+          exit 1
