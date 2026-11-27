@@ -12,8 +12,8 @@ You don't build a `MaterialMap` yourself. Each setter writes into the
 material the map came from and returns the map, so the calls chain:
 
 - [`texture`](https://fragmentcolor.org/api/scene/materialmap#texture) sets
-  the texture, from a `Texture` or from any input `Renderer::create_texture`
-  takes.
+  the texture, from a `Texture`, from any input `Renderer::create_texture`
+  takes, or from another map, whose texture both maps then sample.
 - [`uv`](https://fragmentcolor.org/api/scene/materialmap#uv) picks the UV set,
   `0` or `1`.
 - [`transform`](https://fragmentcolor.org/api/scene/materialmap#transform)
