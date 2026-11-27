@@ -21,28 +21,28 @@ private func flattenColumns(_ columns: [[Float]], _ label: String) throws -> [Fl
     return columns.flatMap { $0 }
 }
 
-/// What a Model draws with: a PbrMaterial, an UnlitMaterial, a ToonMaterial or a Shader.
-/// `Model(mesh, material)` takes one, and `model.material()` returns it, which `as?` narrows,
-/// as in `model.material() as? PbrMaterial`. Only those four types conform.
+/// What a Model draws with, as `Model(mesh, material)` takes it.
+/// PbrMaterial, UnlitMaterial, ToonMaterial and Shader conform to it, and `model.material()`
+/// returns the one a Model holds, which `as?` narrows, as in `model.material() as? PbrMaterial`.
 public protocol Material: AnyObject {
-    /// The material as the generated `Model` initializer takes it.
-    var materialHandle: MaterialHandle { get }
+    /// The uniffi plumbing behind `Model(mesh, material)`, hidden by its leading underscore.
+    var _materialHandle: MaterialHandle { get }
 }
 
 extension PbrMaterial: Material {
-    public var materialHandle: MaterialHandle { .pbr(self) }
+    public var _materialHandle: MaterialHandle { .pbr(self) }
 }
 
 extension UnlitMaterial: Material {
-    public var materialHandle: MaterialHandle { .unlit(self) }
+    public var _materialHandle: MaterialHandle { .unlit(self) }
 }
 
 extension ToonMaterial: Material {
-    public var materialHandle: MaterialHandle { .toon(self) }
+    public var _materialHandle: MaterialHandle { .toon(self) }
 }
 
 extension Shader: Material {
-    public var materialHandle: MaterialHandle { .custom(self) }
+    public var _materialHandle: MaterialHandle { .custom(self) }
 }
 
 extension Model {
@@ -51,7 +51,7 @@ extension Model {
     /// A Model that draws `mesh` with a PbrMaterial, an UnlitMaterial, a ToonMaterial or a Shader,
     /// including what another Model's `material()` returned.
     public convenience init(_ mesh: Mesh, _ material: any Material) {
-        self.init(mesh: mesh, material: material.materialHandle)
+        self.init(mesh: mesh, material: material._materialHandle)
     }
 
     // MARK: - Getters

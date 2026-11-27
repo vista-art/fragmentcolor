@@ -11,7 +11,7 @@ Python, Swift and Kotlin return the material object itself, a `PbrMaterial`,
 an `UnlitMaterial`, a `ToonMaterial` or a `Shader`, which each language narrows
 as it narrows any value: `instanceof` in JavaScript, `isinstance` in Python,
 `as?` in Swift and `is` or `as` in Kotlin. Swift types it as `any Material`, a
-protocol only those four conform to. `Model::new` takes it back as it is.
+protocol each of those four conforms to. `Model::new` takes it back as it is.
 
 To give a Model a look of its own, build a fresh material, such as a new
 `PbrMaterial::new()`, rather than cloning one.
