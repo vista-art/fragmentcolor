@@ -2366,6 +2366,7 @@ mod parity {
 
             /// The classes of the one-field variants of the binding enum `raw`,
             /// which a binding reads as a union, such as a `derive(FromPyObject)` enum.
+            /// A fallback, which keeps a value of the wrong type, is no class the binding takes.
             fn variants(&self, raw: Option<&str>) -> Vec<Class> {
                 let (Some(raw), Some(build)) = (raw, self.build()) else {
                     return Vec::new();
@@ -2375,7 +2376,7 @@ mod parity {
                 };
                 ty.variants
                     .iter()
-                    .filter(|v| v.cfg.holds(build))
+                    .filter(|v| v.cfg.holds(build) && !v.is_fallback(build))
                     .filter_map(|v| match v.fields.as_slice() {
                         [only] => Some(classify(self.model, only, self.site)),
                         _ => None,

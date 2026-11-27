@@ -404,6 +404,27 @@ mod reflect {
         }
     }
 
+    impl VariantDef {
+        /// Whether the variant is an argument enum's fallback.
+        ///
+        /// A fallback holds one bare `Bound<PyAny>` or `Py<PyAny>` with no pyo3 `annotation`.
+        /// It keeps any value the other variants refuse, so the binding can raise a `TypeError`
+        /// that names its call. No caller means to pass such a value, so no hint or shape counts it.
+        pub fn is_fallback(&self, build: Build) -> bool {
+            let [field] = self.fields.as_slice() else {
+                return false;
+            };
+            let any = ["Bound", "Py"]
+                .iter()
+                .filter_map(|holder| generic_arg(field, holder))
+                .any(|inner| last_ident(inner).as_deref() == Some("PyAny"));
+            let annotated = metas(&self.attrs, build).iter().any(|meta| {
+                meta_ident(meta) == "pyo3" && arg_value(&meta_args(meta), "annotation").is_some()
+            });
+            any && !annotated
+        }
+    }
+
     #[derive(Default)]
     pub struct Reflection {
         pub types: Vec<TypeDef>,
