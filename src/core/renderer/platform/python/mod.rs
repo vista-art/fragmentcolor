@@ -361,7 +361,7 @@ impl<'py> TextureKeywords<'py> {
     }
 
     /// Whether the call passed none of the keywords.
-    fn is_empty(&self) -> bool {
+    pub(crate) fn is_empty(&self) -> bool {
         self.size.is_none()
             && self.format.is_none()
             && self.mipmaps.is_none()

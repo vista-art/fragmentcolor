@@ -245,12 +245,18 @@ extension MaterialMap {
 
     // MARK: - Texture
 
-    // `texture` takes what `Renderer.createTexture` takes, spelled the same way.
-    // A `Texture` binds at once, and every other input uploads when the scene loads, as in Rust.
+    // `texture` takes what `Renderer.createTexture` takes, spelled the same way, and another map.
+    // A `Texture` binds at once, another map shares its texture, and every other input uploads
+    // when the scene loads, as in Rust.
 
     @discardableResult
     public func texture(_ texture: Texture) throws -> MaterialMap {
         try self.texture(texture: texture)
+    }
+
+    @discardableResult
+    public func texture(_ map: MaterialMap) throws -> MaterialMap {
+        try share(map: map)
     }
 
     @discardableResult

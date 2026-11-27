@@ -52,6 +52,8 @@ mod resize;
 mod write;
 
 pub(crate) use loading::decode::swap_bgra;
+#[cfg(any(python, wasm))]
+pub(crate) use loading::refuse_options;
 pub(crate) use loading::{SourceData, TextureSource};
 pub use mipmap::Mipmap;
 pub(crate) use mipmap::{mip_level_count_for, supports_cpu_mipmaps};

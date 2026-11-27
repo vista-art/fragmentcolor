@@ -105,9 +105,12 @@ fun MaterialMap.transform(offset: DoubleArray, scale: DoubleArray, rotation: Dou
         readFinite(rotation, "MaterialMap.transform: rotation"),
     )
 
-// `texture` takes what `Renderer.createTexture` takes, spelled the same way.
-// A Texture binds at once, and every other input uploads when the scene loads, as in Rust.
-// The generated `texture(texture)` takes the Texture, and these reach `source` for the rest.
+// `texture` takes what `Renderer.createTexture` takes, spelled the same way, and another map.
+// A Texture binds at once, another map shares its texture, and every other input uploads
+// when the scene loads, as in Rust. The generated `texture(texture)` takes the Texture,
+// `texture(map)` reaches `share`, and the rest reach `source`.
+
+fun MaterialMap.texture(map: MaterialMap): MaterialMap = share(map)
 
 fun MaterialMap.texture(bytes: ByteArray, usage: TextureUsage? = null): MaterialMap =
     source(TextureData.Bytes(bytes), textureOptions(usage = usage))

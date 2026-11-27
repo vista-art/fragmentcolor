@@ -19,6 +19,17 @@ impl MaterialMap {
         Ok(Arc::new(self.texture(&*texture)?))
     }
 
+    /// The map form of `texture`, which samples the texture `map` samples.
+    /// Swift and Kotlin reach it through the `texture(map)` overload.
+    #[uniffi::method(name = "share")]
+    #[lsp_doc("docs/api/scene/material_map/hidden/share_mobile.md")]
+    pub fn share_mobile(
+        self: Arc<Self>,
+        map: Arc<MaterialMap>,
+    ) -> Result<Arc<Self>, FragmentColorError> {
+        Ok(Arc::new(self.texture(&*map)?))
+    }
+
     /// The texture input form of `texture`, uploaded when the scene loads.
     /// Swift and Kotlin reach it through the `texture` overloads, which match `createTexture`.
     #[uniffi::method(name = "source", default(options = None))]

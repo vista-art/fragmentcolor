@@ -6,8 +6,16 @@ use pyo3::prelude::*;
 use crate::MaterialMap;
 use crate::bindings::python::{PyChannels, PyFloat, PyUnsigned};
 use crate::core::{TextureKeywords, py_to_texture_spec};
-use crate::texture::{PySamplerOptions, PyTextureSource, PyTextureUsage};
-use crate::{PySize, TextureFormat};
+use crate::texture::{PySamplerOptions, PyTextureSource, PyTextureUsage, refuse_options};
+use crate::{PySize, TextureData, TextureFormat};
+
+/// What `MaterialMap.texture` takes from Python: another map, or any `create_texture` source.
+#[derive(FromPyObject)]
+pub enum PyMapInput<'py> {
+    #[pyo3(annotation = "MaterialMap")]
+    Map(MaterialMap),
+    Source(PyTextureSource<'py>),
+}
 
 #[pymethods]
 impl MaterialMap {
@@ -18,7 +26,7 @@ impl MaterialMap {
     #[lsp_doc("docs/api/scene/material_map/texture.md")]
     pub fn texture_py<'py>(
         &self,
-        input: PyTextureSource<'py>,
+        input: PyMapInput<'py>,
         size: Option<PySize<'py>>,
         format: Option<TextureFormat>,
         mipmaps: Option<bool>,
@@ -26,7 +34,12 @@ impl MaterialMap {
         usage: Option<PyTextureUsage<'py>>,
     ) -> PyResult<Self> {
         let keywords = TextureKeywords::new(size, format, mipmaps, sampler, usage);
-        let source = py_to_texture_spec(input, keywords, "MaterialMap.texture")?;
+        let call = "MaterialMap.texture";
+        let source = match input {
+            PyMapInput::Map(_) if !keywords.is_empty() => return Err(refuse_options(call).into()),
+            PyMapInput::Map(map) => TextureData::Map(map).into(),
+            PyMapInput::Source(source) => py_to_texture_spec(source, keywords, call)?,
+        };
         Ok(self.texture(source)?)
     }
 

@@ -5,4 +5,6 @@ pub(crate) mod ktx2_loader;
 mod source;
 pub(crate) mod worker;
 
+#[cfg(any(python, wasm))]
+pub(crate) use source::refuse_options;
 pub(crate) use source::{SourceData, TextureSource};
