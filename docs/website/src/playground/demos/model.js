@@ -32,11 +32,11 @@ struct Look {
 // The camera's near and far planes in main.js, which turn a depth back into a distance.
 const NEAR = 0.01;
 const FAR = 10.0;
-// The color of the toon fish's ink, and how much farther than the surface
-// around it a pixel's neighbors must be, as a fraction of its distance, for an
-// edge, as where a fin passes in front of the body.
+// The color of the toon fish's ink, and how much farther than a flat surface
+// through a pixel its neighbors must lie together, as a fraction of its distance,
+// for an edge, as where a fin passes in front of the body.
 const INK = vec3<f32>(0.02, 0.03, 0.07);
-const JUMP = 0.002;
+const JUMP = 0.004;
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
@@ -133,7 +133,7 @@ fn flatten(pixel: vec2<i32>, reach: i32, last: vec2<i32>) -> vec3<f32> {
 // neighbors on a line through the pixel lie farther than a flat surface would put them.
 fn ink(pixel: vec2<i32>, reach: i32, last: vec2<i32>) -> f32 {
   let cover = textureLoad(image, pixel, 0).a;
-  let here = distance_at(pixel);
+  let here = nearness_at(pixel);
   // Across, down and both diagonals.
   var lines = array<vec2<i32>, 4>(vec2<i32>(1, 0), vec2<i32>(0, 1), vec2<i32>(1, 1), vec2<i32>(1, -1));
   var amount = 0.0;
@@ -142,18 +142,21 @@ fn ink(pixel: vec2<i32>, reach: i32, last: vec2<i32>) -> f32 {
     let behind = clamp(pixel - lines[index] * reach, vec2<i32>(0), last);
     amount = max(amount, abs(textureLoad(image, ahead, 0).a - cover));
     amount = max(amount, abs(textureLoad(image, behind, 0).a - cover));
-    if (distance_at(ahead) + distance_at(behind) - 2.0 * here > JUMP * here) {
+    // Two neighbors on a flat surface average to the pixel's own nearness, however
+    // steep the surface, and two that lie behind an edge average to less.
+    if (2.0 * here - nearness_at(ahead) - nearness_at(behind) > JUMP * here) {
       amount = 1.0;
     }
   }
   return amount;
 }
 
-// The distance along the view axis from the camera to the fish at \`pixel\`.
-// A pixel the fish doesn't cover keeps the cleared depth, 1, and reads as the far plane.
-fn distance_at(pixel: vec2<i32>) -> f32 {
+// One over the distance along the view axis from the camera to the fish at \`pixel\`,
+// which changes at an even rate from pixel to pixel across a flat surface. A pixel
+// the fish doesn't cover keeps the cleared depth, 1, and reads as the far plane.
+fn nearness_at(pixel: vec2<i32>) -> f32 {
   let stored = textureLoad(depth, pixel, 0).r;
-  return NEAR * FAR / (FAR - stored * (FAR - NEAR));
+  return (FAR - stored * (FAR - NEAR)) / (NEAR * FAR);
 }
 
 // The letters of the label, five font pixels square, a bit for each font pixel,
@@ -267,7 +270,7 @@ export async function setup(renderer, target) {
       .highlight([1, 1, 1])
       .highlightSize(0.012)
       .rim([0.2, 0.35, 0.4])
-      .rimWidth(0.3);
+      .rimWidth(0.12);
     toon.baseColorMap().texture(pbr.baseColorMap());
     const unlit = new UnlitMaterial();
     unlit.baseColorMap().texture(pbr.baseColorMap());
@@ -541,7 +544,7 @@ function writeRust({ library, values }) {
     "            .highlight([1.0, 1.0, 1.0])?",
     "            .highlight_size(0.012)?",
     "            .rim([0.2, 0.35, 0.4])?",
-    "            .rim_width(0.3)?;",
+    "            .rim_width(0.12)?;",
     "        toon.base_color_map().texture(&pbr.base_color_map())?;",
     "        let unlit = UnlitMaterial::new();",
     "        unlit.base_color_map().texture(&pbr.base_color_map())?;",
@@ -789,7 +792,7 @@ function writePython({ library, values }) {
     "            .highlight([1.0, 1.0, 1.0])",
     "            .highlight_size(0.012)",
     "            .rim([0.2, 0.35, 0.4])",
-    "            .rim_width(0.3)",
+    "            .rim_width(0.12)",
     "        )",
     "        toon.base_color_map().texture(pbr.base_color_map())",
     "        unlit = UnlitMaterial()",
@@ -1023,7 +1026,7 @@ function writeSwift({ library, values }) {
     "            .highlight([1, 1, 1])",
     "            .highlightSize(0.012)",
     "            .rim([0.2, 0.35, 0.4])",
-    "            .rimWidth(0.3)",
+    "            .rimWidth(0.12)",
     "        try toon.baseColorMap().texture(pbr.baseColorMap())",
     "        let unlit = UnlitMaterial()",
     "        try unlit.baseColorMap().texture(pbr.baseColorMap())",
@@ -1252,7 +1255,7 @@ function writeKotlin({ library, values }) {
     "            .highlight(listOf(1.0, 1.0, 1.0))",
     "            .highlightSize(0.012)",
     "            .rim(listOf(0.2, 0.35, 0.4))",
-    "            .rimWidth(0.3)",
+    "            .rimWidth(0.12)",
     "        toon.baseColorMap().texture(pbr.baseColorMap())",
     "        val unlit = UnlitMaterial()",
     "        unlit.baseColorMap().texture(pbr.baseColorMap())",
