@@ -40,7 +40,27 @@ const KEYS = /* js */ `// Every key held down while the canvas has focus, by Key
 const down = new Set();
 let stick = [0, 0];
 const held = () => ({ down: new Set(down), stick: [...stick] });
-const releaseKey = (code) => requestAnimationFrame(() => down.delete(code));
+// The frame request that lets go of each key released since the last frame.
+// A key pressed again before that frame drops its request and stays down.
+const releases = new Map();
+function pressKey(code) {
+  cancelAnimationFrame(releases.get(code));
+  releases.delete(code);
+  down.add(code);
+}
+function releaseKey(code) {
+  cancelAnimationFrame(releases.get(code));
+  const release = requestAnimationFrame(() => {
+    releases.delete(code);
+    down.delete(code);
+  });
+  releases.set(code, release);
+}
+function clearKeys() {
+  for (const release of releases.values()) cancelAnimationFrame(release);
+  releases.clear();
+  down.clear();
+}
 const scrolling = new Set(["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "PageUp", "PageDown", "Home", "End"]);
 canvas.tabIndex = 0;
 canvas.addEventListener("pointerdown", () => canvas.focus({ preventScroll: true }));
@@ -48,12 +68,12 @@ canvas.addEventListener("keydown", (event) => {
   if (event.code === "Tab") return;
   if (event.code === "Escape") return canvas.blur();
   // macOS sends no keyup for a key released while Cmd is down, so a modifier lifts every key.
-  if (event.metaKey || event.ctrlKey || event.altKey) return down.clear();
-  down.add(event.code);
+  if (event.metaKey || event.ctrlKey || event.altKey) return clearKeys();
+  pressKey(event.code);
   if (scrolling.has(event.code)) event.preventDefault();
 });
 canvas.addEventListener("keyup", (event) => releaseKey(event.code));
-canvas.addEventListener("blur", () => down.clear());
+canvas.addEventListener("blur", () => clearKeys());
 
 // The stick shows on touch screens, over the canvas's lower left corner.
 if (matchMedia("(any-pointer: coarse)").matches) {
@@ -113,7 +133,7 @@ if (matchMedia("(any-pointer: coarse)").matches) {
       event.preventDefault();
       button.setPointerCapture(event.pointerId);
       finger = event.pointerId;
-      down.add(code);
+      pressKey(code);
     });
     const lift = (event) => {
       if (event.pointerId !== finger) return;
