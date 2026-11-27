@@ -164,7 +164,9 @@ with when it's raised and the fields it carries.
 A root page has no sidebar order, so the menu lists it after the
 categories. A category takes its order from its `_index.md`, and one
 without that file sorts by name among the root pages, so every category
-keeps an `_index.md`.
+keeps an `_index.md`. A root page has no Rust item for `#[lsp_doc]`
+either, so a `#[cfg(doctest)]` struct includes it to run its Rust
+example, as `ErrorsPage` in `src/errors/mod.rs` does for the Errors page.
 
 An item with no page on the site keeps its `#[lsp_doc]` page under
 `docs/api/hidden/`, in a folder of its own name, such as

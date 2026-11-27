@@ -13,6 +13,11 @@ pub(crate) mod platform;
 #[cfg(any(python, wasm))]
 pub use platform::*;
 
+// The Errors page has no Rust item to carry it, so this runs its example as a doctest.
+#[cfg(doctest)]
+#[doc = include_str!("../../docs/api/errors/errors.md")]
+struct ErrorsPage;
+
 // Top-level catch-all error
 
 #[derive(Error, Debug)]
