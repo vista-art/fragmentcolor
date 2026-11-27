@@ -1,9 +1,11 @@
 //! `Shader`, and `ShaderObject`, the module, uniforms and meshes a shader keeps.
 
+mod alpha_mode;
+pub use alpha_mode::AlphaMode;
 pub(crate) mod error;
 use crate::geometry::MeshObject;
 use crate::texture::{Registration, TextureId};
-use crate::{AlphaMode, Mesh, PassObject, Renderable, Vertex};
+use crate::{Mesh, PassObject, Renderable, Vertex};
 use dashmap::DashMap;
 pub use error::{Diagnostic, ShaderError, SourceLocation};
 use lsp_doc::lsp_doc;
@@ -51,6 +53,8 @@ pub(in crate::core) mod lights;
 use lights::roots::LightRoots;
 pub(crate) use lights::{ShaderLights, lower_cap, share_light};
 mod platform;
+#[cfg(wasm)]
+pub(crate) use platform::web::read_alpha_mode;
 use uniforms::bytes::*;
 
 /// The hash of a shader source.

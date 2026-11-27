@@ -10,9 +10,6 @@ use lsp_doc::lsp_doc;
 use crate::core::UniformInput;
 use crate::{PbrMaterial, Shader, ShaderError, ToonMaterial, UnlitMaterial};
 
-mod alpha_mode;
-pub use alpha_mode::AlphaMode;
-
 mod error;
 pub use error::*;
 

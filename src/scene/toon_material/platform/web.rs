@@ -5,7 +5,7 @@ use lsp_doc::lsp_doc;
 use wasm_bindgen::prelude::*;
 
 use crate::bindings::web::{read_count, read_finite, read_flag, read_vector};
-use crate::scene::material::platform::web::read_alpha_mode;
+use crate::core::read_alpha_mode;
 use crate::{MaterialMap, Shader, ToonMaterial};
 
 #[wasm_bindgen]

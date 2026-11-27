@@ -21,8 +21,6 @@ pub(crate) use finite::{NotFinite, check_finite};
 pub use light::*;
 pub(crate) use light::{GpuLight, LightObject, PassLights, bump_epoch, read_epoch};
 pub use loader::{GltfSource, SceneLoadError, SceneSource};
-#[cfg(wasm)]
-pub(crate) use material::platform::web::read_alpha_mode;
 pub use material::*;
 pub use material_map::MaterialMap;
 pub(crate) use material_map::{MapSlot, UvSet, UvTransform};

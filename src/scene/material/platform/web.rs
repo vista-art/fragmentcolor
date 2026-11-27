@@ -2,9 +2,9 @@
 
 use wasm_bindgen::prelude::*;
 
-use crate::bindings::web::{describe, read_unsigned};
-use crate::errors::{ErrorClass, WebError};
-use crate::{AlphaMode, Material, PbrMaterial, Shader, ToonMaterial, UnlitMaterial};
+use crate::bindings::web::describe;
+use crate::errors::WebError;
+use crate::{Material, PbrMaterial, Shader, ToonMaterial, UnlitMaterial};
 
 /// The material a JS value holds: a `PbrMaterial`, an `UnlitMaterial`, a `ToonMaterial` or a `Shader`,
 /// as `label` takes it.
@@ -34,25 +34,5 @@ pub(crate) fn write_material(material: &Material) -> JsValue {
         Material::Unlit(material) => material.clone().into(),
         Material::Toon(material) => material.clone().into(),
         Material::Custom(shader) => shader.clone().into(),
-    }
-}
-
-/// Maps an `AlphaMode` from JS, a number in variant order, to the mode.
-/// Anything else is an error, which wasm-bindgen would read as `Opaque`.
-pub(crate) fn read_alpha_mode(value: &JsValue) -> Result<AlphaMode, WebError> {
-    let code = value.as_f64().ok_or_else(|| {
-        WebError::type_error(&format!(
-            "mode must be an AlphaMode, got {}",
-            describe(value)
-        ))
-    })?;
-    match read_unsigned(code, "mode")? {
-        0 => Ok(AlphaMode::Opaque),
-        1 => Ok(AlphaMode::Mask),
-        2 => Ok(AlphaMode::Blend),
-        _ => Err(WebError::new(
-            ErrorClass::InvalidInput,
-            &format!("{code} is not an AlphaMode"),
-        )),
     }
 }
