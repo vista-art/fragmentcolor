@@ -56,13 +56,13 @@ The fish draws into a float image with a depth buffer, and a fullscreen pass tur
 
 The toon fish also takes its key light from overhead and more ambient light. Its shadow becomes a darker band along the belly, where a cartoonist would put it.
 
+Unlit ignores both lights and shows the texture as its artist painted it. The shading baked into the image stays, and the fins lose their gloss.
+
+<img src="/blog/fish-styles-unlit.webp" alt="The fish in unlit shading: its texture's own colors, a gray-olive back, a pale belly and dark fins, with no light or shadow across the body. The label reads UNLIT." width="768" height="432" loading="lazy" style={{ width: "100%", height: "auto", borderRadius: "0.5rem" }} />
+
 ## A label drawn in WGSL
 
 The corner label belongs to the same pass. A 5x5 bitmap font spells PBR, TOON or UNLIT from a number the program sets each frame with `present.set("look.style", style)`. A label on the page would exist only on the web. Drawn in the shader, it shows the same in the Rust, Python, Swift and Kotlin tabs.
-
-Unlit ignores both lights and shows the texture as its artist painted it.
-
-<img src="/blog/fish-styles-unlit.webp" alt="The fish in unlit shading: its texture's own colors, a gray-olive back, a pale belly and dark fins, with no light or shadow across the body. The label reads UNLIT." width="768" height="432" loading="lazy" style={{ width: "100%", height: "auto", borderRadius: "0.5rem" }} />
 
 ## Maps that chain
 
@@ -81,4 +81,4 @@ A refused call names the map and changes nothing, as in `PbrMaterial::normal_map
 - A mirrored `Model` with a double-sided material lights its outer faces as the front, and a mirrored normal map lights its bumps from the side they face.
 - Playground demos that take keys can list touch buttons, as the fish does for its Style button.
 
-0.12.8 changes signatures in every language. Pin 0.12.7 until your code follows the upgrade notes in the [changelog](https://github.com/vista-art/fragmentcolor/blob/main/CHANGELOG.md).
+0.12.8 changes signatures in every language and drops the names 0.12.6 kept for old ones. Pin 0.12.7 until your code follows the upgrade notes in the [changelog](https://github.com/vista-art/fragmentcolor/blob/main/CHANGELOG.md).
