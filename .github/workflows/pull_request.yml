@@ -94,7 +94,14 @@ jobs:
       - name: Lint
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
+      # The tests open many devices at once, from parallel threads. Vulkan loaders before
+      # 1.4.345 look a device up for vkSetDebugUtilsObjectNameEXT under a different lock than
+      # the one vkDestroyDevice holds, so naming an object while another thread drops its
+      # device can read freed memory. Ubuntu 26.04's loader segfaults there under lavapipe.
+      # WGPU_DEBUG=0 keeps wgpu from enabling VK_EXT_debug_utils, which names the objects.
       - name: Tests
+        env:
+          WGPU_DEBUG: "0"
         run: cargo test
 
       # @TODO Implement image diffs

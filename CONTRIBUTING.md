@@ -66,7 +66,7 @@ Contributions are welcome! This document outlines the current workflow for devel
    - Updates `docs/website/src/components/VersionBadge.astro`.
    - Copies the tag's `Package.swift` pin to `main`, which then points at the latest release's xcframework.
    - Deletes the `release/vMAJOR.MINOR.PATCH` branch. The tag keeps the pinned commit.
-   - Opens a pull request with those consumer updates.
+   - Opens a pull request with those consumer updates, and merges it once the website builds with the release. When the build fails, the pull request stays open and the run fails.
 9. Vercel auto-deploys `docs/website` (subfolder). Its Ignored Build Step skips build when neither `docs/website` nor `docs/api` changed.
 10. Swift consumers add `.package(url: "https://github.com/vista-art/fragmentcolor", from: "X.Y.Z")` to their dependencies. SPM resolves the matching tag and downloads the xcframework that the tag's `Package.swift` pins.
 11. Kotlin / Android consumers: for 0.11.x, download `fragmentcolor-<version>.aar` from the GitHub Release and drop it into `libs/`; Maven Central publishing is tracked as follow-up work (CHANGELOG "Unfinished work").

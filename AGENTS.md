@@ -86,7 +86,7 @@ Big‑picture architecture (how things fit together)
     - `publish_py.yml` → PyPI (wheels + sdist).
     - `publish_swift.yml` → checks the attached xcframework against the tagged pin and builds the package for the iOS Simulator from the release URL. It never rebuilds: static libraries are not bit-reproducible, so a rebuilt zip would not match the pin.
     - `publish_android.yml` → GitHub Release asset `fragmentcolor-<version>.aar` (Maven Central publishing is follow-up work).
-    - `post_publish_update.yml` waits for npm and PyPI, deletes `release/vX.Y.Z`, and opens a PR that bumps consumer dependency ranges and copies the tag's `Package.swift` pin to `main`.
+    - `post_publish_update.yml` waits for npm and PyPI, deletes `release/vX.Y.Z`, and opens a PR that bumps consumer dependency ranges and copies the tag's `Package.swift` pin to `main`. It merges that PR once the website builds with the release, so the site loads it without a manual step.
 
 Source layout (src/)
 - src/ mirrors the docs/api categories, in the docs' order:
