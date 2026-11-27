@@ -5,9 +5,6 @@ package org.fragmentcolor
 // and with_rows. The uniffi record is plain fields, so these functions
 // reproduce the Rust call shape, as Region+Extensions.swift does on Swift.
 
-@Deprecated("Use TextureRegion", ReplaceWith("TextureRegion"))
-typealias TextureRegionMobile = TextureRegion
-
 /**
  * A texture region from `[width, height]`, `[x, y, width, height]`
  * or `[x, y, z, width, height, depth]`, as Rust's `TextureRegion::from` reads them.

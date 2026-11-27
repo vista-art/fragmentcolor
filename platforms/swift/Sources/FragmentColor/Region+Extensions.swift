@@ -11,9 +11,6 @@
 
 import Foundation
 
-@available(*, deprecated, renamed: "TextureRegion")
-public typealias TextureRegionMobile = TextureRegion
-
 extension TextureRegion {
     // MARK: - From rectangle / box
 

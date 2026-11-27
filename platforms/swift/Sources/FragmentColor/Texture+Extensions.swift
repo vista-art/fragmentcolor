@@ -9,12 +9,6 @@
 
 import Foundation
 
-@available(*, deprecated, renamed: "TextureTarget")
-public typealias MobileTextureTarget = TextureTarget
-
-@available(*, deprecated, renamed: "WindowTarget")
-public typealias MobileWindowTarget = WindowTarget
-
 extension Texture {
     // MARK: - write convenience
 

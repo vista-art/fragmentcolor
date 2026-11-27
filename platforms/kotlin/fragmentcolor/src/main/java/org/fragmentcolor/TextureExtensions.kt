@@ -3,12 +3,6 @@ package org.fragmentcolor
 // Idiomatic Kotlin wrappers on top of the uniffi-generated Texture API,
 // matching the call shapes of Texture+Extensions.swift.
 
-@Deprecated("Use TextureTarget", ReplaceWith("TextureTarget"))
-typealias MobileTextureTarget = TextureTarget
-
-@Deprecated("Use WindowTarget", ReplaceWith("WindowTarget"))
-typealias MobileWindowTarget = WindowTarget
-
 // ── Texture ──────────────────────────────────────────────────────────────────
 
 /** Upload pixels, one [Int] per byte, into the whole texture. */

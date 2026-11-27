@@ -70,8 +70,8 @@ impl Renderable for RenderableHandle {
 /// implementation matches and dispatches to the typed `Renderer::render`
 /// underneath.
 ///
-/// Both variants are the mobile wrapper types (`MobileWindowTarget` /
-/// `MobileTextureTarget`) that carry a `Mutex` / `RwLock` inside, allowing
+/// Both variants hold a target Swift and Kotlin see as `WindowTarget` or
+/// `TextureTarget`, which carries a `Mutex` / `RwLock` inside, allowing
 /// `resize()` to be called on a shared `Arc` from Swift / Kotlin.
 #[derive(Debug, Clone, uniffi::Enum)]
 pub enum TargetHandle {
