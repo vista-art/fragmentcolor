@@ -54,6 +54,28 @@ fn cs_main() {
 }
 "#;
 
+/// Five halves, ten bytes, so the root's third word holds its last half and two bytes of padding.
+/// The pass adds one to `c` and `d`, the halves in the middle word.
+const FIFTHS: &str = r#"
+enable f16;
+
+struct Fifths {
+    a: f16,
+    b: f16,
+    c: f16,
+    d: f16,
+    e: f16,
+}
+
+@group(0) @binding(0) var<storage, read_write> fifths: Fifths;
+
+@compute @workgroup_size(1)
+fn cs_main() {
+    fifths.c += 1.0h;
+    fifths.d += 1.0h;
+}
+"#;
+
 /// The storage root `ranged_sim` as `Renderer::read_storage` reads it, as u32 words.
 async fn read_sim(renderer: &Renderer, shader: &Shader) -> Vec<u32> {
     let bytes = renderer
@@ -69,6 +91,15 @@ fn integers(bytes: &[u8]) -> Vec<u32> {
         .0
         .iter()
         .map(|chunk| u32::from_le_bytes(*chunk))
+        .collect()
+}
+
+fn halves(bytes: &[u8]) -> Vec<u16> {
+    bytes
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|chunk| u16::from_le_bytes(*chunk))
         .collect()
 }
 
@@ -436,14 +467,6 @@ fn an_f16_set_uploads_its_whole_word() {
         renderer
             .render(&pass, &probe)
             .expect("second render failed");
-        let halves = |bytes: Vec<u8>| -> Vec<u16> {
-            bytes
-                .as_chunks::<2>()
-                .0
-                .iter()
-                .map(|chunk| u16::from_le_bytes(*chunk))
-                .collect()
-        };
 
         // Act
         shader.set("halves.a", 2.0f32).expect("set a");
@@ -464,14 +487,59 @@ fn an_f16_set_uploads_its_whole_word() {
         // Assert
         let (one, two, three) = (0x3C00, 0x4000, 0x4200);
         assert_eq!(
-            halves(after_a)[..3],
+            halves(&after_a)[..3],
             [two, one, 0],
             "a is 2, and b went back to its CPU 0 with a, then took one step"
         );
         assert_eq!(
-            halves(after_c)[..3],
+            halves(&after_c)[..3],
             [two, two, three],
             "c is 3, and a and b keep what they held"
+        );
+    });
+}
+
+// Story: The app sets the first and the last of five halves. They go up apart, through
+// one staging buffer, the last one as a whole word that reaches past the root's ten
+// bytes into the buffer's padding. The halves between keep what the pass wrote.
+// Runs where the device has SHADER_F16.
+#[test]
+fn halves_apart_reach_into_the_padding() {
+    pollster::block_on(async move {
+        // Arrange
+        let renderer = Renderer::new();
+        let probe = renderer
+            .create_texture_target([8, 8])
+            .await
+            .expect("create_texture_target failed");
+        let shader = Shader::new(FIFTHS).expect("fifths shader failed");
+        let pass = Pass::from_shader("fifths", &shader);
+        match renderer.render(&pass, &probe) {
+            Err(RendererError::FeatureError { .. }) => {
+                eprintln!("the device lacks SHADER_F16, so the test has nothing to check");
+                return;
+            }
+            result => result.expect("first render failed"),
+        }
+        renderer
+            .render(&pass, &probe)
+            .expect("second render failed");
+
+        // Act
+        shader.set("fifths.a", 2.0f32).expect("set a");
+        shader.set("fifths.e", 3.0f32).expect("set e");
+        renderer.render(&pass, &probe).expect("third render failed");
+
+        // Assert
+        let bytes = renderer
+            .read_storage(&shader, "fifths")
+            .await
+            .expect("read_storage failed");
+        let (two, three) = (0x4000, 0x4200);
+        assert_eq!(
+            halves(&bytes),
+            [two, 0, three, three, three],
+            "a is 2 and e is 3, and c and d took three steps"
         );
     });
 }
