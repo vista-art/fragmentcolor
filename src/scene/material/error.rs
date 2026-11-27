@@ -1,6 +1,10 @@
 //! `MaterialError`: a value a material setter or map can't use.
 
 use crate::ShaderError;
+#[cfg(any(python, wasm, mobile, test))]
+use crate::core::Field;
+#[cfg(any(python, wasm, mobile, test))]
+use crate::errors::{Classify, ErrorClass};
 use crate::scene::NotFinite;
 use crate::texture::TextureError;
 
@@ -41,15 +45,15 @@ impl From<NotFinite> for MaterialError {
 /// A texture input takes the class the same input raises in `create_texture`,
 /// and every other refusal is a `MaterialError`.
 #[cfg(any(python, wasm, mobile, test))]
-impl crate::errors::Classify for MaterialError {
-    fn classify(&self) -> crate::errors::ErrorClass {
+impl Classify for MaterialError {
+    fn classify(&self) -> ErrorClass {
         match self {
             MaterialError::Texture(error) => error.classify(),
-            _ => crate::errors::ErrorClass::Material,
+            _ => ErrorClass::Material,
         }
     }
 
-    fn list_fields(&self) -> Vec<(&'static str, crate::core::Field)> {
+    fn list_fields(&self) -> Vec<(&'static str, Field)> {
         match self {
             MaterialError::Texture(error) => error.list_fields(),
             _ => Vec::new(),

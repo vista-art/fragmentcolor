@@ -3,6 +3,9 @@
 
 use thiserror::Error;
 
+#[cfg(any(python, wasm, mobile, test))]
+use crate::core::Field;
+
 mod error_kind;
 pub use error_kind::*;
 
@@ -98,7 +101,7 @@ impl ErrorClass {
 pub(crate) struct ErrorShape {
     pub(crate) class: ErrorClass,
     pub(crate) message: String,
-    pub(crate) fields: Vec<(&'static str, crate::core::Field)>,
+    pub(crate) fields: Vec<(&'static str, Field)>,
 }
 
 /// An error that knows the class every binding raises it as, and the fields it carries.
@@ -109,7 +112,7 @@ pub(crate) trait Classify: std::fmt::Display {
     fn classify(&self) -> ErrorClass;
 
     /// The fields the error carries, by name. Most errors carry none.
-    fn list_fields(&self) -> Vec<(&'static str, crate::core::Field)> {
+    fn list_fields(&self) -> Vec<(&'static str, Field)> {
         Vec::new()
     }
 
@@ -332,7 +335,6 @@ mod tests {
     // material carries its kind, label and detail in every binding.
     #[test]
     fn wrapped_errors_take_the_inner_shape() {
-        use crate::core::Field;
         use crate::texture::TextureError;
         use crate::{InitializationError, MaterialError, RendererError};
         let device = || TextureError::DeviceError {

@@ -1,5 +1,6 @@
 //! The uniffi `FragmentColorError` that Swift and Kotlin throw.
 
+use crate::bindings::numbers::VectorError;
 use crate::core::Field;
 use crate::errors::{Classify, ErrorClass, ErrorShape};
 use crate::scene::{CameraError, LightError, ModelError, SceneLoadError};
@@ -104,26 +105,30 @@ impl FragmentColorError {
 struct Fields(Vec<(&'static str, Field)>);
 
 impl Fields {
+    /// The field named `name`, removed from the list.
     fn take(&mut self, name: &str) -> Option<Field> {
         let index = self.0.iter().position(|(field, _)| *field == name)?;
         Some(self.0.swap_remove(index).1)
     }
 
-    fn text(&mut self, name: &str) -> String {
+    /// The text field named `name`, or an empty string.
+    fn take_text(&mut self, name: &str) -> String {
         match self.take(name) {
             Some(Field::Text(text)) => text,
             _ => String::new(),
         }
     }
 
-    fn number(&mut self, name: &str) -> u64 {
+    /// The number field named `name`, or 0.
+    fn take_number(&mut self, name: &str) -> u64 {
         match self.take(name) {
             Some(Field::Number(number)) => number,
             _ => 0,
         }
     }
 
-    fn kind(&mut self, name: &str) -> ErrorKind {
+    /// The `ErrorKind` field named `name`, or `ErrorKind::Internal`.
+    fn take_kind(&mut self, name: &str) -> ErrorKind {
         match self.take(name) {
             Some(Field::Kind(kind)) => kind,
             _ => ErrorKind::Internal,
@@ -149,31 +154,31 @@ impl From<ErrorShape> for FragmentColorError {
             ErrorClass::OccludedSurface => FragmentColorError::OccludedSurface { message },
             ErrorClass::Device => FragmentColorError::Device {
                 message,
-                kind: fields.kind("kind"),
-                label: fields.text("label"),
-                detail: fields.text("detail"),
+                kind: fields.take_kind("kind"),
+                label: fields.take_text("label"),
+                detail: fields.take_text("detail"),
             },
             ErrorClass::Limit => FragmentColorError::Limit {
                 message,
-                item: fields.text("item"),
-                limit: fields.text("limit"),
-                value: fields.number("value"),
-                max: fields.number("max"),
+                item: fields.take_text("item"),
+                limit: fields.take_text("limit"),
+                value: fields.take_number("value"),
+                max: fields.take_number("max"),
             },
             ErrorClass::Feature => FragmentColorError::Feature {
                 message,
-                item: fields.text("item"),
-                feature: fields.text("feature"),
+                item: fields.take_text("item"),
+                feature: fields.take_text("feature"),
             },
             ErrorClass::Binding => FragmentColorError::Binding {
                 message,
-                uniform: fields.text("uniform"),
-                expected: fields.text("expected"),
-                found: fields.text("found"),
+                uniform: fields.take_text("uniform"),
+                expected: fields.take_text("expected"),
+                found: fields.take_text("found"),
             },
             ErrorClass::Entry => FragmentColorError::Entry {
                 message,
-                stage: fields.text("stage"),
+                stage: fields.take_text("stage"),
             },
             ErrorClass::SceneLoad => FragmentColorError::SceneLoad { message },
             ErrorClass::Light => FragmentColorError::Light { message },
@@ -209,5 +214,5 @@ throw_by_class!(
     CameraError,
     LightError,
     ModelError,
-    crate::bindings::numbers::VectorError,
+    VectorError,
 );
