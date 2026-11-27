@@ -958,50 +958,76 @@ fn pbr_layout_survives_the_web_round_trip() {
     }
 }
 
+/// A normal map whose tangent-space normal `(0.6, 0.6, 0.53)` leans far toward the
+/// tangent and the bitangent, so the light it takes depends on every axis of the frame.
+const TILTED: [u8; 4] = [204, 204, 195, 255];
+
+/// The quad's back: the same corners wound clockwise, with a normal along -z, away from the eye.
+fn back_quad() -> Mesh {
+    let mesh = Mesh::new();
+    for position in [
+        [-1.0, 1.0, 0.0],
+        [1.0, -1.0, 0.0],
+        [-1.0, -1.0, 0.0],
+        [-1.0, 1.0, 0.0],
+        [1.0, 1.0, 0.0],
+        [1.0, -1.0, 0.0],
+    ] {
+        mesh.add_vertex(Vertex::pbr(position).set(Vertex::NORMAL, [0.0_f32, 0.0, -1.0]));
+    }
+    mesh
+}
+
+/// A double-sided material seen from `[0, 0, 1]` with no ambient light,
+/// so each test reads its direct light alone.
+fn build_sheet() -> PbrMaterial {
+    let material = PbrMaterial::new().double_sided(true);
+    let shader = material.shader();
+    shader
+        .set("camera.position", [0.0_f32, 0.0, 1.0])
+        .expect("eye");
+    shader.set("lights.ambient", [0.0_f32; 3]).expect("ambient");
+    material
+}
+
+/// Draws `model` under a white light that travels along `direction` into a fresh
+/// 8x8 target and returns its image, row by row. The light's color cancels the 1/π
+/// of the diffuse, so a white face the light meets head on draws white.
+async fn draw_lit(renderer: &Renderer, model: &Model, direction: [f32; 3]) -> Vec<u8> {
+    let target = renderer
+        .create_texture_target([8u32, 8u32])
+        .await
+        .expect("texture target");
+    let pass = Pass::new("lit");
+    pass.add(model).expect("add the model");
+    let light = Light::directional(direction, [PI; 3]).expect("light");
+    pass.add(&light).expect("add the light");
+    renderer.render(&pass, &target).expect("render");
+    target.get_image().await.expect("read back")
+}
+
 // Story: a double-sided PBR sheet seen from behind lights as the side the camera sees,
-// since its tangent frame flips on the back face, as glTF asks. Unflipped, the light
-// would reach the side turned away and the back would draw black.
+// since its whole tangent frame flips on the back face, as glTF asks. The normal map
+// leans the normal toward the tangent and the bitangent, so the light meets it head on
+// only when all three axes flip, and a frame that keeps any one of them draws dim.
 #[test]
 fn a_back_face_lights_as_the_side_the_camera_sees() {
     pollster::block_on(async move {
         // Arrange
         let renderer = Renderer::new();
-        let target = renderer
-            .create_texture_target([8u32, 8u32])
-            .await
-            .expect("texture target");
-        let material = PbrMaterial::new().double_sided(true);
-        let shader = material.shader();
-        shader
-            .set("camera.position", [0.0_f32, 0.0, 1.0])
-            .expect("eye");
-        shader.set("lights.ambient", [0.0_f32; 3]).expect("ambient");
-        // The quad's corners wound clockwise, with a normal along -z, away from the eye.
-        let back = Mesh::new();
-        for position in [
-            [-1.0, 1.0, 0.0],
-            [1.0, -1.0, 0.0],
-            [-1.0, -1.0, 0.0],
-            [-1.0, 1.0, 0.0],
-            [1.0, 1.0, 0.0],
-            [1.0, -1.0, 0.0],
-        ] {
-            back.add_vertex(Vertex::pbr(position).set(Vertex::NORMAL, [0.0_f32, 0.0, -1.0]));
-        }
-        let pass = Pass::new("back");
-        pass.add(&Model::new(back, &material))
-            .expect("add the model");
-        let light = Light::directional([0.0, 0.0, -1.0], [PI; 3]).expect("light");
-        pass.add(&light).expect("add the light");
+        let material = build_sheet();
+        material.normal_map().texture(paint(TILTED)).expect("map");
+        let model = Model::new(back_quad(), &material);
 
         // Act
-        renderer.render(&pass, &target).expect("render");
+        // The flipped frame turns the mapped normal to (-0.6, 0.6, 0.53).
+        let image = draw_lit(&renderer, &model, [0.6, -0.6, -0.53]).await;
 
         // Assert
-        let pixel = read_pixel(&target).await;
+        let pixel = &image[..4];
         assert!(
-            pixel[0] > 150,
-            "the light reaches the side the camera sees: {pixel:?}"
+            pixel[0] > 230,
+            "the light meets the mapped normal head on: {pixel:?}"
         );
     });
 }
