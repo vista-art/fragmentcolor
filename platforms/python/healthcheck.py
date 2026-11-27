@@ -33,6 +33,7 @@ from fragmentcolor import (
     PbrMaterial,
     RenderCanvasTarget,
     Renderer,
+    SamplerInfo,
     SamplerOptions,
     Scene,
     SceneLoadError,
@@ -1443,7 +1444,11 @@ def check_stub():
 
 
 def check_typed_returns():
-    """Light.kind returns a LightKind, Mipmap.size a Size, and matrices four columns of four."""
+    """Light.kind returns a LightKind, Mipmap.size a Size, Shader.get a SamplerInfo for a
+    sampler, and matrices four columns of four."""
+    sampler = Shader(SAMPLE_SHADER).get("soft")
+    assert isinstance(sampler, SamplerInfo) and sampler.comparison is False, repr(sampler)
+    assert sampler == Shader(SAMPLE_SHADER).get("soft")
     assert Light.directional([0, -1, 0], [1, 1, 1]).kind() == LightKind.Directional
     assert Light.point([0, 1, 0], [1, 1, 1]).kind() == LightKind.Point
     assert Light.spot([0, 1, 0], [0, -1, 0], [1, 1, 1]).kind() == LightKind.Spot
@@ -1460,7 +1465,7 @@ def check_typed_returns():
         pass
     else:
         raise AssertionError("Renderer.set_log_level('debug') should raise TypeError")
-    print("Light.kind, Mipmap.size and Renderer.set_log_level take and return typed values")
+    print("Light.kind, Mipmap.size, Shader.get and Renderer.set_log_level take and return typed values")
 
 
 # Green when `id` arrives as the u32 16777217 and `cell` as the vec2<i32> (-1, 2), red otherwise.

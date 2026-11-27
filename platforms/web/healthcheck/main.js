@@ -190,7 +190,13 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
     shader.set("tex", tex);
     shader.set("resolution", [64.0, 64.0]);
     console.log('Set texture on shader successfully');
-    
+
+    // A sampler reads back as a SamplerInfo, as in Python, Swift and Kotlin.
+    const sampler = shader.get("samp");
+    if (!(sampler instanceof fc.SamplerInfo) || sampler.comparison !== false) {
+      throw new Error(`shader.get("samp") should be a SamplerInfo, got ${JSON.stringify(sampler)}`);
+    }
+
     renderer.render(shader, target);
     const img = await target.getImage();
     console.log('Rendered textured shader:', img);

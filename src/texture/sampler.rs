@@ -129,12 +129,22 @@ impl SamplerOptions {
     }
 }
 
-#[cfg_attr(python, pyo3::pyclass(from_py_object))]
+/// A shader's sampler slot, as `Shader::get` reads it back.
+#[cfg_attr(wasm, wasm_bindgen)]
+#[cfg_attr(
+    python,
+    pyo3::pyclass(from_py_object, get_all, eq, hash, frozen, module = "fragmentcolor")
+)]
 #[cfg_attr(mobile, derive(uniffi::Record))]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct SamplerInfo {
+    /// Whether the slot is a `sampler_comparison`, which compares depth.
+    // Read-only in JavaScript, as Python's frozen class is.
+    #[cfg_attr(wasm, wasm_bindgen(readonly))]
     pub comparison: bool,
 }
+
+crate::impl_fc_kind!(SamplerInfo, "SamplerInfo");
 
 impl Default for SamplerOptions {
     fn default() -> Self {

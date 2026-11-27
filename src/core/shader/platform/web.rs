@@ -1,10 +1,7 @@
 #![cfg(wasm)]
 
 use crate::errors::WebError;
-use js_sys::{
-    Array, ArrayBuffer, DataView, Float32Array, Int32Array, Object, Reflect, Uint8Array,
-    Uint32Array,
-};
+use js_sys::{Array, ArrayBuffer, DataView, Float32Array, Int32Array, Uint8Array, Uint32Array};
 use lsp_doc::lsp_doc;
 use std::convert::TryInto;
 use wasm_bindgen::JsCast;
@@ -213,7 +210,7 @@ fn uniform_input(key: &str, value: &JsValue) -> Result<UniformInput, WebError> {
     )))
 }
 
-/// Turns the value `Shader.get` read into JS: numbers, typed arrays, a texture id, or bytes.
+/// Turns the value `Shader.get` read into JS: numbers, typed arrays, a `TextureId`, a `SamplerInfo` or bytes.
 fn uniform_value(data: UniformData) -> JsValue {
     use UniformData as U;
     match data {
@@ -229,12 +226,7 @@ fn uniform_value(data: UniformData) -> JsValue {
         U::IVec2(v) | U::IVec3(v) | U::IVec4(v) => Int32Array::from(&v[..]).into(),
         U::UVec2(v) | U::UVec3(v) | U::UVec4(v) => Uint32Array::from(&v[..]).into(),
         U::Texture(meta) => meta.id.into(),
-        U::Sampler(info) => {
-            let object = Object::new();
-            let comparison = JsValue::from_bool(info.comparison);
-            let _ = Reflect::set(&object, &"comparison".into(), &comparison);
-            object.into()
-        }
+        U::Sampler(info) => info.into(),
         other => Uint8Array::from(&other.to_bytes()[..]).into(),
     }
 }
