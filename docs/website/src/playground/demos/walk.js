@@ -1,6 +1,6 @@
 // A small valley you walk through, built from the scene layer: Scene, Model,
-// Mesh, PbrMaterial, Camera and Light. A sky pass draws first, and the
-// valley draws over it.
+// Mesh, the three material types, Camera and Light. A sky pass draws first,
+// the valley draws over it, and the name of the style it draws in goes last.
 
 import { formatValue } from "../codegen.js";
 
@@ -66,8 +66,74 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 }
 `;
 
-const PROGRAM = /* js */ `import { AlphaMode, Camera, Light, Mesh, Model, Pass, PbrMaterial, Scene, Shader, Vertex } from "fragmentcolor";
+const LABEL = /* wgsl */ `// The name of the style the valley draws in, in the canvas's top right corner,
+// over a dark box. main.js sets the style and the canvas size. The letters come
+// from a font five pixels square, and a font pixel covers a few canvas pixels.
+
+struct Label {
+  resolution: vec2<f32>,
+  style: u32,
+}
+
+@group(0) @binding(0) var<uniform> label: Label;
+
+// Fullscreen triangle: three vertices that cover the canvas.
+@vertex
+fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  var corners = array<vec2<f32>, 3>(vec2<f32>(-1.0, -1.0), vec2<f32>(3.0, -1.0), vec2<f32>(-1.0, 3.0));
+  return vec4<f32>(corners[i], 0.0, 1.0);
+}
+
+// The letters, a bit for each font pixel, row after row from the top left.
+const B = 0x0f8be2fu;
+const I = 0x1f2109fu;
+const L = 0x1f08421u;
+const N = 0x11cd671u;
+const O = 0x0e8c62eu;
+const P = 0x010be2fu;
+const R = 0x114be2fu;
+const T = 0x042109fu;
+const U = 0x0e8c631u;
+
+@fragment
+fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
+  // Each style's name in five letters, with 0 past its last letter.
+  var names = array<u32, 15>(
+    P, B, R, 0u, 0u,
+    T, O, O, N, 0u,
+    U, N, L, I, T,
+  );
+  let first = min(label.style, 2u) * 5u;
+  var count = 0u;
+  for (var index = 0u; index < 5u; index++) {
+    count += select(0u, 1u, names[first + index] != 0u);
+  }
+
+  // The text in font pixels: five for each letter and one between letters, four
+  // in from the corner. The box reaches two past it, with rounded corners.
+  let pixel = max(floor(min(label.resolution.x, label.resolution.y) / 160.0), 2.0);
+  let size = vec2<f32>(f32(count * 6u - 1u), 5.0);
+  let spot = position.xy / pixel - vec2<f32>(label.resolution.x / pixel - size.x - 4.0, 4.0);
+  let half = size * 0.5;
+  let outside = abs(spot - half) - half - vec2<f32>(1.0);
+  let edge = (length(max(outside, vec2<f32>(0.0))) - 1.0) * pixel;
+  if (edge > 1.0) {
+    discard;
+  }
+  let box = vec4<f32>(0.02, 0.025, 0.035, 0.6 * clamp(0.5 - edge, 0.0, 1.0));
+
+  let cell = vec2<i32>(floor(spot));
+  if (any(cell < vec2<i32>(0)) || cell.y > 4 || cell.x >= i32(size.x) || cell.x % 6 == 5) {
+    return box;
+  }
+  let ink = (names[first + u32(cell.x / 6)] >> u32(cell.y * 5 + cell.x % 6)) & 1u;
+  return select(box, vec4<f32>(0.92, 0.93, 0.95, 1.0), ink == 1u);
+}
+`;
+
+const PROGRAM = /* js */ `import { AlphaMode, Camera, Light, Mesh, Model, Pass, PbrMaterial, Scene, Shader, ToonMaterial, UnlitMaterial, Vertex } from "fragmentcolor";
 import SKY_SOURCE from "./sky.wgsl?raw";
+import LABEL_SOURCE from "./label.wgsl?raw";
 
 const LIBRARY = ["color/linear_to_srgb"];
 
@@ -85,6 +151,11 @@ const LUSH = [[0.04, 0.12, 0.02, 1], [0.07, 0.2, 0.03, 1], [0.13, 0.29, 0.05, 1]
 const DRY = [[0.05, 0.12, 0.02, 1], [0.13, 0.21, 0.04, 1], [0.26, 0.3, 0.09, 1]];
 const SHORT = [[0.035, 0.1, 0.02, 1], [0.055, 0.16, 0.025, 1], [0.09, 0.23, 0.04, 1]];
 
+// The pond and the lamp bulbs, and the toon rim along the trees, rocks, grass and lamps.
+const POND = [0.02, 0.08, 0.1, 0.8];
+const BULB = [1, 0.85, 0.6, 1];
+const RIM = [0.05, 0.06, 0.08];
+
 // Meters per second (Shift runs), eye height in meters, and radians of turn per pixel dragged.
 const SPEED = 3.5;
 const EYE = 1.6;
@@ -99,23 +170,39 @@ export async function setup(renderer, target) {
   sky.set("sky.sunset", [1.6, 0.55, 0.15]);
   sky.set("sky.night", [0.002, 0.004, 0.012]);
 
-  // The valley draws over the sky. A pass that draws models gets a depth buffer,
-  // so the nearest surface wins at each pixel.
+  // The valley draws over the sky, and the style's name over the valley. A pass
+  // that draws models gets a depth buffer, so the nearest surface wins at each pixel.
   const world = new Pass("world");
   world.loadPrevious();
+  const label = new Shader(LABEL_SOURCE).alphaMode(AlphaMode.Blend);
+  const overlay = Pass.fromShader("label", label);
+  overlay.loadPrevious();
 
   const scene = new Scene();
-  scene.addPass(Pass.fromShader("sky", sky)).addPass(world);
-  const add = (object) => scene.addTo("world", object);
+  scene.addPass(Pass.fromShader("sky", sky)).addPass(world).addPass(overlay);
 
-  add(new Model(ground(), new PbrMaterial().roughness(0.95)));
-  const water = new PbrMaterial().baseColor([0.02, 0.08, 0.1, 0.8]).roughness(0.08).alphaMode(AlphaMode.Blend);
-  add(new Model(square(SIZE, WATER), water));
+  // Each spot holds a Model in each style, PBR, toon and unlit, over the same mesh.
+  // The PBR ones show first, and M shows the next style's in their place.
+  const models = [[], [], []];
+  const add = (placed) => placed.forEach((model, style) => {
+    model.setVisible(style === 0);
+    models[style].push(model);
+    scene.addTo("world", model);
+  });
+
+  // The ground and the pond lie flat, so a toon rim would light all of them far
+  // away. The pond takes a hard toon glint instead.
+  const land = styles(new PbrMaterial().roughness(0.95));
+  land.toon.rim([0, 0, 0]);
+  add(place(ground(), land, [0, 0, 0], 0, [1, 1, 1]));
+  const water = styles(new PbrMaterial().roughness(0.08), POND, AlphaMode.Blend);
+  water.toon.rim([0, 0, 0]).highlight([0.6, 0.6, 0.6]).highlightSize(0.01);
+  add(place(square(SIZE, WATER), water, [0, 0, 0], 0, [1, 1, 1]));
 
   // Trees and rocks share one mesh each, so each kind draws in one call.
   const obstacles = [];
   const tree = pine();
-  const bark = new PbrMaterial().roughness(0.8);
+  const bark = styles(new PbrMaterial().roughness(0.8));
   for (let i = 0; obstacles.length < TREES && i < TREES * 8; i++) {
     const [x, z] = spot(i, SIZE * 0.42);
     if (height(x, z) < WATER + 0.5 || height(x, z) > 5 || Math.hypot(x, z) < 6) continue;
@@ -124,7 +211,7 @@ export async function setup(renderer, target) {
     obstacles.push([x, z, 0.35 * scale]);
   }
   const rock = boulder();
-  const stone = new PbrMaterial().roughness(0.7);
+  const stone = styles(new PbrMaterial().roughness(0.7));
   for (let i = 0; i < ROCKS; i++) {
     const [x, z] = spot(i + 5000, SIZE * 0.45);
     const scale = 0.4 + random(i, 4) * 0.9;
@@ -134,9 +221,9 @@ export async function setup(renderer, target) {
   }
 
   // Grass grows in meadows on the gentle slopes between the water and the rocks,
-  // thicker where two slow waves meet. Its three kinds of tuft share one material.
+  // thicker where two slow waves meet. Its three kinds of tuft share one material per style.
   const kinds = [tuft(9, 0.55, LUSH), tuft(6, 0.85, DRY), tuft(12, 0.3, SHORT)];
-  const grass = new PbrMaterial().roughness(0.85);
+  const grass = styles(new PbrMaterial().roughness(0.85));
   for (let i = 0; i < GRASS; i++) {
     const [x, z] = spot(i + 9000, SIZE * 0.4);
     const floor = height(x, z);
@@ -152,18 +239,21 @@ export async function setup(renderer, target) {
 
   // Lamps ring the clearing where the walk starts. Each one carries a point light.
   const post = column([0.02, 0.018, 0.016, 1]);
-  const metal = new PbrMaterial().metallic(0.6).roughness(0.4);
-  const bulb = new PbrMaterial().baseColor([1, 0.85, 0.6, 1]);
+  const lantern = column([1, 1, 1, 1]);
+  const metal = styles(new PbrMaterial().metallic(0.6).roughness(0.4));
+  // A toon bulb glows through its rim, which reaches every face.
+  const bulb = styles(new PbrMaterial(), BULB);
+  bulb.toon.rimWidth(1);
   const lamps = [];
   for (let i = 0; i < LAMPS; i++) {
     const angle = (i / LAMPS) * TAU;
     const [x, z] = [Math.cos(angle) * 5, Math.sin(angle) * 5];
     const y = height(x, z);
     add(place(post, metal, [x, y, z], 0, [0.12, 2.6, 0.12]));
-    add(place(post, bulb, [x, y + 2.6, z], 0.785, [0.32, 0.32, 0.32]));
+    add(place(lantern, bulb, [x, y + 2.6, z], 0.785, [0.32, 0.32, 0.32]));
     const light = Light.point([x, y + 2.75, z], [1, 0.72, 0.42]).setRange(14);
     lamps.push(light);
-    add(light);
+    scene.addTo("world", light);
     obstacles.push([x, z, 0.3]);
   }
 
@@ -171,15 +261,15 @@ export async function setup(renderer, target) {
   const moon = Light.directional([0.3, -1, 0.5], [0.45, 0.55, 0.85]);
   // The first frame sets the aspect from the canvas, which may have no size yet.
   const camera = Camera.perspective(FOV, 1, 0.05, 200);
-  add(sun);
-  add(moon);
-  add(camera);
+  scene.addTo("world", sun).addTo("world", moon).addTo("world", camera);
 
   return {
-    scene, sky, sun, moon, lamps, bulb, camera, obstacles, size: [0, 0],
+    scene, sky, label, sun, moon, lamps, bulb, camera, obstacles, models, size: [0, 0],
     walker: { x: 0, z: 3, y: height(0, 3) + EYE, rise: 0, yaw: -0.7, pitch: -0.05, walked: 0 },
     clock: 0.28 * DAY,
     time: 0,
+    style: 0,
+    pressed: false,
   };
 }
 
@@ -187,11 +277,27 @@ export function frame(state, renderer, target, time, size, pointer, gesture = { 
   const delta = Math.min(Math.max(time - state.time, 0), 0.1);
   state.time = time;
   state.clock += delta * (keys.down.has("KeyT") ? 20 : 1);
+  restyle(state, keys);
   walk(state, delta, gesture, keys);
   light(state);
   fit(state, size);
   state.sky.set("sky.resolution", size);
+  state.label.set("label.resolution", size);
   renderer.render(state.scene, target);
+}
+
+// M, or the style button on a touch screen, shows every model in the next style:
+// PBR, toon, then unlit. Hidden Models stay in the pass and cost no draw calls.
+function restyle(state, keys) {
+  const pressed = keys.down.has("KeyM");
+  if (pressed && !state.pressed) {
+    const style = (state.style + 1) % state.models.length;
+    for (const model of state.models[state.style]) model.setVisible(false);
+    for (const model of state.models[style]) model.setVisible(true);
+    state.label.set("label.style", style);
+    state.style = style;
+  }
+  state.pressed = pressed;
 }
 
 // A new canvas size changes the camera's aspect.
@@ -262,7 +368,9 @@ function light(state) {
   state.moon.setIntensity(0.35 * (1 - day));
   state.scene.ambient(mix([0.025, 0.03, 0.06], [0.28, 0.32, 0.4], day));
   for (const lamp of state.lamps) lamp.setIntensity(5 * (1 - day));
-  state.bulb.emissive(mix([0.3, 0.24, 0.14], [1.2, 0.75, 0.3], 1 - day));
+  const glow = mix([0.3, 0.24, 0.14], [1.2, 0.75, 0.3], 1 - day);
+  state.bulb.pbr.emissive(glow);
+  state.bulb.toon.rim(glow);
   state.sky.set("sky.sun", sun);
   state.sky.set("sky.day", day);
 }
@@ -390,12 +498,25 @@ function facets(triangles, paint = (triangle) => triangle[3]) {
   return mesh;
 }
 
-function place(mesh, material, position, turn, scale) {
-  const model = new Model(mesh, material);
-  model.translate(position);
-  model.rotate([0, 1, 0], turn);
-  model.scale(scale);
-  return model;
+// A surface in each style: the PBR material given, then a toon and an unlit one.
+// All three take the alpha mode and the base color, which tints the vertex colors.
+function styles(pbr, color = [1, 1, 1, 1], mode = AlphaMode.Opaque) {
+  return {
+    pbr: pbr.baseColor(color).alphaMode(mode),
+    toon: new ToonMaterial().baseColor(color).bands(3).rim(RIM).alphaMode(mode),
+    unlit: new UnlitMaterial().baseColor(color).alphaMode(mode),
+  };
+}
+
+// A Model in each style at the same spot, in the order the M key steps through them.
+function place(mesh, materials, position, turn, scale) {
+  return [materials.pbr, materials.toon, materials.unlit].map((material) => {
+    const model = new Model(mesh, material);
+    model.translate(position);
+    model.rotate([0, 1, 0], turn);
+    model.scale(scale);
+    return model;
+  });
 }
 
 // The same pseudo-random numbers in every language: a 32-bit integer hash.
@@ -433,7 +554,7 @@ const VALUES = {
   "sky.night": [0.002, 0.004, 0.012],
 };
 
-// Each tab draws with PbrMaterial, which needs 0.12.8.
+// Each tab draws with PbrMaterial, ToonMaterial and UnlitMaterial, which need 0.12.8.
 const NEEDS = "Needs FragmentColor 0.12.8 or later.";
 
 function quote(text) {
@@ -467,10 +588,12 @@ use std::error::Error;
 use std::f32::consts::TAU;
 
 use fragmentcolor::{
-    AlphaMode, Camera, Light, Mesh, Model, Pass, PbrMaterial, Renderer, Scene, Shader, Target, Vertex,
+    AlphaMode, Camera, Light, Material, Mesh, Model, Pass, PbrMaterial, Renderer, Scene, Shader,
+    Target, ToonMaterial, UnlitMaterial, Vertex,
 };
 
 const SKY_SOURCE: &str = include_str!("sky.wgsl");
+const LABEL_SOURCE: &str = include_str!("label.wgsl");
 
 /// The valley is \`SIZE\` meters across, and a day lasts \`DAY\` seconds. Hold T to hurry it.
 const SIZE: f32 = 72.0;
@@ -486,6 +609,12 @@ const LUSH: [Color; 3] = [[0.04, 0.12, 0.02, 1.0], [0.07, 0.2, 0.03, 1.0], [0.13
 const DRY: [Color; 3] = [[0.05, 0.12, 0.02, 1.0], [0.13, 0.21, 0.04, 1.0], [0.26, 0.3, 0.09, 1.0]];
 const SHORT: [Color; 3] = [[0.035, 0.1, 0.02, 1.0], [0.055, 0.16, 0.025, 1.0], [0.09, 0.23, 0.04, 1.0]];
 
+/// The pond and the lamp bulbs, and the toon rim along the trees, rocks, grass and lamps.
+const POND: Color = [0.02, 0.08, 0.1, 0.8];
+const BULB: Color = [1.0, 0.85, 0.6, 1.0];
+const RIM: Point = [0.05, 0.06, 0.08];
+const WHITE: Color = [1.0; 4];
+
 /// Meters per second (Shift runs), eye height in meters, and radians of turn per pixel dragged.
 const SPEED: f32 = 3.5;
 const EYE: f32 = 1.6;
@@ -494,6 +623,13 @@ const FOV: f32 = 1.1;
 
 type Point = [f32; 3];
 type Color = [f32; 4];
+
+/// The materials of one surface, one per style, in the order M steps through them.
+struct Styles {
+    pbr: PbrMaterial,
+    toon: ToonMaterial,
+    unlit: UnlitMaterial,
+}
 
 /// What the wheel, a drag and a pinch did since the last frame: zoom in doublings
 /// (positive zooms in) and pan in window pixels.
@@ -535,12 +671,18 @@ struct Walker {
 struct State {
     scene: Scene,
     sky: Shader,
+    label: Shader,
     sun: Light,
     moon: Light,
     lamps: Vec<Light>,
-    bulb: PbrMaterial,
+    bulb: Styles,
     camera: Camera,
     obstacles: Vec<[f32; 3]>,
+    /// The Models of each style, of which only \`style\`'s show.
+    models: [Vec<Model>; 3],
+    style: usize,
+    /// Whether M was down on the last frame.
+    pressed: bool,
     size: [u32; 2],
     walker: Walker,
     clock: f32,
@@ -552,25 +694,42 @@ fn setup() -> Result<State, Box<dyn Error>> {
 ${shader}
 ${setCalls("rust", "sky", sky, { after: "?;" })}
 
-    // The valley draws over the sky. A pass that draws models gets a depth buffer,
-    // so the nearest surface wins at each pixel.
+    // The valley draws over the sky, and the style's name over the valley. A pass
+    // that draws models gets a depth buffer, so the nearest surface wins at each pixel.
     let world = Pass::new("world");
     world.load_previous();
+    let label = Shader::new(LABEL_SOURCE)?.alpha_mode(AlphaMode::Blend);
+    let overlay = Pass::from_shader("label", &label);
+    overlay.load_previous();
 
     let scene = Scene::new();
-    scene.add_pass(&Pass::from_shader("sky", &sky)).add_pass(&world);
+    scene.add_pass(&Pass::from_shader("sky", &sky)).add_pass(&world).add_pass(&overlay);
 
-    scene.add_to("world", &Model::new(ground(), PbrMaterial::new().roughness(0.95)?))?;
-    let water = PbrMaterial::new()
-        .base_color([0.02, 0.08, 0.1, 0.8])?
-        .roughness(0.08)?
-        .alpha_mode(AlphaMode::Blend);
-    scene.add_to("world", &Model::new(square(SIZE, WATER), water))?;
+    // Each spot holds a Model in each style, PBR, toon and unlit, over the same mesh.
+    // The PBR ones show first, and M shows the next style's in their place.
+    let mut models: [Vec<Model>; 3] = Default::default();
+    let mut add = |placed: Vec<Model>| -> Result<(), Box<dyn Error>> {
+        for (style, model) in placed.into_iter().enumerate() {
+            model.set_visible(style == 0);
+            scene.add_to("world", &model)?;
+            models[style].push(model);
+        }
+        Ok(())
+    };
+
+    // The ground and the pond lie flat, so a toon rim would light all of them far
+    // away. The pond takes a hard toon glint instead.
+    let land = styles(PbrMaterial::new().roughness(0.95)?, WHITE, AlphaMode::Opaque)?;
+    land.toon.rim([0.0; 3])?;
+    add(place(&ground(), &land, [0.0; 3], 0.0, [1.0; 3])?)?;
+    let water = styles(PbrMaterial::new().roughness(0.08)?, POND, AlphaMode::Blend)?;
+    water.toon.rim([0.0; 3])?.highlight([0.6; 3])?.highlight_size(0.01)?;
+    add(place(&square(SIZE, WATER), &water, [0.0; 3], 0.0, [1.0; 3])?)?;
 
     // Trees and rocks share one mesh each, so each kind draws in one call.
     let mut obstacles = Vec::new();
     let tree = pine();
-    let bark = PbrMaterial::new().roughness(0.8)?;
+    let bark = styles(PbrMaterial::new().roughness(0.8)?, WHITE, AlphaMode::Opaque)?;
     for index in 0..(TREES * 8) as u32 {
         if obstacles.len() == TREES {
             break;
@@ -582,25 +741,25 @@ ${setCalls("rust", "sky", sky, { after: "?;" })}
         }
         let scale = 0.7 + random(index, 2) * 0.7;
         let turn = random(index, 3) * TAU;
-        scene.add_to("world", &place(&tree, &bark, [x, floor - 0.1, z], turn, [scale; 3])?)?;
+        add(place(&tree, &bark, [x, floor - 0.1, z], turn, [scale; 3])?)?;
         obstacles.push([x, z, 0.35 * scale]);
     }
     let rock = boulder();
-    let stone = PbrMaterial::new().roughness(0.7)?;
+    let stone = styles(PbrMaterial::new().roughness(0.7)?, WHITE, AlphaMode::Opaque)?;
     for index in 0..ROCKS {
         let [x, z] = spot(index + 5000, SIZE * 0.45);
         let scale = 0.4 + random(index, 4) * 0.9;
         let stretch = [scale * (1.0 + random(index, 5)), scale * 0.7, scale];
         let position = [x, height(x, z) - 0.15 * scale, z];
         let turn = random(index, 6) * TAU;
-        scene.add_to("world", &place(&rock, &stone, position, turn, stretch)?)?;
+        add(place(&rock, &stone, position, turn, stretch)?)?;
         obstacles.push([x, z, scale]);
     }
 
     // Grass grows in meadows on the gentle slopes between the water and the rocks,
-    // thicker where two slow waves meet. Its three kinds of tuft share one material.
+    // thicker where two slow waves meet. Its three kinds of tuft share one material per style.
     let kinds = [tuft(9, 0.55, LUSH), tuft(6, 0.85, DRY), tuft(12, 0.3, SHORT)];
-    let grass = PbrMaterial::new().roughness(0.85)?;
+    let grass = styles(PbrMaterial::new().roughness(0.85)?, WHITE, AlphaMode::Opaque)?;
     for index in 0..GRASS {
         let [x, z] = spot(index + 9000, SIZE * 0.4);
         let floor = height(x, z);
@@ -620,20 +779,24 @@ ${setCalls("rust", "sky", sky, { after: "?;" })}
         let size = 0.7 + random(index, 11) * 0.6;
         let stretch = [size, size * (0.8 + random(index, 14) * 0.5), size];
         let turn = random(index, 12) * TAU;
-        scene.add_to("world", &place(&kinds[kind], &grass, [x, floor - 0.02, z], turn, stretch)?)?;
+        add(place(&kinds[kind], &grass, [x, floor - 0.02, z], turn, stretch)?)?;
     }
 
     // Lamps ring the clearing where the walk starts. Each one carries a point light.
     let post = column([0.02, 0.018, 0.016, 1.0]);
-    let metal = PbrMaterial::new().metallic(0.6)?.roughness(0.4)?;
-    let bulb = PbrMaterial::new().base_color([1.0, 0.85, 0.6, 1.0])?;
+    let lantern = column(WHITE);
+    let metal =
+        styles(PbrMaterial::new().metallic(0.6)?.roughness(0.4)?, WHITE, AlphaMode::Opaque)?;
+    // A toon bulb glows through its rim, which reaches every face.
+    let bulb = styles(PbrMaterial::new(), BULB, AlphaMode::Opaque)?;
+    bulb.toon.rim_width(1.0)?;
     let mut lamps = Vec::new();
     for index in 0..LAMPS {
         let angle = index as f32 / LAMPS as f32 * TAU;
         let (x, z) = (angle.cos() * 5.0, angle.sin() * 5.0);
         let y = height(x, z);
-        scene.add_to("world", &place(&post, &metal, [x, y, z], 0.0, [0.12, 2.6, 0.12])?)?;
-        scene.add_to("world", &place(&post, &bulb, [x, y + 2.6, z], 0.785, [0.32; 3])?)?;
+        add(place(&post, &metal, [x, y, z], 0.0, [0.12, 2.6, 0.12])?)?;
+        add(place(&lantern, &bulb, [x, y + 2.6, z], 0.785, [0.32; 3])?)?;
         let lamp = Light::point([x, y + 2.75, z], [1.0, 0.72, 0.42])?.set_range(14.0)?;
         scene.add_to("world", &lamp)?;
         lamps.push(lamp);
@@ -651,12 +814,16 @@ ${setCalls("rust", "sky", sky, { after: "?;" })}
     Ok(State {
         scene,
         sky,
+        label,
         sun,
         moon,
         lamps,
         bulb,
         camera,
         obstacles,
+        models,
+        style: 0,
+        pressed: false,
         size: [0, 0],
         walker: Walker {
             x: 0.0,
@@ -693,11 +860,32 @@ fn frame(
         state.camera.set_aspect(size[0] as f32 / size[1] as f32)?;
         state.size = size;
     }
+    restyle(state, keys)?;
     walk(state, delta, gesture, keys)?;
     light(state)?;
     let resolution = [state.size[0] as f32, state.size[1] as f32];
     state.sky.set("sky.resolution", resolution)?;
+    state.label.set("label.resolution", resolution)?;
     renderer.render(&state.scene, target)?;
+    Ok(())
+}
+
+/// M, or the style button on a touch screen, shows every model in the next style:
+/// PBR, toon, then unlit. Hidden Models stay in the pass and cost no draw calls.
+fn restyle(state: &mut State, keys: &Keys) -> Result<(), Box<dyn Error>> {
+    let pressed = keys.down.contains("KeyM");
+    if pressed && !state.pressed {
+        let style = (state.style + 1) % state.models.len();
+        for model in &state.models[state.style] {
+            model.set_visible(false);
+        }
+        for model in &state.models[style] {
+            model.set_visible(true);
+        }
+        state.label.set("label.style", style as u32)?;
+        state.style = style;
+    }
+    state.pressed = pressed;
     Ok(())
 }
 
@@ -783,7 +971,9 @@ fn light(state: &State) -> Result<(), Box<dyn Error>> {
     for lamp in &state.lamps {
         lamp.set_intensity(5.0 * (1.0 - day))?;
     }
-    state.bulb.emissive(mix([0.3, 0.24, 0.14], [1.2, 0.75, 0.3], 1.0 - day))?;
+    let glow = mix([0.3, 0.24, 0.14], [1.2, 0.75, 0.3], 1.0 - day);
+    state.bulb.pbr.emissive(glow)?;
+    state.bulb.toon.rim(glow)?;
     state.sky.set("sky.sun", sun)?;
     state.sky.set("sky.day", day)?;
     Ok(())
@@ -981,18 +1171,38 @@ fn face_normal([first, second, third]: &[Point; 3]) -> Point {
     normalize(cross(minus(*second, *first), minus(*third, *first)))
 }
 
+/// A surface in each style: the PBR material given, then a toon and an unlit one.
+/// All three take the alpha mode and the base color, which tints the vertex colors.
+fn styles(pbr: PbrMaterial, color: Color, mode: AlphaMode) -> Result<Styles, Box<dyn Error>> {
+    Ok(Styles {
+        pbr: pbr.base_color(color)?.alpha_mode(mode),
+        toon: ToonMaterial::new().base_color(color)?.bands(3)?.rim(RIM)?.alpha_mode(mode),
+        unlit: UnlitMaterial::new().base_color(color)?.alpha_mode(mode),
+    })
+}
+
+/// A Model in each style at the same spot, in the order the M key steps through them.
 fn place(
     mesh: &Mesh,
-    material: &PbrMaterial,
+    materials: &Styles,
     position: Point,
     turn: f32,
     scale: Point,
-) -> Result<Model, Box<dyn Error>> {
-    let model = Model::new(mesh.clone(), material.clone());
-    model.translate(position)?;
-    model.rotate([0.0, 1.0, 0.0], turn)?;
-    model.scale(scale)?;
-    Ok(model)
+) -> Result<Vec<Model>, Box<dyn Error>> {
+    [
+        Material::from(&materials.pbr),
+        Material::from(&materials.toon),
+        Material::from(&materials.unlit),
+    ]
+    .into_iter()
+    .map(|material| {
+        let model = Model::new(mesh.clone(), material);
+        model.translate(position)?;
+        model.rotate([0.0, 1.0, 0.0], turn)?;
+        model.scale(scale)?;
+        Ok(model)
+    })
+    .collect()
 }
 
 /// The same pseudo-random numbers in every language: a 32-bit integer hash.
@@ -1042,11 +1252,26 @@ function writePython({ library, sky }) {
 import math
 from pathlib import Path
 from types import SimpleNamespace
+from typing import NamedTuple
 
-from fragmentcolor import AlphaMode, Camera, Light, Mesh, Model, Pass, PbrMaterial, Scene, Shader, Vertex
+from fragmentcolor import (
+    AlphaMode,
+    Camera,
+    Light,
+    Mesh,
+    Model,
+    Pass,
+    PbrMaterial,
+    Scene,
+    Shader,
+    ToonMaterial,
+    UnlitMaterial,
+    Vertex,
+)
 
 ${wrap("", "LIBRARY = [", library.map(quote), "]", 88)}
 SKY_SOURCE = Path(__file__).with_name("sky.wgsl").read_text()
+LABEL_SOURCE = Path(__file__).with_name("label.wgsl").read_text()
 
 # The valley is SIZE meters across, and a day lasts DAY seconds. Hold T to hurry it.
 SIZE = 72.0
@@ -1062,11 +1287,25 @@ LUSH = [[0.04, 0.12, 0.02, 1.0], [0.07, 0.2, 0.03, 1.0], [0.13, 0.29, 0.05, 1.0]
 DRY = [[0.05, 0.12, 0.02, 1.0], [0.13, 0.21, 0.04, 1.0], [0.26, 0.3, 0.09, 1.0]]
 SHORT = [[0.035, 0.1, 0.02, 1.0], [0.055, 0.16, 0.025, 1.0], [0.09, 0.23, 0.04, 1.0]]
 
+# The pond and the lamp bulbs, and the toon rim along the trees, rocks, grass and lamps.
+POND = [0.02, 0.08, 0.1, 0.8]
+BULB = [1.0, 0.85, 0.6, 1.0]
+RIM = [0.05, 0.06, 0.08]
+WHITE = [1.0, 1.0, 1.0, 1.0]
+
 # Meters per second (Shift runs), eye height in meters, and radians of turn per pixel dragged.
 SPEED = 3.5
 EYE = 1.6
 TURN = 0.005
 FOV = 1.1
+
+
+class Styles(NamedTuple):
+    """The materials of one surface, one per style, in the order M steps through them."""
+
+    pbr: PbrMaterial
+    toon: ToonMaterial
+    unlit: UnlitMaterial
 
 
 # Call setup() once, then frame() on every redraw of your canvas. frame's gesture is
@@ -1078,22 +1317,40 @@ def setup():
     sky = Shader([*LIBRARY, SKY_SOURCE])
 ${setCalls("python", "sky", sky)}
 
-    # The valley draws over the sky. A pass that draws models gets a depth buffer,
-    # so the nearest surface wins at each pixel.
+    # The valley draws over the sky, and the style's name over the valley. A pass
+    # that draws models gets a depth buffer, so the nearest surface wins at each pixel.
     world = Pass("world")
     world.load_previous()
+    label = Shader(LABEL_SOURCE).alpha_mode(AlphaMode.Blend)
+    overlay = Pass.from_shader("label", label)
+    overlay.load_previous()
 
     scene = Scene()
-    scene.add_pass(Pass.from_shader("sky", sky)).add_pass(world)
+    scene.add_pass(Pass.from_shader("sky", sky)).add_pass(world).add_pass(overlay)
 
-    scene.add_to("world", Model(ground(), PbrMaterial().roughness(0.95)))
-    water = PbrMaterial().base_color([0.02, 0.08, 0.1, 0.8]).roughness(0.08).alpha_mode(AlphaMode.Blend)
-    scene.add_to("world", Model(square(SIZE, WATER), water))
+    # Each spot holds a Model in each style, PBR, toon and unlit, over the same mesh.
+    # The PBR ones show first, and M shows the next style's in their place.
+    models = [[], [], []]
+
+    def add(placed):
+        for style, model in enumerate(placed):
+            model.set_visible(style == 0)
+            models[style].append(model)
+            scene.add_to("world", model)
+
+    # The ground and the pond lie flat, so a toon rim would light all of them far
+    # away. The pond takes a hard toon glint instead.
+    land = styles(PbrMaterial().roughness(0.95))
+    land.toon.rim([0.0, 0.0, 0.0])
+    add(place(ground(), land, [0.0, 0.0, 0.0], 0.0, [1.0, 1.0, 1.0]))
+    water = styles(PbrMaterial().roughness(0.08), POND, AlphaMode.Blend)
+    water.toon.rim([0.0, 0.0, 0.0]).highlight([0.6, 0.6, 0.6]).highlight_size(0.01)
+    add(place(square(SIZE, WATER), water, [0.0, 0.0, 0.0], 0.0, [1.0, 1.0, 1.0]))
 
     # Trees and rocks share one mesh each, so each kind draws in one call.
     obstacles = []
     tree = pine()
-    bark = PbrMaterial().roughness(0.8)
+    bark = styles(PbrMaterial().roughness(0.8))
     for index in range(TREES * 8):
         if len(obstacles) == TREES:
             break
@@ -1103,22 +1360,22 @@ ${setCalls("python", "sky", sky)}
             continue
         scale = 0.7 + random(index, 2) * 0.7
         turn = random(index, 3) * math.tau
-        scene.add_to("world", place(tree, bark, [x, floor - 0.1, z], turn, [scale, scale, scale]))
+        add(place(tree, bark, [x, floor - 0.1, z], turn, [scale, scale, scale]))
         obstacles.append([x, z, 0.35 * scale])
     rock = boulder()
-    stone = PbrMaterial().roughness(0.7)
+    stone = styles(PbrMaterial().roughness(0.7))
     for index in range(ROCKS):
         x, z = spot(index + 5000, SIZE * 0.45)
         scale = 0.4 + random(index, 4) * 0.9
         stretch = [scale * (1 + random(index, 5)), scale * 0.7, scale]
         position = [x, height(x, z) - 0.15 * scale, z]
-        scene.add_to("world", place(rock, stone, position, random(index, 6) * math.tau, stretch))
+        add(place(rock, stone, position, random(index, 6) * math.tau, stretch))
         obstacles.append([x, z, scale])
 
     # Grass grows in meadows on the gentle slopes between the water and the rocks,
-    # thicker where two slow waves meet. Its three kinds of tuft share one material.
+    # thicker where two slow waves meet. Its three kinds of tuft share one material per style.
     kinds = [tuft(9, 0.55, LUSH), tuft(6, 0.85, DRY), tuft(12, 0.3, SHORT)]
-    grass = PbrMaterial().roughness(0.85)
+    grass = styles(PbrMaterial().roughness(0.85))
     for index in range(GRASS):
         x, z = spot(index + 9000, SIZE * 0.4)
         floor = height(x, z)
@@ -1131,19 +1388,22 @@ ${setCalls("python", "sky", sky)}
         size = 0.7 + random(index, 11) * 0.6
         stretch = [size, size * (0.8 + random(index, 14) * 0.5), size]
         turn = random(index, 12) * math.tau
-        scene.add_to("world", place(kinds[kind], grass, [x, floor - 0.02, z], turn, stretch))
+        add(place(kinds[kind], grass, [x, floor - 0.02, z], turn, stretch))
 
     # Lamps ring the clearing where the walk starts. Each one carries a point light.
     post = column([0.02, 0.018, 0.016, 1.0])
-    metal = PbrMaterial().metallic(0.6).roughness(0.4)
-    bulb = PbrMaterial().base_color([1.0, 0.85, 0.6, 1.0])
+    lantern = column(WHITE)
+    metal = styles(PbrMaterial().metallic(0.6).roughness(0.4))
+    # A toon bulb glows through its rim, which reaches every face.
+    bulb = styles(PbrMaterial(), BULB)
+    bulb.toon.rim_width(1.0)
     lamps = []
     for index in range(LAMPS):
         angle = index / LAMPS * math.tau
         x, z = math.cos(angle) * 5, math.sin(angle) * 5
         y = height(x, z)
-        scene.add_to("world", place(post, metal, [x, y, z], 0.0, [0.12, 2.6, 0.12]))
-        scene.add_to("world", place(post, bulb, [x, y + 2.6, z], 0.785, [0.32, 0.32, 0.32]))
+        add(place(post, metal, [x, y, z], 0.0, [0.12, 2.6, 0.12]))
+        add(place(lantern, bulb, [x, y + 2.6, z], 0.785, [0.32, 0.32, 0.32]))
         lamp = Light.point([x, y + 2.75, z], [1.0, 0.72, 0.42]).set_range(14.0)
         scene.add_to("world", lamp)
         lamps.append(lamp)
@@ -1158,12 +1418,16 @@ ${setCalls("python", "sky", sky)}
     return SimpleNamespace(
         scene=scene,
         sky=sky,
+        label=label,
         sun=sun,
         moon=moon,
         lamps=lamps,
         bulb=bulb,
         camera=camera,
         obstacles=obstacles,
+        models=models,
+        style=0,
+        pressed=False,
         size=[0, 0],
         walker=walker,
         clock=0.28 * DAY,
@@ -1183,10 +1447,28 @@ def frame(state, renderer, target, time, size, pointer, gesture=None, keys=None)
     if size != state.size:
         state.camera.set_aspect(size[0] / size[1])
         state.size = size
+    restyle(state, keys)
     walk(state, delta, gesture, keys)
     light(state)
-    state.sky.set("sky.resolution", [float(state.size[0]), float(state.size[1])])
+    resolution = [float(state.size[0]), float(state.size[1])]
+    state.sky.set("sky.resolution", resolution)
+    state.label.set("label.resolution", resolution)
     renderer.render(state.scene, target)
+
+
+# M, or the style button on a touch screen, shows every model in the next style:
+# PBR, toon, then unlit. Hidden Models stay in the pass and cost no draw calls.
+def restyle(state, keys):
+    pressed = "KeyM" in keys.down
+    if pressed and not state.pressed:
+        style = (state.style + 1) % len(state.models)
+        for model in state.models[state.style]:
+            model.set_visible(False)
+        for model in state.models[style]:
+            model.set_visible(True)
+        state.label.set("label.style", style)
+        state.style = style
+    state.pressed = pressed
 
 
 def walk(state, delta, gesture, keys):
@@ -1257,7 +1539,9 @@ def light(state):
     state.scene.ambient(mix([0.025, 0.03, 0.06], [0.28, 0.32, 0.4], day))
     for lamp in state.lamps:
         lamp.set_intensity(5 * (1 - day))
-    state.bulb.emissive(mix([0.3, 0.24, 0.14], [1.2, 0.75, 0.3], 1 - day))
+    glow = mix([0.3, 0.24, 0.14], [1.2, 0.75, 0.3], 1 - day)
+    state.bulb.pbr.emissive(glow)
+    state.bulb.toon.rim(glow)
     state.sky.set("sky.sun", sun)
     state.sky.set("sky.day", day)
 
@@ -1404,12 +1688,26 @@ def facets(triangles, paint=lambda triangle, normal, index: triangle[3]):
     return mesh
 
 
-def place(mesh, material, position, turn, scale):
-    model = Model(mesh, material)
-    model.translate(position)
-    model.rotate([0.0, 1.0, 0.0], turn)
-    model.scale(scale)
-    return model
+# A surface in each style: the PBR material given, then a toon and an unlit one.
+# All three take the alpha mode and the base color, which tints the vertex colors.
+def styles(pbr, color=WHITE, mode=AlphaMode.Opaque):
+    return Styles(
+        pbr.base_color(color).alpha_mode(mode),
+        ToonMaterial().base_color(color).bands(3).rim(RIM).alpha_mode(mode),
+        UnlitMaterial().base_color(color).alpha_mode(mode),
+    )
+
+
+# A Model in each style at the same spot, in the order the M key steps through them.
+def place(mesh, materials, position, turn, scale):
+    models = []
+    for material in materials:
+        model = Model(mesh, material)
+        model.translate(position)
+        model.rotate([0.0, 1.0, 0.0], turn)
+        model.scale(scale)
+        models.append(model)
+    return models
 
 
 # The same pseudo-random numbers in every language: a 32-bit integer hash.
@@ -1485,6 +1783,20 @@ let lushColors: [[Float]] = [[0.04, 0.12, 0.02, 1], [0.07, 0.2, 0.03, 1], [0.13,
 let dryColors: [[Float]] = [[0.05, 0.12, 0.02, 1], [0.13, 0.21, 0.04, 1], [0.26, 0.3, 0.09, 1]]
 let shortColors: [[Float]] = [[0.035, 0.1, 0.02, 1], [0.055, 0.16, 0.025, 1], [0.09, 0.23, 0.04, 1]]
 
+/// The pond and the lamp bulbs, and the toon rim along the trees, rocks, grass and lamps.
+let pondColor: [Float] = [0.02, 0.08, 0.1, 0.8]
+let bulbColor: [Float] = [1, 0.85, 0.6, 1]
+let rimColor: [Float] = [0.05, 0.06, 0.08]
+
+/// The materials of one surface, one per style, in the order M steps through them.
+struct Styles {
+    let pbr: PbrMaterial
+    let toon: ToonMaterial
+    let unlit: UnlitMaterial
+
+    var all: [any Material] { [pbr, toon, unlit] }
+}
+
 /// What the wheel, a drag and a pinch did since the last frame: zoom in doublings
 /// (positive zooms in) and pan in view points.
 struct Gesture {
@@ -1517,12 +1829,18 @@ struct Walker {
 struct State {
     let scene: Scene
     let sky: Shader
+    let label: Shader
     let sun: Light
     let moon: Light
     let lamps: [Light]
-    let bulb: PbrMaterial
+    let bulb: Styles
     let camera: Camera
     let obstacles: [[Float]]
+    /// The Models of each style, of which only \`style\`'s show.
+    let models: [[Model]]
+    var style = 0
+    /// Whether M was down on the last frame.
+    var pressed = false
     var size: [UInt32] = [0, 0]
     var walker = Walker()
     var clock: Float = 0.28 * dayLength
@@ -1535,22 +1853,42 @@ func setup() throws -> State {
     let sky = try Shader(library + [String(contentsOf: skyURL, encoding: .utf8)])
 ${setCalls("swift", "sky", sky, { before: "try " })}
 
-    // The valley draws over the sky. A pass that draws models gets a depth buffer,
-    // so the nearest surface wins at each pixel.
+    // The valley draws over the sky, and the style's name over the valley. A pass
+    // that draws models gets a depth buffer, so the nearest surface wins at each pixel.
     let world = Pass("world")
     world.loadPrevious()
+    let labelURL = Bundle.main.url(forResource: "label", withExtension: "wgsl")!
+    let label = try Shader(String(contentsOf: labelURL, encoding: .utf8)).alphaMode(.blend)
+    let overlay = Pass.fromShader("label", label)
+    overlay.loadPrevious()
 
     let scene = Scene()
-    scene.addPass(Pass.fromShader("sky", sky)).addPass(world)
+    scene.addPass(Pass.fromShader("sky", sky)).addPass(world).addPass(overlay)
 
-    try scene.addTo("world", Model(ground(), PbrMaterial().roughness(0.95)))
-    let glass = try PbrMaterial().baseColor([0.02, 0.08, 0.1, 0.8]).roughness(0.08).alphaMode(.blend)
-    try scene.addTo("world", Model(square(valleySize, water), glass))
+    // Each spot holds a Model in each style, PBR, toon and unlit, over the same mesh.
+    // The PBR ones show first, and M shows the next style's in their place.
+    var models: [[Model]] = [[], [], []]
+    func add(_ placed: [Model]) throws {
+        for (style, model) in placed.enumerated() {
+            model.setVisible(style == 0)
+            models[style].append(model)
+            try scene.addTo("world", model)
+        }
+    }
+
+    // The ground and the pond lie flat, so a toon rim would light all of them far
+    // away. The pond takes a hard toon glint instead.
+    let land = try styles(PbrMaterial().roughness(0.95))
+    try land.toon.rim([0, 0, 0])
+    try add(place(ground(), land, [0, 0, 0], 0, [1, 1, 1]))
+    let pond = try styles(PbrMaterial().roughness(0.08), pondColor, .blend)
+    try pond.toon.rim([0, 0, 0]).highlight([0.6, 0.6, 0.6]).highlightSize(0.01)
+    try add(place(square(valleySize, water), pond, [0, 0, 0], 0, [1, 1, 1]))
 
     // Trees and rocks share one mesh each, so each kind draws in one call.
     var obstacles: [[Float]] = []
     let tree = try pine()
-    let bark = try PbrMaterial().roughness(0.8)
+    let bark = try styles(PbrMaterial().roughness(0.8))
     for index in 0..<UInt32(treeCount * 8) where obstacles.count < treeCount {
         let (x, z) = spot(index, valleySize * 0.42)
         let floor = height(x, z)
@@ -1558,25 +1896,24 @@ ${setCalls("swift", "sky", sky, { before: "try " })}
             continue
         }
         let scale = 0.7 + random(index, 2) * 0.7
-        let model = try place(tree, bark, [x, floor - 0.1, z], random(index, 3) * tau, [scale, scale, scale])
-        try scene.addTo("world", model)
+        try add(place(tree, bark, [x, floor - 0.1, z], random(index, 3) * tau, [scale, scale, scale]))
         obstacles.append([x, z, 0.35 * scale])
     }
     let rock = try boulder()
-    let stone = try PbrMaterial().roughness(0.7)
+    let stone = try styles(PbrMaterial().roughness(0.7))
     for index in 0..<rockCount {
         let (x, z) = spot(index + 5000, valleySize * 0.45)
         let scale = 0.4 + random(index, 4) * 0.9
         let stretch = [scale * (1 + random(index, 5)), scale * 0.7, scale]
         let position = [x, height(x, z) - 0.15 * scale, z]
-        try scene.addTo("world", place(rock, stone, position, random(index, 6) * tau, stretch))
+        try add(place(rock, stone, position, random(index, 6) * tau, stretch))
         obstacles.append([x, z, scale])
     }
 
     // Grass grows in meadows on the gentle slopes between the water and the rocks,
-    // thicker where two slow waves meet. Its three kinds of tuft share one material.
+    // thicker where two slow waves meet. Its three kinds of tuft share one material per style.
     let kinds = try [tuft(9, 0.55, lushColors), tuft(6, 0.85, dryColors), tuft(12, 0.3, shortColors)]
-    let grass = try PbrMaterial().roughness(0.85)
+    let grass = try styles(PbrMaterial().roughness(0.85))
     for index in 0..<grassSpots {
         let (x, z) = spot(index + 9000, valleySize * 0.4)
         let floor = height(x, z)
@@ -1590,20 +1927,23 @@ ${setCalls("swift", "sky", sky, { before: "try " })}
         let size = 0.7 + random(index, 11) * 0.6
         let stretch = [size, size * (0.8 + random(index, 14) * 0.5), size]
         let turn = random(index, 12) * tau
-        try scene.addTo("world", place(kinds[kind], grass, [x, floor - 0.02, z], turn, stretch))
+        try add(place(kinds[kind], grass, [x, floor - 0.02, z], turn, stretch))
     }
 
     // Lamps ring the clearing where the walk starts. Each one carries a point light.
     let post = try column([0.02, 0.018, 0.016, 1])
-    let metal = try PbrMaterial().metallic(0.6).roughness(0.4)
-    let bulb = try PbrMaterial().baseColor([1, 0.85, 0.6, 1])
+    let lantern = try column([1, 1, 1, 1])
+    let metal = try styles(PbrMaterial().metallic(0.6).roughness(0.4))
+    // A toon bulb glows through its rim, which reaches every face.
+    let bulb = try styles(PbrMaterial(), bulbColor)
+    try bulb.toon.rimWidth(1.0)
     var lamps: [Light] = []
     for index in 0..<lampCount {
         let angle = Float(index) / Float(lampCount) * tau
         let (x, z) = (cos(angle) * 5, sin(angle) * 5)
         let y = height(x, z)
-        try scene.addTo("world", place(post, metal, [x, y, z], 0, [0.12, 2.6, 0.12]))
-        try scene.addTo("world", place(post, bulb, [x, y + 2.6, z], 0.785, [0.32, 0.32, 0.32]))
+        try add(place(post, metal, [x, y, z], 0, [0.12, 2.6, 0.12]))
+        try add(place(lantern, bulb, [x, y + 2.6, z], 0.785, [0.32, 0.32, 0.32]))
         let lamp = try Light.point([x, y + 2.75, z], [1, 0.72, 0.42]).setRange(14.0)
         try scene.addTo("world", lamp)
         lamps.append(lamp)
@@ -1616,8 +1956,8 @@ ${setCalls("swift", "sky", sky, { before: "try " })}
     try scene.addTo("world", sun).addTo("world", moon).addTo("world", camera)
 
     return State(
-        scene: scene, sky: sky, sun: sun,
-        moon: moon, lamps: lamps, bulb: bulb, camera: camera, obstacles: obstacles
+        scene: scene, sky: sky, label: label, sun: sun, moon: moon,
+        lamps: lamps, bulb: bulb, camera: camera, obstacles: obstacles, models: models
     )
 }
 
@@ -1641,10 +1981,31 @@ func frame(
         try state.camera.setAspect(Float(pixels[0]) / Float(pixels[1]))
         state.size = pixels
     }
+    try restyle(&state, keys)
     try walk(&state, delta, gesture, keys)
     try light(state)
-    try state.sky.set("sky.resolution", [Float(state.size[0]), Float(state.size[1])])
+    let resolution = [Float(state.size[0]), Float(state.size[1])]
+    try state.sky.set("sky.resolution", resolution)
+    try state.label.set("label.resolution", resolution)
     try renderer.render(state.scene, target)
+}
+
+/// M, or the style button on a touch screen, shows every model in the next style:
+/// PBR, toon, then unlit. Hidden Models stay in the pass and cost no draw calls.
+func restyle(_ state: inout State, _ keys: Keys) throws {
+    let pressed = keys.down.contains("KeyM")
+    if pressed && !state.pressed {
+        let style = (state.style + 1) % state.models.count
+        for model in state.models[state.style] {
+            model.setVisible(false)
+        }
+        for model in state.models[style] {
+            model.setVisible(true)
+        }
+        try state.label.set("label.style", UInt32(style))
+        state.style = style
+    }
+    state.pressed = pressed
 }
 
 func walk(_ state: inout State, _ delta: Float, _ gesture: Gesture, _ keys: Keys) throws {
@@ -1724,7 +2085,9 @@ func light(_ state: State) throws {
     for lamp in state.lamps {
         try lamp.setIntensity(5 * (1 - day))
     }
-    try state.bulb.emissive(mix([0.3, 0.24, 0.14], [1.2, 0.75, 0.3], 1 - day))
+    let glow = mix([0.3, 0.24, 0.14], [1.2, 0.75, 0.3], 1 - day)
+    try state.bulb.pbr.emissive(glow)
+    try state.bulb.toon.rim(glow)
     try state.sky.set("sky.sun", sun)
     try state.sky.set("sky.day", day)
 }
@@ -1880,12 +2243,25 @@ func faceNormal(_ corners: [[Float]]) -> [Float] {
     normalize(cross(minus(corners[1], corners[0]), minus(corners[2], corners[0])))
 }
 
-func place(_ mesh: Mesh, _ material: PbrMaterial, _ position: [Float], _ turn: Float, _ scale: [Float]) throws -> Model {
-    let model = Model(mesh, material)
-    try model.translate(position)
-    try model.rotate([0, 1, 0], turn)
-    try model.scale(scale)
-    return model
+/// A surface in each style: the PBR material given, then a toon and an unlit one.
+/// All three take the alpha mode and the base color, which tints the vertex colors.
+func styles(_ pbr: PbrMaterial, _ color: [Float] = [1, 1, 1, 1], _ mode: AlphaMode = .opaque) throws -> Styles {
+    try Styles(
+        pbr: pbr.baseColor(color).alphaMode(mode),
+        toon: ToonMaterial().baseColor(color).bands(3).rim(rimColor).alphaMode(mode),
+        unlit: UnlitMaterial().baseColor(color).alphaMode(mode)
+    )
+}
+
+/// A Model in each style at the same spot, in the order the M key steps through them.
+func place(_ mesh: Mesh, _ materials: Styles, _ position: [Float], _ turn: Float, _ scale: [Float]) throws -> [Model] {
+    try materials.all.map { material in
+        let model = Model(mesh, material)
+        try model.translate(position)
+        try model.rotate([0, 1, 0], turn)
+        try model.scale(scale)
+        return model
+    }
 }
 
 /// The same pseudo-random numbers in every language: a 32-bit integer hash.
@@ -1974,6 +2350,17 @@ private val LUSH = listOf(listOf(0.04f, 0.12f, 0.02f, 1f), listOf(0.07f, 0.2f, 0
 private val DRY = listOf(listOf(0.05f, 0.12f, 0.02f, 1f), listOf(0.13f, 0.21f, 0.04f, 1f), listOf(0.26f, 0.3f, 0.09f, 1f))
 private val SHORT = listOf(listOf(0.035f, 0.1f, 0.02f, 1f), listOf(0.055f, 0.16f, 0.025f, 1f), listOf(0.09f, 0.23f, 0.04f, 1f))
 
+// The pond and the lamp bulbs, and the toon rim along the trees, rocks, grass and lamps.
+private val POND = listOf(0.02f, 0.08f, 0.1f, 0.8f)
+private val BULB = listOf(1f, 0.85f, 0.6f, 1f)
+private val RIM = listOf(0.05f, 0.06f, 0.08f)
+private val WHITE = listOf(1f, 1f, 1f, 1f)
+
+// The materials of one surface, one per style, in the order M steps through them.
+class Styles(val pbr: PbrMaterial, val toon: ToonMaterial, val unlit: UnlitMaterial) {
+    val all: List<Any> get() = listOf(pbr, toon, unlit)
+}
+
 // What the wheel, a drag and a pinch did since the last frame: zoom in doublings
 // (positive zooms in) and pan in view pixels.
 data class Gesture(val zoom: Float = 0f, val pan: List<Float> = listOf(0f, 0f))
@@ -1998,13 +2385,19 @@ class Walker {
 class State(
     val scene: Scene,
     val sky: Shader,
+    val label: Shader,
     val sun: Light,
     val moon: Light,
     val lamps: List<Light>,
-    val bulb: PbrMaterial,
+    val bulb: Styles,
     val camera: Camera,
     val obstacles: List<List<Float>>,
+    // The Models of each style, of which only style's show.
+    val models: List<List<Model>>,
 ) {
+    var style = 0
+    // Whether M was down on the last frame.
+    var pressed = false
     var size = listOf(0u, 0u)
     val walker = Walker()
     var clock = 0.28f * DAY
@@ -2017,46 +2410,66 @@ fun setup(assets: AssetManager): State {
     val sky = Shader(LIBRARY + listOf(skySource))
 ${setCalls("kotlin", "sky", sky)}
 
-    // The valley draws over the sky. A pass that draws models gets a depth buffer,
-    // so the nearest surface wins at each pixel.
+    // The valley draws over the sky, and the style's name over the valley. A pass
+    // that draws models gets a depth buffer, so the nearest surface wins at each pixel.
     val world = Pass("world")
     world.loadPrevious()
+    val labelSource = assets.open("label.wgsl").bufferedReader().use { it.readText() }
+    val label = Shader(labelSource).alphaMode(AlphaMode.BLEND)
+    val overlay = Pass.fromShader("label", label)
+    overlay.loadPrevious()
 
     val scene = Scene()
-    scene.addPass(Pass.fromShader("sky", sky)).addPass(world)
+    scene.addPass(Pass.fromShader("sky", sky)).addPass(world).addPass(overlay)
 
-    scene.addTo("world", Model(ground(), PbrMaterial().roughness(0.95f)))
-    val water = PbrMaterial().baseColor(listOf(0.02f, 0.08f, 0.1f, 0.8f)).roughness(0.08f).alphaMode(AlphaMode.BLEND)
-    scene.addTo("world", Model(square(SIZE, WATER), water))
+    // Each spot holds a Model in each style, PBR, toon and unlit, over the same mesh.
+    // The PBR ones show first, and M shows the next style's in their place.
+    val models = List(3) { mutableListOf<Model>() }
+    fun add(placed: List<Model>) {
+        placed.forEachIndexed { style, model ->
+            model.setVisible(style == 0)
+            models[style].add(model)
+            scene.addTo("world", model)
+        }
+    }
+
+    // The ground and the pond lie flat, so a toon rim would light all of them far
+    // away. The pond takes a hard toon glint instead.
+    val land = styles(PbrMaterial().roughness(0.95f))
+    land.toon.rim(listOf(0f, 0f, 0f))
+    add(place(ground(), land, listOf(0f, 0f, 0f), 0f, listOf(1f, 1f, 1f)))
+    val water = styles(PbrMaterial().roughness(0.08f), POND, AlphaMode.BLEND)
+    water.toon.rim(listOf(0f, 0f, 0f)).highlight(listOf(0.6f, 0.6f, 0.6f)).highlightSize(0.01f)
+    add(place(square(SIZE, WATER), water, listOf(0f, 0f, 0f), 0f, listOf(1f, 1f, 1f)))
 
     // Trees and rocks share one mesh each, so each kind draws in one call.
     val obstacles = mutableListOf<List<Float>>()
     val tree = pine()
-    val bark = PbrMaterial().roughness(0.8f)
+    val bark = styles(PbrMaterial().roughness(0.8f))
     for (index in 0u until (TREES * 8).toUInt()) {
         if (obstacles.size == TREES) break
         val (x, z) = spot(index, SIZE * 0.42f)
         val floor = height(x, z)
         if (floor < WATER + 0.5f || floor > 5f || hypot(x, z) < 6f) continue
         val scale = 0.7f + random(index, 2u) * 0.7f
-        scene.addTo("world", place(tree, bark, listOf(x, floor - 0.1f, z), random(index, 3u) * TAU, listOf(scale, scale, scale)))
+        add(place(tree, bark, listOf(x, floor - 0.1f, z), random(index, 3u) * TAU, listOf(scale, scale, scale)))
         obstacles.add(listOf(x, z, 0.35f * scale))
     }
     val rock = boulder()
-    val stone = PbrMaterial().roughness(0.7f)
+    val stone = styles(PbrMaterial().roughness(0.7f))
     for (index in 0u until ROCKS) {
         val (x, z) = spot(index + 5000u, SIZE * 0.45f)
         val scale = 0.4f + random(index, 4u) * 0.9f
         val stretch = listOf(scale * (1f + random(index, 5u)), scale * 0.7f, scale)
         val position = listOf(x, height(x, z) - 0.15f * scale, z)
-        scene.addTo("world", place(rock, stone, position, random(index, 6u) * TAU, stretch))
+        add(place(rock, stone, position, random(index, 6u) * TAU, stretch))
         obstacles.add(listOf(x, z, scale))
     }
 
     // Grass grows in meadows on the gentle slopes between the water and the rocks,
-    // thicker where two slow waves meet. Its three kinds of tuft share one material.
+    // thicker where two slow waves meet. Its three kinds of tuft share one material per style.
     val kinds = listOf(tuft(9u, 0.55f, LUSH), tuft(6u, 0.85f, DRY), tuft(12u, 0.3f, SHORT))
-    val grass = PbrMaterial().roughness(0.85f)
+    val grass = styles(PbrMaterial().roughness(0.85f))
     for (index in 0u until GRASS) {
         val (x, z) = spot(index + 9000u, SIZE * 0.4f)
         val floor = height(x, z)
@@ -2068,20 +2481,23 @@ ${setCalls("kotlin", "sky", sky)}
         val size = 0.7f + random(index, 11u) * 0.6f
         val stretch = listOf(size, size * (0.8f + random(index, 14u) * 0.5f), size)
         val turn = random(index, 12u) * TAU
-        scene.addTo("world", place(kinds[kind], grass, listOf(x, floor - 0.02f, z), turn, stretch))
+        add(place(kinds[kind], grass, listOf(x, floor - 0.02f, z), turn, stretch))
     }
 
     // Lamps ring the clearing where the walk starts. Each one carries a point light.
     val post = column(listOf(0.02f, 0.018f, 0.016f, 1f))
-    val metal = PbrMaterial().metallic(0.6f).roughness(0.4f)
-    val bulb = PbrMaterial().baseColor(listOf(1f, 0.85f, 0.6f, 1f))
+    val lantern = column(WHITE)
+    val metal = styles(PbrMaterial().metallic(0.6f).roughness(0.4f))
+    // A toon bulb glows through its rim, which reaches every face.
+    val bulb = styles(PbrMaterial(), BULB)
+    bulb.toon.rimWidth(1f)
     val lamps = mutableListOf<Light>()
     for (index in 0u until LAMPS) {
         val angle = index.toFloat() / LAMPS.toFloat() * TAU
         val (x, z) = cos(angle) * 5f to sin(angle) * 5f
         val y = height(x, z)
-        scene.addTo("world", place(post, metal, listOf(x, y, z), 0f, listOf(0.12f, 2.6f, 0.12f)))
-        scene.addTo("world", place(post, bulb, listOf(x, y + 2.6f, z), 0.785f, listOf(0.32f, 0.32f, 0.32f)))
+        add(place(post, metal, listOf(x, y, z), 0f, listOf(0.12f, 2.6f, 0.12f)))
+        add(place(lantern, bulb, listOf(x, y + 2.6f, z), 0.785f, listOf(0.32f, 0.32f, 0.32f)))
         val lamp = Light.point(listOf(x, y + 2.75f, z), listOf(1f, 0.72f, 0.42f)).setRange(14f)
         scene.addTo("world", lamp)
         lamps.add(lamp)
@@ -2093,7 +2509,7 @@ ${setCalls("kotlin", "sky", sky)}
     val camera = Camera.perspective(FOV, 1f, 0.05f, 200f)
     scene.addTo("world", sun).addTo("world", moon).addTo("world", camera)
 
-    return State(scene, sky, sun, moon, lamps, bulb, camera, obstacles)
+    return State(scene, sky, label, sun, moon, lamps, bulb, camera, obstacles, models)
 }
 
 fun frame(
@@ -2116,10 +2532,27 @@ fun frame(
         state.camera.setAspect(pixels[0].toFloat() / pixels[1].toFloat())
         state.size = pixels
     }
+    restyle(state, keys)
     walk(state, delta, gesture, keys)
     light(state)
-    state.sky.set("sky.resolution", listOf(state.size[0].toFloat(), state.size[1].toFloat()))
+    val resolution = listOf(state.size[0].toFloat(), state.size[1].toFloat())
+    state.sky.set("sky.resolution", resolution)
+    state.label.set("label.resolution", resolution)
     renderer.render(state.scene, target)
+}
+
+// M, or the style button on a touch screen, shows every model in the next style:
+// PBR, toon, then unlit. Hidden Models stay in the pass and cost no draw calls.
+private fun restyle(state: State, keys: Keys) {
+    val pressed = "KeyM" in keys.down
+    if (pressed && !state.pressed) {
+        val style = (state.style + 1) % state.models.size
+        for (model in state.models[state.style]) model.setVisible(false)
+        for (model in state.models[style]) model.setVisible(true)
+        state.label.set("label.style", style.toUInt())
+        state.style = style
+    }
+    state.pressed = pressed
 }
 
 private fun walk(state: State, delta: Float, gesture: Gesture, keys: Keys) {
@@ -2194,7 +2627,9 @@ private fun light(state: State) {
     state.moon.setIntensity(0.35f * (1f - day))
     state.scene.ambient(mix(listOf(0.025f, 0.03f, 0.06f), listOf(0.28f, 0.32f, 0.4f), day))
     for (lamp in state.lamps) lamp.setIntensity(5f * (1f - day))
-    state.bulb.emissive(mix(listOf(0.3f, 0.24f, 0.14f), listOf(1.2f, 0.75f, 0.3f), 1f - day))
+    val glow = mix(listOf(0.3f, 0.24f, 0.14f), listOf(1.2f, 0.75f, 0.3f), 1f - day)
+    state.bulb.pbr.emissive(glow)
+    state.bulb.toon.rim(glow)
     state.sky.set("sky.sun", sun)
     state.sky.set("sky.day", day)
 }
@@ -2351,13 +2786,23 @@ private fun facets(triangles: List<Triangle>): Mesh {
 private fun faceNormal(corners: List<List<Float>>): List<Float> =
     normalize(cross(minus(corners[1], corners[0]), minus(corners[2], corners[0])))
 
-private fun place(mesh: Mesh, material: PbrMaterial, position: List<Float>, turn: Float, scale: List<Float>): Model {
-    val model = Model(mesh, material)
-    model.translate(position)
-    model.rotate(listOf(0f, 1f, 0f), turn)
-    model.scale(scale)
-    return model
-}
+// A surface in each style: the PBR material given, then a toon and an unlit one.
+// All three take the alpha mode and the base color, which tints the vertex colors.
+private fun styles(pbr: PbrMaterial, color: List<Float> = WHITE, mode: AlphaMode = AlphaMode.OPAQUE) = Styles(
+    pbr.baseColor(color).alphaMode(mode),
+    ToonMaterial().baseColor(color).bands(3u).rim(RIM).alphaMode(mode),
+    UnlitMaterial().baseColor(color).alphaMode(mode),
+)
+
+// A Model in each style at the same spot, in the order the M key steps through them.
+private fun place(mesh: Mesh, materials: Styles, position: List<Float>, turn: Float, scale: List<Float>): List<Model> =
+    materials.all.map { material ->
+        val model = Model(mesh, material)
+        model.translate(position)
+        model.rotate(listOf(0f, 1f, 0f), turn)
+        model.scale(scale)
+        model
+    }
 
 // The same pseudo-random numbers in every language: a 32-bit integer hash.
 private fun random(index: UInt, salt: UInt): Float {
@@ -2400,16 +2845,18 @@ export default {
   id: "walk",
   title: "Walkable world",
   summary:
-    "A small valley built from Scene, Model, PbrMaterial, Camera and Light, from afternoon into night. Click it, then walk with WASD or the arrow keys and drag to look. Space jumps. On a phone, the stick walks and a drag looks.",
+    "A small valley built from Scene, Model, Camera, Light and the three material types, from afternoon into night. Click it, then walk with WASD or the arrow keys and drag to look. Space jumps, and M switches every model between PBR, toon and unlit. On a phone, the stick walks, a drag looks and the Style button switches.",
   kind: "scene",
   needs: "0.12.8",
   gestures: true,
   keys: true,
+  // A touch screen gets a button for each key here, which holds it down while a finger is on it.
+  buttons: [{ code: "KeyM", label: "Style" }],
   category: "3D",
   thumbnail: "/playground/thumbs/walk.webp",
   library: ["color/linear_to_srgb"],
   values: VALUES,
-  files: { "sky.wgsl": SKY },
+  files: { "sky.wgsl": SKY, "label.wgsl": LABEL },
   js: PROGRAM,
   code(model) {
     const spec = describe(model);
