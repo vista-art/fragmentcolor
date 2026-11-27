@@ -7,7 +7,7 @@ tags: ["demo", "playground", "materials", "rust", "javascript", "python", "swift
 draft: true
 ---
 
-The [Barramundi in the playground](/welcome/playground/#model) opens physically based, with every scale and fin ray, its fins' shadows on its flank, and daylight rippling over its back. Four seconds later it turns into a cartoon. Four more, and it shows the flat colors of its texture with no light at all. Then it starts over, until you click the canvas and press M, or tap Style on a phone, and take the switch yourself. A label in the corner names the look.
+The [Barramundi in the playground](/welcome/playground/#model) opens physically based, with every scale and fin ray, its fins' shadows on its flank, daylight rippling over its back and light glowing through its fins. Four seconds later it turns into a cartoon. Four more, and it shows the flat colors of its texture with no light at all. Then it starts over, until you click the canvas and press M, or tap Style on a phone, and take the switch yourself. A label in the corner names the look.
 
 <img src="/blog/fish-styles-toon.webp" alt="The Barramundi fish in toon shading over blue water: thick dark outlines around its body and fins, an olive back and a lavender belly painted in flat strokes, and a hard white glint along its side. A label in the top right corner reads TOON." width="768" height="432" loading="lazy" style={{ width: "100%", height: "auto", borderRadius: "0.5rem" }} />
 
@@ -46,13 +46,15 @@ Given another map, [`texture`](/api/scene/materialmap/#texture) takes the textur
 
 Each new material goes on a `Model` of its own, over the loaded mesh at the loaded transform. A switch hides one style's Models with `setVisible(false)` and shows the next style's. A hidden Model stays in its pass and costs no draw call.
 
-<img src="/blog/fish-styles-pbr.webp" alt="The same fish in PBR shading: wet scales catch the light along its silver side, faint ripples of light cross its back, and the dark fins show every ray. The label reads PBR." width="768" height="432" loading="lazy" style={{ width: "100%", height: "auto", borderRadius: "0.5rem" }} />
+<img src="/blog/fish-styles-pbr.webp" alt="The same fish in PBR shading: wet scales catch the light along its silver side, faint ripples of light cross its back, and its thin dorsal spines and belly fin glow amber where light comes through them. The label reads PBR." width="768" height="432" loading="lazy" style={{ width: "100%", height: "auto", borderRadius: "0.5rem" }} />
 
-## Shadows and ripples
+## Shadows, ripples and glowing fins
 
 `PbrMaterial` lights each point by every light that reaches it, with no idea what stands in the way. The demo draws the shadows itself, in two passes with a `Shader` of their own. An orthographic `Camera` looks along the key light and draws the fish into a shadow map, which keeps how far along the light each texel's nearest point lies. Then the scene's camera draws the fish again, and each point compares its own distance with the map's. A point that lies farther than the map's nearest is in the shadow of a fin or of the body, and 25 lookups around it soften the edge.
 
-The second pass also marks ripples on the points the key light reaches, the way sunlight reaches a fish through a moving surface. Two layers of Worley cells, from the shader registry's `noise/worley2`, slide past each other over time, and the light gathers along the edges of both.
+A fin is a thin skin over bony rays, and light from behind comes through it. A second orthographic camera looks along the rim light, which shines from behind the fish toward the viewer, and draws a map of its own. The shade pass reads how far the rim light travels through the fish to reach each point. Through a fin that's a few millimeters, and the fin glows a dark amber. The body blocks the light, and a fin in front of the body stays dark.
+
+The shade pass also marks ripples on the points the key light reaches, the way sunlight reaches a fish through a moving surface. Two layers of Worley cells, from the shader registry's `noise/worley2`, slide past each other over time, and the light gathers along the edges of both.
 
 With the roughness their file gives them, the scales looked like plastic. The demo cuts it to a third and doubles the depth of their normal map, and each scale catches a glint of its own, as on a wet fish.
 
