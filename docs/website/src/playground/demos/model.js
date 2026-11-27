@@ -251,8 +251,9 @@ const DISTANCE = 1.3;
 const KEY = [[-0.5, -0.6, -1], [-0.3, -1, -0.35], [-0.5, -0.6, -1]];
 const RIM = [0.6, 0.2, 1];
 const AMBIENT = [[0.1, 0.1, 0.12], [0.3, 0.32, 0.36], [0.1, 0.1, 0.12]];
-// How fast the fish turns before the first drag, in radians per second.
-const SPIN = 0.4;
+// How fast the fish turns before the first drag, in radians per second. It turns its
+// nose toward the camera first, so the first toon turn shows its side.
+const SPIN = -0.4;
 // How long each style shows before the next one takes over, in seconds, until the first M.
 const HOLD = 4;
 
@@ -484,8 +485,9 @@ function writeRust({ library, values }) {
     "const KEY: [[f32; 3]; 3] = [[-0.5, -0.6, -1.0], [-0.3, -1.0, -0.35], [-0.5, -0.6, -1.0]];",
     "const RIM: [f32; 3] = [0.6, 0.2, 1.0];",
     "const AMBIENT: [[f32; 3]; 3] = [[0.1, 0.1, 0.12], [0.3, 0.32, 0.36], [0.1, 0.1, 0.12]];",
-    "/// How fast the fish turns before the first drag, in radians per second.",
-    "const SPIN: f32 = 0.4;",
+    "/// How fast the fish turns before the first drag, in radians per second. It turns its",
+    "/// nose toward the camera first, so the first toon turn shows its side.",
+    "const SPIN: f32 = -0.4;",
     "/// How long each style shows before the next one takes over, in seconds, until the first M.",
     "const HOLD: f32 = 4.0;",
     "",
@@ -767,8 +769,9 @@ function writePython({ library, values }) {
     "KEY = [[-0.5, -0.6, -1.0], [-0.3, -1.0, -0.35], [-0.5, -0.6, -1.0]]",
     "RIM = [0.6, 0.2, 1.0]",
     "AMBIENT = [[0.1, 0.1, 0.12], [0.3, 0.32, 0.36], [0.1, 0.1, 0.12]]",
-    "# How fast the fish turns before the first drag, in radians per second.",
-    "SPIN = 0.4",
+    "# How fast the fish turns before the first drag, in radians per second. It turns its",
+    "# nose toward the camera first, so the first toon turn shows its side.",
+    "SPIN = -0.4",
     "# How long each style shows before the next one takes over, in seconds, until the first M.",
     "HOLD = 4.0",
     "",
@@ -967,8 +970,9 @@ function writeSwift({ library, values }) {
     "let keyDirections: [[Float]] = [[-0.5, -0.6, -1], [-0.3, -1, -0.35], [-0.5, -0.6, -1]]",
     "let rimDirection: [Float] = [0.6, 0.2, 1]",
     "let ambientColors: [[Float]] = [[0.1, 0.1, 0.12], [0.3, 0.32, 0.36], [0.1, 0.1, 0.12]]",
-    "/// How fast the fish turns before the first drag, in radians per second.",
-    "let spin: Float = 0.4",
+    "/// How fast the fish turns before the first drag, in radians per second. It turns its",
+    "/// nose toward the camera first, so the first toon turn shows its side.",
+    "let spin: Float = -0.4",
     "/// How long each style shows before the next one takes over, in seconds, until the first M.",
     "let hold: Float = 4",
     "",
@@ -1201,8 +1205,11 @@ function writeKotlin({ library, values }) {
     "private val KEY = listOf(listOf(-0.5, -0.6, -1.0), listOf(-0.3, -1.0, -0.35), listOf(-0.5, -0.6, -1.0))",
     "private val RIM = listOf(0.6, 0.2, 1.0)",
     "private val AMBIENT = listOf(listOf(0.1, 0.1, 0.12), listOf(0.3, 0.32, 0.36), listOf(0.1, 0.1, 0.12))",
-    "/** How fast the fish turns before the first drag, in radians per second. */",
-    "private const val SPIN = 0.4",
+    "/**",
+    " * How fast the fish turns before the first drag, in radians per second. It turns its",
+    " * nose toward the camera first, so the first toon turn shows its side.",
+    " */",
+    "private const val SPIN = -0.4",
     "/** How long each style shows before the next one takes over, in seconds, until the first M. */",
     "private const val HOLD = 4.0",
     "",
