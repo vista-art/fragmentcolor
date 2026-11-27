@@ -148,6 +148,28 @@ Other headings keep the id Starlight makes from their text. The build
 fails on a link to a page or heading the site doesn't build, and on two
 headings of one page that would get the same id.
 
+Link an error class by its heading on the Errors page:
+
+```
+[DeviceError](https://fragmentcolor.org/api/errors#deviceerror)
+```
+
+## Root and hidden pages
+
+A folder at the root of `docs/api` that holds a page of its own name,
+such as `errors/errors.md`, becomes a page at the root of the API menu,
+after the categories: `/api/errors`. The Errors page gives every error
+class a `###` heading, with when it's raised and the fields it carries.
+
+An item with no page on the site keeps its `#[lsp_doc]` page under
+`docs/api/hidden/`, in a folder of its own name, such as
+`hidden/errors/error_kind/error_kind.md` for `ErrorKind`. The build checks
+it as it checks an object page: the H1 names the item, an `## Example`
+follows, and every link reaches a page the site builds. Its Rust example
+runs as a doctest, while the website and the healthchecks leave it out.
+So the site page that covers the item uses it in its own example, as the
+Errors page uses `ErrorKind`.
+
 ## Cross-cutting invariants
 
 - Every public item must have a `## Example` section, an `#[lsp_doc(…)]`
