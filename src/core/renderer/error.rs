@@ -7,6 +7,8 @@ use crate::ErrorKind;
 use crate::core::renderer::MapError;
 use crate::core::shader::error::describe;
 
+#[cfg(wasm)]
+use crate::errors::WebError;
 #[cfg(python)]
 use crate::errors::raise_error;
 #[cfg(any(python, wasm, mobile, test))]
@@ -312,16 +314,16 @@ impl From<wasm_bindgen::JsValue> for RendererError {
 
 /// The JS `Error` a renderer error throws, named after its class, with its fields.
 #[cfg(wasm)]
-impl From<RendererError> for crate::errors::WebError {
+impl From<RendererError> for WebError {
     fn from(error: RendererError) -> Self {
-        crate::errors::WebError::from_error(&error)
+        WebError::from_error(&error)
     }
 }
 
 #[cfg(wasm)]
 impl From<RendererError> for wasm_bindgen::JsValue {
     fn from(error: RendererError) -> Self {
-        crate::errors::WebError::from(error).into()
+        WebError::from(error).into()
     }
 }
 
@@ -340,7 +342,7 @@ impl From<wasm_bindgen::JsValue> for InitializationError {
 #[cfg(wasm)]
 impl From<InitializationError> for wasm_bindgen::JsValue {
     fn from(error: InitializationError) -> Self {
-        crate::errors::WebError::from(error).into()
+        WebError::from(error).into()
     }
 }
 

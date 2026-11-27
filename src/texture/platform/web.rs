@@ -385,7 +385,6 @@ pub(crate) fn read_format(value: &JsValue) -> Result<TextureFormat, WebError> {
 /// A value no source takes, or an item of a byte list that isn't a number, is a `TypeError`,
 /// as Python raises, and a byte that isn't a whole number from 0 to 255 an `InvalidInputError`.
 fn read_source(value: &JsValue, label: &str) -> Result<TextureInput, WebError> {
-    use WebError;
     let pixels = |bytes: Vec<u8>, width: u32, height: u32| TextureInput {
         data: TextureData::Bytes(bytes),
         options: TextureOptions::from(Size::from([width, height])),

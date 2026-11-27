@@ -26,6 +26,8 @@ use wasm_bindgen::prelude::*;
 
 use crate::Shader;
 use crate::core::share_light;
+#[cfg(any(python, wasm, mobile, test))]
+use crate::errors::{Classify, ErrorClass};
 use crate::scene::{NotFinite, SceneObject, check_finite};
 
 /// Discriminant for the three light kinds. Wire-compatible with the WGSL
@@ -570,9 +572,8 @@ impl SceneObject for Light {
 /// A number that isn't finite is an invalid input, which the bindings refuse at the call.
 /// The other variants are the light's own refusals.
 #[cfg(any(python, wasm, mobile, test))]
-impl crate::errors::Classify for LightError {
-    fn classify(&self) -> crate::errors::ErrorClass {
-        use crate::errors::ErrorClass;
+impl Classify for LightError {
+    fn classify(&self) -> ErrorClass {
         match self {
             LightError::NotFinite { .. } | LightError::ZeroDirection(_) => ErrorClass::InvalidInput,
             LightError::FieldNotApplicable { .. } | LightError::NegativeRange(_) => {

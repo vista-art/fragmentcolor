@@ -22,6 +22,8 @@ use wasm_bindgen::prelude::*;
 use crate::Shader;
 use crate::core::ShaderObject;
 use crate::core::{CameraSnapshot, PassObject};
+#[cfg(any(python, wasm, mobile, test))]
+use crate::errors::{Classify, ErrorClass};
 use crate::scene::{SceneObject, push_uniform};
 
 /// Errors from camera parameters that leave no usable view.
@@ -575,9 +577,9 @@ impl SceneObject for Camera {
 }
 
 #[cfg(any(python, wasm, mobile, test))]
-impl crate::errors::Classify for CameraError {
-    fn classify(&self) -> crate::errors::ErrorClass {
-        crate::errors::ErrorClass::Camera
+impl Classify for CameraError {
+    fn classify(&self) -> ErrorClass {
+        ErrorClass::Camera
     }
 }
 

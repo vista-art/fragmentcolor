@@ -1,7 +1,13 @@
 //! How every binding reads numbers: whole numbers for counts and sizes, and finite
 //! 32-bit floats for colors, positions, directions, axes, UV transforms and Material factors.
 
+#[cfg(wasm)]
+use crate::errors::WebError;
+#[cfg(python)]
+use crate::errors::raise_error;
 use crate::errors::show_number;
+#[cfg(any(python, wasm, mobile, test))]
+use crate::errors::{Classify, ErrorClass};
 use crate::{Color, Vertex};
 
 /// One size, region or count number from JavaScript: a whole number from 0 to `u32::MAX`.
@@ -22,16 +28,16 @@ pub(crate) struct NumberError {
 }
 
 #[cfg(any(wasm, test))]
-impl crate::errors::Classify for NumberError {
-    fn classify(&self) -> crate::errors::ErrorClass {
-        crate::errors::ErrorClass::InvalidInput
+impl Classify for NumberError {
+    fn classify(&self) -> ErrorClass {
+        ErrorClass::InvalidInput
     }
 }
 
 #[cfg(wasm)]
-impl From<NumberError> for crate::errors::WebError {
+impl From<NumberError> for WebError {
     fn from(error: NumberError) -> Self {
-        crate::errors::WebError::from_error(&error)
+        WebError::from_error(&error)
     }
 }
 
@@ -159,14 +165,14 @@ pub(crate) fn read_position(
 #[cfg(python)]
 impl From<VectorError> for pyo3::PyErr {
     fn from(error: VectorError) -> Self {
-        crate::errors::raise_error(&error)
+        raise_error(&error)
     }
 }
 
 #[cfg(any(python, wasm, mobile, test))]
-impl crate::errors::Classify for VectorError {
-    fn classify(&self) -> crate::errors::ErrorClass {
-        crate::errors::ErrorClass::InvalidInput
+impl Classify for VectorError {
+    fn classify(&self) -> ErrorClass {
+        ErrorClass::InvalidInput
     }
 }
 

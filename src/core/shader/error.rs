@@ -1,5 +1,11 @@
 //! `ShaderError`, and the diagnostics naga reports with their source locations.
 
+#[cfg(wasm)]
+use crate::errors::WebError;
+#[cfg(python)]
+use crate::errors::raise_error;
+#[cfg(any(python, wasm, mobile, test))]
+use crate::errors::{Classify, ErrorClass};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -256,16 +262,16 @@ impl From<pyo3::PyErr> for ShaderError {
 }
 
 #[cfg(any(python, wasm, mobile, test))]
-impl crate::errors::Classify for ShaderError {
-    fn classify(&self) -> crate::errors::ErrorClass {
-        crate::errors::ErrorClass::Base
+impl Classify for ShaderError {
+    fn classify(&self) -> ErrorClass {
+        ErrorClass::Base
     }
 }
 
 #[cfg(python)]
 impl From<ShaderError> for pyo3::PyErr {
     fn from(e: ShaderError) -> Self {
-        crate::errors::raise_error(&e)
+        raise_error(&e)
     }
 }
 
@@ -286,7 +292,7 @@ impl From<wasm_bindgen::JsValue> for ShaderError {
 #[cfg(wasm)]
 impl From<ShaderError> for wasm_bindgen::JsValue {
     fn from(error: ShaderError) -> Self {
-        crate::errors::WebError::from(error).into()
+        WebError::from(error).into()
     }
 }
 

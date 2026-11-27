@@ -2,6 +2,12 @@ use std::convert::Infallible;
 use thiserror::Error;
 
 use super::PassType;
+#[cfg(wasm)]
+use crate::errors::WebError;
+#[cfg(python)]
+use crate::errors::raise_error;
+#[cfg(any(python, wasm, mobile, test))]
+use crate::errors::{Classify, ErrorClass};
 
 #[derive(Error, Debug)]
 pub enum PassError {
@@ -84,9 +90,8 @@ impl From<pyo3::PyErr> for PassError {
 /// refuses it: a color, a viewport, a target texture or a dispatch. Any other error
 /// is a `FragmentColorError`.
 #[cfg(any(python, wasm, mobile, test))]
-impl crate::errors::Classify for PassError {
-    fn classify(&self) -> crate::errors::ErrorClass {
-        use crate::errors::ErrorClass;
+impl Classify for PassError {
+    fn classify(&self) -> ErrorClass {
         match self {
             PassError::Color(_)
             | PassError::Viewport(_)
@@ -101,7 +106,7 @@ impl crate::errors::Classify for PassError {
 #[cfg(python)]
 impl From<PassError> for pyo3::PyErr {
     fn from(error: PassError) -> Self {
-        crate::errors::raise_error(&error)
+        raise_error(&error)
     }
 }
 
@@ -122,7 +127,7 @@ impl From<wasm_bindgen::JsValue> for PassError {
 #[cfg(wasm)]
 impl From<PassError> for wasm_bindgen::JsValue {
     fn from(error: PassError) -> Self {
-        crate::errors::WebError::from(error).into()
+        WebError::from(error).into()
     }
 }
 

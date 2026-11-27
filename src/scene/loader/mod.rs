@@ -24,6 +24,8 @@ use std::path::PathBuf;
 use glam::{Mat4, Quat, Vec3};
 
 use crate::core::shader::error::describe;
+#[cfg(any(python, wasm, mobile, test))]
+use crate::errors::{Classify, ErrorClass};
 use crate::scene::{Camera, Light, Scene};
 use crate::texture::TextureSource;
 use crate::{Material, Model};
@@ -526,9 +528,9 @@ fn add_light(
 }
 
 #[cfg(any(python, wasm, mobile, test))]
-impl crate::errors::Classify for SceneLoadError {
-    fn classify(&self) -> crate::errors::ErrorClass {
-        crate::errors::ErrorClass::SceneLoad
+impl Classify for SceneLoadError {
+    fn classify(&self) -> ErrorClass {
+        ErrorClass::SceneLoad
     }
 }
 
