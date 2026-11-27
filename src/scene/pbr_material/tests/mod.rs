@@ -1,7 +1,15 @@
+use std::f32::consts::PI;
+
+use naga::back::wgsl::{WriterFlags, write_string};
+use naga::front::wgsl::parse_str;
+use naga::valid::{Capabilities, ValidationFlags, Validator};
+
 use super::*;
+use crate::testing::race_hooks;
+use crate::texture::loading::ktx2_loader::test_helpers::Ktx2Test;
 use crate::texture::{SourceData, TextureData, TextureError};
-use crate::{Mesh, Vertex};
-use crate::{Pass, Renderer, Target};
+use crate::{Light, Mesh, Mipmap, Model, Size, Vertex};
+use crate::{Pass, Renderer, SamplerOptions, Target, TextureFormat, TextureId, TextureTarget};
 use crate::{ShaderError, TextureInput, UniformData};
 
 #[test]
@@ -162,7 +170,7 @@ fn pbr_with_no_user_textures_renders_with_defaults() {
         let mat = PbrMaterial::new()
             .base_color([0.6, 0.2, 0.8, 1.0])
             .expect("base color");
-        let model = crate::scene::Model::new(pbr_triangle_mesh(), mat);
+        let model = Model::new(pbr_triangle_mesh(), mat);
         let pass = Pass::new("defaults-only");
         pass.add(&model).expect("add_model");
         renderer
@@ -187,10 +195,10 @@ fn pbr_samples_base_color_texture() {
                   0,   0, 255, 255,  255, 255, 255, 255,
             ];
         let tex = renderer
-            .create_texture((&pixels[..], crate::Size::from((2u32, 2u32))))
+            .create_texture((&pixels[..], Size::from((2u32, 2u32))))
             .await
             .expect("base_color texture");
-        tex.set_sampler_options(crate::texture::SamplerOptions {
+        tex.set_sampler_options(SamplerOptions {
             smooth: false,
             ..Default::default()
         });
@@ -202,7 +210,7 @@ fn pbr_samples_base_color_texture() {
         mat.shader()
             .set("camera.position", [0.0_f32, 0.0, 1.0])
             .ok();
-        let light = crate::Light::directional([0.0, 0.0, -1.0], [1.0, 1.0, 1.0]).expect("light");
+        let light = Light::directional([0.0, 0.0, -1.0], [1.0, 1.0, 1.0]).expect("light");
 
         let mesh = Mesh::new();
         for (pos, uv) in [
@@ -212,7 +220,7 @@ fn pbr_samples_base_color_texture() {
         ] {
             mesh.add_vertex(Vertex::pbr(pos).set(Vertex::UV0, uv));
         }
-        let model = crate::scene::Model::new(mesh, mat);
+        let model = Model::new(mesh, mat);
         let pass = Pass::new("textured-triangle");
         pass.add(&model).expect("add_model");
         pass.add(&light).expect("light");
@@ -240,21 +248,21 @@ fn pbr_samples_base_color_texture() {
 }
 
 /// The id `material`'s map for `key` holds, the one each Renderer's copy goes under.
-fn read_map(material: &PbrMaterial, key: &str) -> crate::texture::TextureId {
+fn read_map(material: &PbrMaterial, key: &str) -> TextureId {
     let maps = material.shader.object.maps.read();
     let map = maps.iter().find(|map| map.key == key);
     map.map(|map| map.id).expect("a map")
 }
 
 /// Whether the Renderer that made `target` holds a copy of `material`'s map for `key`.
-fn holds_copy(target: &crate::TextureTarget, material: &PbrMaterial, key: &str) -> bool {
+fn holds_copy(target: &TextureTarget, material: &PbrMaterial, key: &str) -> bool {
     let id = read_map(material, key);
     target.texture().context.has_texture(&id)
 }
 
 /// A material whose fullscreen shader draws texel (0, 0) of `base_color_map`.
 fn build_mapped() -> PbrMaterial {
-    let shader = crate::Shader::new(
+    let shader = Shader::new(
             r#"
 @group(0) @binding(0) var base_color_map: texture_2d<f32>;
 @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
@@ -274,7 +282,7 @@ fn paint(color: [u8; 4]) -> (Vec<u8>, [u32; 2]) {
 }
 
 /// The first pixel of `target`.
-async fn read_pixel(target: &crate::TextureTarget) -> [u8; 4] {
+async fn read_pixel(target: &TextureTarget) -> [u8; 4] {
     let image = target.get_image().await.expect("read back");
     [image[0], image[1], image[2], image[3]]
 }
@@ -306,7 +314,7 @@ fn base_color_texture_with_raw_bytes_uploads_at_render() {
             "a copy before render"
         );
 
-        let model = crate::scene::Model::new(pbr_triangle_mesh(), mat.clone());
+        let model = Model::new(pbr_triangle_mesh(), mat.clone());
         let pass = Pass::new("lazy-upload");
         pass.add(&model).expect("add_model");
         renderer
@@ -345,7 +353,7 @@ fn failed_maps_keep_no_copy_and_the_rest_upload() {
         mat.normal_map()
             .texture((normal, [2u32, 2u32]))
             .expect("normal map");
-        let model = crate::scene::Model::new(pbr_triangle_mesh(), mat.clone());
+        let model = Model::new(pbr_triangle_mesh(), mat.clone());
         let pass = Pass::new("partial-upload");
         pass.add(&model).expect("add_model");
 
@@ -428,7 +436,7 @@ fn latest_map_setter_wins() {
             let latest = matches!(&*maps[0].source.data, SourceData::Bytes(_));
             assert!(latest, "{:?}", maps[0].source);
         }
-        let model = crate::scene::Model::new(pbr_triangle_mesh(), mat.clone());
+        let model = Model::new(pbr_triangle_mesh(), mat.clone());
         let pass = Pass::new("replaced-upload");
         pass.add(&model).expect("add_model");
 
@@ -459,7 +467,7 @@ fn a_texture_set_during_a_failed_upload_wins() {
             .texture("tests/assets/missing.png")
             .expect("base color map");
         let late = mat.clone();
-        crate::testing::race_hooks::once("map uploaded", move || {
+        race_hooks::once("map uploaded", move || {
             late.base_color_map()
                 .texture(&texture)
                 .expect("base color map");
@@ -497,7 +505,7 @@ fn a_set_during_an_upload_ends_on_the_last_value() {
             .texture(paint([255, 0, 0, 255]))
             .expect("base color map");
         let late = mat.clone();
-        crate::testing::race_hooks::once("map uploaded", move || {
+        race_hooks::once("map uploaded", move || {
             late.base_color_map()
                 .texture(paint([0, 0, 255, 255]))
                 .expect("base color map");
@@ -537,7 +545,7 @@ fn a_texture_with_options_leaves_the_slot() {
 
         let refused = mat
             .base_color_map()
-            .texture((&second, crate::TextureFormat::Rgba8Unorm));
+            .texture((&second, TextureFormat::Rgba8Unorm));
 
         let error = refused.expect_err("options beside a Texture");
         assert!(
@@ -615,7 +623,7 @@ fn an_input_with_no_data_leaves_the_slot() {
 
 /// A material whose shader declares `base_color_map` as a color.
 fn build_numbered() -> PbrMaterial {
-    let shader = crate::Shader::new(
+    let shader = Shader::new(
         r#"
 @group(0) @binding(0) var<uniform> base_color_map: vec4<f32>;
 @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
@@ -660,7 +668,6 @@ fn a_slot_declared_as_a_number_refuses_textures() {
 
 /// A 4x4 KTX2 container of zeros in `format`, at `bytes` per texel.
 fn build_container(format: ktx2::Format, bytes: usize) -> TextureInput {
-    use crate::texture::loading::ktx2_loader::test_helpers::Ktx2Test;
     let levels = vec![vec![0u8; 4 * 4 * bytes]];
     let container = Ktx2Test {
         format,
@@ -683,11 +690,11 @@ fn a_container_map_takes_the_slot_format_only_where_it_reads() {
             .expect("a target");
         let half = (
             vec![0u8; 4 * 4 * 8],
-            crate::TextureFormat::Rgba16Float,
+            TextureFormat::Rgba16Float,
             [4u32, 4u32],
         );
-        let half = crate::Mipmap::build(half).expect("a float chain");
-        let plain = crate::Mipmap::build((vec![255u8; 4 * 4 * 4], [4u32, 4u32]));
+        let half = Mipmap::build(half).expect("a float chain");
+        let plain = Mipmap::build((vec![255u8; 4 * 4 * 4], [4u32, 4u32]));
         let plain = plain.expect("a chain");
         let cases: [(TextureInput, wgpu::TextureFormat); 4] = [
             (half.into(), wgpu::TextureFormat::Rgba16Float),
@@ -727,7 +734,7 @@ fn texture_setter_with_existing_texture_makes_no_map() {
                   0, 0, 255, 255,  255, 255, 255, 255,
             ];
         let tex = renderer
-            .create_texture((&pixels[..], crate::Size::from((2u32, 2u32))))
+            .create_texture((&pixels[..], Size::from((2u32, 2u32))))
             .await
             .expect("texture");
 
@@ -760,7 +767,7 @@ fn shared_texture_handle_is_reused_across_materials() {
                   0, 0, 255, 255,  255, 255, 255, 255,
             ];
         let shared = renderer
-            .create_texture((&pixels[..], crate::Size::from((2u32, 2u32))))
+            .create_texture((&pixels[..], Size::from((2u32, 2u32))))
             .await
             .expect("texture");
         let shared_id = *shared.id();
@@ -783,7 +790,7 @@ fn shared_texture_handle_is_reused_across_materials() {
                 .get_uniform_data("base_color_map")
                 .expect("base_color_map");
             match data {
-                crate::UniformData::Texture(meta) => {
+                UniformData::Texture(meta) => {
                     assert_eq!(
                         meta.id, shared_id,
                         "each Material's base_color_map must point at the shared texture's ID"
@@ -805,7 +812,7 @@ fn build_painted(color: [u8; 4]) -> PbrMaterial {
 }
 
 /// A Renderer and an 8x8 target it made.
-async fn open_target() -> (Renderer, crate::TextureTarget) {
+async fn open_target() -> (Renderer, TextureTarget) {
     let renderer = Renderer::new();
     let target = renderer.create_texture_target([8, 8]).await;
     (renderer, target.expect("a target"))
@@ -903,13 +910,12 @@ fn a_new_renderer_draws_after_the_first_drops() {
 
 /// Writes `module` back as WGSL, as wgpu does for a browser, and parses that again.
 fn write_for_the_web(module: &naga::Module) -> naga::Module {
-    use naga::valid::{Capabilities, ValidationFlags, Validator};
     let info = Validator::new(ValidationFlags::all(), Capabilities::all())
         .validate(module)
         .expect("the module validates");
-    let flags = naga::back::wgsl::WriterFlags::empty();
-    let written = naga::back::wgsl::write_string(module, &info, flags).expect("writes WGSL");
-    naga::front::wgsl::parse_str(&written).expect("the written WGSL parses")
+    let flags = WriterFlags::empty();
+    let written = write_string(module, &info, flags).expect("writes WGSL");
+    parse_str(&written).expect("the written WGSL parses")
 }
 
 /// The span and member offsets of every struct in `module`, in declaration order.
@@ -945,10 +951,7 @@ fn pbr_layout_survives_the_web_round_trip() {
 
     // Assert
     for (module, written) in modules.iter().zip(&written) {
-        let mut validator = naga::valid::Validator::new(
-            naga::valid::ValidationFlags::all(),
-            naga::valid::Capabilities::all(),
-        );
+        let mut validator = Validator::new(ValidationFlags::all(), Capabilities::all());
         let checked = validator.validate(written);
         assert!(checked.is_ok(), "the web module fails: {checked:?}");
         assert_eq!(read_layouts(written), read_layouts(module));
@@ -986,10 +989,9 @@ fn a_back_face_lights_as_the_side_the_camera_sees() {
             back.add_vertex(Vertex::pbr(position).set(Vertex::NORMAL, [0.0_f32, 0.0, -1.0]));
         }
         let pass = Pass::new("back");
-        pass.add(&crate::scene::Model::new(back, &material))
+        pass.add(&Model::new(back, &material))
             .expect("add the model");
-        let pi = std::f32::consts::PI;
-        let light = crate::Light::directional([0.0, 0.0, -1.0], [pi, pi, pi]).expect("light");
+        let light = Light::directional([0.0, 0.0, -1.0], [PI; 3]).expect("light");
         pass.add(&light).expect("add the light");
 
         // Act
