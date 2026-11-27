@@ -630,6 +630,11 @@ Toggle backface culling for this material's pipeline. When `true`, the renderer 
 its default back-face cull and draws both faces of every triangle. When `false`
 (the default), back faces are culled, the standard CCW-winding-is-front convention.
 
+Seen from behind, a face lights as the side the camera sees: the shader turns its normal
+around, and with it the tangent frame a normal map reads, as glTF asks. On a `Model`
+mirrored by a negative scale, whose outer faces wind the other way on screen, those faces
+still light as the front.
+
 Mirrors glTF 2.0's `doubleSided`. Reach for it on thin geometry that legitimately reads
 from both sides: a single-quad leaf card, a cloth banner, decals applied to non-closed
 meshes, or any authored asset that comes out of a tool that didn't bother to mirror its

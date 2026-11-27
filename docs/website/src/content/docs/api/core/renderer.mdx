@@ -1110,10 +1110,13 @@ A [`Shader::set`](/api/core/shader#set) on a field
 or an item of the root uploads only the 4-byte words that hold it at the next
 render that binds it, so the rest of the root keeps what a compute pass wrote
 there. Setting one `f16` also writes the `f16` that shares its word, from the
-shader's copy. The whole root goes up, over what the pass wrote, when raw bytes
-replace it, when the render creates the buffer or recreates it at a new size,
-as two shaders that declare the root at different sizes make it do, and when
-another Renderer uploaded changes this one hadn't seen.
+shader's copy. When two Renderers draw one shader, each uploads only the sets
+it hasn't taken yet and keeps what its own passes wrote. The whole root goes
+up, over what the pass wrote, when raw bytes replace it, and when the render
+creates the buffer or recreates it at a new size, as two shaders that declare
+the root at different sizes make it do. Two shaders that declare it at the
+same size share one buffer. The first render of either on a buffer the other
+created uploads each field and item it ever set.
 
 `read_storage` is `async` because the underlying `map_async` requires an
 awaited callback. It returns a Promise in JS, is `async` in Swift and
@@ -1422,7 +1425,7 @@ Before it takes a frame, `render` checks each shader against the device and each
 
 A `Renderer` draws only into the targets it created. A target from another `Renderer` returns `RendererError::ForeignTarget`, unless every pass is a compute pass, which draws into no target, and a pass target or texture uniform from another `Renderer` returns `RendererError::TextureNotFoundError`. A `Material` map set from bytes, a path, a URL or a `Mipmap` belongs to no `Renderer`: each one draws it from a copy of its own. These checks come before `render` uploads a map or opens a device, so a refused render changes nothing. A `Renderer` that has opened no device yet returns `RendererError::NoContext` for a target without an owner. Each pass is checked against what it draws into before it records: a [depth target](/api/core/pass#set_depth_target) of the color attachment's size and sample count, shader outputs and blending the [target](/api/core/pass#set_target)'s format takes, a [viewport](/api/core/pass#set_viewport) and a [compute dispatch](/api/core/pass#set_compute_dispatch) the device takes, and textures that one pass doesn't both write and read. A render pass can't bind a texture it draws into, and no pass can read a texture one of its bindings writes, so a compute dispatch that samples a texture and stores into it returns `PassError::TextureConflict` too.
 
-`render` also returns what the GPU rejects. When a pipeline fails to build or a frame's commands fail, it returns a [DeviceError](/api/errors/deviceerror), `RendererError::DeviceError` in Rust. Its `kind` tells validation errors, internal errors such as a shader the backend compiler refuses, and running out of memory apart, and its `label` names the step that failed: the render pipeline, the compute pipeline, the light binning pipeline, the frame, or a bind group or texture view inside the frame. When one error causes another, `render` returns the first. In Rust, Python, Swift and Kotlin, a pipeline that failed is never kept, and the next frame builds it again and returns the same error.
+`render` also returns what the GPU rejects. When a pipeline fails to build or a frame's commands fail, it returns a [DeviceError](/api/errors#deviceerror), `RendererError::DeviceError` in Rust. Its `kind` tells validation errors, internal errors such as a shader the backend compiler refuses, and running out of memory apart, and its `label` names the step that failed: the render pipeline, the compute pipeline, the light binning pipeline, the frame, or a bind group or texture view inside the frame. When one error causes another, `render` returns the first. In Rust, Python, Swift and Kotlin, a pipeline that failed is never kept, and the next frame builds it again and returns the same error.
 
 A frame that fails is still presented. wgpu clears an image that no valid command drew into, so after a GPU error the window usually shows a cleared frame. On Apple GPUs the renderer submits the commands recorded so far before each compute pass that follows another compute pass. When a pass after that point fails, what the earlier passes drew stays on the image. On Apple GPUs, after a compute pass whose shader binds a storage texture with atomic access, `render` also submits the commands recorded so far and waits for the GPU to finish them before it records the next pass, so a readback, a later pass and the next `render` all see the pass's counts. A shader without its mesh, an instance count past the mesh's instances, a mesh the device's limits or its own checks refuse, a shader or texture the device checks refuse, a target from another `Renderer`, a pass target that is missing, a viewport past the device's 2D limit, and a pass whose own target or compute dispatch fails its checks fail before `render` takes a frame, and the window keeps its last image.
 

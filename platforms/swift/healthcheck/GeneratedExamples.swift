@@ -794,19 +794,16 @@ final class GeneratedExamples: ExampleCase {
         }
     }
 
-    func test_errors_device_error_DeviceError() async {
-        await example("docs/api/errors/device_error/device_error.md") {
+    func test_errors_Errors() async {
+        await example("docs/api/errors/errors.md") {
             let renderer = Renderer()
             let target = try await renderer.createTextureTarget([16, 16])
             let shader = Shader.default()
 
             // A GPU error in this frame returns as a DeviceError.
             try renderer.render(shader, target)
-        }
-    }
 
-    func test_errors_error_kind_ErrorKind() async {
-        await example("docs/api/errors/error_kind/error_kind.md") {
+            // The kind of GPU error a DeviceError carries.
             let kind = ErrorKind.memory
         }
     }

@@ -48,6 +48,7 @@ __all__ = [
     "TextureFormat",
     "Mipmap",
     "SamplerOptions",
+    "SamplerInfo",
     "CompareFunction",
     "TextureUsage",
     "TextureTarget",
@@ -363,10 +364,13 @@ class Renderer:
         or an item of the root uploads only the 4-byte words that hold it at the next
         render that binds it, so the rest of the root keeps what a compute pass wrote
         there. Setting one `f16` also writes the `f16` that shares its word, from the
-        shader's copy. The whole root goes up, over what the pass wrote, when raw bytes
-        replace it, when the render creates the buffer or recreates it at a new size,
-        as two shaders that declare the root at different sizes make it do, and when
-        another Renderer uploaded changes this one hadn't seen.
+        shader's copy. When two Renderers draw one shader, each uploads only the sets
+        it hasn't taken yet and keeps what its own passes wrote. The whole root goes
+        up, over what the pass wrote, when raw bytes replace it, and when the render
+        creates the buffer or recreates it at a new size, as two shaders that declare
+        the root at different sizes make it do. Two shaders that declare it at the
+        same size share one buffer. The first render of either on a buffer the other
+        created uploads each field and item it ever set.
 
         `read_storage` is `async` because the underlying `map_async` requires an
         awaited callback. It returns a Promise in JS, is `async` in Swift and
@@ -437,7 +441,7 @@ class Renderer:
 
         A `Renderer` draws only into the targets it created. A target from another `Renderer` returns `RendererError::ForeignTarget`, unless every pass is a compute pass, which draws into no target, and a pass target or texture uniform from another `Renderer` returns `RendererError::TextureNotFoundError`. A `Material` map set from bytes, a path, a URL or a `Mipmap` belongs to no `Renderer`: each one draws it from a copy of its own. These checks come before `render` uploads a map or opens a device, so a refused render changes nothing. A `Renderer` that has opened no device yet returns `RendererError::NoContext` for a target without an owner. Each pass is checked against what it draws into before it records: a [depth target](https://fragmentcolor.org/api/core/pass#set_depth_target) of the color attachment's size and sample count, shader outputs and blending the [target](https://fragmentcolor.org/api/core/pass#set_target)'s format takes, a [viewport](https://fragmentcolor.org/api/core/pass#set_viewport) and a [compute dispatch](https://fragmentcolor.org/api/core/pass#set_compute_dispatch) the device takes, and textures that one pass doesn't both write and read. A render pass can't bind a texture it draws into, and no pass can read a texture one of its bindings writes, so a compute dispatch that samples a texture and stores into it returns `PassError::TextureConflict` too.
 
-        `render` also returns what the GPU rejects. When a pipeline fails to build or a frame's commands fail, it returns a [DeviceError](https://fragmentcolor.org/api/errors/deviceerror), `RendererError::DeviceError` in Rust. Its `kind` tells validation errors, internal errors such as a shader the backend compiler refuses, and running out of memory apart, and its `label` names the step that failed: the render pipeline, the compute pipeline, the light binning pipeline, the frame, or a bind group or texture view inside the frame. When one error causes another, `render` returns the first. In Rust, Python, Swift and Kotlin, a pipeline that failed is never kept, and the next frame builds it again and returns the same error.
+        `render` also returns what the GPU rejects. When a pipeline fails to build or a frame's commands fail, it returns a [DeviceError](https://fragmentcolor.org/api/errors#deviceerror), `RendererError::DeviceError` in Rust. Its `kind` tells validation errors, internal errors such as a shader the backend compiler refuses, and running out of memory apart, and its `label` names the step that failed: the render pipeline, the compute pipeline, the light binning pipeline, the frame, or a bind group or texture view inside the frame. When one error causes another, `render` returns the first. In Rust, Python, Swift and Kotlin, a pipeline that failed is never kept, and the next frame builds it again and returns the same error.
 
         A frame that fails is still presented. wgpu clears an image that no valid command drew into, so after a GPU error the window usually shows a cleared frame. On Apple GPUs the renderer submits the commands recorded so far before each compute pass that follows another compute pass. When a pass after that point fails, what the earlier passes drew stays on the image. On Apple GPUs, after a compute pass whose shader binds a storage texture with atomic access, `render` also submits the commands recorded so far and waits for the GPU to finish them before it records the next pass, so a readback, a later pass and the next `render` all see the pass's counts. A shader without its mesh, an instance count past the mesh's instances, a mesh the device's limits or its own checks refuse, a shader or texture the device checks refuse, a target from another `Renderer`, a pass target that is missing, a viewport past the device's 2D limit, and a pass whose own target or compute dispatch fails its checks fail before `render` takes a frame, and the window keeps its last image.
 
@@ -798,7 +802,7 @@ class Shader:
         - A `Texture` created by a `Renderer` binds to a texture uniform, a `texture_external` one included.
         - Raw bytes replace a whole storage-buffer or push-constant root: a byte slice in Rust, a `Uint8Array` in JavaScript, `bytes` (or a `bytearray` or `memoryview`) in Python, `Data` in Swift, or a `ByteArray` in Kotlin. The byte count must equal the root's size, and any other length throws.
 
-        Setting a field or an item of a storage root uploads only its bytes at the next render that binds the root, so the rest of the root keeps what a compute pass wrote there. Uploads cover whole 4-byte words, so setting one `f16` also writes the `f16` that shares its word, from the shader's copy. Raw bytes on the root upload all of it, and so does a render that creates the root's buffer, or one on a second Renderer that missed changes another Renderer uploaded.
+        Setting a field or an item of a storage root uploads only its bytes at the next render that binds the root, so the rest of the root keeps what a compute pass wrote there. Several Renderers can draw one shader: each uploads only the sets it hasn't taken yet and keeps what its own passes wrote. Uploads cover whole 4-byte words, so setting one `f16` also writes the `f16` that shares its word, from the shader's copy. Raw bytes on the root upload all of it, and so does a render that creates the root's buffer.
 
         Example:
 
@@ -826,7 +830,7 @@ class Shader:
         shader.set("gain", 0.5)
         ```
         """
-    def get(self, key: str) -> bool | int | float | bytes | TextureId | _SamplerInfo | list[float] | list[int]:
+    def get(self, key: str) -> bool | int | float | bytes | SamplerInfo | TextureId | list[float] | list[int]:
         """
         Returns the current value of the uniform identified by the given key.
 
@@ -840,12 +844,15 @@ class Shader:
         A texture slot reads back the `TextureId` of what it binds. A `Material` map's slot
         holds the map's id from the setter call on, before any `Renderer` loads it.
 
+        A sampler slot reads back a `SamplerInfo`, whose `comparison` says whether the
+        slot is a `sampler_comparison`. A sampler binds on its own, so `set` refuses its key.
+
         Rust names the type it reads into, as in `let res: [f32; 2] = shader.get("resolution")?`.
         JavaScript, Python, Swift and Kotlin return the plain value: a number or a bool
         for a scalar, a list of numbers for a vector or a matrix, column by column (a
-        typed array in JavaScript), a `TextureId` for a texture, and bytes for a struct,
-        array or buffer root. Swift and Kotlin type it as `Any`, which `as?` or `as`
-        narrows, as in `try shader.get("resolution") as? [Float]`.
+        typed array in JavaScript), a `TextureId` for a texture, a `SamplerInfo` for a
+        sampler, and bytes for a struct, array or buffer root. Swift and Kotlin type it
+        as `Any`, which `as?` or `as` narrows, as in `try shader.get("resolution") as? [Float]`.
 
         Example:
 
@@ -1178,6 +1185,10 @@ class Shader:
 
         This is pipeline state. The renderer keeps one pipeline per shader, alpha mode and
         face setting, so a change builds a pipeline once and reuses it from then on.
+
+        A shader that declares `override DOUBLE_SIDED: bool` gets this setting as its value.
+        The `PbrMaterial` and `ToonMaterial` shaders read it to light the outer faces of a
+        mirrored `Model` as the front.
 
         Example:
 
@@ -1795,7 +1806,7 @@ class Pass:
 @final
 class ErrorKind:
     """
-    Names the kind of GPU error a [DeviceError](https://fragmentcolor.org/api/errors/deviceerror) carries, from the error scope that caught it.
+    Names the kind of GPU error a [DeviceError](https://fragmentcolor.org/api/errors#deviceerror) carries, from the error scope that caught it.
 
     - `Validation`: a call broke a rule of the GPU API, such as a bind group that doesn't match its layout.
     - `Internal`: the GPU or its driver failed for a reason of its own, such as a shader the backend compiler refuses.
@@ -1804,18 +1815,11 @@ class ErrorKind:
     Running out of memory or an internal failure leaves an object invalid, and each later use of that object fails validation. So when one error causes others, the error that returns is the first in the order memory, internal, validation.
 
     Rust writes `ErrorKind::Memory`, JavaScript and Python `ErrorKind.Memory`, Swift `ErrorKind.memory` and Kotlin `ErrorKind.MEMORY`.
-
-    Example:
-
-    ```python
-    from fragmentcolor import ErrorKind
-
-    kind = ErrorKind.Memory
-    ```
     """
     Validation: ClassVar[ErrorKind]
     Internal: ClassVar[ErrorKind]
     Memory: ClassVar[ErrorKind]
+    def __reduce__(self) -> tuple[Any, ...]: ...
 
 @final
 class LogLevel:
@@ -3500,7 +3504,7 @@ class Model:
         an `UnlitMaterial`, a `ToonMaterial` or a `Shader`, which each language narrows
         as it narrows any value: `instanceof` in JavaScript, `isinstance` in Python,
         `as?` in Swift and `is` or `as` in Kotlin. Swift types it as `any Material`, a
-        protocol only those four conform to. `Model::new` takes it back as it is.
+        protocol each of those four conforms to. `Model::new` takes it back as it is.
 
         To give a Model a look of its own, build a fresh material, such as a new
         `PbrMaterial::new()`, rather than cloning one.
@@ -3681,10 +3685,11 @@ class Model:
         current transform by a scale matrix, so the Model grows or shrinks around
         its own origin without sliding through space.
 
-        Use uniform scales (`[s, s, s]`) when possible. Non-uniform scale breaks
-        the cheap normal-transform path the default PBR shader uses, so a stretched
-        Model will shade slightly off. For a correct non-uniform-scale normal, draw
-        with a `Shader` of your own that ships the explicit cofactor matrix.
+        Unequal factors are fine: the built-in materials light a stretched Model
+        the way its surfaces face. A negative factor mirrors the Model, which turns
+        its faces' winding around on screen. A single-sided material then culls the
+        outer faces, so give a mirrored Model a double-sided material, which lights
+        them as the front.
 
         A factor that is NaN or an infinity returns `ModelError::NotFinite`, which
         names the call and the item, and the Model keeps its size. The other
@@ -5166,6 +5171,11 @@ class PbrMaterial:
         its default back-face cull and draws both faces of every triangle. When `false`
         (the default), back faces are culled, the standard CCW-winding-is-front convention.
 
+        Seen from behind, a face lights as the side the camera sees: the shader turns its normal
+        around, and with it the tangent frame a normal map reads, as glTF asks. On a `Model`
+        mirrored by a negative scale, whose outer faces wind the other way on screen, those faces
+        still light as the front.
+
         Mirrors glTF 2.0's `doubleSided`. Reach for it on thin geometry that legitimately reads
         from both sides: a single-quad leaf card, a cloth banner, decals applied to non-closed
         meshes, or any authored asset that comes out of a tool that didn't bother to mirror its
@@ -5587,7 +5597,7 @@ class ToonMaterial:
     [`bands`](https://fragmentcolor.org/api/scene/toonmaterial#bands) even
     steps, three by default, or read from a
     [`ramp_map()`](https://fragmentcolor.org/api/scene/toonmaterial#ramp_map)
-    gradient once one is set. A [`highlight`](https://fragmentcolor.org/api/scene/toonmaterial#highlight)
+    gradient wider than one texel. A [`highlight`](https://fragmentcolor.org/api/scene/toonmaterial#highlight)
     color adds a hard spot where the light glints, and a
     [`rim`](https://fragmentcolor.org/api/scene/toonmaterial#rim) color marks
     the faces seen edge-on. Both start black, which turns them off.
@@ -5936,6 +5946,10 @@ class ToonMaterial:
 
         Thin geometry the camera can see from both sides, such as a flag or a
         leaf, needs both faces. Like `alpha_mode`, it is pipeline state.
+
+        Seen from behind, a face lights, bands and takes the rim as the side
+        the camera sees. On a `Model` mirrored by a negative scale, whose outer
+        faces wind the other way on screen, those faces still light as the front.
 
         Example:
 
@@ -6689,6 +6703,11 @@ class SamplerOptions:
     def __new__(cls, repeat_x: bool = ..., repeat_y: bool = ..., smooth: bool = ..., compare: CompareFunction | None = ...) -> SamplerOptions: ...
 
 @final
+class SamplerInfo:
+    @property
+    def comparison(self) -> bool: ...
+
+@final
 class CompareFunction:
     Never: ClassVar[CompareFunction]
     Less: ClassVar[CompareFunction]
@@ -6906,8 +6925,5 @@ class WindowTarget:
 
 @final
 class RenderCanvasFrame: ...
-
-@final
-class _SamplerInfo: ...
 
 def rendercanvas_context_hook(canvas: Any, present_methods: Any) -> WindowTarget: ...

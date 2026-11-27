@@ -716,17 +716,15 @@ class GeneratedExamples : ExampleCase() {
     }
 
     @Test
-    fun errors_device_error_DeviceError() = example("docs/api/errors/device_error/device_error.md") {
+    fun errors_Errors() = example("docs/api/errors/errors.md") {
         val renderer = Renderer()
         val target = renderer.createTextureTarget(listOf(16u, 16u))
         val shader = Shader.default()
 
         // A GPU error in this frame returns as a DeviceError.
         renderer.render(shader, target)
-    }
 
-    @Test
-    fun errors_error_kind_ErrorKind() = example("docs/api/errors/error_kind/error_kind.md") {
+        // The kind of GPU error a DeviceError carries.
         val kind = ErrorKind.MEMORY
     }
 

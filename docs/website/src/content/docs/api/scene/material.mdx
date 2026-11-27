@@ -45,7 +45,7 @@ what the Model draws with:
   language narrows any value: `instanceof` in JavaScript, `isinstance` in
   Python, `as?` in Swift and `is` or `as` in Kotlin, as in
   `model.material() as? PbrMaterial`. Swift types it as `any Material`, a
-  protocol only those four conform to.
+  protocol each of those four conforms to.
 
 A material is a handle. The Model holds the same material you passed it, so
 a setter on that material changes every Model that draws with it.

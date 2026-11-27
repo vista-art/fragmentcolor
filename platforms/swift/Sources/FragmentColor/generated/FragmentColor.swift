@@ -3762,7 +3762,6 @@ public protocol ShaderProtocol: AnyObject, Sendable {
     
     /**
      * The raw read behind the Swift and Kotlin `get`, which returns the plain value.
-     * A struct, array or buffer root comes back as its bytes, as JavaScript and Python read it.
      */
     func getData(key: String) throws  -> UniformData
     
@@ -4021,7 +4020,6 @@ open func fetchCompose(parts: [String])async throws  -> Shader  {
     
     /**
      * The raw read behind the Swift and Kotlin `get`, which returns the plain value.
-     * A struct, array or buffer root comes back as its bytes, as JavaScript and Python read it.
      */
 open func getData(key: String)throws  -> UniformData  {
     return try  FfiConverterTypeUniformData_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
@@ -5437,129 +5435,20 @@ public func FfiConverterTypeWindowTarget_lower(_ value: WindowTarget) -> UInt64 
 
 
 /**
- * Element shape used inside `UniformData::Array`.
+ * A shader's sampler slot, as `Shader::get` reads it back.
  */
-public struct ArrayElement: Equatable, Hashable {
-    public var ty: [UniformData]
-    public var count: UInt32
-    public var stride: UInt32
-
-    // Default memberwise initializers are never public by default, so we
-    // declare one manually.
-    public init(ty: [UniformData], count: UInt32, stride: UInt32) {
-        self.ty = ty
-        self.count = count
-        self.stride = stride
-    }
-
-    
-
-    
-}
-
-#if compiler(>=6)
-extension ArrayElement: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeArrayElement: FfiConverterRustBuffer {
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ArrayElement {
-        return
-            try ArrayElement(
-                ty: FfiConverterSequenceTypeUniformData.read(from: &buf), 
-                count: FfiConverterUInt32.read(from: &buf), 
-                stride: FfiConverterUInt32.read(from: &buf)
-        )
-    }
-
-    public static func write(_ value: ArrayElement, into buf: inout [UInt8]) {
-        FfiConverterSequenceTypeUniformData.write(value.ty, into: &buf)
-        FfiConverterUInt32.write(value.count, into: &buf)
-        FfiConverterUInt32.write(value.stride, into: &buf)
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeArrayElement_lift(_ buf: RustBuffer) throws -> ArrayElement {
-    return try FfiConverterTypeArrayElement.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeArrayElement_lower(_ value: ArrayElement) -> RustBuffer {
-    return FfiConverterTypeArrayElement.lower(value)
-}
-
-
-/**
- * Push constant root entry used inside `UniformData::PushConstant`.
- */
-public struct PushEntry: Equatable, Hashable {
-    public var inner: [UniformData]
-    public var span: UInt32
-
-    // Default memberwise initializers are never public by default, so we
-    // declare one manually.
-    public init(inner: [UniformData], span: UInt32) {
-        self.inner = inner
-        self.span = span
-    }
-
-    
-
-    
-}
-
-#if compiler(>=6)
-extension PushEntry: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypePushEntry: FfiConverterRustBuffer {
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PushEntry {
-        return
-            try PushEntry(
-                inner: FfiConverterSequenceTypeUniformData.read(from: &buf), 
-                span: FfiConverterUInt32.read(from: &buf)
-        )
-    }
-
-    public static func write(_ value: PushEntry, into buf: inout [UInt8]) {
-        FfiConverterSequenceTypeUniformData.write(value.inner, into: &buf)
-        FfiConverterUInt32.write(value.span, into: &buf)
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypePushEntry_lift(_ buf: RustBuffer) throws -> PushEntry {
-    return try FfiConverterTypePushEntry.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypePushEntry_lower(_ value: PushEntry) -> RustBuffer {
-    return FfiConverterTypePushEntry.lower(value)
-}
-
-
 public struct SamplerInfo: Equatable, Hashable {
+    /**
+     * Whether the slot is a `sampler_comparison`, which compares depth.
+     */
     public var comparison: Bool
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(comparison: Bool) {
+    public init(
+        /**
+         * Whether the slot is a `sampler_comparison`, which compares depth.
+         */comparison: Bool) {
         self.comparison = comparison
     }
 
@@ -5793,185 +5682,6 @@ public func FfiConverterTypeSize_lower(_ value: Size) -> RustBuffer {
 }
 
 
-/**
- * Storage buffer root entry used inside `UniformData::Storage`.
- */
-public struct StorageEntry: Equatable, Hashable {
-    public var inner: [UniformData]
-    public var span: UInt32
-    public var access: StorageAccess
-
-    // Default memberwise initializers are never public by default, so we
-    // declare one manually.
-    public init(inner: [UniformData], span: UInt32, access: StorageAccess) {
-        self.inner = inner
-        self.span = span
-        self.access = access
-    }
-
-    
-
-    
-}
-
-#if compiler(>=6)
-extension StorageEntry: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeStorageEntry: FfiConverterRustBuffer {
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> StorageEntry {
-        return
-            try StorageEntry(
-                inner: FfiConverterSequenceTypeUniformData.read(from: &buf), 
-                span: FfiConverterUInt32.read(from: &buf), 
-                access: FfiConverterTypeStorageAccess.read(from: &buf)
-        )
-    }
-
-    public static func write(_ value: StorageEntry, into buf: inout [UInt8]) {
-        FfiConverterSequenceTypeUniformData.write(value.inner, into: &buf)
-        FfiConverterUInt32.write(value.span, into: &buf)
-        FfiConverterTypeStorageAccess.write(value.access, into: &buf)
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeStorageEntry_lift(_ buf: RustBuffer) throws -> StorageEntry {
-    return try FfiConverterTypeStorageEntry.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeStorageEntry_lower(_ value: StorageEntry) -> RustBuffer {
-    return FfiConverterTypeStorageEntry.lower(value)
-}
-
-
-/**
- * One member of a struct shape.
- */
-public struct StructField: Equatable, Hashable {
-    public var offset: UInt32
-    public var name: String
-    public var ty: [UniformData]
-
-    // Default memberwise initializers are never public by default, so we
-    // declare one manually.
-    public init(offset: UInt32, name: String, ty: [UniformData]) {
-        self.offset = offset
-        self.name = name
-        self.ty = ty
-    }
-
-    
-
-    
-}
-
-#if compiler(>=6)
-extension StructField: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeStructField: FfiConverterRustBuffer {
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> StructField {
-        return
-            try StructField(
-                offset: FfiConverterUInt32.read(from: &buf), 
-                name: FfiConverterString.read(from: &buf), 
-                ty: FfiConverterSequenceTypeUniformData.read(from: &buf)
-        )
-    }
-
-    public static func write(_ value: StructField, into buf: inout [UInt8]) {
-        FfiConverterUInt32.write(value.offset, into: &buf)
-        FfiConverterString.write(value.name, into: &buf)
-        FfiConverterSequenceTypeUniformData.write(value.ty, into: &buf)
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeStructField_lift(_ buf: RustBuffer) throws -> StructField {
-    return try FfiConverterTypeStructField.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeStructField_lower(_ value: StructField) -> RustBuffer {
-    return FfiConverterTypeStructField.lower(value)
-}
-
-
-/**
- * Struct shape used inside `UniformData::Struct`.
- */
-public struct StructShape: Equatable, Hashable {
-    public var fields: [StructField]
-    public var size: UInt32
-
-    // Default memberwise initializers are never public by default, so we
-    // declare one manually.
-    public init(fields: [StructField], size: UInt32) {
-        self.fields = fields
-        self.size = size
-    }
-
-    
-
-    
-}
-
-#if compiler(>=6)
-extension StructShape: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeStructShape: FfiConverterRustBuffer {
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> StructShape {
-        return
-            try StructShape(
-                fields: FfiConverterSequenceTypeStructField.read(from: &buf), 
-                size: FfiConverterUInt32.read(from: &buf)
-        )
-    }
-
-    public static func write(_ value: StructShape, into buf: inout [UInt8]) {
-        FfiConverterSequenceTypeStructField.write(value.fields, into: &buf)
-        FfiConverterUInt32.write(value.size, into: &buf)
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeStructShape_lift(_ buf: RustBuffer) throws -> StructShape {
-    return try FfiConverterTypeStructShape.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeStructShape_lower(_ value: StructShape) -> RustBuffer {
-    return FfiConverterTypeStructShape.lower(value)
-}
-
-
 public struct TextureId: Equatable, Hashable {
     /**
      * Names a texture while it stays registered, in the `Renderer` that made it.
@@ -6027,84 +5737,6 @@ public func FfiConverterTypeTextureId_lift(_ buf: RustBuffer) throws -> TextureI
 #endif
 public func FfiConverterTypeTextureId_lower(_ value: TextureId) -> RustBuffer {
     return FfiConverterTypeTextureId.lower(value)
-}
-
-
-public struct TextureMeta: Equatable, Hashable {
-    public var id: TextureId
-    public var dim: TextureDim
-    public var arrayed: Bool
-    public var `class`: TextureClass
-    /**
-     * Whether the shader ever samples this texture (`textureSample*`). When false
-     * (only `textureLoad` / image-ops are used), the bind-group layout can request
-     * a non-filterable sample type, which unlocks formats like Rgba32Float as a
-     * sampled source without requiring the `FLOAT32_FILTERABLE` feature.
-     */
-    public var sampled: Bool
-
-    // Default memberwise initializers are never public by default, so we
-    // declare one manually.
-    public init(id: TextureId, dim: TextureDim, arrayed: Bool, `class`: TextureClass, 
-        /**
-         * Whether the shader ever samples this texture (`textureSample*`). When false
-         * (only `textureLoad` / image-ops are used), the bind-group layout can request
-         * a non-filterable sample type, which unlocks formats like Rgba32Float as a
-         * sampled source without requiring the `FLOAT32_FILTERABLE` feature.
-         */sampled: Bool) {
-        self.id = id
-        self.dim = dim
-        self.arrayed = arrayed
-        self.`class` = `class`
-        self.sampled = sampled
-    }
-
-    
-
-    
-}
-
-#if compiler(>=6)
-extension TextureMeta: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeTextureMeta: FfiConverterRustBuffer {
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TextureMeta {
-        return
-            try TextureMeta(
-                id: FfiConverterTypeTextureId.read(from: &buf), 
-                dim: FfiConverterTypeTextureDim.read(from: &buf), 
-                arrayed: FfiConverterBool.read(from: &buf), 
-                class: FfiConverterTypeTextureClass.read(from: &buf), 
-                sampled: FfiConverterBool.read(from: &buf)
-        )
-    }
-
-    public static func write(_ value: TextureMeta, into buf: inout [UInt8]) {
-        FfiConverterTypeTextureId.write(value.id, into: &buf)
-        FfiConverterTypeTextureDim.write(value.dim, into: &buf)
-        FfiConverterBool.write(value.arrayed, into: &buf)
-        FfiConverterTypeTextureClass.write(value.`class`, into: &buf)
-        FfiConverterBool.write(value.sampled, into: &buf)
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeTextureMeta_lift(_ buf: RustBuffer) throws -> TextureMeta {
-    return try FfiConverterTypeTextureMeta.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeTextureMeta_lower(_ value: TextureMeta) -> RustBuffer {
-    return FfiConverterTypeTextureMeta.lower(value)
 }
 
 
@@ -6315,67 +5947,6 @@ public func FfiConverterTypeTextureRegion_lower(_ value: TextureRegion) -> RustB
 }
 
 
-/**
- * Storage-texture access flags. Boolean mirror of the `naga::StorageAccess` bitflags.
- */
-public struct TextureStorageAccess: Equatable, Hashable {
-    public var load: Bool
-    public var store: Bool
-    public var atomic: Bool
-
-    // Default memberwise initializers are never public by default, so we
-    // declare one manually.
-    public init(load: Bool, store: Bool, atomic: Bool) {
-        self.load = load
-        self.store = store
-        self.atomic = atomic
-    }
-
-    
-
-    
-}
-
-#if compiler(>=6)
-extension TextureStorageAccess: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeTextureStorageAccess: FfiConverterRustBuffer {
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TextureStorageAccess {
-        return
-            try TextureStorageAccess(
-                load: FfiConverterBool.read(from: &buf), 
-                store: FfiConverterBool.read(from: &buf), 
-                atomic: FfiConverterBool.read(from: &buf)
-        )
-    }
-
-    public static func write(_ value: TextureStorageAccess, into buf: inout [UInt8]) {
-        FfiConverterBool.write(value.load, into: &buf)
-        FfiConverterBool.write(value.store, into: &buf)
-        FfiConverterBool.write(value.atomic, into: &buf)
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeTextureStorageAccess_lift(_ buf: RustBuffer) throws -> TextureStorageAccess {
-    return try FfiConverterTypeTextureStorageAccess.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeTextureStorageAccess_lower(_ value: TextureStorageAccess) -> RustBuffer {
-    return FfiConverterTypeTextureStorageAccess.lower(value)
-}
-
-
 public struct TextureUsage: Equatable, Hashable {
     public var bits: UInt32
 
@@ -6427,17 +5998,16 @@ public func FfiConverterTypeTextureUsage_lower(_ value: TextureUsage) -> RustBuf
 
 
 /**
- * How the renderer interprets the alpha channel of a Material's output.
+ * How the renderer treats the alpha channel a shader writes.
  *
- * Mirrors the glTF 2.0 `alphaMode` field (`OPAQUE`, `MASK`, `BLEND`) with
- * the same semantics:
+ * The values follow glTF 2.0's `alphaMode` (`OPAQUE`, `MASK`, `BLEND`):
  *
  * - `Opaque`: depth-test on, blending off. Alpha bits go to the framebuffer
  * but the blend equation ignores them. Cheapest path; the only one where
  * the depth buffer fully describes the geometry.
- * - `Mask`: depth-test on, blending off, but fragments with
- * `material.base_color.a < material.alpha_cutoff` are `discard`ed in the
- * fragment shader. Hard-edged cut-out; perf profile matches opaque.
+ * - `Mask`: the opaque pipeline, with the cut-out left to the fragment shader.
+ * The built-in materials `discard` a fragment whose alpha falls below
+ * `material.alpha_cutoff`. Hard-edged cut-out; perf profile matches opaque.
  * - `Blend`: depth-test on but depth-write **off**, color target uses
  * standard `SrcAlpha / OneMinusSrcAlpha` over-blend. The renderer sorts
  * Models with this mode back-to-front by eye-space Z before drawing,
@@ -6453,8 +6023,7 @@ public enum AlphaMode: Equatable, Hashable {
      */
     case opaque
     /**
-     * Depth-test on, blending off, fragment discarded if
-     * `material.base_color.a < material.alpha_cutoff`.
+     * Depth-test on, blending off, and the fragment shader discards the cut-out.
      */
     case mask
     /**
@@ -7627,107 +7196,6 @@ public func FfiConverterTypeSceneObjectHandle_lower(_ value: SceneObjectHandle) 
 
 
 
-
-public enum StorageAccess: Equatable, Hashable {
-    
-    case read
-    case write
-    case atomic
-    case readWrite
-    case atomicRead
-    case atomicWrite
-    case atomicReadWrite
-
-
-
-
-
-}
-
-#if compiler(>=6)
-extension StorageAccess: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeStorageAccess: FfiConverterRustBuffer {
-    typealias SwiftType = StorageAccess
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> StorageAccess {
-        let variant: Int32 = try readInt(&buf)
-        switch variant {
-        
-        case 1: return .read
-        
-        case 2: return .write
-        
-        case 3: return .atomic
-        
-        case 4: return .readWrite
-        
-        case 5: return .atomicRead
-        
-        case 6: return .atomicWrite
-        
-        case 7: return .atomicReadWrite
-        
-        default: throw UniffiInternalError.unexpectedEnumCase
-        }
-    }
-
-    public static func write(_ value: StorageAccess, into buf: inout [UInt8]) {
-        switch value {
-        
-        
-        case .read:
-            writeInt(&buf, Int32(1))
-        
-        
-        case .write:
-            writeInt(&buf, Int32(2))
-        
-        
-        case .atomic:
-            writeInt(&buf, Int32(3))
-        
-        
-        case .readWrite:
-            writeInt(&buf, Int32(4))
-        
-        
-        case .atomicRead:
-            writeInt(&buf, Int32(5))
-        
-        
-        case .atomicWrite:
-            writeInt(&buf, Int32(6))
-        
-        
-        case .atomicReadWrite:
-            writeInt(&buf, Int32(7))
-        
-        }
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeStorageAccess_lift(_ buf: RustBuffer) throws -> StorageAccess {
-    return try FfiConverterTypeStorageAccess.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeStorageAccess_lower(_ value: StorageAccess) -> RustBuffer {
-    return FfiConverterTypeStorageAccess.lower(value)
-}
-
-
-
 /**
  * Uniffi-marshallable union of every type that implements [`crate::Target`].
  * Same rationale as [`RenderableHandle`]: uniffi can't marshal
@@ -7807,100 +7275,6 @@ public func FfiConverterTypeTargetHandle_lift(_ buf: RustBuffer) throws -> Targe
 #endif
 public func FfiConverterTypeTargetHandle_lower(_ value: TargetHandle) -> RustBuffer {
     return FfiConverterTypeTargetHandle.lower(value)
-}
-
-
-
-/**
- * Image sub-class. Mirrors `naga::ImageClass`.
- */
-
-public enum TextureClass: Equatable, Hashable {
-    
-    case sampled(kind: TextureScalarKind, multi: Bool
-    )
-    case storage(format: TextureStorageFormat, access: TextureStorageAccess
-    )
-    case depth(multi: Bool
-    )
-    case external
-
-
-
-
-
-}
-
-#if compiler(>=6)
-extension TextureClass: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeTextureClass: FfiConverterRustBuffer {
-    typealias SwiftType = TextureClass
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TextureClass {
-        let variant: Int32 = try readInt(&buf)
-        switch variant {
-        
-        case 1: return .sampled(kind: try FfiConverterTypeTextureScalarKind.read(from: &buf), multi: try FfiConverterBool.read(from: &buf)
-        )
-        
-        case 2: return .storage(format: try FfiConverterTypeTextureStorageFormat.read(from: &buf), access: try FfiConverterTypeTextureStorageAccess.read(from: &buf)
-        )
-        
-        case 3: return .depth(multi: try FfiConverterBool.read(from: &buf)
-        )
-        
-        case 4: return .external
-        
-        default: throw UniffiInternalError.unexpectedEnumCase
-        }
-    }
-
-    public static func write(_ value: TextureClass, into buf: inout [UInt8]) {
-        switch value {
-        
-        
-        case let .sampled(kind,multi):
-            writeInt(&buf, Int32(1))
-            FfiConverterTypeTextureScalarKind.write(kind, into: &buf)
-            FfiConverterBool.write(multi, into: &buf)
-            
-        
-        case let .storage(format,access):
-            writeInt(&buf, Int32(2))
-            FfiConverterTypeTextureStorageFormat.write(format, into: &buf)
-            FfiConverterTypeTextureStorageAccess.write(access, into: &buf)
-            
-        
-        case let .depth(multi):
-            writeInt(&buf, Int32(3))
-            FfiConverterBool.write(multi, into: &buf)
-            
-        
-        case .external:
-            writeInt(&buf, Int32(4))
-        
-        }
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeTextureClass_lift(_ buf: RustBuffer) throws -> TextureClass {
-    return try FfiConverterTypeTextureClass.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeTextureClass_lower(_ value: TextureClass) -> RustBuffer {
-    return FfiConverterTypeTextureClass.lower(value)
 }
 
 
@@ -8044,89 +7418,6 @@ public func FfiConverterTypeTextureData_lift(_ buf: RustBuffer) throws -> Textur
 #endif
 public func FfiConverterTypeTextureData_lower(_ value: TextureData) -> RustBuffer {
     return FfiConverterTypeTextureData.lower(value)
-}
-
-
-
-/**
- * Image-view dimension. Mirrors `naga::ImageDimension`.
- */
-
-public enum TextureDim: Equatable, Hashable {
-    
-    case d1
-    case d2
-    case d3
-    case cube
-
-
-
-
-
-}
-
-#if compiler(>=6)
-extension TextureDim: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeTextureDim: FfiConverterRustBuffer {
-    typealias SwiftType = TextureDim
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TextureDim {
-        let variant: Int32 = try readInt(&buf)
-        switch variant {
-        
-        case 1: return .d1
-        
-        case 2: return .d2
-        
-        case 3: return .d3
-        
-        case 4: return .cube
-        
-        default: throw UniffiInternalError.unexpectedEnumCase
-        }
-    }
-
-    public static func write(_ value: TextureDim, into buf: inout [UInt8]) {
-        switch value {
-        
-        
-        case .d1:
-            writeInt(&buf, Int32(1))
-        
-        
-        case .d2:
-            writeInt(&buf, Int32(2))
-        
-        
-        case .d3:
-            writeInt(&buf, Int32(3))
-        
-        
-        case .cube:
-            writeInt(&buf, Int32(4))
-        
-        }
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeTextureDim_lift(_ buf: RustBuffer) throws -> TextureDim {
-    return try FfiConverterTypeTextureDim.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeTextureDim_lower(_ value: TextureDim) -> RustBuffer {
-    return FfiConverterTypeTextureDim.lower(value)
 }
 
 
@@ -8324,442 +7615,11 @@ public func FfiConverterTypeTextureFormat_lower(_ value: TextureFormat) -> RustB
 
 
 /**
- * Texel scalar kind for sampled textures. Mirrors the relevant `naga::ScalarKind`
- * variants. Naga's abstract numeric variants are folded into `Float` since they
- * cannot reach the runtime backends.
+ * A `Shader.get` value as Swift and Kotlin receive it, which they name `UniformData`.
+ * A vector or matrix arrives as its numbers, and a struct, array or buffer root as its bytes.
  */
 
-public enum TextureScalarKind: Equatable, Hashable {
-    
-    case sint
-    case uint
-    case float
-    case bool
-
-
-
-
-
-}
-
-#if compiler(>=6)
-extension TextureScalarKind: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeTextureScalarKind: FfiConverterRustBuffer {
-    typealias SwiftType = TextureScalarKind
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TextureScalarKind {
-        let variant: Int32 = try readInt(&buf)
-        switch variant {
-        
-        case 1: return .sint
-        
-        case 2: return .uint
-        
-        case 3: return .float
-        
-        case 4: return .bool
-        
-        default: throw UniffiInternalError.unexpectedEnumCase
-        }
-    }
-
-    public static func write(_ value: TextureScalarKind, into buf: inout [UInt8]) {
-        switch value {
-        
-        
-        case .sint:
-            writeInt(&buf, Int32(1))
-        
-        
-        case .uint:
-            writeInt(&buf, Int32(2))
-        
-        
-        case .float:
-            writeInt(&buf, Int32(3))
-        
-        
-        case .bool:
-            writeInt(&buf, Int32(4))
-        
-        }
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeTextureScalarKind_lift(_ buf: RustBuffer) throws -> TextureScalarKind {
-    return try FfiConverterTypeTextureScalarKind.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeTextureScalarKind_lower(_ value: TextureScalarKind) -> RustBuffer {
-    return FfiConverterTypeTextureScalarKind.lower(value)
-}
-
-
-
-/**
- * Storage-texture format. Mirrors `naga::StorageFormat`.
- *
- * Every variant binds as the `wgpu::TextureFormat` of the same name.
- */
-
-public enum TextureStorageFormat: Equatable, Hashable {
-    
-    case r8Unorm
-    case r8Snorm
-    case r8Uint
-    case r8Sint
-    case r16Uint
-    case r16Sint
-    case r16Float
-    case rg8Unorm
-    case rg8Snorm
-    case rg8Uint
-    case rg8Sint
-    case r32Uint
-    case r32Sint
-    case r32Float
-    case rg16Uint
-    case rg16Sint
-    case rg16Float
-    case rgba8Unorm
-    case rgba8Snorm
-    case rgba8Uint
-    case rgba8Sint
-    case bgra8Unorm
-    case rgb10a2Uint
-    case rgb10a2Unorm
-    case rg11b10Ufloat
-    case r64Uint
-    case rg32Uint
-    case rg32Sint
-    case rg32Float
-    case rgba16Uint
-    case rgba16Sint
-    case rgba16Float
-    case rgba32Uint
-    case rgba32Sint
-    case rgba32Float
-    case r16Unorm
-    case r16Snorm
-    case rg16Unorm
-    case rg16Snorm
-    case rgba16Unorm
-    case rgba16Snorm
-
-
-
-
-
-}
-
-#if compiler(>=6)
-extension TextureStorageFormat: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeTextureStorageFormat: FfiConverterRustBuffer {
-    typealias SwiftType = TextureStorageFormat
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TextureStorageFormat {
-        let variant: Int32 = try readInt(&buf)
-        switch variant {
-        
-        case 1: return .r8Unorm
-        
-        case 2: return .r8Snorm
-        
-        case 3: return .r8Uint
-        
-        case 4: return .r8Sint
-        
-        case 5: return .r16Uint
-        
-        case 6: return .r16Sint
-        
-        case 7: return .r16Float
-        
-        case 8: return .rg8Unorm
-        
-        case 9: return .rg8Snorm
-        
-        case 10: return .rg8Uint
-        
-        case 11: return .rg8Sint
-        
-        case 12: return .r32Uint
-        
-        case 13: return .r32Sint
-        
-        case 14: return .r32Float
-        
-        case 15: return .rg16Uint
-        
-        case 16: return .rg16Sint
-        
-        case 17: return .rg16Float
-        
-        case 18: return .rgba8Unorm
-        
-        case 19: return .rgba8Snorm
-        
-        case 20: return .rgba8Uint
-        
-        case 21: return .rgba8Sint
-        
-        case 22: return .bgra8Unorm
-        
-        case 23: return .rgb10a2Uint
-        
-        case 24: return .rgb10a2Unorm
-        
-        case 25: return .rg11b10Ufloat
-        
-        case 26: return .r64Uint
-        
-        case 27: return .rg32Uint
-        
-        case 28: return .rg32Sint
-        
-        case 29: return .rg32Float
-        
-        case 30: return .rgba16Uint
-        
-        case 31: return .rgba16Sint
-        
-        case 32: return .rgba16Float
-        
-        case 33: return .rgba32Uint
-        
-        case 34: return .rgba32Sint
-        
-        case 35: return .rgba32Float
-        
-        case 36: return .r16Unorm
-        
-        case 37: return .r16Snorm
-        
-        case 38: return .rg16Unorm
-        
-        case 39: return .rg16Snorm
-        
-        case 40: return .rgba16Unorm
-        
-        case 41: return .rgba16Snorm
-        
-        default: throw UniffiInternalError.unexpectedEnumCase
-        }
-    }
-
-    public static func write(_ value: TextureStorageFormat, into buf: inout [UInt8]) {
-        switch value {
-        
-        
-        case .r8Unorm:
-            writeInt(&buf, Int32(1))
-        
-        
-        case .r8Snorm:
-            writeInt(&buf, Int32(2))
-        
-        
-        case .r8Uint:
-            writeInt(&buf, Int32(3))
-        
-        
-        case .r8Sint:
-            writeInt(&buf, Int32(4))
-        
-        
-        case .r16Uint:
-            writeInt(&buf, Int32(5))
-        
-        
-        case .r16Sint:
-            writeInt(&buf, Int32(6))
-        
-        
-        case .r16Float:
-            writeInt(&buf, Int32(7))
-        
-        
-        case .rg8Unorm:
-            writeInt(&buf, Int32(8))
-        
-        
-        case .rg8Snorm:
-            writeInt(&buf, Int32(9))
-        
-        
-        case .rg8Uint:
-            writeInt(&buf, Int32(10))
-        
-        
-        case .rg8Sint:
-            writeInt(&buf, Int32(11))
-        
-        
-        case .r32Uint:
-            writeInt(&buf, Int32(12))
-        
-        
-        case .r32Sint:
-            writeInt(&buf, Int32(13))
-        
-        
-        case .r32Float:
-            writeInt(&buf, Int32(14))
-        
-        
-        case .rg16Uint:
-            writeInt(&buf, Int32(15))
-        
-        
-        case .rg16Sint:
-            writeInt(&buf, Int32(16))
-        
-        
-        case .rg16Float:
-            writeInt(&buf, Int32(17))
-        
-        
-        case .rgba8Unorm:
-            writeInt(&buf, Int32(18))
-        
-        
-        case .rgba8Snorm:
-            writeInt(&buf, Int32(19))
-        
-        
-        case .rgba8Uint:
-            writeInt(&buf, Int32(20))
-        
-        
-        case .rgba8Sint:
-            writeInt(&buf, Int32(21))
-        
-        
-        case .bgra8Unorm:
-            writeInt(&buf, Int32(22))
-        
-        
-        case .rgb10a2Uint:
-            writeInt(&buf, Int32(23))
-        
-        
-        case .rgb10a2Unorm:
-            writeInt(&buf, Int32(24))
-        
-        
-        case .rg11b10Ufloat:
-            writeInt(&buf, Int32(25))
-        
-        
-        case .r64Uint:
-            writeInt(&buf, Int32(26))
-        
-        
-        case .rg32Uint:
-            writeInt(&buf, Int32(27))
-        
-        
-        case .rg32Sint:
-            writeInt(&buf, Int32(28))
-        
-        
-        case .rg32Float:
-            writeInt(&buf, Int32(29))
-        
-        
-        case .rgba16Uint:
-            writeInt(&buf, Int32(30))
-        
-        
-        case .rgba16Sint:
-            writeInt(&buf, Int32(31))
-        
-        
-        case .rgba16Float:
-            writeInt(&buf, Int32(32))
-        
-        
-        case .rgba32Uint:
-            writeInt(&buf, Int32(33))
-        
-        
-        case .rgba32Sint:
-            writeInt(&buf, Int32(34))
-        
-        
-        case .rgba32Float:
-            writeInt(&buf, Int32(35))
-        
-        
-        case .r16Unorm:
-            writeInt(&buf, Int32(36))
-        
-        
-        case .r16Snorm:
-            writeInt(&buf, Int32(37))
-        
-        
-        case .rg16Unorm:
-            writeInt(&buf, Int32(38))
-        
-        
-        case .rg16Snorm:
-            writeInt(&buf, Int32(39))
-        
-        
-        case .rgba16Unorm:
-            writeInt(&buf, Int32(40))
-        
-        
-        case .rgba16Snorm:
-            writeInt(&buf, Int32(41))
-        
-        }
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeTextureStorageFormat_lift(_ buf: RustBuffer) throws -> TextureStorageFormat {
-    return try FfiConverterTypeTextureStorageFormat.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeTextureStorageFormat_lower(_ value: TextureStorageFormat) -> RustBuffer {
-    return FfiConverterTypeTextureStorageFormat.lower(value)
-}
-
-
-
-/**
- * A uniform value, as `Shader::get` reads it back.
- * A helper names it to forward one value to `Shader::set` on several shaders.
- * It is the plumbing behind `impl Into<UniformData>`, like `ShaderInput`, with no page of its own.
- * The `Half` variants are the shapes of `f16` slots, which `get` reads back as the `f32` variant.
- */
-
-public indirect enum UniformData: Equatable, Hashable {
+public enum UniformData: Equatable, Hashable {
     
     case bool(Bool
     )
@@ -8770,129 +7630,21 @@ public indirect enum UniformData: Equatable, Hashable {
     case float(Float
     )
     /**
-     * Vec2: exactly 2 elements
+     * A float vector, or a matrix column by column.
      */
-    case vec2([Float]
+    case floats([Float]
+    )
+    case uInts([UInt32]
+    )
+    case ints([Int32]
     )
     /**
-     * Vec3: exactly 3 elements
+     * The texture a texture slot binds.
      */
-    case vec3([Float]
-    )
-    /**
-     * Vec4: exactly 4 elements
-     */
-    case vec4([Float]
-    )
-    /**
-     * UVec2: exactly 2 elements
-     */
-    case uVec2([UInt32]
-    )
-    /**
-     * UVec3: exactly 3 elements
-     */
-    case uVec3([UInt32]
-    )
-    /**
-     * UVec4: exactly 4 elements
-     */
-    case uVec4([UInt32]
-    )
-    /**
-     * IVec2: exactly 2 elements
-     */
-    case iVec2([Int32]
-    )
-    /**
-     * IVec3: exactly 3 elements
-     */
-    case iVec3([Int32]
-    )
-    /**
-     * IVec4: exactly 4 elements
-     */
-    case iVec4([Int32]
-    )
-    /**
-     * Mat2: 4 elements (flattened 2x2, column-major)
-     */
-    case mat2([Float]
-    )
-    /**
-     * Mat3: 9 elements (flattened 3x3, column-major)
-     */
-    case mat3([Float]
-    )
-    /**
-     * Mat4: 16 elements (flattened 4x4, column-major)
-     */
-    case mat4([Float]
-    )
-    /**
-     * Half: an `f16`, held as the `f32` it rounds to
-     */
-    case half(Float
-    )
-    /**
-     * HalfVec2: exactly 2 elements of a `vec2<f16>`
-     */
-    case halfVec2([Float]
-    )
-    /**
-     * HalfVec3: exactly 3 elements of a `vec3<f16>`
-     */
-    case halfVec3([Float]
-    )
-    /**
-     * HalfVec4: exactly 4 elements of a `vec4<f16>`
-     */
-    case halfVec4([Float]
-    )
-    /**
-     * HalfMat2: 4 elements of a `mat2x2<f16>`, column-major
-     */
-    case halfMat2([Float]
-    )
-    /**
-     * HalfMat3: 9 elements of a `mat3x3<f16>`, column-major
-     */
-    case halfMat3([Float]
-    )
-    /**
-     * HalfMat4: 16 elements of a `mat4x4<f16>`, column-major
-     */
-    case halfMat4([Float]
-    )
-    case texture(TextureMeta
+    case texture(TextureId
     )
     case sampler(SamplerInfo
     )
-    /**
-     * Array shape: element type, count, and stride.
-     */
-    case array([ArrayElement]
-    )
-    /**
-     * Struct shape: ordered fields and total size/span in bytes.
-     */
-    case `struct`(StructShape
-    )
-    /**
-     * Storage buffer root: inner shape, span, access flags.
-     * Stored as a Vec to avoid infinite recursion (Box doesn't implement FromPyObject).
-     */
-    case storage([StorageEntry]
-    )
-    /**
-     * Push constant root: inner shape and span.
-     * Vec used for PyO3 compatibility; same pattern as Storage.
-     */
-    case pushConstant([PushEntry]
-    )
-    /**
-     * Raw bytes (opaque); intended for storage-root or push-root updates via Shader::set("root", bytes)
-     */
     case bytes(Data
     )
 
@@ -8928,82 +7680,22 @@ public struct FfiConverterTypeUniformData: FfiConverterRustBuffer {
         case 4: return .float(try FfiConverterFloat.read(from: &buf)
         )
         
-        case 5: return .vec2(try FfiConverterSequenceFloat.read(from: &buf)
+        case 5: return .floats(try FfiConverterSequenceFloat.read(from: &buf)
         )
         
-        case 6: return .vec3(try FfiConverterSequenceFloat.read(from: &buf)
+        case 6: return .uInts(try FfiConverterSequenceUInt32.read(from: &buf)
         )
         
-        case 7: return .vec4(try FfiConverterSequenceFloat.read(from: &buf)
+        case 7: return .ints(try FfiConverterSequenceInt32.read(from: &buf)
         )
         
-        case 8: return .uVec2(try FfiConverterSequenceUInt32.read(from: &buf)
+        case 8: return .texture(try FfiConverterTypeTextureId.read(from: &buf)
         )
         
-        case 9: return .uVec3(try FfiConverterSequenceUInt32.read(from: &buf)
+        case 9: return .sampler(try FfiConverterTypeSamplerInfo.read(from: &buf)
         )
         
-        case 10: return .uVec4(try FfiConverterSequenceUInt32.read(from: &buf)
-        )
-        
-        case 11: return .iVec2(try FfiConverterSequenceInt32.read(from: &buf)
-        )
-        
-        case 12: return .iVec3(try FfiConverterSequenceInt32.read(from: &buf)
-        )
-        
-        case 13: return .iVec4(try FfiConverterSequenceInt32.read(from: &buf)
-        )
-        
-        case 14: return .mat2(try FfiConverterSequenceFloat.read(from: &buf)
-        )
-        
-        case 15: return .mat3(try FfiConverterSequenceFloat.read(from: &buf)
-        )
-        
-        case 16: return .mat4(try FfiConverterSequenceFloat.read(from: &buf)
-        )
-        
-        case 17: return .half(try FfiConverterFloat.read(from: &buf)
-        )
-        
-        case 18: return .halfVec2(try FfiConverterSequenceFloat.read(from: &buf)
-        )
-        
-        case 19: return .halfVec3(try FfiConverterSequenceFloat.read(from: &buf)
-        )
-        
-        case 20: return .halfVec4(try FfiConverterSequenceFloat.read(from: &buf)
-        )
-        
-        case 21: return .halfMat2(try FfiConverterSequenceFloat.read(from: &buf)
-        )
-        
-        case 22: return .halfMat3(try FfiConverterSequenceFloat.read(from: &buf)
-        )
-        
-        case 23: return .halfMat4(try FfiConverterSequenceFloat.read(from: &buf)
-        )
-        
-        case 24: return .texture(try FfiConverterTypeTextureMeta.read(from: &buf)
-        )
-        
-        case 25: return .sampler(try FfiConverterTypeSamplerInfo.read(from: &buf)
-        )
-        
-        case 26: return .array(try FfiConverterSequenceTypeArrayElement.read(from: &buf)
-        )
-        
-        case 27: return .`struct`(try FfiConverterTypeStructShape.read(from: &buf)
-        )
-        
-        case 28: return .storage(try FfiConverterSequenceTypeStorageEntry.read(from: &buf)
-        )
-        
-        case 29: return .pushConstant(try FfiConverterSequenceTypePushEntry.read(from: &buf)
-        )
-        
-        case 30: return .bytes(try FfiConverterData.read(from: &buf)
+        case 10: return .bytes(try FfiConverterData.read(from: &buf)
         )
         
         default: throw UniffiInternalError.unexpectedEnumCase
@@ -9034,133 +7726,33 @@ public struct FfiConverterTypeUniformData: FfiConverterRustBuffer {
             FfiConverterFloat.write(v1, into: &buf)
             
         
-        case let .vec2(v1):
+        case let .floats(v1):
             writeInt(&buf, Int32(5))
             FfiConverterSequenceFloat.write(v1, into: &buf)
             
         
-        case let .vec3(v1):
+        case let .uInts(v1):
             writeInt(&buf, Int32(6))
-            FfiConverterSequenceFloat.write(v1, into: &buf)
+            FfiConverterSequenceUInt32.write(v1, into: &buf)
             
         
-        case let .vec4(v1):
+        case let .ints(v1):
             writeInt(&buf, Int32(7))
-            FfiConverterSequenceFloat.write(v1, into: &buf)
-            
-        
-        case let .uVec2(v1):
-            writeInt(&buf, Int32(8))
-            FfiConverterSequenceUInt32.write(v1, into: &buf)
-            
-        
-        case let .uVec3(v1):
-            writeInt(&buf, Int32(9))
-            FfiConverterSequenceUInt32.write(v1, into: &buf)
-            
-        
-        case let .uVec4(v1):
-            writeInt(&buf, Int32(10))
-            FfiConverterSequenceUInt32.write(v1, into: &buf)
-            
-        
-        case let .iVec2(v1):
-            writeInt(&buf, Int32(11))
             FfiConverterSequenceInt32.write(v1, into: &buf)
-            
-        
-        case let .iVec3(v1):
-            writeInt(&buf, Int32(12))
-            FfiConverterSequenceInt32.write(v1, into: &buf)
-            
-        
-        case let .iVec4(v1):
-            writeInt(&buf, Int32(13))
-            FfiConverterSequenceInt32.write(v1, into: &buf)
-            
-        
-        case let .mat2(v1):
-            writeInt(&buf, Int32(14))
-            FfiConverterSequenceFloat.write(v1, into: &buf)
-            
-        
-        case let .mat3(v1):
-            writeInt(&buf, Int32(15))
-            FfiConverterSequenceFloat.write(v1, into: &buf)
-            
-        
-        case let .mat4(v1):
-            writeInt(&buf, Int32(16))
-            FfiConverterSequenceFloat.write(v1, into: &buf)
-            
-        
-        case let .half(v1):
-            writeInt(&buf, Int32(17))
-            FfiConverterFloat.write(v1, into: &buf)
-            
-        
-        case let .halfVec2(v1):
-            writeInt(&buf, Int32(18))
-            FfiConverterSequenceFloat.write(v1, into: &buf)
-            
-        
-        case let .halfVec3(v1):
-            writeInt(&buf, Int32(19))
-            FfiConverterSequenceFloat.write(v1, into: &buf)
-            
-        
-        case let .halfVec4(v1):
-            writeInt(&buf, Int32(20))
-            FfiConverterSequenceFloat.write(v1, into: &buf)
-            
-        
-        case let .halfMat2(v1):
-            writeInt(&buf, Int32(21))
-            FfiConverterSequenceFloat.write(v1, into: &buf)
-            
-        
-        case let .halfMat3(v1):
-            writeInt(&buf, Int32(22))
-            FfiConverterSequenceFloat.write(v1, into: &buf)
-            
-        
-        case let .halfMat4(v1):
-            writeInt(&buf, Int32(23))
-            FfiConverterSequenceFloat.write(v1, into: &buf)
             
         
         case let .texture(v1):
-            writeInt(&buf, Int32(24))
-            FfiConverterTypeTextureMeta.write(v1, into: &buf)
+            writeInt(&buf, Int32(8))
+            FfiConverterTypeTextureId.write(v1, into: &buf)
             
         
         case let .sampler(v1):
-            writeInt(&buf, Int32(25))
+            writeInt(&buf, Int32(9))
             FfiConverterTypeSamplerInfo.write(v1, into: &buf)
             
         
-        case let .array(v1):
-            writeInt(&buf, Int32(26))
-            FfiConverterSequenceTypeArrayElement.write(v1, into: &buf)
-            
-        
-        case let .`struct`(v1):
-            writeInt(&buf, Int32(27))
-            FfiConverterTypeStructShape.write(v1, into: &buf)
-            
-        
-        case let .storage(v1):
-            writeInt(&buf, Int32(28))
-            FfiConverterSequenceTypeStorageEntry.write(v1, into: &buf)
-            
-        
-        case let .pushConstant(v1):
-            writeInt(&buf, Int32(29))
-            FfiConverterSequenceTypePushEntry.write(v1, into: &buf)
-            
-        
         case let .bytes(v1):
-            writeInt(&buf, Int32(30))
+            writeInt(&buf, Int32(10))
             FfiConverterData.write(v1, into: &buf)
             
         }
@@ -9824,106 +8416,6 @@ fileprivate struct FfiConverterSequenceTypeVertex: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-fileprivate struct FfiConverterSequenceTypeArrayElement: FfiConverterRustBuffer {
-    typealias SwiftType = [ArrayElement]
-
-    public static func write(_ value: [ArrayElement], into buf: inout [UInt8]) {
-        let len = Int32(value.count)
-        writeInt(&buf, len)
-        for item in value {
-            FfiConverterTypeArrayElement.write(item, into: &buf)
-        }
-    }
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [ArrayElement] {
-        let len: Int32 = try readInt(&buf)
-        var seq = [ArrayElement]()
-        seq.reserveCapacity(Int(len))
-        for _ in 0 ..< len {
-            seq.append(try FfiConverterTypeArrayElement.read(from: &buf))
-        }
-        return seq
-    }
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-fileprivate struct FfiConverterSequenceTypePushEntry: FfiConverterRustBuffer {
-    typealias SwiftType = [PushEntry]
-
-    public static func write(_ value: [PushEntry], into buf: inout [UInt8]) {
-        let len = Int32(value.count)
-        writeInt(&buf, len)
-        for item in value {
-            FfiConverterTypePushEntry.write(item, into: &buf)
-        }
-    }
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [PushEntry] {
-        let len: Int32 = try readInt(&buf)
-        var seq = [PushEntry]()
-        seq.reserveCapacity(Int(len))
-        for _ in 0 ..< len {
-            seq.append(try FfiConverterTypePushEntry.read(from: &buf))
-        }
-        return seq
-    }
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-fileprivate struct FfiConverterSequenceTypeStorageEntry: FfiConverterRustBuffer {
-    typealias SwiftType = [StorageEntry]
-
-    public static func write(_ value: [StorageEntry], into buf: inout [UInt8]) {
-        let len = Int32(value.count)
-        writeInt(&buf, len)
-        for item in value {
-            FfiConverterTypeStorageEntry.write(item, into: &buf)
-        }
-    }
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [StorageEntry] {
-        let len: Int32 = try readInt(&buf)
-        var seq = [StorageEntry]()
-        seq.reserveCapacity(Int(len))
-        for _ in 0 ..< len {
-            seq.append(try FfiConverterTypeStorageEntry.read(from: &buf))
-        }
-        return seq
-    }
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-fileprivate struct FfiConverterSequenceTypeStructField: FfiConverterRustBuffer {
-    typealias SwiftType = [StructField]
-
-    public static func write(_ value: [StructField], into buf: inout [UInt8]) {
-        let len = Int32(value.count)
-        writeInt(&buf, len)
-        for item in value {
-            FfiConverterTypeStructField.write(item, into: &buf)
-        }
-    }
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [StructField] {
-        let len: Int32 = try readInt(&buf)
-        var seq = [StructField]()
-        seq.reserveCapacity(Int(len))
-        for _ in 0 ..< len {
-            seq.append(try FfiConverterTypeStructField.read(from: &buf))
-        }
-        return seq
-    }
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
 fileprivate struct FfiConverterSequenceTypeRenderableHandle: FfiConverterRustBuffer {
     typealias SwiftType = [RenderableHandle]
 
@@ -9941,31 +8433,6 @@ fileprivate struct FfiConverterSequenceTypeRenderableHandle: FfiConverterRustBuf
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeRenderableHandle.read(from: &buf))
-        }
-        return seq
-    }
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-fileprivate struct FfiConverterSequenceTypeUniformData: FfiConverterRustBuffer {
-    typealias SwiftType = [UniformData]
-
-    public static func write(_ value: [UniformData], into buf: inout [UInt8]) {
-        let len = Int32(value.count)
-        writeInt(&buf, len)
-        for item in value {
-            FfiConverterTypeUniformData.write(item, into: &buf)
-        }
-    }
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [UniformData] {
-        let len: Int32 = try readInt(&buf)
-        var seq = [UniformData]()
-        seq.reserveCapacity(Int(len))
-        for _ in 0 ..< len {
-            seq.append(try FfiConverterTypeUniformData.read(from: &buf))
         }
         return seq
     }
@@ -10134,7 +8601,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_shader_addmesh() != 1493) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_shader_alphamode() != 38513) {
+    if (uniffi_fragmentcolor_checksum_method_shader_alphamode() != 42436) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_shader_clearmeshes() != 55933) {
@@ -10149,7 +8616,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_shader_fetchcompose() != 16273) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_shader_getdata() != 39159) {
+    if (uniffi_fragmentcolor_checksum_method_shader_getdata() != 3034) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_shader_iscompute() != 665) {
@@ -10305,7 +8772,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_pbrmaterial_alphacutoff() != 58159) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_pbrmaterial_alphamode() != 45304) {
+    if (uniffi_fragmentcolor_checksum_method_pbrmaterial_alphamode() != 8476) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_pbrmaterial_basecolor() != 28634) {
@@ -10404,7 +8871,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_toonmaterial_alphacutoff() != 55458) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_toonmaterial_alphamode() != 53830) {
+    if (uniffi_fragmentcolor_checksum_method_toonmaterial_alphamode() != 40975) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_toonmaterial_bands() != 11831) {
@@ -10440,7 +8907,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_unlitmaterial_alphacutoff() != 10912) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_unlitmaterial_alphamode() != 34981) {
+    if (uniffi_fragmentcolor_checksum_method_unlitmaterial_alphamode() != 21330) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_unlitmaterial_basecolor() != 23863) {
