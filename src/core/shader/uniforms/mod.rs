@@ -2,6 +2,7 @@
 //! declares, and the values `Shader::set` and `Shader::get` move.
 
 use crate::ShaderError;
+use crate::texture::SamplerInfo;
 use naga::{Module, ScalarKind, Type, TypeInner, VectorSize};
 
 #[cfg(python)]
@@ -76,7 +77,7 @@ pub enum UniformData {
     /// HalfMat4: 16 elements of a `mat4x4<f16>`, column-major
     HalfMat4(Vec<f32>),
     Texture(crate::texture::TextureMeta),
-    Sampler(crate::texture::SamplerInfo),
+    Sampler(SamplerInfo),
     /// Array shape: element type, count, and stride.
     Array(Vec<ArrayElement>),
     /// Struct shape: ordered fields and total size/span in bytes.
@@ -510,11 +511,9 @@ pub(crate) fn convert_type(module: &Module, ty: &Type) -> Result<UniformData, Sh
             };
             Ok(UniformData::Array(vec![item]))
         }
-        TypeInner::Sampler { comparison } => {
-            Ok(UniformData::Sampler(crate::texture::SamplerInfo {
-                comparison: *comparison,
-            }))
-        }
+        TypeInner::Sampler { comparison } => Ok(UniformData::Sampler(SamplerInfo {
+            comparison: *comparison,
+        })),
         TypeInner::Image {
             dim,
             arrayed,
@@ -853,6 +852,16 @@ impl From<UniformData> for crate::texture::TextureId {
         match data {
             UniformData::Texture(meta) => meta.id,
             _ => crate::texture::TextureId { id: 0 },
+        }
+    }
+}
+
+/// The sampler bound to a sampler key, and `comparison: false` for any other value.
+impl From<UniformData> for SamplerInfo {
+    fn from(data: UniformData) -> Self {
+        match data {
+            UniformData::Sampler(info) => info,
+            _ => SamplerInfo { comparison: false },
         }
     }
 }
@@ -1265,7 +1274,7 @@ struct Mixed { a: f16, b: vec3<f16>, m: mat3x3<f16>, c: vec4<f16> };
     // Story: Sampler to_bytes is empty and size is zero.
     #[test]
     fn sampler_to_bytes_and_size() {
-        let u = UniformData::Sampler(crate::texture::SamplerInfo { comparison: true });
+        let u = UniformData::Sampler(SamplerInfo { comparison: true });
         assert!(u.to_bytes().is_empty());
         assert_eq!(u.size(), 0);
     }
