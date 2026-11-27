@@ -294,6 +294,10 @@ struct VOut { @builtin(position) pos: vec4<f32> };
         assert e.label == "render pipeline", f"label {e.label}"
         assert str(e).startswith("Device error (validation) in 'render pipeline'"), str(e)
         assert e.detail and str(e).endswith(f": {e.detail}"), f"detail {e.detail}"
+        # A worker process sends its error back pickled, its kind included.
+        copy = pickle.loads(pickle.dumps(e))
+        assert type(copy) is DeviceError and str(copy) == str(e), repr(copy)
+        assert (copy.kind, copy.label, copy.detail) == (e.kind, e.label, e.detail)
         print(f"render of a refused pipeline raised DeviceError: {e}")
     else:
         raise AssertionError("render of a refused pipeline should raise DeviceError")
@@ -1390,8 +1394,8 @@ def check_scene_errors():
 
 
 def check_error_names():
-    """Each exception class prints as Python imports it, such as
-    `fragmentcolor.InvalidInputError`, and pickles back by that name."""
+    """Each exception class and `ErrorKind` print as Python imports them, such as
+    `fragmentcolor.InvalidInputError`, and pickle back by that name."""
     classes = (
         FragmentColorError,
         InvalidInputError,
@@ -1415,6 +1419,9 @@ def check_error_names():
         copy = pickle.loads(pickle.dumps(error("a message")))
         assert type(copy) is error and str(copy) == "a message", repr(copy)
     assert FragmentColorError.__qualname__ == "FragmentColorError"
+    assert ErrorKind.__module__ == "fragmentcolor", f"ErrorKind is in {ErrorKind.__module__}"
+    for kind in (ErrorKind.Validation, ErrorKind.Internal, ErrorKind.Memory):
+        assert pickle.loads(pickle.dumps(kind)) == kind, repr(kind)
     try:
         Size(-1, 2)
     except InvalidInputError as e:
@@ -1422,7 +1429,7 @@ def check_error_names():
         assert type(copy) is InvalidInputError and str(copy) == str(e), repr(copy)
     else:
         raise AssertionError("Size(-1, 2) should raise InvalidInputError")
-    print("Every exception class is named as fragmentcolor exports it, and pickles")
+    print("Every exception class and ErrorKind is named as fragmentcolor exports it, and pickles")
 
 
 def check_stub():

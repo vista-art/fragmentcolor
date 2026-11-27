@@ -1,8 +1,8 @@
 //! The Python exception classes, `raise_error` and `PythonError`.
 
-use crate::DisplayError;
 use crate::core::Field;
 use crate::errors::{Classify, ErrorClass, ErrorShape};
+use crate::{DisplayError, ErrorKind};
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::sync::PyOnceLock;
@@ -195,6 +195,21 @@ impl PythonError {
             Ok(class) => PyErr::from_type(class, message),
             Err(error) => error,
         })
+    }
+}
+
+#[pymethods]
+impl ErrorKind {
+    /// Pickles a kind as the class attribute it names, such as `ErrorKind.Memory`,
+    /// so a `DeviceError` that carries one pickles back from a worker process.
+    fn __reduce__<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyTuple>> {
+        let name = match self {
+            ErrorKind::Validation => "Validation",
+            ErrorKind::Internal => "Internal",
+            ErrorKind::Memory => "Memory",
+        };
+        let getattr = py.import("builtins")?.getattr("getattr")?;
+        (getattr, (py.get_type::<ErrorKind>(), name)).into_pyobject(py)
     }
 }
 
