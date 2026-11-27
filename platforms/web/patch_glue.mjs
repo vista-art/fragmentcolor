@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 // Patch the wasm-bindgen glue: guard Uint8Array construction against a detached
 // ArrayBuffer, make a class argument of the wrong type throw a TypeError, hand wgpu
-// `undefined` where WebGPU resolves an error scope or an adapter with `null`, and export
-// the WindowTarget class under its old CanvasTarget name. Exits with 1, leaving the file
-// as it was, when the TypeError patch finds no `_assertClass` or the null patch no call.
+// `undefined` where WebGPU resolves an error scope or an adapter with `null`. Exits with 1,
+// leaving the file as it was, when the TypeError patch finds no `_assertClass` or the null
+// patch no call.
 // Usage: node platforms/web/patch_glue.mjs [path/to/fragmentcolor.js]
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
@@ -114,18 +114,4 @@ console.log(
         : `[patch_glue] popErrorScope and requestAdapter already resolve null as undefined in ${path}`
 );
 
-// The window target's JS class is `WindowTarget`. Code written for older releases
-// imports it as `CanvasTarget`, so the glue and its typings export the same class
-// under both names. Running the patch twice adds the alias once.
-const alias = 'export { WindowTarget as CanvasTarget };';
-const addAlias = (text) =>
-    /export class WindowTarget\b/.test(text) && !text.includes(alias) ? `${text}\n${alias}\n` : text;
-
-src = addAlias(src);
 writeFileSync(path, src, 'utf8');
-
-const typings = path.replace(/\.js$/, '.d.ts');
-if (typings !== path && existsSync(typings)) {
-    writeFileSync(typings, addAlias(readFileSync(typings, 'utf8')), 'utf8');
-    console.log(`[patch_glue] Exported WindowTarget as CanvasTarget in ${path} and ${typings}`);
-}

@@ -10,7 +10,6 @@ use std::sync::Arc;
 use wasm_bindgen::prelude::*;
 
 /// The window target on the web, exported to JS as `WindowTarget`.
-/// `CanvasTarget` stays available in JS as an alias of the same class.
 #[wasm_bindgen(js_name = "WindowTarget")]
 #[derive(Clone)]
 pub struct CanvasTarget {

@@ -815,12 +815,12 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     const corner = Array.from((await target.getImage()).slice(252, 255));
     if (Math.max(...corner) !== 255 || Math.min(...corner) < 50) fail(`[1.2, 0.5, 0.25] cleared to ${corner}`);
 
-    // The window target is WindowTarget, and CanvasTarget names the same class.
+    // The window target is WindowTarget, under no other name.
     const canvas = document.createElement('canvas');
     canvas.width = 8; canvas.height = 8;
     const windowTarget = await renderer.createTarget(canvas);
     if (!(windowTarget instanceof fc.WindowTarget)) fail('createTarget should return a WindowTarget');
-    if (fc.CanvasTarget !== fc.WindowTarget) fail('CanvasTarget should alias WindowTarget');
+    if ('CanvasTarget' in fc) fail('the package should export no CanvasTarget');
     // A frame on screen can't be read back, so getImage rejects with an Error.
     await rejects('WindowTarget.getImage', () => windowTarget.getImage());
 
