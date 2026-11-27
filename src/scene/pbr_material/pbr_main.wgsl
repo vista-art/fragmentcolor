@@ -152,9 +152,9 @@ fn vs_main(
   let upper = mat3x3<f32>(model_0.xyz, model_1.xyz, model_2.xyz);
   out.handedness = select(1.0, -1.0, determinant(upper) < 0.0);
   // Tangents are direction vectors, transformed by the model matrix's
-  // upper 3×3 with no inverse transpose, and the bitangent sign in .w
-  // stays untouched.
-  out.world_tangent = vec4<f32>(upper * tangent.xyz, tangent.w);
+  // upper 3×3 with no inverse transpose. A mirrored model turns the frame's
+  // handedness around, so the bitangent sign in .w takes the handedness too.
+  out.world_tangent = vec4<f32>(upper * tangent.xyz, tangent.w * out.handedness);
   return out;
 }
 

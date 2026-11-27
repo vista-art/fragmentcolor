@@ -1071,3 +1071,36 @@ fn a_mirrored_model_lights_its_outer_face() {
         );
     });
 }
+
+// Story: a mirrored model lights as the mirror image of the model. Mirroring turns the
+// handedness of its tangent frame around, so a normal map leans the mirrored normal
+// the mirrored way, and a light mirrored with it meets that normal head on.
+#[test]
+fn a_mirrored_normal_map_lights_as_the_mirror_image() {
+    pollster::block_on(async move {
+        // Arrange
+        let renderer = Renderer::new();
+        let material = build_sheet();
+        material.normal_map().texture(paint(TILTED)).expect("map");
+        let model = Model::new(front_quad(), &material);
+        let mirrored = Model::new(front_quad(), &material);
+        mirrored.scale([-1.0, 1.0, 1.0]).expect("mirror");
+
+        // Act
+        // The mapped normal is (0.6, 0.6, 0.53) on the model and (-0.6, 0.6, 0.53) mirrored.
+        let original = draw_lit(&renderer, &model, [-0.6, -0.6, -0.53]).await;
+        let image = draw_lit(&renderer, &mirrored, [0.6, -0.6, -0.53]).await;
+
+        // Assert
+        // The top left pixel of the mirror image mirrors the top right one of the model.
+        let (pixel, source) = (&image[..4], &original[28..32]);
+        assert!(
+            pixel[0] > 230,
+            "the light meets the mirrored normal head on: {pixel:?}"
+        );
+        assert!(
+            pixel[0].abs_diff(source[0]) <= 1,
+            "the mirror image draws as the model: {pixel:?}, {source:?}"
+        );
+    });
+}
