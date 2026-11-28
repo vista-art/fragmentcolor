@@ -6,8 +6,8 @@ use pyo3::types::{PyDict, PyString};
 
 use crate::bindings::numbers;
 use crate::bindings::python::{
-    PyChannels, PyIndices, PyUnsigned, is_list, list_argument, read_list, read_number,
-    read_numbers, refuse,
+    PyChannels, PyIndices, PyUnsigned, is_list, read_list, read_number, read_numbers, refuse,
+    take_list,
 };
 use crate::{Instance, Mesh, MeshError, Vertex, VertexData};
 use lsp_doc::lsp_doc;
@@ -124,7 +124,7 @@ impl PyIntoVertex<'_> {
     }
 }
 
-list_argument!(PyVertices, PyIntoVertex, "vertices");
+take_list!(PyVertices, PyIntoVertex, "vertices");
 
 /// Reads each vertex of a list for `call`, naming a failing one as `{call}: vertex {index}`.
 /// A value that is no list raises a `TypeError` that names `call`.
@@ -150,7 +150,7 @@ pub enum PyIntoInstance<'py> {
     Other(Bound<'py, PyAny>),
 }
 
-list_argument!(PyInstances, PyIntoInstance, "instances");
+take_list!(PyInstances, PyIntoInstance, "instances");
 
 impl PyIntoInstance<'_> {
     /// The instance, or an error that names `label`, and the key for an attribute it can't read.

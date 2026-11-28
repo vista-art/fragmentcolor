@@ -1922,7 +1922,7 @@ mod parity {
         /// The one form of an argument enum that keeps any other value in a fallback,
         /// such as the `Bound<Mesh>` of an enum that takes a `Mesh` or refuses anything else.
         /// A binding reads such an enum as that form, which its fallback loosens.
-        fn read_form_field<'model>(
+        fn unwrap_form<'model>(
             model: &'model Reflection,
             ident: &str,
             site: &Site,
@@ -1945,7 +1945,7 @@ mod parity {
         /// seen through an argument enum of one form.
         fn read_form(model: &Reflection, ty: &Type, site: &Site) -> Option<String> {
             let core = read_core(ty)?;
-            match read_form_field(model, &core, site) {
+            match unwrap_form(model, &core, site) {
                 Some(field) => read_form(model, field, site),
                 None => Some(core),
             }
@@ -2156,7 +2156,7 @@ mod parity {
             if let Some(bound) = find_bound(model, site, ident) {
                 return bound;
             }
-            if let Some(field) = read_form_field(model, ident, site) {
+            if let Some(field) = unwrap_form(model, ident, site) {
                 return classify(model, field, site);
             }
             let name = match site.build {

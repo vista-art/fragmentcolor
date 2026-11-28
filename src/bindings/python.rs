@@ -384,7 +384,7 @@ pub(crate) fn refuse_class(value: &Bound<'_, PyAny>, label: &str, class: &str) -
 /// Its `Other` variant keeps a value of any other type, which the stub leaves out,
 /// so `read` raises a `TypeError` that names the call where pyo3's message wouldn't.
 /// The class is read by type alone, so a borrow conflict raises its own error.
-macro_rules! class_argument {
+macro_rules! take_class {
     ($name:ident, $class:ident) => {
         /// An argument that takes one class, or any other value for `read` to refuse.
         #[derive(pyo3::FromPyObject)]
@@ -409,23 +409,23 @@ macro_rules! class_argument {
     };
 }
 
-class_argument!(PyMesh, Mesh);
-class_argument!(PyShader, Shader);
-class_argument!(PyVertex, Vertex);
-class_argument!(PyPass, Pass);
-class_argument!(PyCamera, Camera);
-class_argument!(PyLight, Light);
-class_argument!(PyAlphaMode, AlphaMode);
-class_argument!(PyTextureFormat, TextureFormat);
-class_argument!(PyLogLevel, LogLevel);
-class_argument!(PyCompareFunction, CompareFunction);
+take_class!(PyMesh, Mesh);
+take_class!(PyShader, Shader);
+take_class!(PyVertex, Vertex);
+take_class!(PyPass, Pass);
+take_class!(PyCamera, Camera);
+take_class!(PyLight, Light);
+take_class!(PyAlphaMode, AlphaMode);
+take_class!(PyTextureFormat, TextureFormat);
+take_class!(PyLogLevel, LogLevel);
+take_class!(PyCompareFunction, CompareFunction);
 
 /// Declares the argument type of a list parameter.
 ///
 /// Its `Other` variant keeps a value that is no list, which the stub leaves out,
 /// so `items` raises a `TypeError` that names the call where pyo3's message wouldn't.
 /// Each item reads as its own type, which names a failing item.
-macro_rules! list_argument {
+macro_rules! take_list {
     ($name:ident, $item:ident, $things:literal) => {
         /// A list argument, or any other value for `items` to refuse.
         #[derive(pyo3::FromPyObject)]
@@ -448,11 +448,11 @@ macro_rules! list_argument {
         }
     };
 }
-pub(crate) use list_argument;
+pub(crate) use take_list;
 
-list_argument!(PyMeshes, PyMesh, "meshes");
-list_argument!(PyPasses, PyPass, "passes");
-list_argument!(PyIndices, PyUnsigned, "ints");
+take_list!(PyMeshes, PyMesh, "meshes");
+take_list!(PyPasses, PyPass, "passes");
+take_list!(PyIndices, PyUnsigned, "ints");
 
 /// Whether the value is a list of items: a sequence other than a `str` or a bytes form.
 pub(crate) fn is_list(value: &Bound<'_, PyAny>) -> bool {
