@@ -543,26 +543,27 @@ fn js_to_byte(value: &JsValue, label: &str, index: usize) -> Result<u8, WebError
 }
 
 /// A texture id from JS, named `label`: a `TextureId`, a whole number or a bigint.
-/// A value of another type is a `TypeError`, as Python raises, and a negative,
-/// fractional or out-of-range number an `InvalidInputError`, each naming `label`.
+/// A value of another type is a `TypeError`, and a negative, fractional or out-of-range
+/// number an `InvalidInputError`, each naming `label` with the text Python raises.
 pub(crate) fn js_to_texture_id(value: &JsValue, label: &str) -> Result<TextureId, WebError> {
     let invalid = |shown: String| {
-        TextureError::InvalidInput(format!(
+        let message = format!(
             "{label} must be a whole number from 0 to {}, got {shown}",
             u64::MAX
-        ))
+        );
+        WebError::new(ErrorClass::InvalidInput, &message)
     };
     if let Some(number) = value.as_f64() {
         // `u64::MAX as f64` rounds up to 2^64, so the range leaves it out.
         if number.fract() != 0.0 || !(0.0..u64::MAX as f64).contains(&number) {
-            return Err(invalid(number.to_string()).into());
+            return Err(invalid(number.to_string()));
         }
         return Ok(TextureId { id: number as u64 });
     }
     if value.is_bigint() {
         let Ok(id) = u64::try_from(value.clone()) else {
             let shown = js_sys::BigInt::from(value.clone()).to_string(10);
-            return Err(invalid(shown.map(String::from).unwrap_or_default()).into());
+            return Err(invalid(shown.map(String::from).unwrap_or_default()));
         };
         return Ok(TextureId::from(id));
     }
