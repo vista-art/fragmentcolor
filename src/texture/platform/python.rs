@@ -310,7 +310,7 @@ impl SamplerOptions {
             repeat_x,
             repeat_y,
             smooth,
-            compare: compare.transpose()?.or(SamplerOptions::default().compare),
+            compare: compare.transpose()?,
         })
     }
 }
