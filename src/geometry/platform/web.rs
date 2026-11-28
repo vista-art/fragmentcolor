@@ -252,8 +252,8 @@ impl Mesh {
 
     #[wasm_bindgen(js_name = "fromVertices")]
     #[lsp_doc("docs/api/geometry/mesh/from_vertices.md")]
-    pub fn from_vertices_js(list: &JsValue) -> Result<Mesh, WebError> {
-        let array = read_array(list, "Mesh.fromVertices: vertices", "vertices")?;
+    pub fn from_vertices_js(vertices: &JsValue) -> Result<Mesh, WebError> {
+        let array = read_array(vertices, "Mesh.fromVertices: vertices", "vertices")?;
         let mut vertices = Vec::with_capacity(array.length() as usize);
         for (index, item) in array.iter().enumerate() {
             vertices.push(read_vertex(
@@ -274,8 +274,8 @@ impl Mesh {
 
     #[wasm_bindgen(js_name = "addVertices")]
     #[lsp_doc("docs/api/geometry/mesh/add_vertices.md")]
-    pub fn add_vertices_js(&mut self, list: &JsValue) -> Result<(), WebError> {
-        let array = read_array(list, "Mesh.addVertices: vertices", "vertices")?;
+    pub fn add_vertices_js(&mut self, vertices: &JsValue) -> Result<(), WebError> {
+        let array = read_array(vertices, "Mesh.addVertices: vertices", "vertices")?;
         let mut vertices: Vec<Vertex> = Vec::with_capacity(array.length() as usize);
         for (index, item) in array.iter().enumerate() {
             let vertex = read_vertex(&item, &format!("Mesh.addVertices: vertex {index}"))?;
@@ -295,8 +295,8 @@ impl Mesh {
 
     #[wasm_bindgen(js_name = "addInstances")]
     #[lsp_doc("docs/api/geometry/mesh/add_instances.md")]
-    pub fn add_instances_js(&mut self, list: &JsValue) -> Result<(), WebError> {
-        let array = read_array(list, "Mesh.addInstances: items", "instances")?;
+    pub fn add_instances_js(&mut self, items: &JsValue) -> Result<(), WebError> {
+        let array = read_array(items, "Mesh.addInstances: items", "instances")?;
         let mut instances: Vec<Instance> = Vec::with_capacity(array.length() as usize);
         for (index, item) in array.iter().enumerate() {
             let label = format!("Mesh.addInstances: instance {index}");
