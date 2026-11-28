@@ -197,7 +197,7 @@ impl Pass {
 pub enum PyViewport<'py> {
     #[pyo3(annotation = "ScreenRegion")]
     Region(ScreenRegion),
-    #[pyo3(annotation = "dict[str, int]")]
+    #[pyo3(annotation = "dict[str, int | None]")]
     Fields(Bound<'py, PyDict>),
     Pairs([Vec<PyUnsigned<'py>>; 2]),
     Numbers(Vec<PyUnsigned<'py>>),
