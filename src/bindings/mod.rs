@@ -12,6 +12,10 @@ pub(crate) mod numbers;
 
 pub(crate) mod brand;
 
+/// One key of a JS object or a Python dict, in its camelCase and its snake_case spelling.
+#[cfg(any(wasm, python, test))]
+pub(crate) type Key = (&'static str, &'static str);
+
 /// A class name with its article, such as `a Mesh` or `an AlphaMode`, as a type error names it.
 #[cfg(any(wasm, python, test))]
 pub(crate) fn name_class(class: &str) -> String {

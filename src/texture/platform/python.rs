@@ -1,5 +1,6 @@
 #![cfg(python)]
 
+use crate::bindings::Key;
 use crate::bindings::python::{
     PyCompareFunction, PyTextureFormat, PyUnsigned, read_bytes, read_list, read_unsigned, refuse,
 };
@@ -225,7 +226,7 @@ const REGION_FORMS: &str = "Texture.write_region: a region is [w, h], [x, y, w, 
 /// Reads the dict form through the reader the bindings share.
 /// A key like `bytes_per_row` also takes its camelCase form, `bytesPerRow`.
 fn layout_region(layout: &Bound<'_, PyDict>) -> PyResult<TextureRegion> {
-    let read = |(camel, snake): crate::texture::region::Key| -> PyResult<Option<u32>> {
+    let read = |(camel, snake): Key| -> PyResult<Option<u32>> {
         for name in [snake, camel] {
             if let Some(value) = layout.get_item(name)? {
                 if value.is_none() {

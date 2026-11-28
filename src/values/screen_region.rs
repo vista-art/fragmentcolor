@@ -13,6 +13,8 @@ use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
 use super::error::ScreenRegionError;
+#[cfg(any(wasm, python, test))]
+use crate::bindings::Key;
 #[cfg(wasm)]
 use crate::bindings::numbers::read_dimension;
 
@@ -255,10 +257,6 @@ impl ScreenRegion {
         )
     }
 }
-
-/// One key of a region object or dict: its camelCase and its snake_case spelling.
-#[cfg(any(wasm, python, test))]
-pub(crate) type Key = (&'static str, &'static str);
 
 /// The keys of a region's bounds, as a `ScreenRegion` holds them.
 #[cfg(any(wasm, python, test))]

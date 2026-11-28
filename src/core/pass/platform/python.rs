@@ -1,5 +1,6 @@
 #![cfg(python)]
 
+use crate::bindings::Key;
 use crate::bindings::python::{
     PyChannels, PyMesh, PyShader, PyUnsigned, read_list, read_pair, read_unsigned, refuse,
 };
@@ -235,7 +236,7 @@ impl TryFrom<PyViewport<'_>> for ScreenRegion {
 /// Reads the dict form as JavaScript reads it, each key in either spelling, `minX` first.
 /// A key set to `None` counts as missing, and the result is `None` when neither form is complete.
 fn read_fields(fields: &Bound<'_, PyDict>) -> PyResult<Option<ScreenRegion>> {
-    let read = |(camel, snake): crate::values::Key| -> PyResult<Option<u32>> {
+    let read = |(camel, snake): Key| -> PyResult<Option<u32>> {
         for name in [camel, snake] {
             if let Some(value) = fields.get_item(name)?.filter(|value| !value.is_none()) {
                 let label = format!("Pass.set_viewport: {name}");

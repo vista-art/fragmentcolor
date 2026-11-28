@@ -114,11 +114,9 @@ impl TryFrom<crate::ScreenRegion> for TextureRegion {
 // -------------------------------------------
 
 #[cfg(any(wasm, python, test))]
-use crate::texture::TextureError;
-
-/// A region key in its camelCase and snake_case spellings.
+use crate::bindings::Key;
 #[cfg(any(wasm, python, test))]
-pub(crate) type Key = (&'static str, &'static str);
+use crate::texture::TextureError;
 
 #[cfg(any(wasm, python, test))]
 const MIN: [Key; 3] = [("minX", "min_x"), ("minY", "min_y"), ("minZ", "min_z")];
