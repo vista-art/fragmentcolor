@@ -25,11 +25,20 @@ pub enum PyTextureId<'py> {
 }
 
 impl PyTextureId<'_> {
-    /// The id, or an error that names `label` when the int is below 0 or past `u64::MAX`.
+    /// The id, or an error that names `label`: a `TypeError` for a value that is neither
+    /// a `TextureId` nor an int, and `InvalidInputError` for an int below 0 or past `u64::MAX`.
     pub(crate) fn read(&self, label: &str) -> PyResult<TextureId> {
-        match self {
-            PyTextureId::Id(id) => Ok(*id),
-            PyTextureId::Int(value) => Ok(read_unsigned::<u64>(value, label)?.into()),
+        let value = match self {
+            PyTextureId::Id(id) => return Ok(*id),
+            PyTextureId::Int(value) => value,
+        };
+        match read_unsigned::<u64>(value, label) {
+            Ok(id) => Ok(id.into()),
+            Err(error) if error.is_instance_of::<PyTypeError>(value.py()) => Err(refuse(
+                value,
+                format_args!("{label} must be a TextureId or an int"),
+            )),
+            Err(error) => Err(error),
         }
     }
 }

@@ -7,7 +7,7 @@ use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
 use crate::bindings::web::{
-    describe, read_count, read_flag, read_number, read_unsigned, refuse_class,
+    describe, read_count, read_flag, read_number, read_unsigned, refuse, refuse_class,
 };
 use crate::texture::loading::decode::check_pixels;
 use crate::texture::{FORMATS, TextureError, swap_bgra};
@@ -542,13 +542,13 @@ fn js_to_byte(value: &JsValue, label: &str, index: usize) -> Result<u8, WebError
     .into())
 }
 
-/// A texture id from JS: a `TextureId`, a whole number or a bigint. A value of another type
-/// is a `TypeError`, as Python raises, and a negative, fractional or out-of-range number an
-/// `InvalidInputError`.
-pub(crate) fn js_to_texture_id(value: &JsValue) -> Result<TextureId, WebError> {
+/// A texture id from JS, named `label`: a `TextureId`, a whole number or a bigint.
+/// A value of another type is a `TypeError`, as Python raises, and a negative,
+/// fractional or out-of-range number an `InvalidInputError`, each naming `label`.
+pub(crate) fn js_to_texture_id(value: &JsValue, label: &str) -> Result<TextureId, WebError> {
     let invalid = |shown: String| {
         TextureError::InvalidInput(format!(
-            "a texture id is a whole number from 0 to {}, got {shown}",
+            "{label} must be a whole number from 0 to {}, got {shown}",
             u64::MAX
         ))
     };
@@ -569,10 +569,10 @@ pub(crate) fn js_to_texture_id(value: &JsValue) -> Result<TextureId, WebError> {
     if let Ok(id) = TextureId::try_from(value) {
         return Ok(id);
     }
-    Err(WebError::type_error(&format!(
-        "a texture id is a TextureId or a whole number, got {}",
-        describe(value)
-    )))
+    Err(refuse(
+        value,
+        &format!("{label} must be a TextureId or a whole number"),
+    ))
 }
 
 /// The bytes of a JS source for a texture of `format` and, when known, `size`,

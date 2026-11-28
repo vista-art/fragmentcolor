@@ -205,7 +205,7 @@ impl Renderer {
     #[wasm_bindgen(js_name = "unregisterTexture")]
     #[lsp_doc("docs/api/core/renderer/unregister_texture.md")]
     pub fn unregister_texture_js(&self, texture_id: &JsValue) -> Result<(), WebError> {
-        let id = js_to_texture_id(texture_id)?;
+        let id = js_to_texture_id(texture_id, "Renderer.unregisterTexture: texture_id")?;
         Ok(self.unregister_texture(id)?)
     }
 
@@ -216,7 +216,7 @@ impl Renderer {
     pub fn read_texture_js(&self, texture_id: &JsValue) -> js_sys::Promise {
         let start = self.start();
         let renderer = self.share();
-        let id = js_to_texture_id(texture_id);
+        let id = js_to_texture_id(texture_id, "Renderer.readTexture: texture_id");
         defer(async move {
             let id = id?;
             let bytes = renderer.read_texture_from(id, start).await?;

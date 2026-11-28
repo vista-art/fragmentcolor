@@ -980,6 +980,9 @@ def check_type_messages(renderer):
         "Scene.set_passes: item 1 must be a Pass, got int": lambda: Scene().set_passes([Pass("a"), 1]),
         "Shader.remove_meshes: list must be a list of meshes, got str": lambda: Shader.default().remove_meshes("x"),
         "Shader.remove_meshes: item 0 must be a Mesh, got int": lambda: Shader.default().remove_meshes([1]),
+        "Renderer.read_texture: texture_id must be a TextureId or an int, got str": lambda: renderer.read_texture("x"),
+        "Renderer.unregister_texture: texture_id must be a TextureId or an int, got NoneType":
+            lambda: renderer.unregister_texture(None),
         "Model: expected a PbrMaterial, an UnlitMaterial, a ToonMaterial or a Shader, got int":
             lambda: Model(Mesh(), 42),
         "Model.set_transform takes a list or an ndarray of numbers, got str":

@@ -819,6 +819,9 @@ await withModule('platforms.web.healthcheck.parity', async () => {
       [() => Shader.default().removeMeshes([1]), 'Shader.removeMeshes: item 0 must be a Mesh, got number'],
       [() => new Mesh().addInstance(3), `Mesh.addInstance: ${instance}, got number`],
       [() => new Mesh().addInstances([new Instance(), 3]), `Mesh.addInstances: instance 1: ${instance}, got number`],
+      [() => renderer.readTexture('x'), 'Renderer.readTexture: texture_id must be a TextureId or a whole number, got string'],
+      [() => renderer.unregisterTexture(null),
+        'Renderer.unregisterTexture: texture_id must be a TextureId or a whole number, got null'],
     ]) {
       try { await run(); } catch (e) {
         if (!(e instanceof TypeError)) fail(`"${message}" came as ${e.name}`);
