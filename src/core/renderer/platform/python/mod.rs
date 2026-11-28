@@ -1,6 +1,6 @@
 //! The `Renderer` methods Python calls.
 
-use crate::bindings::python::{PyFlag, PyLogLevel, PyShader, PyTextureFormat, refuse};
+use crate::bindings::python::{PyFlag, PyLogLevel, PyShader, PyText, PyTextureFormat, refuse};
 use crate::{
     PySize, Renderer,
     targets::{PyTextureTarget, RenderCanvasTarget},
@@ -198,9 +198,14 @@ impl Renderer {
 
     #[pyo3(name = "read_storage")]
     #[lsp_doc("docs/api/core/renderer/read_storage.md")]
-    pub fn read_storage_py(&self, shader: PyShader<'_>, binding: &str) -> Result<Vec<u8>, PyErr> {
+    pub fn read_storage_py(
+        &self,
+        shader: PyShader<'_>,
+        binding: PyText<'_>,
+    ) -> Result<Vec<u8>, PyErr> {
         let shader = shader.read("Renderer.read_storage: shader")?;
-        Ok(pollster::block_on(self.read_storage(&shader, binding))?)
+        let binding = binding.read("Renderer.read_storage: binding")?;
+        Ok(pollster::block_on(self.read_storage(&shader, &binding))?)
     }
 
     #[pyo3(name = "render")]

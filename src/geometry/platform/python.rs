@@ -6,8 +6,8 @@ use pyo3::types::{PyDict, PyString};
 
 use crate::bindings::numbers;
 use crate::bindings::python::{
-    PyChannels, PyIndices, PyUnsigned, is_list, read_list, read_number, read_numbers, refuse,
-    take_list,
+    PyChannels, PyIndices, PyText, PyUnsigned, is_list, read_list, read_number, read_numbers,
+    refuse, take_list,
 };
 use crate::{Instance, Mesh, MeshError, Vertex, VertexData};
 use lsp_doc::lsp_doc;
@@ -246,8 +246,9 @@ impl Vertex {
 
     #[pyo3(name = "set")]
     #[lsp_doc("docs/api/geometry/vertex/set.md")]
-    pub fn set_py(&self, key: &str, value: PyAttributeValue<'_>) -> PyResult<Self> {
-        Ok(self.clone().set(key, value.read("Vertex.set: value")?))
+    pub fn set_py(&self, key: PyText<'_>, value: PyAttributeValue<'_>) -> PyResult<Self> {
+        let key = key.read("Vertex.set: key")?;
+        Ok(self.clone().set(&key, value.read("Vertex.set: value")?))
     }
 
     #[pyo3(name = "create_instance")]
@@ -267,8 +268,9 @@ impl Instance {
 
     #[pyo3(name = "set")]
     #[lsp_doc("docs/api/geometry/instance/set.md")]
-    pub fn set_py(&self, key: &str, value: PyAttributeValue<'_>) -> PyResult<Self> {
-        Ok(self.clone().set(key, value.read("Instance.set: value")?))
+    pub fn set_py(&self, key: PyText<'_>, value: PyAttributeValue<'_>) -> PyResult<Self> {
+        let key = key.read("Instance.set: key")?;
+        Ok(self.clone().set(&key, value.read("Instance.set: value")?))
     }
 }
 

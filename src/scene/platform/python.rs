@@ -6,7 +6,7 @@ use pyo3::types::PyString;
 
 use crate::bindings::numbers::read_floats;
 use crate::bindings::python::{
-    PyCamera, PyChannels, PyFlag, PyFloat, PyLight, PyMesh, PyPass, PyPasses, PyUnsigned,
+    PyCamera, PyChannels, PyFlag, PyFloat, PyLight, PyMesh, PyPass, PyPasses, PyText, PyUnsigned,
     read_flag, read_items, read_numbers, read_unsigned, refuse,
 };
 use crate::errors::InvalidInputError;
@@ -523,8 +523,8 @@ impl Scene {
 
     #[pyo3(name = "find_pass")]
     #[lsp_doc("docs/api/scene/scene/find_pass.md")]
-    pub fn find_pass_py(&self, name: &str) -> Option<Pass> {
-        self.find_pass(name)
+    pub fn find_pass_py(&self, name: PyText<'_>) -> PyResult<Option<Pass>> {
+        Ok(self.find_pass(&name.read("Scene.find_pass: name")?))
     }
 
     #[pyo3(name = "list_passes")]

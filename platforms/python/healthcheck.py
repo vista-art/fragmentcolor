@@ -1012,6 +1012,18 @@ def check_type_messages(renderer):
         "Renderer.unregister_texture: texture_id must be a TextureId or an int, got NoneType":
             lambda: renderer.unregister_texture(None),
         "Scene.load: cameras must be a bool, got str": lambda: Scene.load(b"", cameras="x"),
+        # A str parameter names the call and the parameter.
+        "Pass: name must be a str, got int": lambda: Pass(42),
+        "Pass.compute: name must be a str, got int": lambda: Pass.compute(42),
+        "Pass.from_shader: name must be a str, got int": lambda: Pass.from_shader(42, Shader.default()),
+        "Scene.find_pass: name must be a str, got int": lambda: Scene().find_pass(42),
+        "Renderer.read_storage: binding must be a str, got int":
+            lambda: renderer.read_storage(Shader.default(), 42),
+        "Shader.set_registry: base_url must be a str, got int": lambda: Shader.set_registry(42),
+        "Shader.set: key must be a str, got int": lambda: Shader.default().set(42, 1.0),
+        "Shader.get: key must be a str, got int": lambda: Shader.default().get(42),
+        "Vertex.set: key must be a str, got int": lambda: Vertex([0, 0]).set(42, 1.0),
+        "Instance.set: key must be a str, got int": lambda: Instance().set(42, 1.0),
         "Model: expected a PbrMaterial, an UnlitMaterial, a ToonMaterial or a Shader, got int":
             lambda: Model(Mesh(), 42),
         "Model.set_transform takes a list or an ndarray of numbers, got str":

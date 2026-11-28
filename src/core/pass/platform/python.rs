@@ -2,7 +2,7 @@
 
 use crate::bindings::Key;
 use crate::bindings::python::{
-    PyChannels, PyMesh, PyShader, PyUnsigned, read_list, read_pair, read_unsigned, refuse,
+    PyChannels, PyMesh, PyShader, PyText, PyUnsigned, read_list, read_pair, read_unsigned, refuse,
 };
 use crate::{Pass, PassObject, PassType, ScreenRegion};
 use lsp_doc::lsp_doc;
@@ -14,28 +14,31 @@ use std::sync::Arc;
 impl Pass {
     #[new]
     #[lsp_doc("docs/api/core/pass/new.md")]
-    pub fn new_py(name: &str) -> Self {
-        Self {
-            object: Arc::new(PassObject::new(name, PassType::Render)),
-        }
+    pub fn new_py(name: PyText<'_>) -> PyResult<Self> {
+        let name = name.read("Pass: name")?;
+        Ok(Self {
+            object: Arc::new(PassObject::new(&name, PassType::Render)),
+        })
     }
 
     #[staticmethod]
     #[pyo3(name = "compute")]
     #[lsp_doc("docs/api/core/pass/compute.md")]
-    pub fn compute_py(name: &str) -> Self {
-        Self {
-            object: Arc::new(PassObject::new(name, PassType::Compute)),
-        }
+    pub fn compute_py(name: PyText<'_>) -> PyResult<Self> {
+        let name = name.read("Pass.compute: name")?;
+        Ok(Self {
+            object: Arc::new(PassObject::new(&name, PassType::Compute)),
+        })
     }
 
     #[staticmethod]
     #[pyo3(name = "from_shader")]
     #[lsp_doc("docs/api/core/pass/from_shader.md")]
-    pub fn from_shader_py(name: &str, shader: PyShader<'_>) -> PyResult<Self> {
+    pub fn from_shader_py(name: PyText<'_>, shader: PyShader<'_>) -> PyResult<Self> {
+        let name = name.read("Pass.from_shader: name")?;
         let shader = shader.read("Pass.from_shader: shader")?;
         Ok(Self {
-            object: Arc::new(PassObject::from_shader(name, shader.object)),
+            object: Arc::new(PassObject::from_shader(&name, shader.object)),
         })
     }
 

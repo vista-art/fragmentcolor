@@ -244,6 +244,25 @@ impl PyFlag<'_> {
     }
 }
 
+/// A Python str, which a binding reads with [`PyText::read`].
+/// Its `Other` variant keeps a value of any other type, which the stub leaves out,
+/// so the reader raises a `TypeError` that names the parameter where pyo3's message wouldn't.
+#[derive(FromPyObject)]
+pub enum PyText<'py> {
+    Value(String),
+    Other(Bound<'py, PyAny>),
+}
+
+impl PyText<'_> {
+    /// The text, or a `TypeError` that names `label` for a value of another type.
+    pub(crate) fn read(self, label: &str) -> PyResult<String> {
+        match self {
+            PyText::Value(text) => Ok(text),
+            PyText::Other(value) => Err(refuse(&value, format_args!("{label} must be a str"))),
+        }
+    }
+}
+
 /// A bool, as [`PyFlag::read`] reads one, for a `from_py_with` reader.
 /// Such a parameter keeps a literal default, such as `True`, that `help()` can print.
 pub(crate) fn read_flag(value: &Bound<'_, PyAny>, label: &str) -> PyResult<bool> {

@@ -834,6 +834,17 @@ await withModule('platforms.web.healthcheck.parity', async () => {
       [() => Scene.load(new Uint8Array(0), { cameras: 'x' }), 'Scene.load: cameras must be a boolean, got string'],
       // Python takes cameras and lights as keywords, so only JavaScript has an options object.
       [() => Scene.load(new Uint8Array(0), 5), 'Scene.load: options must be an object of cameras and lights, got number'],
+      // A string parameter names the call and the parameter.
+      [() => new Pass(42), 'Pass: name must be a string, got number'],
+      [() => Pass.compute(42), 'Pass.compute: name must be a string, got number'],
+      [() => Pass.fromShader(42, Shader.default()), 'Pass.fromShader: name must be a string, got number'],
+      [() => new Scene().findPass(42), 'Scene.findPass: name must be a string, got number'],
+      [() => renderer.readStorage(Shader.default(), 42), 'Renderer.readStorage: binding must be a string, got number'],
+      [() => Shader.setRegistry(42), 'Shader.setRegistry: base_url must be a string, got number'],
+      [() => Shader.default().set(42, 1), 'Shader.set: key must be a string, got number'],
+      [() => Shader.default().get(42), 'Shader.get: key must be a string, got number'],
+      [() => new Vertex([0, 0]).set(42, 1), 'Vertex.set: key must be a string, got number'],
+      [() => new Instance().set(42, 1), 'Instance.set: key must be a string, got number'],
     ]) {
       try { await run(); } catch (e) {
         if (!(e instanceof TypeError)) fail(`"${message}" came as ${e.name}`);

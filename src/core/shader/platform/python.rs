@@ -1,8 +1,10 @@
 #![cfg(python)]
 
-use crate::bindings::python::{PyAlphaMode, PyFlag, PyMesh, PyMeshes, PyVertex, is_list, refuse};
+use crate::bindings::python::{
+    PyAlphaMode, PyFlag, PyMesh, PyMeshes, PyText, PyVertex, is_list, refuse,
+};
 use crate::core::shader::{UniformInput, lsp_doc};
-use crate::{Shader, ShaderError, ShaderInput, UniformData};
+use crate::{Shader, ShaderInput, UniformData};
 use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
 use pyo3::types::{PyAnyMethods, PyByteArray, PyBytes, PyMemoryView};
@@ -30,20 +32,23 @@ impl Shader {
     #[staticmethod]
     #[pyo3(name = "set_registry")]
     #[lsp_doc("docs/api/core/shader/set_registry.md")]
-    pub fn set_registry_py(base_url: &str) {
-        Shader::set_registry(base_url);
+    pub fn set_registry_py(base_url: PyText<'_>) -> PyResult<()> {
+        Shader::set_registry(&base_url.read("Shader.set_registry: base_url")?);
+        Ok(())
     }
 
     #[pyo3(name = "set")]
     #[lsp_doc("docs/api/core/shader/set.md")]
-    pub fn set_py(&self, key: &str, value: PyUniformValue<'_>) -> Result<(), PyErr> {
-        Ok(self.object.set_input(key, value.into_input(key)?)?)
+    pub fn set_py(&self, key: PyText<'_>, value: PyUniformValue<'_>) -> Result<(), PyErr> {
+        let key = key.read("Shader.set: key")?;
+        Ok(self.object.set_input(&key, value.into_input(&key)?)?)
     }
 
     #[pyo3(name = "get")]
     #[lsp_doc("docs/api/core/shader/get.md")]
-    pub fn get_py(&self, key: &str) -> Result<PyUniformData, ShaderError> {
-        Ok(self.object.get_uniform_data(key)?.into())
+    pub fn get_py(&self, key: PyText<'_>) -> PyResult<PyUniformData> {
+        let key = key.read("Shader.get: key")?;
+        Ok(self.object.get_uniform_data(&key)?.into())
     }
 
     #[pyo3(name = "list_uniforms")]
