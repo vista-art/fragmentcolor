@@ -290,7 +290,14 @@ pub enum PySceneSource<'py> {
     Bytes(Bound<'py, pyo3::types::PyBytes>),
     #[pyo3(annotation = "bytearray")]
     ByteArray(Bound<'py, pyo3::types::PyByteArray>),
-    Other(Bound<'py, PyAny>),
+}
+
+/// The `source` of `Scene.load`. A value that is no path or bytes is a `TypeError` that names the call.
+/// pyo3 reads it before `cameras` and `lights`, so a wrong source raises first, as it does in JavaScript.
+fn read_source<'py>(value: &Bound<'py, PyAny>) -> PyResult<PySceneSource<'py>> {
+    let expected =
+        "Scene.load: expected a path, or the bytes of a .glb file as bytes or a bytearray";
+    value.extract().map_err(|_| refuse(value, expected))
 }
 
 /// The `cameras` flag of `Scene.load`, as [`read_flag`] reads it.
@@ -303,19 +310,12 @@ fn read_lights(value: &Bound<'_, PyAny>) -> PyResult<bool> {
     read_flag(value, "Scene.load: lights")
 }
 
-/// Any other value raises a `TypeError` that names the call, as JavaScript throws one.
-impl TryFrom<PySceneSource<'_>> for crate::scene::GltfSource {
-    type Error = PyErr;
-
-    fn try_from(source: PySceneSource<'_>) -> PyResult<Self> {
+impl From<PySceneSource<'_>> for crate::scene::GltfSource {
+    fn from(source: PySceneSource<'_>) -> Self {
         match source {
-            PySceneSource::Path(path) => Ok(path.into()),
-            PySceneSource::Bytes(bytes) => Ok(bytes.as_bytes().into()),
-            PySceneSource::ByteArray(bytes) => Ok(bytes.to_vec().into()),
-            PySceneSource::Other(value) => Err(refuse(
-                &value,
-                "Scene.load: expected a path, or the bytes of a .glb file as bytes or a bytearray",
-            )),
+            PySceneSource::Path(path) => path.into(),
+            PySceneSource::Bytes(bytes) => bytes.as_bytes().into(),
+            PySceneSource::ByteArray(bytes) => bytes.to_vec().into(),
         }
     }
 }
@@ -463,11 +463,11 @@ impl Scene {
     #[pyo3(name = "load", signature = (source, cameras = true, lights = true))]
     #[lsp_doc("docs/api/scene/scene/load.md")]
     pub fn load_py(
-        source: PySceneSource<'_>,
+        #[pyo3(from_py_with = read_source)] source: PySceneSource<'_>,
         #[pyo3(from_py_with = read_cameras)] cameras: bool,
         #[pyo3(from_py_with = read_lights)] lights: bool,
     ) -> PyResult<Self> {
-        let source = crate::scene::GltfSource::try_from(source)?
+        let source = crate::scene::GltfSource::from(source)
             .cameras(cameras)
             .lights(lights);
         Ok(Scene::load(source)?)

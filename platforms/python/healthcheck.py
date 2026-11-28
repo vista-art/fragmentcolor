@@ -1050,8 +1050,9 @@ def check_type_messages(renderer):
             lambda: Shader(SET_VALUES_SHADER).set("offset", "x"),
         "Shader.set: offset: expected a list of numbers, or a list of number lists":
             lambda: Shader(SET_VALUES_SHADER).set("offset", ["x", "y"]),
+        # The source raises before a wrong flag, as JavaScript reads the source first.
         "Scene.load: expected a path, or the bytes of a .glb file as bytes or a bytearray, got int":
-            lambda: Scene.load(42),
+            lambda: Scene.load(42, cameras="x"),
     }
     for expected, call in cases.items():
         try:
