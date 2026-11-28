@@ -3,7 +3,7 @@
 #![cfg(wasm)]
 
 use crate::bindings::name_class;
-use crate::errors::WebError;
+use crate::errors::{ErrorClass, WebError};
 
 /// Install a panic hook and console logger when running in WASM so browser console shows
 /// readable errors instead of a generic "unreachable" trap.
@@ -166,12 +166,36 @@ pub(crate) fn refuse_class(value: &wasm_bindgen::JsValue, label: &str, class: &s
 }
 
 /// An instance of the FragmentColor class `T`, read through its brand.
+///
 /// Any other value is a `TypeError` that names `label`, as Python raises one.
+/// An object that `free()` released is an `InvalidInputError` that names `label`.
+/// A `T` that can't lend its handle throws its own error, as a borrow conflict does in Python.
 pub(crate) fn read_object<T>(value: &wasm_bindgen::JsValue, label: &str) -> Result<T, WebError>
 where
-    T: crate::FcKind + for<'value> TryFrom<&'value wasm_bindgen::JsValue>,
+    T: crate::FcKind + for<'value> TryFrom<&'value wasm_bindgen::JsValue, Error: Into<WebError>>,
 {
-    T::try_from(value).map_err(|_| refuse_class(value, label, T::KIND))
+    let error = match T::try_from(value) {
+        Ok(object) => return Ok(object),
+        Err(error) => error,
+    };
+    if read_class(value).as_deref() == Some(T::KIND) {
+        return Err(error.into());
+    }
+    if is_freed(value) {
+        let message = format!("{label} was freed");
+        return Err(WebError::new(ErrorClass::InvalidInput, &message));
+    }
+    Err(refuse_class(value, label, T::KIND))
+}
+
+/// Whether the value is a class instance that `free()` released, whose handle reads 0.
+fn is_freed(value: &wasm_bindgen::JsValue) -> bool {
+    let handle = || {
+        js_sys::Reflect::get(value, &"__wbg_ptr".into())
+            .ok()?
+            .as_f64()
+    };
+    value.is_object() && handle() == Some(0.0)
 }
 
 /// The brand of a FragmentColor class instance, or `None` for any other value.

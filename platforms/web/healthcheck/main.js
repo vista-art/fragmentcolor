@@ -752,6 +752,8 @@ await withModule('platforms.web.healthcheck.parity', async () => {
       // A texture id past 2**64 - 1 is a value error, never the largest id.
       ['readTexture(2 ** 64)', () => renderer.readTexture(2 ** 64), 'InvalidInputError'],
       ['unregisterTexture(2 ** 64)', () => renderer.unregisterTexture(2 ** 64), 'InvalidInputError'],
+      // An object that free() released is no value a call can take, though its type is right.
+      ['Pass.addShader(freed)', () => { const shader = Shader.default(); shader.free(); new Pass('p').addShader(shader); }, 'InvalidInputError'],
       ["TextureId.id = 7n", () => { 'use strict'; writable.id().id = 7n; }, 'TypeError'],
     ]) {
       try { await run(); } catch (e) {
