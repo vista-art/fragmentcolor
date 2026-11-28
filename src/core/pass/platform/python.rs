@@ -1,12 +1,12 @@
 #![cfg(python)]
 
 use crate::bindings::python::{
-    PyChannels, PyMesh, PyShader, PyUnsigned, read_list, read_pair, refuse,
+    PyChannels, PyMesh, PyShader, PyUnsigned, read_list, read_pair, read_unsigned, refuse,
 };
 use crate::{Pass, PassObject, PassType, ScreenRegion};
 use lsp_doc::lsp_doc;
 use pyo3::prelude::*;
-use pyo3::types::PyAny;
+use pyo3::types::{PyAny, PyDict};
 use std::sync::Arc;
 
 #[pymethods]
@@ -189,20 +189,22 @@ impl Pass {
     }
 }
 
-/// A viewport from Python: a `ScreenRegion`, `[x, y, w, h]`, a size `(w, h)` at the origin,
+/// A viewport from Python: a `ScreenRegion`, a dict of `x`, `y`, `width` and `height`
+/// or of `min_x`, `min_y`, `max_x` and `max_y`, `[x, y, w, h]`, a size `(w, h)` at the origin,
 /// or an origin and a size as two pairs, `((x, y), (w, h))`, as Rust reads them.
 #[derive(FromPyObject)]
 pub enum PyViewport<'py> {
     #[pyo3(annotation = "ScreenRegion")]
     Region(ScreenRegion),
+    #[pyo3(annotation = "dict[str, int]")]
+    Fields(Bound<'py, PyDict>),
     Pairs([Vec<PyUnsigned<'py>>; 2]),
     Numbers(Vec<PyUnsigned<'py>>),
     Other(Bound<'py, PyAny>),
 }
 
 /// The forms `Pass.set_viewport` reads a region from, as its `TypeError` lists them.
-const VIEWPORT_FORMS: &str =
-    "Pass.set_viewport: a region is [w, h], [x, y, w, h], [[x, y], [w, h]] or a ScreenRegion";
+const VIEWPORT_FORMS: &str = "Pass.set_viewport: a region is [w, h], [x, y, w, h], [[x, y], [w, h]], a dict of x, y, width and height or a ScreenRegion";
 
 /// Reads each number as an int that [`PyUnsigned::read`] checks.
 /// Any other value raises a `TypeError` that lists the forms.
@@ -212,6 +214,10 @@ impl TryFrom<PyViewport<'_>> for ScreenRegion {
     fn try_from(viewport: PyViewport<'_>) -> Result<Self, Self::Error> {
         match viewport {
             PyViewport::Region(region) => Ok(region),
+            PyViewport::Fields(fields) => match read_fields(&fields)? {
+                Some(region) => Ok(region),
+                None => Err(refuse(&fields, VIEWPORT_FORMS)),
+            },
             PyViewport::Other(value) => Err(refuse(&value, VIEWPORT_FORMS)),
             PyViewport::Pairs([origin, size]) => {
                 let origin = read_pair(&origin, "Pass.set_viewport: origin")?;
@@ -224,4 +230,19 @@ impl TryFrom<PyViewport<'_>> for ScreenRegion {
             }
         }
     }
+}
+
+/// Reads the dict form through the reader the bindings share, each key in either
+/// spelling, `minX` before `min_x`, as JavaScript reads them. `None` when neither form is complete.
+fn read_fields(fields: &Bound<'_, PyDict>) -> PyResult<Option<ScreenRegion>> {
+    let read = |(camel, snake): crate::values::Key| -> PyResult<Option<u32>> {
+        for name in [camel, snake] {
+            if let Some(value) = fields.get_item(name)? {
+                let label = format!("Pass.set_viewport: {name}");
+                return read_unsigned(&value, &label).map(Some);
+            }
+        }
+        Ok(None)
+    };
+    ScreenRegion::read_fields(read)
 }

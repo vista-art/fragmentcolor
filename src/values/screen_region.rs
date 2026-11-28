@@ -257,11 +257,11 @@ impl ScreenRegion {
 }
 
 /// One key of a region object or dict: its camelCase and its snake_case spelling.
-#[cfg(any(wasm, test))]
+#[cfg(any(wasm, python, test))]
 pub(crate) type Key = (&'static str, &'static str);
 
 /// The keys of a region's bounds, as a `ScreenRegion` holds them.
-#[cfg(any(wasm, test))]
+#[cfg(any(wasm, python, test))]
 const BOUNDS: [Key; 4] = [
     ("minX", "min_x"),
     ("minY", "min_y"),
@@ -270,7 +270,7 @@ const BOUNDS: [Key; 4] = [
 ];
 
 /// The keys of a region's origin and size, as a `DOMRect` holds them.
-#[cfg(any(wasm, test))]
+#[cfg(any(wasm, python, test))]
 const RECT: [Key; 4] = [
     ("x", "x"),
     ("y", "y"),
@@ -285,7 +285,7 @@ impl ScreenRegion {
     /// The bounds `{ minX, minY, maxX, maxY }` come first, since a `ScreenRegion` holds them
     /// and its `width` and `height` are methods. Then comes `{ x, y, width, height }`.
     /// The result is `None` when neither form is complete.
-    #[cfg(any(wasm, test))]
+    #[cfg(any(wasm, python, test))]
     pub(crate) fn read_fields<E: From<ScreenRegionError>>(
         read: impl Fn(Key) -> Result<Option<u32>, E>,
     ) -> Result<Option<Self>, E> {
