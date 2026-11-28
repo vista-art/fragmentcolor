@@ -1,0 +1,1374 @@
+---
+title: ToonMaterial
+description: "A cel-shaded material: each light lights it in flat steps rather than a smooth gradient, with an optional hard highlight and a rim along the edges the camera sees. The look reads as drawn rather than photographed, and it holds up on simple meshes and flat colors."
+category: scene
+categoryLabel: Scene
+sidebar:
+  order: 5
+---
+
+import { Code, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
+
+## Description
+
+A cel-shaded material: each light lights it in flat steps rather than a
+smooth gradient, with an optional hard highlight and a rim along the edges
+the camera sees. The look reads as drawn rather than photographed, and it
+holds up on simple meshes and flat colors.
+
+Each light's diffuse term is cut into
+[`bands`](/api/scene/toonmaterial#bands) even
+steps, three by default, or read from a
+[`ramp_map()`](/api/scene/toonmaterial#ramp_map)
+gradient wider than one texel. A [`highlight`](/api/scene/toonmaterial#highlight)
+color adds a hard spot where the light glints, and a
+[`rim`](/api/scene/toonmaterial#rim) color marks
+the faces seen edge-on. Both start black, which turns them off.
+
+`base_color`, `base_color_map()`, `alpha_cutoff`, `alpha_mode` and
+`double_sided` mean the same as they do on
+[`PbrMaterial`](/api/scene/pbrmaterial) and
+[`UnlitMaterial`](/api/scene/unlitmaterial).
+
+It reads the `camera` and `lights` roots `PbrMaterial` reads, through the
+same light loops, so the [Lights](/api/scene/light)
+on its pass light it as they light a PBR model, at the same brightness, and
+the scene's ambient light fills its shadows. It takes the vertex layout
+`PbrMaterial` takes, so a
+[`Vertex::pbr`](/api/geometry/vertex#pbr) mesh, or
+a mesh the glTF loader built, draws with any of the three. An outline is
+not a material setting: it needs a draw of its own. The `toon_outline`
+example in `examples/rust` draws one as a pass after the scene, from the
+depth and normals an earlier pass draws.
+
+A material draws on a [Mesh](/api/geometry/mesh)
+through a [Model](/api/scene/model). `Model::new`
+takes a `ToonMaterial` as it takes any
+[Material](/api/scene/material).
+
+Clones share one shader, as with `PbrMaterial`: a setter on one handle
+changes what every handle draws. Build a fresh `ToonMaterial::new()` for an
+independent material.
+
+
+
+## Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::{Mesh, Model, ToonMaterial, Vertex};
+
+let mesh = Mesh::new();
+mesh.add_vertices([
+    Vertex::pbr([0.0, 0.5, 0.0]),
+    Vertex::pbr([-0.5, -0.5, 0.0]),
+    Vertex::pbr([0.5, -0.5, 0.0]),
+]);
+
+let hero = ToonMaterial::new()
+    .base_color([0.9, 0.3, 0.2, 1.0])?
+    .bands(2)?
+    .highlight([1.0, 1.0, 1.0])?
+    .rim([0.3, 0.5, 1.0])?;
+let model = Model::new(mesh, hero);
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Mesh, Model, ToonMaterial, Vertex } from "fragmentcolor";
+
+const mesh = new Mesh();
+mesh.addVertices([ Vertex.pbr([0.0, 0.5, 0.0]), Vertex.pbr([-0.5, -0.5, 0.0]), Vertex.pbr([0.5, -0.5, 0.0]), ]);
+
+const hero = new ToonMaterial().baseColor([0.9, 0.3, 0.2, 1.0]).bands(2).highlight([1.0, 1.0, 1.0]).rim([0.3, 0.5, 1.0]);
+const model = new Model(mesh, hero);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Mesh, Model, ToonMaterial, Vertex
+
+mesh = Mesh()
+mesh.add_vertices([
+    Vertex.pbr([0.0, 0.5, 0.0]),
+    Vertex.pbr([-0.5, -0.5, 0.0]),
+    Vertex.pbr([0.5, -0.5, 0.0]),
+])
+
+hero = ToonMaterial().base_color([0.9, 0.3, 0.2, 1.0]).bands(2).highlight([1.0, 1.0, 1.0]).rim([0.3, 0.5, 1.0])
+model = Model(mesh, hero)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let mesh = Mesh()
+mesh.addVertices([
+    try Vertex.pbr([0.0, 0.5, 0.0]),
+    try Vertex.pbr([-0.5, -0.5, 0.0]),
+    try Vertex.pbr([0.5, -0.5, 0.0]),
+])
+
+let hero = try ToonMaterial().baseColor([0.9, 0.3, 0.2, 1.0]).bands(2).highlight([1.0, 1.0, 1.0]).rim([0.3, 0.5, 1.0])
+let model = Model(mesh, hero)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val mesh = Mesh()
+mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f))))
+
+val hero = ToonMaterial().baseColor(listOf(0.9f, 0.3f, 0.2f, 1.0f)).bands(2u).highlight(listOf(1.0f, 1.0f, 1.0f)).rim(listOf(0.3f, 0.5f, 1.0f))
+val model = Model(mesh, hero)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+## Methods
+
+
+---
+
+### ToonMaterial::alpha_cutoff \{#alpha_cutoff\}
+
+Sets the alpha threshold `AlphaMode::Mask` uses. The fragment shader
+discards a fragment whose alpha, the base color's times the map's and the
+vertex color's, falls below it. Stored on `material.alpha_cutoff`; default
+`0.5`, matching glTF 2.0. `Opaque` and `Blend` ignore it.
+
+NaN or an infinity returns `MaterialError::NotFinite`, which names the
+call, and the material keeps the value it had. The other languages also
+refuse a number past the 32-bit float range, such as `1e39`, with a
+message like `ToonMaterial.alphaCutoff: value must be a finite number that
+fits a 32-bit float, got 1e39`. JavaScript throws an `Error` named
+`InvalidInputError`, Python raises `InvalidInputError`, Swift throws
+`FragmentColorError` and Kotlin throws `FragmentColorException`.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::{AlphaMode, ToonMaterial};
+
+let leaves = ToonMaterial::new()
+    .alpha_mode(AlphaMode::Mask)
+    .alpha_cutoff(0.3)?;
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { AlphaMode, ToonMaterial } from "fragmentcolor";
+
+const leaves = new ToonMaterial().alphaMode(AlphaMode.Mask).alphaCutoff(0.3);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import AlphaMode, ToonMaterial
+
+leaves = ToonMaterial().alpha_mode(AlphaMode.Mask).alpha_cutoff(0.3)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let leaves = try ToonMaterial().alphaMode(AlphaMode.mask).alphaCutoff(0.3)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val leaves = ToonMaterial().alphaMode(AlphaMode.MASK).alphaCutoff(0.3f)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### ToonMaterial::alpha_mode \{#alpha_mode\}
+
+Set how the renderer treats the alpha of the material's output, as glTF 2.0's
+`alphaMode` does. It works as
+[`PbrMaterial::alpha_mode`](/api/scene/pbrmaterial#alpha_mode)
+does:
+
+- `AlphaMode::Opaque` (default): blending is off and alpha is ignored.
+- `AlphaMode::Mask`: the fragment shader discards a fragment whose alpha
+  falls below `alpha_cutoff`, and the rest draw as opaque. It suits leaves,
+  hair cards and cut-outs with hard edges.
+- `AlphaMode::Blend`: depth writes turn off and the color blends over what is
+  behind it. The renderer sorts blended Models back to front by the pass's
+  Camera.
+
+It is pipeline state, so each mode builds its own pipeline once and reuses it.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::{AlphaMode, ToonMaterial};
+
+let glass = ToonMaterial::new()
+    .base_color([0.6, 0.8, 1.0, 0.4])?
+    .alpha_mode(AlphaMode::Blend);
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { AlphaMode, ToonMaterial } from "fragmentcolor";
+
+const glass = new ToonMaterial().baseColor([0.6, 0.8, 1.0, 0.4]).alphaMode(AlphaMode.Blend);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import AlphaMode, ToonMaterial
+
+glass = ToonMaterial().base_color([0.6, 0.8, 1.0, 0.4]).alpha_mode(AlphaMode.Blend)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let glass = try ToonMaterial().baseColor([0.6, 0.8, 1.0, 0.4]).alphaMode(AlphaMode.blend)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val glass = ToonMaterial().baseColor(listOf(0.6f, 0.8f, 1.0f, 0.4f)).alphaMode(AlphaMode.BLEND)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### ToonMaterial::bands \{#bands\}
+
+Set how many even steps each light's diffuse term takes, from the edge of
+the shadow to a face turned straight at the light. A face at the cosine
+`ndl` to the light gets `ceil(ndl * bands) / bands` of it, and a face turned
+away gets none, so the scene's ambient light alone fills it. One band lights
+every face toward the light fully, and many bands come close to smooth
+shading.
+
+Maps to the `material.bands` uniform on the underlying shader. Default
+is `3`. A [`ramp_map()`](/api/scene/toonmaterial#ramp_map)
+takes over from the bands once it holds a texture wider than one texel.
+
+Returns a handle to the same material (Arc-shared), so calls chain.
+
+`0` returns `MaterialError::Bands`, such as `ToonMaterial::bands takes 1
+band or more, got 0`, and the material keeps the bands it had. JavaScript
+throws an `Error` named `MaterialError`, Python raises `MaterialError`, a
+`FragmentColorError` that is also a `ValueError`, Swift throws
+`FragmentColorError`, and Kotlin throws `FragmentColorException`. The count
+is a count like any other: JavaScript throws for a fraction or a negative
+number, and Python takes an `int`, raising `TypeError` for a float and
+`InvalidInputError` for an int below 0 or past `2**32 - 1`.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::ToonMaterial;
+
+// Lit or in shadow, and nothing between.
+let flat = ToonMaterial::new().bands(1)?;
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { ToonMaterial } from "fragmentcolor";
+
+// Lit or in shadow, and nothing between.
+const flat = new ToonMaterial().bands(1);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import ToonMaterial
+
+# Lit or in shadow, and nothing between.
+flat = ToonMaterial().bands(1)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+// Lit or in shadow, and nothing between.
+let flat = try ToonMaterial().bands(1)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+// Lit or in shadow, and nothing between.
+val flat = ToonMaterial().bands(1u)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### ToonMaterial::base_color \{#base_color\}
+
+Set the material's color, in linear RGBA. The base color map's sample and
+the vertex color multiply it, each light's band or ramp level scales it, and
+alpha goes through the fragment output unchanged.
+
+Maps to the `material.base_color` uniform on the underlying shader. Default
+is `[1, 1, 1, 1]`.
+
+Returns a handle to the same material (Arc-shared), so calls chain.
+
+An item that is NaN or an infinity returns `MaterialError::NotFinite`,
+which names the call and the item, and the material keeps the value it
+had. The other languages also refuse an item past the 32-bit float range,
+such as `1e39`, with a message like `ToonMaterial.baseColor: item 3 must be a
+finite number that fits a 32-bit float, got 1e39`. JavaScript throws an
+`Error` named `InvalidInputError`, Python raises `InvalidInputError`,
+Swift throws `FragmentColorError` and Kotlin throws
+`FragmentColorException`.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::ToonMaterial;
+
+let red = ToonMaterial::new().base_color([1.0, 0.2, 0.2, 1.0])?;
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { ToonMaterial } from "fragmentcolor";
+
+const red = new ToonMaterial().baseColor([1.0, 0.2, 0.2, 1.0]);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import ToonMaterial
+
+red = ToonMaterial().base_color([1.0, 0.2, 0.2, 1.0])
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let red = try ToonMaterial().baseColor([1.0, 0.2, 0.2, 1.0])
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val red = ToonMaterial().baseColor(listOf(1.0f, 0.2f, 0.2f, 1.0f))
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### ToonMaterial::base_color_map \{#base_color_map\}
+
+The material's color map, as a
+[`MaterialMap`](/api/scene/materialmap) handle that
+sets its texture, UV set and transform. Its sample multiplies
+`material.base_color` and the vertex color, at the UV set the map's
+[`uv`](/api/scene/materialmap#uv) picks, through its
+[`transform`](/api/scene/materialmap#transform).
+
+A source with no format of its own reads as sRGB in this map, as glTF's base
+color does. Unset, the map draws a 1×1 white default, so the material draws
+its base color alone.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::ToonMaterial;
+
+// Raw pixels with their size upload when the scene loads.
+let pixels: Vec<u8> = vec![255, 128, 0, 255];
+let material = ToonMaterial::new();
+let map = material.base_color_map().texture((pixels, [1, 1]))?;
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { ToonMaterial } from "fragmentcolor";
+
+// Raw pixels with their size upload when the scene loads.
+const pixels = [255, 128, 0, 255];
+const material = new ToonMaterial();
+const map = material.baseColorMap().texture(pixels, [1, 1]);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import ToonMaterial
+
+# Raw pixels with their size upload when the scene loads.
+pixels = [255, 128, 0, 255]
+material = ToonMaterial()
+map = material.base_color_map().texture(pixels, size=[1, 1])
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+// Raw pixels with their size upload when the scene loads.
+let pixels = [255, 128, 0, 255]
+let material = ToonMaterial()
+let map = try material.baseColorMap().texture(pixels, [1, 1])
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+// Raw pixels with their size upload when the scene loads.
+val pixels = listOf(255, 128, 0, 255)
+val material = ToonMaterial()
+val map = material.baseColorMap().texture(pixels, listOf(1u, 1u))
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### ToonMaterial::double_sided \{#double_sided\}
+
+Draw both faces of every triangle when `true`. When `false` (the default),
+the renderer culls back faces, the ones whose vertices run clockwise on
+screen. Mirrors glTF 2.0's `doubleSided`.
+
+Thin geometry the camera can see from both sides, such as a flag or a
+leaf, needs both faces. Like `alpha_mode`, it is pipeline state.
+
+Seen from behind, a face lights, bands and takes the rim as the side
+the camera sees. On a `Model` mirrored by a negative scale, whose outer
+faces wind the other way on screen, those faces still light as the front.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::ToonMaterial;
+
+let flag = ToonMaterial::new().double_sided(true);
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { ToonMaterial } from "fragmentcolor";
+
+const flag = new ToonMaterial().doubleSided(true);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import ToonMaterial
+
+flag = ToonMaterial().double_sided(True)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let flag = ToonMaterial().doubleSided(true)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val flag = ToonMaterial().doubleSided(true)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### ToonMaterial::highlight \{#highlight\}
+
+Set the color of the hard highlight, in linear RGB. Each light adds it, as a
+spot with a hard edge, where the half vector between the light and the eye
+comes within
+[`highlight_size`](/api/scene/toonmaterial#highlight_size)
+of the normal, on faces turned toward the light. The light's color and
+falloff scale it, as they scale the diffuse term.
+
+Maps to the `material.highlight` uniform on the underlying shader. Default
+is `[0, 0, 0]`, which adds nothing.
+
+Returns a handle to the same material (Arc-shared), so calls chain.
+
+An item that is NaN or an infinity returns `MaterialError::NotFinite`,
+which names the call and the item, and the material keeps the value it
+had. The other languages also refuse an item past the 32-bit float range,
+such as `1e39`. JavaScript throws an `Error` named `InvalidInputError`,
+Python raises `InvalidInputError`, Swift throws `FragmentColorError` and
+Kotlin throws `FragmentColorException`.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::ToonMaterial;
+
+let glossy = ToonMaterial::new().highlight([1.0, 1.0, 1.0])?;
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { ToonMaterial } from "fragmentcolor";
+
+const glossy = new ToonMaterial().highlight([1.0, 1.0, 1.0]);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import ToonMaterial
+
+glossy = ToonMaterial().highlight([1.0, 1.0, 1.0])
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let glossy = try ToonMaterial().highlight([1.0, 1.0, 1.0])
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val glossy = ToonMaterial().highlight(listOf(1.0f, 1.0f, 1.0f))
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### ToonMaterial::highlight_size \{#highlight_size\}
+
+Set how large the highlight's spot is, from `0`, which hides it, to `1`,
+which spreads it over every face turned toward the light. The spot covers
+the faces where the cosine between the normal and the half vector, between
+the light and the eye, tops `1 - size`. At the default `0.05`, the spot
+reaches about 18 degrees from the glint.
+
+Maps to the `material.highlight_size` uniform on the underlying shader.
+
+Returns a handle to the same material (Arc-shared), so calls chain.
+
+NaN or an infinity returns `MaterialError::NotFinite`, which names the
+call, and the material keeps the value it had. The other languages also
+refuse a number past the 32-bit float range, such as `1e39`. JavaScript
+throws an `Error` named `InvalidInputError`, Python raises
+`InvalidInputError`, Swift throws `FragmentColorError` and Kotlin throws
+`FragmentColorException`.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::ToonMaterial;
+
+let wet = ToonMaterial::new()
+    .highlight([1.0, 1.0, 1.0])?
+    .highlight_size(0.15)?;
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { ToonMaterial } from "fragmentcolor";
+
+const wet = new ToonMaterial().highlight([1.0, 1.0, 1.0]).highlightSize(0.15);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import ToonMaterial
+
+wet = ToonMaterial().highlight([1.0, 1.0, 1.0]).highlight_size(0.15)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let wet = try ToonMaterial().highlight([1.0, 1.0, 1.0]).highlightSize(0.15)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val wet = ToonMaterial().highlight(listOf(1.0f, 1.0f, 1.0f)).highlightSize(0.15f)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### ToonMaterial::new \{#new\}
+
+Construct a white, opaque, single-sided `ToonMaterial` that lights in three
+bands, with no highlight and no rim. Its two maps start unbound: the
+renderer binds a 1×1 white default to each, so the material draws
+`base_color` in bands until you set a map through
+[`base_color_map()`](/api/scene/toonmaterial#base_color_map)
+or [`ramp_map()`](/api/scene/toonmaterial#ramp_map).
+`ToonMaterial::new` can't fail: the shader parts it composes are compiled
+into the library.
+
+The shader adds up each light the fragment receives, the scene's ambient
+light times the albedo, and the rim, and encodes the result as sRGB on the
+`Rgba8Unorm` and `Bgra8Unorm` targets FragmentColor creates, as
+`PbrMaterial` does. It reads these vertex inputs from the mesh:
+
+- `@location(0) position : vec3<f32>`, from `Vertex::new([...])` or `Vertex::pbr([...])`.
+- `@location(1) normal   : vec3<f32>`, set as `.set(Vertex::NORMAL, ...)`.
+- `@location(2) uv0      : vec2<f32>`, set as `.set(Vertex::UV0, ...)`.
+- `@location(7) color0   : vec4<f32>`, set as `.set(Vertex::COLOR0, ...)`, which tints the base color.
+- `@location(8) uv1      : vec2<f32>`, set as `.set(Vertex::UV1, ...)`, which the base color map samples on UV set 1.
+
+`Vertex::pbr` sets each of them to a neutral value. Locations 3 to 6 hold
+`model_0` to `model_3`, the columns of the Model's transform.
+
+#### Defaults (post-construction)
+
+| key                       | value          |
+| ------------------------- | -------------- |
+| `material.base_color`     | `[1, 1, 1, 1]` |
+| `material.bands`          | `3`            |
+| `material.highlight`      | `[0, 0, 0]`    |
+| `material.highlight_size` | `0.05`         |
+| `material.rim`            | `[0, 0, 0]`    |
+| `material.rim_width`      | `0.2`          |
+| `material.alpha_cutoff`   | `0.5`          |
+| `base_color_map`          | 1×1 white      |
+| `ramp_map`                | 1×1, no ramp   |
+| `camera.view_proj`        | identity 4×4   |
+| `camera.position`         | `[0, 0, 0]`    |
+| `lights.ambient`          | `[0.03; 3]`    |
+| placeholder light         | white, directional, pointing down `[0, -1, 0]` |
+
+The placeholder light lights a fresh material until the first
+[Light](/api/scene/light) reaches its shader,
+and returns once no Light does, as on `PbrMaterial`.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::ToonMaterial;
+
+let grass = ToonMaterial::new().base_color([0.3, 0.7, 0.2, 1.0])?;
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { ToonMaterial } from "fragmentcolor";
+
+const grass = new ToonMaterial().baseColor([0.3, 0.7, 0.2, 1.0]);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import ToonMaterial
+
+grass = ToonMaterial().base_color([0.3, 0.7, 0.2, 1.0])
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let grass = try ToonMaterial().baseColor([0.3, 0.7, 0.2, 1.0])
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val grass = ToonMaterial().baseColor(listOf(0.3f, 0.7f, 0.2f, 1.0f))
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### ToonMaterial::ramp_map \{#ramp_map\}
+
+The gradient that lights the material in place of its
+[`bands`](/api/scene/toonmaterial#bands), as a
+[`MaterialMap`](/api/scene/materialmap) handle that
+sets its texture. Each light reads it left to right by the cosine `ndl`
+between the normal and the light, at `ndl * 0.5 + 0.5`: the left half
+colors the faces turned away from the light, the middle the edge of the
+shadow, and the right edge the faces turned straight at it. The ramp's color
+times the base color is that light's diffuse term, so a colored ramp tints
+the shadows.
+
+The ramp takes over once it holds a texture wider than one texel. A texture
+one texel wide reads as no ramp, so the bands draw, with no error. The ramp
+samples its middle row, so a ramp one texel tall is enough. Its texture's
+own sampler applies: set `smooth: false` for hard steps between its texels.
+A source with no format of its own reads as sRGB, as a painted gradient is.
+
+The ramp reads the light, not the mesh's UVs, so its
+[`uv`](/api/scene/materialmap#uv) and
+[`transform`](/api/scene/materialmap#transform)
+return `MaterialError::NoUv`, which names the call, and change nothing.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::ToonMaterial;
+
+// Deep blue shadows, a warm middle tone and full light, one texel each.
+let ramp: Vec<u8> = vec![
+    20, 30, 90, 255, 20, 30, 90, 255,
+    200, 140, 110, 255, 255, 255, 255, 255,
+];
+let material = ToonMaterial::new();
+let map = material.ramp_map().texture((ramp, [4, 1]))?;
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { ToonMaterial } from "fragmentcolor";
+
+// Deep blue shadows, a warm middle tone and full light, one texel each.
+const ramp = [ 20, 30, 90, 255, 20, 30, 90, 255, 200, 140, 110, 255, 255, 255, 255, 255, ];
+const material = new ToonMaterial();
+const map = material.rampMap().texture(ramp, [4, 1]);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import ToonMaterial
+
+# Deep blue shadows, a warm middle tone and full light, one texel each.
+ramp = [
+    20, 30, 90, 255, 20, 30, 90, 255,
+    200, 140, 110, 255, 255, 255, 255, 255,
+]
+material = ToonMaterial()
+map = material.ramp_map().texture(ramp, size=[4, 1])
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+// Deep blue shadows, a warm middle tone and full light, one texel each.
+let ramp = [
+    20, 30, 90, 255, 20, 30, 90, 255,
+    200, 140, 110, 255, 255, 255, 255, 255,
+]
+let material = ToonMaterial()
+let map = try material.rampMap().texture(ramp, [4, 1])
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+// Deep blue shadows, a warm middle tone and full light, one texel each.
+val ramp = listOf(20, 30, 90, 255, 20, 30, 90, 255, 200, 140, 110, 255, 255, 255, 255, 255)
+val material = ToonMaterial()
+val map = material.rampMap().texture(ramp, listOf(4u, 1u))
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### ToonMaterial::rim \{#rim\}
+
+Set the color of the rim, in linear RGB, which the material adds to the
+faces the camera sees edge-on, along the silhouette. It needs no light, so it
+shows in shadow too. [`rim_width`](/api/scene/toonmaterial#rim_width)
+sets how far in from the edge it reaches.
+
+Maps to the `material.rim` uniform on the underlying shader. Default is
+`[0, 0, 0]`, which adds nothing.
+
+Returns a handle to the same material (Arc-shared), so calls chain.
+
+An item that is NaN or an infinity returns `MaterialError::NotFinite`,
+which names the call and the item, and the material keeps the value it
+had. The other languages also refuse an item past the 32-bit float range,
+such as `1e39`. JavaScript throws an `Error` named `InvalidInputError`,
+Python raises `InvalidInputError`, Swift throws `FragmentColorError` and
+Kotlin throws `FragmentColorException`.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::ToonMaterial;
+
+let ghost = ToonMaterial::new().rim([0.4, 0.8, 1.0])?;
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { ToonMaterial } from "fragmentcolor";
+
+const ghost = new ToonMaterial().rim([0.4, 0.8, 1.0]);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import ToonMaterial
+
+ghost = ToonMaterial().rim([0.4, 0.8, 1.0])
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let ghost = try ToonMaterial().rim([0.4, 0.8, 1.0])
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val ghost = ToonMaterial().rim(listOf(0.4f, 0.8f, 1.0f))
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### ToonMaterial::rim_width \{#rim_width\}
+
+Set how far in from the silhouette the rim reaches, from `0`, which hides
+it, to `1`, which covers every face not turned straight at the camera. The
+rim covers the faces where the cosine between the normal and the direction
+to the camera stays under the width. At the default `0.2`, it covers the
+faces turned more than about 78 degrees from the camera.
+
+Maps to the `material.rim_width` uniform on the underlying shader.
+
+Returns a handle to the same material (Arc-shared), so calls chain.
+
+NaN or an infinity returns `MaterialError::NotFinite`, which names the
+call, and the material keeps the value it had. The other languages also
+refuse a number past the 32-bit float range, such as `1e39`. JavaScript
+throws an `Error` named `InvalidInputError`, Python raises
+`InvalidInputError`, Swift throws `FragmentColorError` and Kotlin throws
+`FragmentColorException`.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::ToonMaterial;
+
+let glow = ToonMaterial::new()
+    .rim([1.0, 0.6, 0.2])?
+    .rim_width(0.35)?;
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { ToonMaterial } from "fragmentcolor";
+
+const glow = new ToonMaterial().rim([1.0, 0.6, 0.2]).rimWidth(0.35);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import ToonMaterial
+
+glow = ToonMaterial().rim([1.0, 0.6, 0.2]).rim_width(0.35)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let glow = try ToonMaterial().rim([1.0, 0.6, 0.2]).rimWidth(0.35)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val glow = ToonMaterial().rim(listOf(1.0f, 0.6f, 0.2f)).rimWidth(0.35f)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### ToonMaterial::shader \{#shader\}
+
+Borrow the underlying `Shader`, for a uniform the material's setters don't
+cover. It is the shader the material draws with, so a change reaches every
+Model that uses the material, and every clone of it.
+
+For the camera and the lights, add a
+[Camera](/api/scene/camera) and
+[Lights](/api/scene/light) to the
+[Pass](/api/core/pass) that draws the material,
+rather than setting `camera.*` by hand. They keep the shader up to date.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::ToonMaterial;
+
+let material = ToonMaterial::new();
+material.shader().set("material.alpha_cutoff", 0.25)?;
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { ToonMaterial } from "fragmentcolor";
+
+const material = new ToonMaterial();
+material.shader().set("material.alpha_cutoff", 0.25);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import ToonMaterial
+
+material = ToonMaterial()
+material.shader().set("material.alpha_cutoff", 0.25)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let material = ToonMaterial()
+try material.shader().set("material.alpha_cutoff", 0.25)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val material = ToonMaterial()
+material.shader().set("material.alpha_cutoff", 0.25f)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>

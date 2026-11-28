@@ -9,7 +9,7 @@
 //!
 //! Swift and Kotlin see each wrapper under the name of the type it wraps:
 //! `MobileWindowTarget` exports as `WindowTarget` and `MobileTextureTarget`
-//! as `TextureTarget`. The extension files keep the old names as typealiases.
+//! as `TextureTarget`.
 //!
 //! The iOS and Android constructors return these wrapper types; `TargetHandle`
 //! references them so that `Renderer::render_mobile` continues to work.

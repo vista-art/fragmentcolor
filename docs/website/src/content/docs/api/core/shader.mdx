@@ -202,7 +202,7 @@ Every platform accepts such a shader at `Shader::new`. It draws where the device
 - `RendererError::BindingError { uniform, expected, found }` for a texture uniform that was never set, or whose texture its slot can't take by format, usage, dimension, sample count or mip levels.
 - `RendererError::EntryError { stage }` for a render shader without its `@vertex` or `@fragment` entry point.
 
-JavaScript throws an `Error` named after the class Python raises, such as `LimitError`, with the same fields as properties. Python raises `LimitError`, `FeatureError`, `BindingError` and `EntryError`, each a `FragmentColorError` with the fields as attributes. Swift throws `FragmentColorError.Limit`, `.Feature`, `.Binding` and `.Entry`, and Kotlin the `FragmentColorException` subclasses of the same names.
+JavaScript throws an `Error` named after the class Python raises, such as `LimitError`, with the same fields as properties. Python raises `LimitError`, `FeatureError`, `BindingError` and `EntryError`, each a `FragmentColorError` with the fields as attributes. Swift throws `FragmentColorError.Limit`, `.Feature`, `.Binding` and `.Entry`, and Kotlin the `FragmentColorException` subclasses of the same names, each with the error's `message` and the same fields.
 
 An unset PBR map slot, such as `base_color_map`, binds a 1x1 default in a render shader, when the slot takes a 2D float texture. One set to a texture `unregister_texture` removed, or one another `Renderer` created, returns `RendererError::TextureNotFoundError`. A `Material` map that this `Renderer` holds no copy of yet binds the PBR default when its slot has one of the five PBR names, sits in a render shader and takes a 2D float texture, as an unset slot does, and returns `RendererError::BindingError` otherwise. That happens on the web before `load`, where the error asks for `load`, and on native for a map that another thread sets while `render` runs, which the next `render` uploads.
 
@@ -857,7 +857,7 @@ The uniform's declared WGSL type decides how the value is read, so a call behave
 - A `Texture` created by a `Renderer` binds to a texture uniform, a `texture_external` one included.
 - Raw bytes replace a whole storage-buffer or push-constant root: a byte slice in Rust, a `Uint8Array` in JavaScript, `bytes` (or a `bytearray` or `memoryview`) in Python, `Data` in Swift, or a `ByteArray` in Kotlin. The byte count must equal the root's size, and any other length throws.
 
-Setting one field of a storage root uploads the whole root from the shader's CPU copy at the next render that binds it, which overwrites everything a compute pass wrote to that root.
+Setting a field or an item of a storage root uploads only its bytes at the next render that binds the root, so the rest of the root keeps what a compute pass wrote there. Several Renderers can draw one shader: each uploads only the sets it hasn't taken yet and keeps what its own passes wrote. Uploads cover whole 4-byte words, so setting one `f16` also writes the `f16` that shares its word, from the shader's copy. Raw bytes on the root upload all of it, and so does a render that creates the root's buffer.
 
 #### Example
 
@@ -1029,8 +1029,18 @@ Only a storage-buffer or push-constant root takes its whole bytes.
 
 An `f16` uniform reads back as `f32` numbers that hold the value rounded to `f16`, so `0.1` reads back as `0.0999755859375`.
 
-A texture slot reads back the id of what it binds. A `Material` map's slot
+A texture slot reads back the `TextureId` of what it binds. A `Material` map's slot
 holds the map's id from the setter call on, before any `Renderer` loads it.
+
+A sampler slot reads back a `SamplerInfo`, whose `comparison` says whether the
+slot is a `sampler_comparison`. A sampler binds on its own, so `set` refuses its key.
+
+Rust names the type it reads into, as in `let res: [f32; 2] = shader.get("resolution")?`.
+JavaScript, Python, Swift and Kotlin return the plain value: a number or a bool
+for a scalar, a list of numbers for a vector or a matrix, column by column (a
+typed array in JavaScript), a `TextureId` for a texture, a `SamplerInfo` for a
+sampler, and bytes for a struct, array or buffer root. Swift and Kotlin type it
+as `Any`, which `as?` or `as` narrows, as in `try shader.get("resolution") as? [Float]`.
 
 #### Example
 
@@ -2619,6 +2629,325 @@ lang="kotlin"
 
 ---
 
+### Shader::alpha_mode \{#alpha_mode\}
+
+Set how the renderer treats the alpha channel this shader writes. It takes an `AlphaMode`
+and returns the shader, so calls can chain.
+
+- `AlphaMode::Opaque` (the default): blending is off and depth writes are on.
+- `AlphaMode::Mask`: the pipeline is the opaque one. Your fragment shader does the cut-out
+  itself, with `discard`.
+- `AlphaMode::Blend`: depth writes turn off and the color target over-blends with
+  `SrcAlpha / OneMinusSrcAlpha`. The renderer draws blended Models on a Pass back to front
+  from the Pass camera, after every opaque draw.
+
+Use it on a Shader you pass to `Model::new` as the material, and on any Shader you draw on
+its own. A [PbrMaterial](/api/scene/pbrmaterial) sets the same
+state for its built-in shader through
+[PbrMaterial::alpha_mode](/api/scene/pbrmaterial#alpha_mode).
+
+Blending needs a color target that blends and a shader that writes a `vec4`. A format that
+never blends, such as an integer one, and an output without alpha return
+`PassError::InvalidColorTarget`.
+
+This is pipeline state. The renderer keeps one pipeline per shader, alpha mode and
+face setting, so a change builds a pipeline once and reuses it from then on.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::{AlphaMode, Shader};
+
+let shader = Shader::new(r#"
+@vertex
+fn vs_main(@location(0) position: vec3<f32>) -> @builtin(position) vec4<f32> {
+    return vec4<f32>(position, 1.0);
+}
+
+@fragment
+fn fs_main() -> @location(0) vec4<f32> {
+    return vec4<f32>(0.6, 0.8, 1.0, 0.25);
+}
+"#)?;
+
+let glass = shader.alpha_mode(AlphaMode::Blend);
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { AlphaMode, Shader } from "fragmentcolor";
+
+const shader = new Shader(\`
+
+@vertex
+fn vs_main(@location(0) position: vec3<f32>) -> @builtin(position) vec4<f32> {
+    return vec4<f32>(position, 1.0);
+}
+
+@fragment
+fn fs_main() -> @location(0) vec4<f32> {
+    return vec4<f32>(0.6, 0.8, 1.0, 0.25);
+}
+
+\`);
+
+const glass = shader.alphaMode(AlphaMode.Blend);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import AlphaMode, Shader
+
+shader = Shader("""
+@vertex
+fn vs_main(@location(0) position: vec3<f32>) -> @builtin(position) vec4<f32> {
+    return vec4<f32>(position, 1.0);
+}
+
+@fragment
+fn fs_main() -> @location(0) vec4<f32> {
+    return vec4<f32>(0.6, 0.8, 1.0, 0.25);
+}
+
+""")
+
+glass = shader.alpha_mode(AlphaMode.Blend)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let shader = try Shader("""
+@vertex
+fn vs_main(@location(0) position: vec3<f32>) -> @builtin(position) vec4<f32> {
+    return vec4<f32>(position, 1.0);
+}
+
+@fragment
+fn fs_main() -> @location(0) vec4<f32> {
+    return vec4<f32>(0.6, 0.8, 1.0, 0.25);
+}
+
+""")
+
+let glass = shader.alphaMode(AlphaMode.blend)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val shader = Shader("""
+@vertex
+fn vs_main(@location(0) position: vec3<f32>) -> @builtin(position) vec4<f32> {
+    return vec4<f32>(position, 1.0);
+}
+
+@fragment
+fn fs_main() -> @location(0) vec4<f32> {
+    return vec4<f32>(0.6, 0.8, 1.0, 0.25);
+}
+
+""")
+
+val glass = shader.alphaMode(AlphaMode.BLEND)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Shader::double_sided \{#double_sided\}
+
+Choose whether the renderer draws the back faces of this shader's triangles. It takes a
+boolean and returns the shader, so calls can chain.
+
+A Shader culls back faces by default (`false`), as every material does and as
+glTF's default is. A triangle whose vertices run counter-clockwise on screen faces
+the viewer and draws, and one that runs clockwise faces away and costs no fragment
+work. `Shader::default()` and the fullscreen triangles in the examples wind
+counter-clockwise, so culling leaves them whole.
+
+Pass `true` to draw both faces, for a surface seen from both sides: a leaf or grass
+card, a flag, cloth, paper, an open mesh seen from inside, or a flat shape whose
+vertices run clockwise.
+
+Use it on a Shader you pass to `Model::new` as the material, and on any Shader you draw on
+its own. The materials set the same state for their built-in shaders through
+[PbrMaterial::double_sided](/api/scene/pbrmaterial#double_sided)
+and its siblings on `UnlitMaterial` and `ToonMaterial`.
+
+This is pipeline state. The renderer keeps one pipeline per shader, alpha mode and
+face setting, so a change builds a pipeline once and reuses it from then on.
+
+A shader that declares `override DOUBLE_SIDED: bool` gets this setting as its value.
+The `PbrMaterial` and `ToonMaterial` shaders read it to light the outer faces of a
+mirrored `Model` as the front.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::Shader;
+
+let shader = Shader::new(r#"
+@vertex
+fn vs_main(@location(0) position: vec3<f32>) -> @builtin(position) vec4<f32> {
+    return vec4<f32>(position, 1.0);
+}
+
+@fragment
+fn fs_main() -> @location(0) vec4<f32> {
+    return vec4<f32>(1.0, 0.5, 0.2, 1.0);
+}
+"#)?;
+
+let leaf = shader.double_sided(true);
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Shader } from "fragmentcolor";
+
+const shader = new Shader(\`
+
+@vertex
+fn vs_main(@location(0) position: vec3<f32>) -> @builtin(position) vec4<f32> {
+    return vec4<f32>(position, 1.0);
+}
+
+@fragment
+fn fs_main() -> @location(0) vec4<f32> {
+    return vec4<f32>(1.0, 0.5, 0.2, 1.0);
+}
+
+\`);
+
+const leaf = shader.doubleSided(true);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Shader
+
+shader = Shader("""
+@vertex
+fn vs_main(@location(0) position: vec3<f32>) -> @builtin(position) vec4<f32> {
+    return vec4<f32>(position, 1.0);
+}
+
+@fragment
+fn fs_main() -> @location(0) vec4<f32> {
+    return vec4<f32>(1.0, 0.5, 0.2, 1.0);
+}
+
+""")
+
+leaf = shader.double_sided(True)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let shader = try Shader("""
+@vertex
+fn vs_main(@location(0) position: vec3<f32>) -> @builtin(position) vec4<f32> {
+    return vec4<f32>(position, 1.0);
+}
+
+@fragment
+fn fs_main() -> @location(0) vec4<f32> {
+    return vec4<f32>(1.0, 0.5, 0.2, 1.0);
+}
+
+""")
+
+let leaf = shader.doubleSided(true)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val shader = Shader("""
+@vertex
+fn vs_main(@location(0) position: vec3<f32>) -> @builtin(position) vec4<f32> {
+    return vec4<f32>(position, 1.0);
+}
+
+@fragment
+fn fs_main() -> @location(0) vec4<f32> {
+    return vec4<f32>(1.0, 0.5, 0.2, 1.0);
+}
+
+""")
+
+val leaf = shader.doubleSided(true)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
 ### Shader::default() \{#default\}
 
 Creates a new [Shader](/api/core/shader) from the default shader source.
@@ -2635,7 +2964,7 @@ var<uniform> resolution: vec2<f32>;
 
 @vertex
 fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput {
-    let x = f32(i32(in_vertex_index) - 1);
+    let x = f32(1 - i32(in_vertex_index));
     let y = f32(i32(in_vertex_index & 1u) * 2 - 1);
     return VertexOutput(vec4<f32>(x, y, 0.0, 1.0));
 }

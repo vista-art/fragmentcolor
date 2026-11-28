@@ -20,8 +20,7 @@ pub fn rendercanvas_context_hook(
 }
 
 /// The window target Python gets from `Renderer.create_target`.
-/// Python names it `WindowTarget`, as every other binding does, and
-/// `fragmentcolor.RenderCanvasTarget` stays as an alias.
+/// Python names it `WindowTarget`, as every other binding does.
 #[doc(hidden)]
 #[pyclass(dict, name = "WindowTarget")]
 #[lsp_doc("docs/api/hidden/platforms/python/render_canvas_target/render_canvas_target.md")]
@@ -74,7 +73,7 @@ impl RenderCanvasTarget {
 
     #[lsp_doc("docs/api/targets/window_target/resize.md")]
     pub fn resize(&mut self, size: crate::PySize<'_>) -> PyResult<()> {
-        <Self as Target>::resize(self, Size::try_from(size)?)?;
+        <Self as Target>::resize(self, size.read("WindowTarget.resize")?)?;
         Ok(())
     }
 
@@ -181,7 +180,7 @@ impl PyTextureTarget {
 
     #[lsp_doc("docs/api/targets/texture_target/resize.md")]
     pub fn resize(&mut self, size: crate::PySize<'_>) -> PyResult<()> {
-        <Self as Target>::resize(self, Size::try_from(size)?)?;
+        <Self as Target>::resize(self, size.read("TextureTarget.resize")?)?;
         Ok(())
     }
 

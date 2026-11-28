@@ -1,4 +1,4 @@
-from fragmentcolor import Light, Material, Mesh, Model, Renderer, Scene, Vertex
+from fragmentcolor import Light, Mesh, Model, PbrMaterial, Renderer, Scene, Vertex
 
 renderer = Renderer()
 target = renderer.create_texture_target([64, 64])
@@ -13,7 +13,7 @@ mesh.add_vertices([
 scene = Scene()
 # A warm dusk ambient. It applies to every Material added below.
 scene.ambient([0.06, 0.04, 0.03])
-scene.add(Model(mesh, Material.pbr()))
+scene.add(Model(mesh, PbrMaterial()))
 scene.add(Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]))
 
 renderer.render(scene, target)

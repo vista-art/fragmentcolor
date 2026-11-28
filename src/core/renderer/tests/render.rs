@@ -280,6 +280,62 @@ struct VOut { @builtin(position) pos: vec4<f32> };
     });
 }
 
+// Story: a `set` that lands while a render holds the storage for its upload waits in
+// `pending`. The next render applies it and uploads its range, and the counts the
+// compute pass wrote stay.
+#[test]
+fn a_set_queued_during_an_upload_goes_up_with_the_next_render() {
+    pollster::block_on(async move {
+        // Arrange
+        let renderer = Renderer::new();
+        let probe = renderer
+            .create_texture_target([8u32, 8u32])
+            .await
+            .expect("texture target");
+        let shader = Shader::new(
+            r#"
+struct QueuedSim { step: u32, counts: array<u32, 4> }
+@group(0) @binding(0) var<storage, read_write> queued_sim: QueuedSim;
+@compute @workgroup_size(1)
+fn cs_main() {
+  for (var i = 0u; i < 4u; i++) { queued_sim.counts[i] += queued_sim.step; }
+}
+"#,
+        )
+        .expect("simulation shader");
+        let pass = Pass::from_shader("simulation", &shader);
+        shader.set("queued_sim.step", 1u32).expect("set step");
+        renderer.render(&pass, &probe).expect("first render");
+
+        // Act
+        let uploading = shader.object.storage.upgradable_read();
+        shader
+            .set("queued_sim.counts[2]", 100u32)
+            .expect("set while uploading");
+        let queued = shader.object.pending.len();
+        drop(uploading);
+        renderer.render(&pass, &probe).expect("second render");
+
+        // Assert
+        let bytes = renderer
+            .read_storage(&shader, "queued_sim")
+            .await
+            .expect("read_storage");
+        let words: Vec<u32> = bytes
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|chunk| u32::from_le_bytes(*chunk))
+            .collect();
+        assert_eq!(queued, 1, "the set waits in pending while the lock is held");
+        assert_eq!(
+            words,
+            [1, 2, 2, 101, 2],
+            "count 2 went up, and the rest stayed"
+        );
+    });
+}
+
 #[test]
 fn sampler_comparison_binds_and_renders_smoke() {
     pollster::block_on(async move {
@@ -868,7 +924,7 @@ fn model_pass() -> Arc<PassObject> {
             .map(|corner| crate::Vertex::pbr(corner).set(crate::Vertex::NORMAL, [0.0, 0.0, 1.0])),
     );
     let pass = Pass::new("models");
-    pass.add(&crate::Model::new(mesh, crate::Material::pbr()))
+    pass.add(&crate::Model::new(mesh, crate::PbrMaterial::new()))
         .expect("add failed");
     pass.passes().first().cloned().expect("pass")
 }
@@ -996,7 +1052,7 @@ fn default_depth_matches_the_color_attachment() {
                 crate::Vertex::pbr(corner).set(crate::Vertex::NORMAL, [0.0, 0.0, 1.0])
             }),
         );
-        pass.add(&crate::Model::new(mesh, crate::Material::pbr()))
+        pass.add(&crate::Model::new(mesh, crate::PbrMaterial::new()))
             .expect("add failed");
         pass.set_target(&target).expect("set_target failed");
         let pass = pass.passes().first().cloned().expect("pass");
@@ -1348,8 +1404,8 @@ const LEFT: (u32, u32) = (4, 8);
 const RIGHT: (u32, u32) = (12, 8);
 
 /// A material that glows red without any light.
-fn red_glow() -> crate::Material {
-    crate::Material::pbr()
+fn red_glow() -> crate::PbrMaterial {
+    crate::PbrMaterial::new()
         .base_color([0.0, 0.0, 0.0, 1.0])
         .expect("base color")
         .emissive([1.0, 0.0, 0.0])
@@ -1357,7 +1413,7 @@ fn red_glow() -> crate::Material {
 }
 
 /// A model whose mesh spans `left` to `right` across the middle of the view.
-fn strip(material: &crate::Material, left: f32, right: f32) -> crate::Model {
+fn strip(material: impl Into<crate::Material>, left: f32, right: f32) -> crate::Model {
     let mesh = crate::Mesh::new();
     let corners = [
         [left, -0.5, 0.0],
@@ -1371,7 +1427,7 @@ fn strip(material: &crate::Material, left: f32, right: f32) -> crate::Model {
         corners
             .map(|corner| crate::Vertex::pbr(corner).set(crate::Vertex::NORMAL, [0.0, 0.0, 1.0])),
     );
-    crate::Model::new(mesh, material.clone())
+    crate::Model::new(mesh, material)
 }
 
 fn camera() -> crate::Camera {
@@ -1502,7 +1558,7 @@ fn a_plain_shader_draws_a_model_mesh() {
             .create_texture_target([SIDE, SIDE])
             .await
             .expect("texture target");
-        let model = strip(&red_glow(), -1.0, -0.2);
+        let model = strip(red_glow(), -1.0, -0.2);
         let pass = Pass::new("models");
         pass.set_clear_color(BLUE).expect("set clear color");
         pass.add(&model).expect("add model");
@@ -1547,7 +1603,7 @@ fn model_columns_without_a_model_error() {
             .create_texture_target([SIDE, SIDE])
             .await
             .expect("texture target");
-        let model = strip(&red_glow(), -1.0, -0.2);
+        let model = strip(red_glow(), -1.0, -0.2);
         let pass = Pass::new("models");
         pass.add(&model).expect("add model");
 
@@ -1675,7 +1731,7 @@ fn a_material_shader_draws_its_own_instances() {
             .await
             .expect("texture target");
         let shader = crate::Shader::new(INDEX_COLOR).expect("shader");
-        let model = strip(&crate::Material::custom(shader.clone()), 0.2, 1.0);
+        let model = strip(&shader, 0.2, 1.0);
         let pass = Pass::new("models");
         pass.set_clear_color(BLUE).expect("set clear color");
         pass.add(&model).expect("add model");
@@ -1707,8 +1763,8 @@ fn an_empty_index_list_draws_nothing() {
             .create_texture_target([SIDE, SIDE])
             .await
             .expect("texture target");
-        let opaque = strip(&red_glow(), -1.0, 1.0);
-        let blended = strip(&red_glow().alpha_mode(crate::AlphaMode::Blend), -1.0, 1.0);
+        let opaque = strip(red_glow(), -1.0, 1.0);
+        let blended = strip(red_glow().alpha_mode(crate::AlphaMode::Blend), -1.0, 1.0);
         let mut images = Vec::new();
         for model in [opaque, blended] {
             model.mesh().set_indices(Vec::new());
@@ -1861,7 +1917,7 @@ fn the_blend_phase_draws_the_planned_buffers() {
             .create_texture_target([SIDE, SIDE])
             .await
             .expect("texture target");
-        let model = strip(&red_glow().alpha_mode(crate::AlphaMode::Blend), -1.0, 1.0);
+        let model = strip(red_glow().alpha_mode(crate::AlphaMode::Blend), -1.0, 1.0);
         let pass = Pass::new("blended");
         pass.set_clear_color(BLUE).expect("set clear color");
         pass.add(&model).expect("add model");
@@ -1885,7 +1941,7 @@ fn the_blend_phase_draws_the_planned_buffers() {
 }
 
 /// `strip`, with one more property on each vertex, which widens its stride.
-fn wide_strip(material: &crate::Material, left: f32, right: f32) -> crate::Model {
+fn wide_strip(material: &crate::PbrMaterial, left: f32, right: f32) -> crate::Model {
     let narrow = strip(material, left, right);
     let mesh = crate::Mesh::new();
     let vertices = narrow.mesh().object.verts.read().clone();

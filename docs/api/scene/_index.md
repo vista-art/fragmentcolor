@@ -6,6 +6,9 @@ the rest are the things you put inside it.
 - Scene
 - Model
 - Material
-- TextureSlot
+- PbrMaterial
+- UnlitMaterial
+- ToonMaterial
+- MaterialMap
 - Camera
 - Light

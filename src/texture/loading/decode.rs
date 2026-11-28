@@ -5,6 +5,8 @@ use image::DynamicImage;
 
 use super::TextureSource;
 use crate::Size;
+#[cfg(any(wasm, test))]
+use crate::bindings::InputError;
 use crate::texture::mipmap::read_floats;
 use crate::texture::write::bytes_to_u16_vec;
 use crate::texture::{TextureError, TextureOptions, check_size, measure_texel};
@@ -187,25 +189,27 @@ pub(crate) fn array_pixels(
 }
 
 /// Checks a `size` and `format` for a source with RGBA8 pixels at the size `own`,
-/// such as a JavaScript `ImageData` or canvas. A different size, or a
-/// format other than 8-bit RGBA or BGRA, would misread the pixels it holds.
+/// such as a JavaScript `ImageData` or canvas. A different size, or a format other
+/// than 8-bit RGBA or BGRA, would misread the pixels it holds, so each is an error that names `call`.
 #[cfg(any(wasm, test))]
 pub(crate) fn check_pixels(
     own: Size,
     size: Option<Size>,
     format: wgpu::TextureFormat,
-) -> Result<(), TextureError> {
+    call: &str,
+) -> Result<(), InputError> {
     let flat = |size: Size| (size.width, size.height, size.depth.unwrap_or(1));
     if let Some(size) = size.filter(|size| flat(*size) != flat(own)) {
-        return Err(TextureError::InvalidInput(format!(
-            "size {size:?} differs from the source's {}x{}",
-            own.width, own.height
+        return Err(InputError(format!(
+            "{call}: size {} differs from the source's {}",
+            size.show(),
+            own.show()
         )));
     }
     match holds_rgba8(format) {
         true => Ok(()),
-        false => Err(TextureError::InvalidInput(format!(
-            "the source holds RGBA8 pixels, which a {format:?} texture can't take"
+        false => Err(InputError(format!(
+            "{call}: the source holds RGBA8 pixels, which a {format:?} texture can't take"
         ))),
     }
 }

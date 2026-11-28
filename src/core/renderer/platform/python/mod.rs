@@ -1,13 +1,13 @@
 //! The `Renderer` methods Python calls.
 
-use crate::bindings::python::PyUnsigned;
+use crate::bindings::InputError;
+use crate::bindings::python::{PyFlag, PyLogLevel, PyShader, PyText, PyTextureFormat, refuse};
 use crate::{
-    PySize, Renderer, Size,
+    PySize, Renderer,
     targets::{PyTextureTarget, RenderCanvasTarget},
-    texture::{PyTextureId, PyTextureSource},
+    texture::{PyTextureId, PyTextureSource, TEXTURE_INPUTS},
 };
 use lsp_doc::lsp_doc;
-use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
@@ -106,8 +106,9 @@ impl Renderer {
     #[staticmethod]
     #[pyo3(name = "set_log_level")]
     #[lsp_doc("docs/api/core/renderer/set_log_level.md")]
-    pub fn set_log_level_py(level: crate::LogLevel) {
-        Self::set_log_level(level);
+    pub fn set_log_level_py(level: PyLogLevel<'_>) -> PyResult<()> {
+        Self::set_log_level(level.read("Renderer.set_log_level: level")?);
+        Ok(())
     }
 
     #[lsp_doc("docs/api/core/renderer/create_target.md")]
@@ -153,7 +154,8 @@ impl Renderer {
     #[pyo3(name = "create_texture_target")]
     pub fn create_texture_target_py(&self, size: PySize<'_>) -> Result<Py<PyTextureTarget>, PyErr> {
         Python::attach(|py| -> Result<Py<PyTextureTarget>, PyErr> {
-            let target = pollster::block_on(self.create_texture_target(Size::try_from(size)?))?;
+            let size = size.read("Renderer.create_texture_target")?;
+            let target = pollster::block_on(self.create_texture_target(size))?;
             let py_target: PyTextureTarget = target.into();
             Ok(py_target.into_pyobject(py)?.unbind())
         })
@@ -174,13 +176,14 @@ impl Renderer {
         &self,
         input: PyTextureSource<'py>,
         size: Option<PySize<'py>>,
-        format: Option<crate::TextureFormat>,
-        mipmaps: Option<bool>,
+        format: Option<PyTextureFormat<'py>>,
+        mipmaps: Option<PyFlag<'py>>,
         sampler: Option<crate::texture::PySamplerOptions<'py>>,
         usage: Option<crate::texture::PyTextureUsage<'py>>,
     ) -> Result<crate::texture::Texture, PyErr> {
         let keywords = TextureKeywords::new(size, format, mipmaps, sampler, usage);
-        let spec = py_to_texture_spec(input, keywords, "Renderer.create_texture")?;
+        let call = "Renderer.create_texture";
+        let spec = py_to_texture_spec(input, keywords, call, TEXTURE_INPUTS)?;
         Ok(pollster::block_on(self.create_texture(spec))?)
     }
 
@@ -188,7 +191,7 @@ impl Renderer {
     #[lsp_doc("docs/api/core/renderer/load.md")]
     pub fn load_py(&self, renderable: Py<PyAny>) -> Result<(), PyErr> {
         Python::attach(|py| -> Result<(), PyErr> {
-            let r = crate::PyRenderable::from_any(renderable.bind(py))?;
+            let r = crate::PyRenderable::from_any(renderable.bind(py), "Renderer.load")?;
             pollster::block_on(self.load(&r))?;
             Ok(())
         })
@@ -196,8 +199,14 @@ impl Renderer {
 
     #[pyo3(name = "read_storage")]
     #[lsp_doc("docs/api/core/renderer/read_storage.md")]
-    pub fn read_storage_py(&self, shader: &crate::Shader, binding: &str) -> Result<Vec<u8>, PyErr> {
-        Ok(pollster::block_on(self.read_storage(shader, binding))?)
+    pub fn read_storage_py(
+        &self,
+        shader: PyShader<'_>,
+        binding: PyText<'_>,
+    ) -> Result<Vec<u8>, PyErr> {
+        let shader = shader.read("Renderer.read_storage: shader")?;
+        let binding = binding.read("Renderer.read_storage: binding")?;
+        Ok(pollster::block_on(self.read_storage(&shader, &binding))?)
     }
 
     #[pyo3(name = "render")]
@@ -205,7 +214,7 @@ impl Renderer {
     pub fn render_py(&self, renderable: Py<PyAny>, target: Py<PyAny>) -> Result<(), PyErr> {
         Python::attach(|py| -> Result<(), PyErr> {
             // Convert any supported Python input (single object or sequence) into a PyRenderable
-            let r = crate::PyRenderable::from_any(renderable.bind(py))?;
+            let r = crate::PyRenderable::from_any(renderable.bind(py), "Renderer.render")?;
 
             // Downcast target to supported targets
             if let Ok(bound) = target.bind(py).cast::<RenderCanvasTarget>() {
@@ -215,8 +224,9 @@ impl Renderer {
                 self.render(&r, &*bound.borrow())?;
                 Ok(())
             } else {
-                Err(PyErr::new::<PyTypeError, _>(
-                    "Unsupported target type. Expected WindowTarget or TextureTarget",
+                Err(refuse(
+                    target.bind(py),
+                    "Renderer.render: target must be a WindowTarget or a TextureTarget",
                 ))
             }
         })?;
@@ -232,28 +242,26 @@ impl Renderer {
         size: PySize<'_>,
     ) -> Result<crate::texture::Texture, PyErr> {
         Python::attach(|_py| -> Result<crate::texture::Texture, PyErr> {
-            let tex = pollster::block_on(self.create_depth_texture(Size::try_from(size)?))?;
+            let size = size.read("Renderer.create_depth_texture")?;
+            let tex = pollster::block_on(self.create_depth_texture(size))?;
             Ok(tex)
         })
     }
 
     // Storage texture: single entry, optional data + usage kwargs.
-    // `usage_bits` is the old name of `usage` and warns when used.
     #[pyo3(
         name = "create_storage_texture",
-        signature = (size, format, data=None, usage=None, usage_bits=None)
+        signature = (size, format, data=None, usage=None)
     )]
     #[lsp_doc("docs/api/core/renderer/hidden/create_storage_texture_py.md")]
     pub fn create_storage_texture_py(
         &self,
-        py: Python<'_>,
         size: PySize<'_>,
-        format: crate::TextureFormat,
+        format: PyTextureFormat<'_>,
         data: Option<crate::texture::PyTextureBytes<'_>>,
         usage: Option<crate::texture::PyTextureUsage<'_>>,
-        usage_bits: Option<PyUnsigned<'_>>,
     ) -> Result<crate::texture::Texture, PyErr> {
-        let input = read_storage_input(py, size, format, data, usage, usage_bits)?;
+        let input = read_storage_input(size, format, data, usage)?;
         Ok(pollster::block_on(self.create_storage_texture(input))?)
     }
 
@@ -278,82 +286,85 @@ impl Renderer {
     }
 }
 
+/// The input `create_storage_texture` passes on: its size, format, usage and seed bytes.
+fn read_storage_input(
+    size: PySize<'_>,
+    format: PyTextureFormat<'_>,
+    data: Option<crate::texture::PyTextureBytes<'_>>,
+    usage: Option<crate::texture::PyTextureUsage<'_>>,
+) -> PyResult<crate::TextureInput> {
+    const CALL: &str = "Renderer.create_storage_texture";
+    let options = crate::TextureOptions {
+        size: Some(size.read(CALL)?),
+        format: format.read(&format!("{CALL}: format"))?,
+        usage: usage
+            .map(|usage| usage.read(&format!("{CALL}: usage")))
+            .transpose()?,
+        ..Default::default()
+    };
+    let data = match data {
+        Some(bytes) => crate::TextureData::Bytes(bytes.read(&format!("{CALL}: data"))?),
+        None => crate::TextureData::Empty,
+    };
+    Ok(crate::TextureInput { data, options })
+}
+
 /// Builds the `TextureInput` for `create_texture` and the Material texture setters.
 /// An ndarray brings its own size, which a `size` keyword must match, and the other kwargs apply to it too.
 /// A `Texture` keeps the options it was created with, so a kwarg beside one raises an error that names `call`.
-/// The input `create_storage_texture` passes on: its size, format, usage and seed bytes.
-/// `usage_bits`, the old spelling of `usage`, warns that it is deprecated.
-fn read_storage_input(
-    py: Python<'_>,
-    size: PySize<'_>,
-    format: crate::TextureFormat,
-    data: Option<crate::texture::PyTextureBytes<'_>>,
-    usage: Option<crate::texture::PyTextureUsage<'_>>,
-    usage_bits: Option<PyUnsigned<'_>>,
-) -> PyResult<crate::TextureInput> {
-    if usage_bits.is_some() {
-        let warning = py.get_type::<pyo3::exceptions::PyDeprecationWarning>();
-        PyErr::warn(py, &warning, c"usage_bits is deprecated, pass usage", 1)?;
-    }
-    Ok(crate::TextureInput {
-        data: match data {
-            Some(bytes) => {
-                crate::TextureData::Bytes(bytes.read("Renderer.create_storage_texture: data")?)
-            }
-            None => crate::TextureData::Empty,
-        },
-        options: crate::TextureOptions {
-            size: Some(Size::try_from(size)?),
-            format,
-            usage: match (usage, usage_bits) {
-                (Some(usage), _) => Some(usage.read("usage")?),
-                (None, Some(bits)) => Some(bits.read("usage_bits")?),
-                (None, None) => None,
-            },
-            ..Default::default()
-        },
-    })
-}
-
+/// A value no source takes raises a `TypeError` that names `call` and lists `inputs`, what it takes.
 pub(crate) fn py_to_texture_spec(
     input: PyTextureSource<'_>,
     options: TextureKeywords<'_>,
     call: &str,
+    inputs: &str,
 ) -> Result<crate::texture::TextureInput, PyErr> {
     if matches!(input, PyTextureSource::Texture(_)) && !options.is_empty() {
-        return Err(crate::texture::TextureError::InvalidInput(format!(
-            "{call}: a Texture keeps the options it was created with, so it takes no size, format, mipmaps, sampler or usage"
-        ))
-        .into());
+        let message =
+            format!("{call}: a Texture keeps the options it was created with, so it takes none");
+        return Err(InputError(message).into());
     }
-    let size = options.size.map(Size::try_from).transpose()?;
-    let mut spec = match input {
-        PyTextureSource::Array(array) => {
-            crate::texture::read_ndarray(&array, size, options.format)?
-        }
-        source => source.read(call)?,
+    let source = match input {
+        PyTextureSource::Array(array) => Source::Array(array),
+        source => Source::Read(source.read(call, inputs)?),
+    };
+    let size = options.size.map(|size| size.read(call)).transpose()?;
+    let format = options
+        .format
+        .map(|format| format.read(&format!("{call}: format")))
+        .transpose()?;
+    let mut spec = match source {
+        Source::Read(spec) => spec,
+        Source::Array(array) => crate::texture::read_ndarray(&array, size, format, call)?,
     };
     spec.options.size = spec.options.size.or(size);
-    if let Some(format) = options.format {
+    if let Some(format) = format {
         spec.options.format = format;
     }
     if let Some(mipmaps) = options.mipmaps {
-        spec.options.mipmaps = mipmaps;
+        spec.options.mipmaps = mipmaps.read(&format!("{call}: mipmaps"))?;
     }
     if let Some(sampler) = options.sampler {
-        spec.options.sampler = crate::SamplerOptions::try_from(sampler)?;
+        spec.options.sampler = sampler.read(call)?;
     }
     if let Some(usage) = options.usage {
-        spec.options.usage = Some(usage.read("usage")?);
+        spec.options.usage = Some(usage.read(&format!("{call}: usage"))?);
     }
     Ok(spec)
+}
+
+/// A texture source, read before its keywords as JavaScript reads it before its options,
+/// or an ndarray, which reads after them since the size and format it brings must match theirs.
+enum Source<'py> {
+    Read(crate::texture::TextureInput),
+    Array(numpy::PyReadonlyArrayDyn<'py, u8>),
 }
 
 /// The keyword arguments of `create_texture` and the Material texture setters, each optional.
 pub(crate) struct TextureKeywords<'py> {
     size: Option<PySize<'py>>,
-    format: Option<crate::TextureFormat>,
-    mipmaps: Option<bool>,
+    format: Option<PyTextureFormat<'py>>,
+    mipmaps: Option<PyFlag<'py>>,
     sampler: Option<crate::texture::PySamplerOptions<'py>>,
     usage: Option<crate::texture::PyTextureUsage<'py>>,
 }
@@ -361,8 +372,8 @@ pub(crate) struct TextureKeywords<'py> {
 impl<'py> TextureKeywords<'py> {
     pub(crate) fn new(
         size: Option<PySize<'py>>,
-        format: Option<crate::TextureFormat>,
-        mipmaps: Option<bool>,
+        format: Option<PyTextureFormat<'py>>,
+        mipmaps: Option<PyFlag<'py>>,
         sampler: Option<crate::texture::PySamplerOptions<'py>>,
         usage: Option<crate::texture::PyTextureUsage<'py>>,
     ) -> Self {
@@ -376,7 +387,7 @@ impl<'py> TextureKeywords<'py> {
     }
 
     /// Whether the call passed none of the keywords.
-    fn is_empty(&self) -> bool {
+    pub(crate) fn is_empty(&self) -> bool {
         self.size.is_none()
             && self.format.is_none()
             && self.mipmaps.is_none()

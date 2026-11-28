@@ -13,7 +13,8 @@ mesh.addVertices([
 ])
 
 // The material keeps the encoded image as a map.
-let material = try Material.pbr().baseColorTexture(image)
+let material = PbrMaterial()
+try material.baseColorMap().texture(image)
 let model = Model(mesh, material)
 let scene = Scene()
 try scene.add(model)

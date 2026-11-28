@@ -135,12 +135,13 @@ fn check_pixels_keeps_the_source_layout() {
         wgpu::TextureFormat::Rgba8UnormSrgb,
         wgpu::TextureFormat::Bgra8Unorm,
     ] {
-        check_pixels(own, None, format).expect("an RGBA8 format");
+        check_pixels(own, None, format, "call").expect("an RGBA8 format");
     }
     check_pixels(
         own,
         Some(Size::new(2, 1, Some(1))),
         wgpu::TextureFormat::Rgba8Unorm,
+        "call",
     )
     .expect("the source's own size");
     for (size, format) in [
@@ -148,12 +149,12 @@ fn check_pixels_keeps_the_source_layout() {
         (None, wgpu::TextureFormat::R8Unorm),
         (None, wgpu::TextureFormat::Rgba32Float),
     ] {
+        let message = check_pixels(own, size, format, "call").map_err(|error| error.to_string());
         assert!(
-            matches!(
-                check_pixels(own, size, format),
-                Err(TextureError::InvalidInput(_))
-            ),
-            "{size:?} {format:?}"
+            message
+                .as_ref()
+                .is_err_and(|message| message.starts_with("call: ")),
+            "{size:?} {format:?}: {message:?}"
         );
     }
 }

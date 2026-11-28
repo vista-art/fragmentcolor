@@ -16,7 +16,7 @@ pub struct Material {
 }
 ```
 
-`Material::pbr()` fills that field with the array form of `Shader::new`, composing the library's `mesh/transform` and `material/pbr` snippets with the main PBR source. A setter such as `roughness` writes a `material.*` uniform by name, exactly as `shader.set` does for WGSL you wrote by hand. [`material.shader()`](/api/scene/material/#shader) hands the shader back, and [`Material::custom`](/api/scene/material/#custom) turns any shader into a material.
+`Material::pbr()` fills that field with the array form of `Shader::new`, composing the library's `mesh/transform` and `material/pbr` snippets with the main PBR source. A setter such as `roughness` writes a `material.*` uniform by name, exactly as `shader.set` does for WGSL you wrote by hand. [`material.shader()`](/api/scene/pbrmaterial/#shader) hands the shader back, and [`Material::custom`](/api/scene/material/#a-shader-as-a-material) turns any shader into a material.
 
 ## The transform that moved twice
 

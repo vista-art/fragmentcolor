@@ -12,6 +12,8 @@ set -euo pipefail
 #   DOCS_PORT=4000 ./fc run_docs dev
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=shell/process.sh
+. "$ROOT_DIR/tools/shell/process.sh"
 SITE_DIR="$ROOT_DIR/docs/website"
 
 show_help() {
@@ -153,7 +155,7 @@ URL="http://localhost:$PORT/"
 
 cleanup() {
   if [ -n "${SERVER_PID:-}" ] && ps -p "$SERVER_PID" >/dev/null 2>&1; then
-    kill "$SERVER_PID" || true
+    stop_tree "$SERVER_PID"
   fi
 }
 trap cleanup EXIT

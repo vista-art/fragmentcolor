@@ -11,36 +11,19 @@
 
 import Foundation
 
-@available(*, deprecated, renamed: "TextureRegion")
-public typealias TextureRegionMobile = TextureRegion
-
 extension TextureRegion {
     // MARK: - From rectangle / box
 
     /// `[w, h]`, `[x, y, w, h]` or `[x, y, z, w, h, d]`, as Rust's `TextureRegion::from` reads them.
     /// Throws `FragmentColorError` for any other length, as Kotlin throws `FragmentColorException`.
     public static func from(_ rect: [UInt32]) throws -> TextureRegion {
-        guard let region = textureRegion(rect) else {
-            throw FragmentColorError.Render("TextureRegion.from: expected 2, 4 or 6 numbers, got \(rect.count)")
-        }
-        return region
+        try readTextureRegion(rect, "TextureRegion.from")
     }
 
     /// The pixels a `ScreenRegion` covers, at depth 0.
-    /// Throws `FragmentColorError` for a region whose max isn't past its min, as Kotlin does.
+    /// Throws `FragmentColorError` for a region whose max lies before its min, or with a side of 0, as Kotlin does.
     public static func from(_ region: ScreenRegion) throws -> TextureRegion {
-        guard region.maxX > region.minX, region.maxY > region.minY else {
-            throw FragmentColorError.Render(
-                "TextureRegion.from: a region needs each max past its min, got x from \(region.minX) to \(region.maxX) and y from \(region.minY) to \(region.maxY)"
-            )
-        }
-        return TextureRegion(
-            originX: region.minX, originY: region.minY, originZ: 0,
-            sizeWidth: region.maxX - region.minX,
-            sizeHeight: region.maxY - region.minY,
-            sizeDepth: 1,
-            bytesPerRow: nil, rowsPerImage: nil
-        )
+        try readTextureRegion(region, "TextureRegion.from")
     }
 
     // MARK: - Builder-style setters
@@ -70,19 +53,42 @@ extension TextureRegion {
     }
 }
 
-/// The region `[w, h]`, `[x, y, w, h]` or `[x, y, z, w, h, d]` describes,
-/// or `nil` for any other length.
-func textureRegion(_ rect: [UInt32]) -> TextureRegion? {
+/// The region `[w, h]`, `[x, y, w, h]` or `[x, y, z, w, h, d]` describes.
+/// Any other length throws an error that names `call`, the call that reads it.
+func readTextureRegion(_ rect: [UInt32], _ call: String) throws -> TextureRegion {
     let (origin, size): ([UInt32], [UInt32])
     switch rect.count {
     case 2: (origin, size) = ([0, 0, 0], [rect[0], rect[1], 1])
     case 4: (origin, size) = ([rect[0], rect[1], 0], [rect[2], rect[3], 1])
     case 6: (origin, size) = (Array(rect[0..<3]), Array(rect[3..<6]))
-    default: return nil
+    default:
+        throw FragmentColorError.InvalidInput(message: "\(call): a region takes 2, 4 or 6 numbers, got \(rect.count)")
     }
     return TextureRegion(
         originX: origin[0], originY: origin[1], originZ: origin[2],
         sizeWidth: size[0], sizeHeight: size[1], sizeDepth: size[2],
+        bytesPerRow: nil, rowsPerImage: nil
+    )
+}
+
+/// The pixels a `ScreenRegion` covers, at depth 0, for `call`.
+/// A max before its min throws, and then a side of 0, each with an error that names `call`,
+/// in the order Rust's `TextureRegion::try_from` checks them, so every binding reports the same one.
+func readTextureRegion(_ region: ScreenRegion, _ call: String) throws -> TextureRegion {
+    guard region.maxX >= region.minX, region.maxY >= region.minY else {
+        throw FragmentColorError.InvalidInput(
+            message: "\(call): a region needs each max past its min, got x from \(region.minX) to \(region.maxX) and y from \(region.minY) to \(region.maxY)"
+        )
+    }
+    let (width, height) = (region.maxX - region.minX, region.maxY - region.minY)
+    guard width > 0, height > 0 else {
+        throw FragmentColorError.InvalidInput(
+            message: "\(call): a region needs a width and a height of at least 1, got \(width) by \(height)"
+        )
+    }
+    return TextureRegion(
+        originX: region.minX, originY: region.minY, originZ: 0,
+        sizeWidth: width, sizeHeight: height, sizeDepth: 1,
         bytesPerRow: nil, rowsPerImage: nil
     )
 }

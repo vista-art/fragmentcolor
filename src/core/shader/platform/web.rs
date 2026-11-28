@@ -1,25 +1,25 @@
 #![cfg(wasm)]
 
 use crate::errors::WebError;
-use js_sys::{
-    Array, ArrayBuffer, DataView, Float32Array, Int32Array, Object, Reflect, Uint8Array,
-    Uint32Array,
-};
+use js_sys::{Array, ArrayBuffer, DataView, Float32Array, Int32Array, Uint8Array, Uint32Array};
 use lsp_doc::lsp_doc;
-use std::convert::TryInto;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
-use crate::bindings::web::{describe, read_bytes, read_class, read_numbers, read_rows, read_text};
+use crate::bindings::web::{
+    describe, read_bytes, read_class, read_flag, read_numbers, read_object, read_rows, read_text,
+    read_unsigned, refuse, refuse_class,
+};
 use crate::core::shader::UniformInput;
-use crate::{Shader, ShaderError, UniformData};
+use crate::errors::ErrorClass;
+use crate::{AlphaMode, Mesh, Shader, UniformData, Vertex};
 
 #[wasm_bindgen]
 impl Shader {
     #[wasm_bindgen(constructor)]
     #[lsp_doc("docs/api/core/shader/new.md")]
     pub fn new_js(input: &JsValue) -> Result<Shader, WebError> {
-        Ok(Shader::new(source_parts(input)?)?)
+        Ok(Shader::new(source_parts(input, "Shader")?)?)
     }
 
     #[wasm_bindgen(js_name = "setRegistry")]
@@ -34,20 +34,26 @@ impl Shader {
     #[wasm_bindgen(js_name = "fetch")]
     #[lsp_doc("docs/api/core/shader/fetch.md")]
     pub async fn fetch_js(input: &JsValue) -> Result<Shader, WebError> {
-        Ok(Shader::fetch(source_parts(input)?).await?)
+        Ok(Shader::fetch(source_parts(input, "Shader.fetch")?).await?)
     }
 
     // Static helpers that mirror Rust API for the JS side
     #[wasm_bindgen(js_name = "fromVertex")]
     #[lsp_doc("docs/api/core/shader/from_vertex.md")]
-    pub fn from_vertex_js(vertex: &crate::Vertex) -> Result<Shader, ShaderError> {
-        Self::from_vertex(vertex)
+    pub fn from_vertex_js(
+        #[wasm_bindgen(unchecked_param_type = "Vertex")] vertex: &JsValue,
+    ) -> Result<Shader, WebError> {
+        let vertex: Vertex = read_object(vertex, "Shader.fromVertex: vertex")?;
+        Ok(Self::from_vertex(&vertex)?)
     }
 
     #[wasm_bindgen(js_name = "fromMesh")]
     #[lsp_doc("docs/api/core/shader/from_mesh.md")]
-    pub fn from_mesh_js(mesh: &crate::Mesh) -> Result<Shader, ShaderError> {
-        Self::from_mesh(mesh)
+    pub fn from_mesh_js(
+        #[wasm_bindgen(unchecked_param_type = "Mesh")] mesh: &JsValue,
+    ) -> Result<Shader, WebError> {
+        let mesh: Mesh = read_object(mesh, "Shader.fromMesh: mesh")?;
+        Ok(Self::from_mesh(&mesh)?)
     }
 
     #[wasm_bindgen(js_name = "set")]
@@ -85,31 +91,45 @@ impl Shader {
 
     #[wasm_bindgen(js_name = "addMesh")]
     #[lsp_doc("docs/api/core/shader/add_mesh.md")]
-    pub fn add_mesh_js(&self, mesh: &crate::Mesh) -> Result<(), ShaderError> {
-        self.add_mesh(mesh)
+    pub fn add_mesh_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "Mesh")] mesh: &JsValue,
+    ) -> Result<(), WebError> {
+        let mesh: Mesh = read_object(mesh, "Shader.addMesh: mesh")?;
+        Ok(self.add_mesh(&mesh)?)
     }
 
     #[wasm_bindgen(js_name = "removeMesh")]
     #[lsp_doc("docs/api/core/shader/remove_mesh.md")]
-    pub fn remove_mesh_js(&self, mesh: &crate::Mesh) {
-        self.remove_mesh(mesh)
+    pub fn remove_mesh_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "Mesh")] mesh: &JsValue,
+    ) -> Result<(), WebError> {
+        let mesh: Mesh = read_object(mesh, "Shader.removeMesh: mesh")?;
+        self.remove_mesh(&mesh);
+        Ok(())
     }
 
     #[wasm_bindgen(js_name = "removeMeshes")]
     #[lsp_doc("docs/api/core/shader/remove_meshes.md")]
     pub fn remove_meshes_js(&self, list: &JsValue) -> Result<(), WebError> {
-        let arr = js_sys::Array::is_array(list)
-            .then(|| js_sys::Array::from(list))
-            .ok_or_else(|| WebError::type_error("removeMeshes: expected an array of Mesh"))?;
-        let mut meshes: Vec<crate::Mesh> = Vec::with_capacity(arr.length() as usize);
-        for v in arr.iter() {
-            let m: crate::Mesh = (&v)
-                .try_into()
-                .map_err(|_| WebError::type_error("removeMeshes: item is not a Mesh"))?;
-            meshes.push(m);
-        }
-        for m in meshes.iter() {
-            self.remove_mesh(m);
+        const CALL: &str = "Shader.removeMeshes";
+        let Some(array) = list.dyn_ref::<Array>() else {
+            return Err(refuse(
+                list,
+                &format!("{CALL}: list must be an array of meshes"),
+            ));
+        };
+        let read = |(index, item): (usize, JsValue)| {
+            read_object::<Mesh>(&item, &format!("{CALL}: item {index}"))
+        };
+        let meshes = array
+            .iter()
+            .enumerate()
+            .map(read)
+            .collect::<Result<Vec<Mesh>, WebError>>()?;
+        for mesh in &meshes {
+            self.remove_mesh(mesh);
         }
         Ok(())
     }
@@ -123,14 +143,36 @@ impl Shader {
     // Instance helpers mirrored to JS
     #[wasm_bindgen(js_name = "validateMesh")]
     #[lsp_doc("docs/api/core/shader/validate_mesh.md")]
-    pub fn validate_mesh_js(&self, mesh: &crate::Mesh) -> Result<(), ShaderError> {
-        self.validate_mesh(mesh)
+    pub fn validate_mesh_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "Mesh")] mesh: &JsValue,
+    ) -> Result<(), WebError> {
+        let mesh: Mesh = read_object(mesh, "Shader.validateMesh: mesh")?;
+        Ok(self.validate_mesh(&mesh)?)
     }
 
     #[wasm_bindgen(js_name = "isCompute")]
     #[lsp_doc("docs/api/core/shader/is_compute.md")]
     pub fn is_compute_js(&self) -> bool {
         self.is_compute()
+    }
+
+    #[wasm_bindgen(js_name = "alphaMode")]
+    #[lsp_doc("docs/api/core/shader/alpha_mode.md")]
+    pub fn alpha_mode_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "AlphaMode")] mode: &JsValue,
+    ) -> Result<Shader, WebError> {
+        Ok(self.alpha_mode(read_alpha_mode(mode, "Shader.alphaMode: mode")?))
+    }
+
+    #[wasm_bindgen(js_name = "doubleSided")]
+    #[lsp_doc("docs/api/core/shader/double_sided.md")]
+    pub fn double_sided_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "boolean")] value: &JsValue,
+    ) -> Result<Shader, WebError> {
+        Ok(self.double_sided(read_flag(value, "Shader.doubleSided: value")?))
     }
 
     // No-op Result::unwrap shim for transpiled examples that used Rust .unwrap()
@@ -192,7 +234,7 @@ fn uniform_input(key: &str, value: &JsValue) -> Result<UniformInput, WebError> {
     )))
 }
 
-/// Turns the value `Shader.get` read into JS: numbers, typed arrays, a texture id, or bytes.
+/// Turns the value `Shader.get` read into JS: numbers, typed arrays, a `TextureId`, a `SamplerInfo` or bytes.
 fn uniform_value(data: UniformData) -> JsValue {
     use UniformData as U;
     match data {
@@ -207,26 +249,38 @@ fn uniform_value(data: UniformData) -> JsValue {
         U::HalfMat2(v) | U::HalfMat3(v) | U::HalfMat4(v) => Float32Array::from(&v[..]).into(),
         U::IVec2(v) | U::IVec3(v) | U::IVec4(v) => Int32Array::from(&v[..]).into(),
         U::UVec2(v) | U::UVec3(v) | U::UVec4(v) => Uint32Array::from(&v[..]).into(),
-        U::Texture(meta) => JsValue::from_f64(meta.id.id as f64),
-        U::Sampler(info) => {
-            let object = Object::new();
-            let comparison = JsValue::from_bool(info.comparison);
-            let _ = Reflect::set(&object, &"comparison".into(), &comparison);
-            object.into()
-        }
+        U::Texture(meta) => meta.id.into(),
+        U::Sampler(info) => info.into(),
         other => Uint8Array::from(&other.to_bytes()[..]).into(),
     }
 }
 
+/// Maps an `AlphaMode` from JS, a number in variant order, to the mode.
+/// Anything else is an error that names `label`, where wasm-bindgen would read `Opaque`.
+pub(crate) fn read_alpha_mode(value: &JsValue, label: &str) -> Result<AlphaMode, WebError> {
+    let code = value
+        .as_f64()
+        .ok_or_else(|| refuse_class(value, label, "AlphaMode"))?;
+    match read_unsigned(code, label)? {
+        0 => Ok(AlphaMode::Opaque),
+        1 => Ok(AlphaMode::Mask),
+        2 => Ok(AlphaMode::Blend),
+        _ => Err(WebError::new(
+            ErrorClass::InvalidInput,
+            &format!("{label}: {code} is not an AlphaMode"),
+        )),
+    }
+}
+
 /// Reads a shader source: one string, or an array of strings to compose.
-/// Any other value is a `TypeError`, as Python raises.
-fn source_parts(input: &JsValue) -> Result<Vec<String>, WebError> {
+/// Any other value is a `TypeError` that names `call`, as Python raises.
+fn source_parts(input: &JsValue, call: &str) -> Result<Vec<String>, WebError> {
     if let Some(source) = input.as_string() {
         return Ok(vec![source]);
     }
     let Some(array) = input.dyn_ref::<Array>() else {
         return Err(WebError::type_error(&format!(
-            "Shader input must be a string or an array of strings, got {}",
+            "{call}: input must be a string or an array of strings, got {}",
             describe(input)
         )));
     };
@@ -234,7 +288,11 @@ fn source_parts(input: &JsValue) -> Result<Vec<String>, WebError> {
         .iter()
         .map(|item| item.as_string())
         .collect::<Option<Vec<String>>>()
-        .ok_or_else(|| WebError::type_error("Shader input array contains a non-string element"))
+        .ok_or_else(|| {
+            WebError::type_error(&format!(
+                "{call}: input array contains a non-string element"
+            ))
+        })
 }
 
 #[cfg(test)]

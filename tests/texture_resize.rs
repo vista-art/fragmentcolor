@@ -2,7 +2,7 @@
 
 use fragmentcolor::TextureError;
 use fragmentcolor::{
-    Material, Mesh, Model, Pass, Renderer, Target, Texture, TextureData, TextureFormat,
+    Mesh, Model, Pass, PbrMaterial, Renderer, Target, Texture, TextureData, TextureFormat,
     TextureInput, TextureOptions, TextureUsage, Vertex,
 };
 
@@ -118,7 +118,7 @@ fn a_depth_target_follows_its_texture() {
         mesh.add_vertices(
             corners.map(|corner| Vertex::pbr(corner).set(Vertex::NORMAL, [0.0, 0.0, 1.0])),
         );
-        let glow = Material::pbr()
+        let glow = PbrMaterial::new()
             .base_color([0.0, 0.0, 0.0, 1.0])
             .expect("base color")
             .emissive([1.0, 0.0, 0.0])

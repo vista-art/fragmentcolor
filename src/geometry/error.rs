@@ -1,5 +1,8 @@
 //! `MeshError`, which every geometry type returns.
 
+#[cfg(any(python, wasm, mobile, test))]
+use crate::errors::{Classify, ErrorClass};
+
 #[derive(thiserror::Error, Debug)]
 pub enum MeshError {
     #[error("Invalid vertex: {0}")]
@@ -31,9 +34,9 @@ pub enum MeshError {
     Error(String),
 }
 
-#[cfg(any(python, wasm, test))]
-impl crate::errors::Classify for MeshError {
-    fn classify(&self) -> crate::errors::ErrorClass {
-        crate::errors::ErrorClass::Base
+#[cfg(any(python, wasm, mobile, test))]
+impl Classify for MeshError {
+    fn classify(&self) -> ErrorClass {
+        ErrorClass::Base
     }
 }

@@ -4,7 +4,7 @@
 #[cfg(wasm)]
 use crate::FcKind;
 #[cfg(wasm)]
-use crate::bindings::web::{describe, read_class, read_list, read_number};
+use crate::bindings::web::{describe, read_class, read_count, read_counts};
 #[cfg(wasm)]
 use crate::errors::WebError;
 #[cfg(wasm)]
@@ -13,8 +13,8 @@ use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
 use super::error::ScreenRegionError;
-#[cfg(wasm)]
-use crate::bindings::numbers::read_dimension;
+#[cfg(any(wasm, python, test))]
+use crate::bindings::Key;
 
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(
@@ -103,16 +103,6 @@ impl ScreenRegion {
             });
         }
         Ok(self)
-    }
-
-    /// Reads JavaScript's `[w, h]` or `[x, y, w, h]`, each number checked by [`read_dimension`].
-    #[cfg(wasm)]
-    pub(crate) fn from_numbers(numbers: &[f64]) -> Result<Self, ScreenRegionError> {
-        let dimensions = numbers
-            .iter()
-            .map(|&number| check_dimension(number))
-            .collect::<Result<Vec<u32>, ScreenRegionError>>()?;
-        Self::try_from(dimensions.as_slice())
     }
 
     /// A region from `[w, h]` or `[x, y, w, h]`.
@@ -256,70 +246,100 @@ impl ScreenRegion {
     }
 }
 
-/// Reads `[w, h]` or `[x, y, w, h]` from a plain or typed array, an `{ x, y, width, height }`
-/// object such as a `DOMRect`, or the `{ minX, minY, maxX, maxY }` fields of a `ScreenRegion`.
-/// An origin and a size as `[[x, y], [w, h]]` read as `ScreenRegion::new` reads them, as a Rust
-/// `((x, y), (w, h))` does. A value of another type, another FragmentColor class among them, or an
-/// item that isn't a number, is a `TypeError`, as Python raises, and a fraction, a negative number
-/// or a wrong count is an `InvalidInputError`.
-#[cfg(wasm)]
-impl TryFrom<&wasm_bindgen::JsValue> for ScreenRegion {
-    type Error = WebError;
+/// The keys of a region's bounds, as a `ScreenRegion` holds them.
+#[cfg(any(wasm, python, test))]
+const BOUNDS: [Key; 4] = [
+    ("minX", "min_x"),
+    ("minY", "min_y"),
+    ("maxX", "max_x"),
+    ("maxY", "max_y"),
+];
 
-    fn try_from(value: &wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
+/// The keys of a region's origin and size, as a `DOMRect` holds them.
+#[cfg(any(wasm, python, test))]
+const BOX: [Key; 4] = [
+    ("x", "x"),
+    ("y", "y"),
+    ("width", "width"),
+    ("height", "height"),
+];
+
+impl ScreenRegion {
+    /// Reads a region from a JS object or a Python dict through `read`, for `call`.
+    ///
+    /// `read` returns the number under either spelling of a key, or `None` for a missing key.
+    /// The bounds `{ minX, minY, maxX, maxY }` come first, since a `ScreenRegion` holds them
+    /// and its `width` and `height` are methods. Then comes `{ x, y, width, height }`.
+    /// The result is `None` when neither form is complete, and an error names `call`.
+    #[cfg(any(wasm, python, test))]
+    pub(crate) fn read_fields<E: From<ScreenRegionError>>(
+        read: impl Fn(Key) -> Result<Option<u32>, E>,
+        call: &str,
+    ) -> Result<Option<Self>, E> {
+        let [min_x, min_y, max_x, max_y] = BOUNDS;
+        let bounds = (read(min_x)?, read(min_y)?, read(max_x)?, read(max_y)?);
+        let region = if let (Some(min_x), Some(min_y), Some(max_x), Some(max_y)) = bounds {
+            let region = Self {
+                min_x,
+                min_y,
+                max_x,
+                max_y,
+            };
+            region.check()
+        } else {
+            let [x, y, width, height] = BOX;
+            let boxed = (read(x)?, read(y)?, read(width)?, read(height)?);
+            let (Some(x), Some(y), Some(width), Some(height)) = boxed else {
+                return Ok(None);
+            };
+            Self::build(x, y, width, height)
+        };
+        Ok(Some(region.map_err(|error| error.name(call))?))
+    }
+
+    /// Reads a region from a JavaScript value for `call`.
+    ///
+    /// It takes `[w, h]` or `[x, y, w, h]` in a plain or typed array, an `{ x, y, width, height }`
+    /// object such as a `DOMRect`, or the `{ minX, minY, maxX, maxY }` fields of a `ScreenRegion`.
+    /// An origin and a size as `[[x, y], [w, h]]` read as `ScreenRegion::new` reads them, as a Rust
+    /// `((x, y), (w, h))` does. A value of another type, another FragmentColor class among them, or an
+    /// item that isn't a number, is a `TypeError` that names `call`, as Python raises. A fraction,
+    /// a negative number, a wrong count or an object that holds neither form whole is an `InvalidInputError`.
+    #[cfg(wasm)]
+    pub(crate) fn read(value: &JsValue, call: &str) -> Result<Self, WebError> {
         if let Some((origin, size)) = read_pairs(value) {
-            let origin = js_to_pair(&origin, "a region: origin")?;
-            let size = js_to_pair(&size, "a region: size")?;
-            return Ok(ScreenRegion::new(origin, size)?);
+            let origin = js_to_pair(&origin, &format!("{call}: origin"))?;
+            let size = js_to_pair(&size, &format!("{call}: size"))?;
+            return Ok(ScreenRegion::new(origin, size).map_err(|error| error.name(call))?);
         }
 
-        if let Some(numbers) = read_list(value, "a region")? {
-            return Ok(ScreenRegion::from_numbers(&numbers)?);
+        if let Some(dimensions) = read_counts(value, call)? {
+            let region = ScreenRegion::try_from(dimensions.as_slice());
+            return Ok(region.map_err(|error| error.name(call))?);
         }
 
         let class = read_class(value);
         if value.is_object() && class.as_deref().is_none_or(|class| class == Self::KIND) {
-            let field = |names: &[&str]| -> Result<Option<u32>, WebError> {
-                for name in names {
+            let read = |(camel, snake): Key| -> Result<Option<u32>, WebError> {
+                for name in [camel, snake] {
                     let item = js_sys::Reflect::get(value, &JsValue::from_str(name))
                         .unwrap_or(JsValue::UNDEFINED);
                     if !item.is_undefined() && !item.is_null() {
-                        let number = read_number(&item, format_args!("a region's {name}"))?;
-                        return Ok(Some(check_dimension(number)?));
+                        return read_count(&item, &format!("{call}: {name}")).map(Some);
                     }
                 }
                 Ok(None)
             };
-            // Bounds first: on a `ScreenRegion`, `width` and `height` are methods.
-            let bounds = (
-                field(&["minX", "min_x"])?,
-                field(&["minY", "min_y"])?,
-                field(&["maxX", "max_x"])?,
-                field(&["maxY", "max_y"])?,
-            );
-            if let (Some(min_x), Some(min_y), Some(max_x), Some(max_y)) = bounds {
-                let region = ScreenRegion {
-                    min_x,
-                    min_y,
-                    max_x,
-                    max_y,
-                };
-                return Ok(region.check()?);
+            if let Some(region) = Self::read_fields(read, call)? {
+                return Ok(region);
             }
-            let rect = (
-                field(&["x"])?,
-                field(&["y"])?,
-                field(&["width"])?,
-                field(&["height"])?,
-            );
-            if let (Some(x), Some(y), Some(width), Some(height)) = rect {
-                return Ok(ScreenRegion::build(x, y, width, height)?);
-            }
+            let keys = "a region object needs x, y, width and height, or minX, minY, maxX and maxY";
+            return Err(ScreenRegionError::Invalid(format!("{call}: {keys}")).into());
         }
 
         let kind = class.unwrap_or_else(|| describe(value));
         Err(WebError::type_error(&format!(
-            "a region is [w, h], [x, y, w, h], [[x, y], [w, h]], {{ x, y, width, height }} or a ScreenRegion, got {kind}"
+            "{call}: a region is [w, h], [x, y, w, h], [[x, y], [w, h]], {{ x, y, width, height }} or a ScreenRegion, got {kind}"
         )))
     }
 }
@@ -334,30 +354,16 @@ fn read_pairs(value: &JsValue) -> Option<(JsValue, JsValue)> {
     pairs.then_some((origin, size))
 }
 
-/// One region number from JavaScript, checked by [`read_dimension`].
-#[cfg(wasm)]
-fn check_dimension(number: f64) -> Result<u32, ScreenRegionError> {
-    read_dimension(number).ok_or_else(|| {
-        ScreenRegionError::Invalid(format!(
-            "a region takes whole numbers from 0 up, got {number}"
-        ))
-    })
-}
-
 /// A pair of region numbers from JS, such as an origin or a size, named `label`.
 /// A value that isn't a list of numbers is a `TypeError`, and any count but two an `InvalidInputError`.
 #[cfg(wasm)]
 fn js_to_pair(value: &JsValue, label: &str) -> Result<(u32, u32), WebError> {
-    let Some(numbers) = read_list(value, label)? else {
+    let Some(numbers) = read_counts(value, label)? else {
         let kind = describe(value);
         return Err(WebError::type_error(&format!(
             "{label} takes two numbers, got {kind}"
         )));
     };
-    let numbers = numbers
-        .into_iter()
-        .map(check_dimension)
-        .collect::<Result<Vec<u32>, ScreenRegionError>>()?;
     match numbers[..] {
         [first, second] => Ok((first, second)),
         _ => Err(ScreenRegionError::Invalid(format!(
@@ -378,7 +384,7 @@ impl ScreenRegion {
     pub fn new_js(origin: &JsValue, size: &JsValue) -> Result<ScreenRegion, WebError> {
         let origin = js_to_pair(origin, "ScreenRegion: origin")?;
         let size = js_to_pair(size, "ScreenRegion: size")?;
-        Ok(ScreenRegion::new(origin, size)?)
+        Ok(ScreenRegion::new(origin, size).map_err(|error| error.name("ScreenRegion"))?)
     }
 
     #[doc(hidden)]
@@ -417,9 +423,6 @@ impl ScreenRegion {
         self.height()
     }
 }
-
-#[cfg(wasm)]
-crate::impl_tryfrom_owned_via_ref!(ScreenRegion, wasm_bindgen::JsValue, WebError);
 
 // The brand lets a reader tell a ScreenRegion from a plain object after a minifier renames the class.
 crate::impl_fc_kind!(ScreenRegion, "ScreenRegion");
@@ -527,8 +530,20 @@ impl From<&ScreenRegion> for [f32; 4] {
 #[cfg(python)]
 mod python_bindings {
     use super::*;
-    use crate::bindings::python::{PyUnsigned, read_pair};
+    use crate::bindings::python::{PyIndices, read_pair, refuse};
     use pyo3::prelude::*;
+
+    /// An origin or a size, named `label`.
+    /// A value that is no list raises a `TypeError`, as JavaScript throws one,
+    /// and any count but two raises `InvalidInputError`, as JavaScript throws one too.
+    fn read_part(part: PyIndices<'_>, label: &str) -> PyResult<(u32, u32)> {
+        match part {
+            PyIndices::Items(items) => read_pair(&items, label),
+            PyIndices::Other(value) => {
+                Err(refuse(&value, format_args!("{label} takes two numbers")))
+            }
+        }
+    }
 
     #[pymethods]
     impl ScreenRegion {
@@ -537,10 +552,10 @@ mod python_bindings {
         // audit tracks the parent methods, not the value type itself.
         #[doc(hidden)]
         #[new]
-        pub fn new_py(origin: Vec<PyUnsigned<'_>>, size: Vec<PyUnsigned<'_>>) -> PyResult<Self> {
-            let origin = read_pair(&origin, "ScreenRegion: origin")?;
-            let size = read_pair(&size, "ScreenRegion: size")?;
-            Ok(ScreenRegion::new(origin, size)?)
+        pub fn new_py(origin: PyIndices<'_>, size: PyIndices<'_>) -> PyResult<Self> {
+            let origin = read_part(origin, "ScreenRegion: origin")?;
+            let size = read_part(size, "ScreenRegion: size")?;
+            Ok(ScreenRegion::new(origin, size).map_err(|error| error.name("ScreenRegion"))?)
         }
 
         #[doc(hidden)]
@@ -788,5 +803,37 @@ mod tests {
         );
         assert_eq!((reversed.width(), reversed.height()), (0, 4));
         assert!(crate::Pass::new("p").set_viewport(reversed).is_err());
+    }
+
+    /// Reads a region from the pairs of a map, the way a JS object or a Python dict reads.
+    fn read(pairs: &[(&str, u32)]) -> Result<Option<ScreenRegion>, crate::ScreenRegionError> {
+        use std::collections::HashMap;
+        let map: HashMap<&str, u32> = pairs.iter().copied().collect();
+        let read =
+            |(camel, snake): super::Key| Ok(map.get(camel).or_else(|| map.get(snake)).copied());
+        ScreenRegion::read_fields(read, "Pass.set_viewport")
+    }
+
+    // Story: an object or a dict spells its region as bounds or as a box, in camelCase
+    // or snake_case, and one with neither form complete reads as no region.
+    #[test]
+    fn reads_bounds_or_a_box() {
+        let boxed = read(&[("x", 1), ("y", 2), ("width", 3), ("height", 4)]);
+        assert_eq!(boxed.ok().flatten(), Some(build_region(1, 2, 3, 4)));
+        let bounds = read(&[("minX", 8), ("min_y", 0), ("max_x", 12), ("maxY", 4)]);
+        assert_eq!(bounds.ok().flatten(), Some(build_region(8, 0, 4, 4)));
+        assert!(matches!(
+            read(&[("x", 0), ("y", 0), ("width", 4)]),
+            Ok(None)
+        ));
+        assert!(read(&[("x", 0), ("y", 0), ("width", 0), ("height", 4)]).is_err());
+        let reversed = [("minX", 8), ("minY", 0), ("maxX", 2), ("maxY", 4)];
+        let message = read(&reversed).err().map(|error| error.to_string());
+        assert_eq!(
+            message.as_deref(),
+            Some(
+                "Pass.set_viewport: a region needs each max past its min, got x from 8 to 2 and y from 0 to 4"
+            )
+        );
     }
 }

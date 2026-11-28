@@ -42,14 +42,14 @@ tabs show the same literal, with a `u` on Kotlin's unsigned arguments.
 
 Every FragmentColor function that takes an angle takes **radians**.
 This is consistent across `Camera::perspective`, `Model::rotate`,
-`Material::uv_transform`, `Light::set_cone_angles`, and any future
+`PbrMaterial::uv_transform`, `Light::set_cone_angles`, and any future
 angle-bearing API. Examples must pass radian literals directly. Add
 an inline comment with the degree equivalent for readability when the
 intent helps.
 
 ```
 GOOD: Camera::perspective(1.047, 16.0 / 9.0, 0.1, 100.0)    // 60° FOV
-GOOD: Material::pbr().uv_transform([0.5, 0.0], [4.0, 4.0], 0.785)  // 45°
+GOOD: PbrMaterial::new().uv_transform([0.5, 0.0], [4.0, 4.0], 0.785)  // 45°
 BAD : Camera::perspective(60.0.to_radians(), 16.0 / 9.0, 0.1, 100.0)
 BAD : Camera::perspective(std::f32::consts::FRAC_PI_3, …, …, …)
 ```
@@ -147,6 +147,35 @@ method's name as its id. Link a method with that name as the anchor:
 Other headings keep the id Starlight makes from their text. The build
 fails on a link to a page or heading the site doesn't build, and on two
 headings of one page that would get the same id.
+
+Link an error class by its heading on the Errors page:
+
+```
+[DeviceError](https://fragmentcolor.org/api/errors#deviceerror)
+```
+
+## Root and hidden pages
+
+A folder at the root of `docs/api` that holds a page of its own name,
+such as `errors/errors.md`, becomes a page at the root of the API menu:
+`/api/errors`. The Errors page gives every error class a `###` heading,
+with when it's raised and the fields it carries.
+
+A root page has no sidebar order, so the menu lists it after the
+categories. A category takes its order from its `_index.md`, and one
+without that file sorts by name among the root pages, so every category
+keeps an `_index.md`. A root page has no Rust item for `#[lsp_doc]`
+either, so a `#[cfg(doctest)]` struct includes it to run its Rust
+example, as `ErrorsPage` in `src/errors/mod.rs` does for the Errors page.
+
+An item with no page on the site keeps its `#[lsp_doc]` page under
+`docs/api/hidden/`, in a folder of its own name, such as
+`hidden/errors/error_kind/error_kind.md` for `ErrorKind`. The build checks
+it as it checks an object page: the H1 names the item, an `## Example`
+follows, and every link reaches a page the site builds. Its Rust example
+runs as a doctest, while the website and the healthchecks leave it out.
+So the site page that covers the item uses it in its own example, as the
+Errors page uses `ErrorKind`.
 
 ## Cross-cutting invariants
 

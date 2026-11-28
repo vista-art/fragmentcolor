@@ -1,4 +1,4 @@
-import { Material, Mesh, Model, Renderer, Scene, Vertex } from "fragmentcolor";
+import { Mesh, Model, PbrMaterial, Renderer, Scene, Vertex } from "fragmentcolor";
 const image = new Uint8Array(await (await fetch("/healthcheck/public/favicon.png")).arrayBuffer());
 
 const renderer = new Renderer();
@@ -8,7 +8,8 @@ const mesh = new Mesh();
 mesh.addVertices([ Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]), Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]), ]);
 
 // The material keeps the encoded image as a map.
-const material = Material.pbr().baseColorTexture(image);
+const material = new PbrMaterial();
+material.baseColorMap().texture(image);
 const model = new Model(mesh, material);
 const scene = new Scene();
 scene.add(model);

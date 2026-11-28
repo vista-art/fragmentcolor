@@ -14,6 +14,8 @@ use wasm_bindgen::prelude::*;
 
 use crate::Mesh;
 use crate::core::ShaderObject;
+#[cfg(any(python, wasm, mobile, test))]
+use crate::errors::{Classify, ErrorClass};
 use crate::geometry::MeshObject;
 use crate::scene::{Material, NotFinite, SceneObject, check_finite};
 
@@ -38,10 +40,10 @@ impl From<NotFinite> for ModelError {
 }
 
 /// Every variant is an invalid input, as the bindings raise a number they refuse at the call.
-#[cfg(any(python, wasm, test))]
-impl crate::errors::Classify for ModelError {
-    fn classify(&self) -> crate::errors::ErrorClass {
-        crate::errors::ErrorClass::InvalidInput
+#[cfg(any(python, wasm, mobile, test))]
+impl Classify for ModelError {
+    fn classify(&self) -> ErrorClass {
+        ErrorClass::InvalidInput
     }
 }
 
@@ -77,7 +79,7 @@ impl SceneObject for Model {
     /// Adds the material's shader to the pass, attaches the mesh to it, and queues the Model.
     /// A refusal leaves the pass and the mesh as they were.
     fn attach(&self, pass: &crate::Pass) -> Result<(), crate::PassError> {
-        let shader_arc = &self.material.shader.object;
+        let shader_arc = &self.material.shader().object;
 
         // Dedupe shader-attach: many Models that share one Material's Shader
         // should result in one entry on the pass. The renderer iterates
@@ -93,7 +95,7 @@ impl SceneObject for Model {
         // object on the pass replays against it, so order-of-add (Camera before
         // Model, lights after Model, …) doesn't matter.
         if joined {
-            pass.replay_scene_objects(&self.material.shader);
+            pass.replay_scene_objects(self.material.shader());
         }
 
         pass.object.model_entries.write().push(ModelEntry {
@@ -110,7 +112,7 @@ impl Model {
     /// takes the Model columns, `model_0` to `model_3`, which the per-Model transforms
     /// fill at draw time, only when the shader accepts it, so a refusal changes nothing.
     fn attach_mesh(&self) -> Result<(), crate::PassError> {
-        let shader = &self.material.shader.object;
+        let shader = &self.material.shader().object;
         shader.attach_model(self.mesh.object.clone())?;
         Ok(())
     }
@@ -120,10 +122,10 @@ crate::impl_fc_kind!(Model, "Model");
 
 impl Model {
     #[lsp_doc("docs/api/scene/model/new.md")]
-    pub fn new(mesh: Mesh, material: Material) -> Self {
+    pub fn new(mesh: Mesh, material: impl Into<Material>) -> Self {
         Self {
             mesh,
-            material,
+            material: material.into(),
             state: Arc::new(RwLock::new(ModelState {
                 transform: Mat4::IDENTITY,
                 visible: true,
@@ -251,7 +253,7 @@ pub(crate) struct ModelEntry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Vertex;
+    use crate::{PbrMaterial, Vertex};
 
     fn pbr_triangle_mesh() -> Mesh {
         let mesh = Mesh::new();
@@ -265,8 +267,8 @@ mod tests {
         mesh
     }
 
-    fn pbr_material() -> Material {
-        Material::pbr()
+    fn pbr_material() -> PbrMaterial {
+        PbrMaterial::new()
     }
 
     #[test]
@@ -492,7 +494,7 @@ mod tests {
                 .expect("texture target");
             let model = Model::new(
                 pbr_triangle_mesh(),
-                Material::pbr()
+                PbrMaterial::new()
                     .base_color([0.6, 0.2, 0.8, 1.0])
                     .expect("base color"),
             );
@@ -532,7 +534,7 @@ mod tests {
             bare.add_instance(crate::Instance::new().set("offset", [0.0, 0.0]));
             let scene = crate::Scene::new();
 
-            let refused = scene.add(&Model::new(bare.clone(), Material::pbr()));
+            let refused = scene.add(&Model::new(bare.clone(), PbrMaterial::new()));
             let shader = crate::Shader::new(
                 "@vertex fn vs_main(@location(0) position: vec3<f32>, @location(1) offset: vec2<f32>) -> @builtin(position) vec4<f32> {
   return vec4<f32>(position.xy + offset, 0.0, 1.0);
@@ -580,13 +582,13 @@ mod tests {
             let other = crate::Pass::new("other");
             let (pass, mesh) = (other.clone(), bare.clone());
             crate::testing::race_hooks::once("model attach", move || {
-                let model = Model::new(mesh, Material::custom(columns));
+                let model = Model::new(mesh, columns);
                 pass.add(&model).expect("the custom Model");
             });
 
             let pbr = crate::Pass::new("pbr");
             let refused = pbr
-                .add(&Model::new(bare.clone(), Material::pbr()))
+                .add(&Model::new(bare.clone(), PbrMaterial::new()))
                 .map(drop);
             let drawn = renderer.render(&other, &target);
 
@@ -642,7 +644,7 @@ mod tests {
 
         let pbr = crate::Pass::new("pbr");
         let refused = pbr
-            .add(&Model::new(bare.clone(), Material::pbr()))
+            .add(&Model::new(bare.clone(), PbrMaterial::new()))
             .map(drop);
 
         assert!(refused.is_err(), "the bare mesh has no normals");
@@ -656,7 +658,7 @@ mod tests {
         let pass = crate::Pass::new("lit");
         let light = crate::Light::point([0.0, 1.0, 0.0], [1.0, 1.0, 1.0]).expect("light");
         pass.add(&light).expect("add light");
-        let material = Material::pbr();
+        let material = PbrMaterial::new();
         let shader = material.shader.object.clone();
 
         let joined = pass.object.join(shader.clone(), || {
@@ -687,8 +689,8 @@ mod tests {
             let bare = Mesh::new();
             bare.add_vertices([[0.0, 0.5, 0.0], [-0.5, -0.5, 0.0], [0.5, -0.5, 0.0]]);
             let scene = crate::Scene::new();
-            let refused = scene.add(&Model::new(bare.clone(), Material::pbr()));
-            let glow = Material::pbr()
+            let refused = scene.add(&Model::new(bare.clone(), PbrMaterial::new()));
+            let glow = PbrMaterial::new()
                 .base_color([0.0, 0.0, 0.0, 1.0])
                 .expect("base color")
                 .emissive([1.0, 0.0, 0.0])

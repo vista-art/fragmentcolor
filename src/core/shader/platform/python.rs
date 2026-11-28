@@ -1,7 +1,11 @@
 #![cfg(python)]
 
+use crate::bindings::python::{
+    PyAlphaMode, PyFlag, PyMesh, PyMeshes, PyText, PyVertex, is_list, refuse,
+};
 use crate::core::shader::{UniformInput, lsp_doc};
-use crate::{Shader, ShaderError, UniformData};
+use crate::{Shader, ShaderInput, UniformData};
+use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
 use pyo3::types::{PyAnyMethods, PyByteArray, PyBytes, PyMemoryView};
 
@@ -9,8 +13,8 @@ use pyo3::types::{PyAnyMethods, PyByteArray, PyBytes, PyMemoryView};
 impl Shader {
     #[new]
     #[lsp_doc("docs/api/core/shader/new.md")]
-    pub fn new_py(input: PyShaderInput) -> Result<Self, ShaderError> {
-        Shader::new(input)
+    pub fn new_py(input: PyShaderInput<'_>) -> PyResult<Self> {
+        Ok(Shader::new(input.read("Shader")?)?)
     }
 
     /// Async-shaped constructor: fetches each part of `input` from the network
@@ -20,27 +24,31 @@ impl Shader {
     #[staticmethod]
     #[pyo3(name = "fetch")]
     #[lsp_doc("docs/api/core/shader/fetch.md")]
-    pub fn fetch_py(input: PyShaderInput) -> Result<Self, ShaderError> {
-        pollster::block_on(Shader::fetch(input))
+    pub fn fetch_py(input: PyShaderInput<'_>) -> PyResult<Self> {
+        let input = input.read("Shader.fetch")?;
+        Ok(pollster::block_on(Shader::fetch(input))?)
     }
 
     #[staticmethod]
     #[pyo3(name = "set_registry")]
     #[lsp_doc("docs/api/core/shader/set_registry.md")]
-    pub fn set_registry_py(base_url: &str) {
-        Shader::set_registry(base_url);
+    pub fn set_registry_py(base_url: PyText<'_>) -> PyResult<()> {
+        Shader::set_registry(&base_url.read("Shader.set_registry: base_url")?);
+        Ok(())
     }
 
     #[pyo3(name = "set")]
     #[lsp_doc("docs/api/core/shader/set.md")]
-    pub fn set_py(&self, key: &str, value: PyUniformValue<'_>) -> Result<(), PyErr> {
-        Ok(self.object.set_input(key, value.into_input()?)?)
+    pub fn set_py(&self, key: PyText<'_>, value: PyUniformValue<'_>) -> Result<(), PyErr> {
+        let key = key.read("Shader.set: key")?;
+        Ok(self.object.set_input(&key, value.into_input(&key)?)?)
     }
 
     #[pyo3(name = "get")]
     #[lsp_doc("docs/api/core/shader/get.md")]
-    pub fn get_py(&self, key: &str) -> Result<PyUniformData, ShaderError> {
-        Ok(self.object.get_uniform_data(key)?.into())
+    pub fn get_py(&self, key: PyText<'_>) -> PyResult<PyUniformData> {
+        let key = key.read("Shader.get: key")?;
+        Ok(self.object.get_uniform_data(&key)?.into())
     }
 
     #[pyo3(name = "list_uniforms")]
@@ -57,22 +65,31 @@ impl Shader {
 
     #[pyo3(name = "add_mesh")]
     #[lsp_doc("docs/api/core/shader/add_mesh.md")]
-    pub fn add_mesh_py(&self, mesh: &crate::Mesh) -> Result<(), PyErr> {
-        Ok(self.add_mesh(mesh)?)
+    pub fn add_mesh_py(&self, mesh: PyMesh<'_>) -> Result<(), PyErr> {
+        Ok(self.add_mesh(&mesh.read("Shader.add_mesh: mesh")?)?)
     }
 
     #[pyo3(name = "remove_mesh")]
     #[lsp_doc("docs/api/core/shader/remove_mesh.md")]
-    pub fn remove_mesh_py(&self, mesh: &crate::Mesh) {
-        self.remove_mesh(mesh)
+    pub fn remove_mesh_py(&self, mesh: PyMesh<'_>) -> PyResult<()> {
+        self.remove_mesh(&mesh.read("Shader.remove_mesh: mesh")?);
+        Ok(())
     }
 
     #[pyo3(name = "remove_meshes")]
     #[lsp_doc("docs/api/core/shader/remove_meshes.md")]
-    pub fn remove_meshes_py(&self, list: Vec<crate::Mesh>) {
-        for m in list.iter() {
-            self.remove_mesh(m);
+    pub fn remove_meshes_py(&self, list: PyMeshes<'_>) -> PyResult<()> {
+        const CALL: &str = "Shader.remove_meshes";
+        let meshes = list
+            .items(&format!("{CALL}: list"))?
+            .into_iter()
+            .enumerate()
+            .map(|(index, mesh)| mesh.read(&format!("{CALL}: item {index}")))
+            .collect::<PyResult<Vec<_>>>()?;
+        for mesh in &meshes {
+            self.remove_mesh(mesh);
         }
+        Ok(())
     }
 
     #[pyo3(name = "clear_meshes")]
@@ -83,14 +100,26 @@ impl Shader {
 
     #[pyo3(name = "validate_mesh")]
     #[lsp_doc("docs/api/core/shader/validate_mesh.md")]
-    pub fn validate_mesh_py(&self, mesh: &crate::Mesh) -> Result<(), PyErr> {
-        Ok(self.validate_mesh(mesh)?)
+    pub fn validate_mesh_py(&self, mesh: PyMesh<'_>) -> Result<(), PyErr> {
+        Ok(self.validate_mesh(&mesh.read("Shader.validate_mesh: mesh")?)?)
     }
 
     #[pyo3(name = "is_compute")]
     #[lsp_doc("docs/api/core/shader/is_compute.md")]
     pub fn is_compute_py(&self) -> bool {
         self.is_compute()
+    }
+
+    #[pyo3(name = "alpha_mode")]
+    #[lsp_doc("docs/api/core/shader/alpha_mode.md")]
+    pub fn alpha_mode_py(&self, mode: PyAlphaMode<'_>) -> PyResult<Self> {
+        Ok(self.alpha_mode(mode.read("Shader.alpha_mode: mode")?))
+    }
+
+    #[pyo3(name = "double_sided")]
+    #[lsp_doc("docs/api/core/shader/double_sided.md")]
+    pub fn double_sided_py(&self, value: PyFlag<'_>) -> PyResult<Self> {
+        Ok(self.double_sided(value.read("Shader.double_sided: value")?))
     }
 
     // Internal duck-typed interface used by PyRenderable dispatch, not part of public docs.
@@ -116,33 +145,44 @@ impl Shader {
     #[staticmethod]
     #[pyo3(name = "from_vertex")]
     #[lsp_doc("docs/api/core/shader/from_vertex.md")]
-    pub fn from_vertex_py(vertex: &crate::Vertex) -> PyResult<Self> {
-        Ok(Shader::from_vertex(vertex)?)
+    pub fn from_vertex_py(vertex: PyVertex<'_>) -> PyResult<Self> {
+        Ok(Shader::from_vertex(
+            &vertex.read("Shader.from_vertex: vertex")?,
+        )?)
     }
 
     #[staticmethod]
     #[pyo3(name = "from_mesh")]
     #[lsp_doc("docs/api/core/shader/from_mesh.md")]
-    pub fn from_mesh_py(mesh: &crate::Mesh) -> PyResult<Self> {
-        Ok(Shader::from_mesh(mesh)?)
+    pub fn from_mesh_py(mesh: PyMesh<'_>) -> PyResult<Self> {
+        Ok(Shader::from_mesh(&mesh.read("Shader.from_mesh: mesh")?)?)
     }
 }
 
 /// A `Shader(...)` or `Shader.fetch(...)` input from Python: one source, or a list of parts.
-/// Any other type raises `TypeError`.
+/// Any other type raises `TypeError`, as JavaScript throws one.
 #[derive(FromPyObject)]
-pub enum PyShaderInput {
+pub enum PyShaderInput<'py> {
     #[pyo3(annotation = "str")]
     Source(String),
     #[pyo3(annotation = "list[str]")]
     Parts(Vec<String>),
+    Other(Bound<'py, PyAny>),
 }
 
-impl From<PyShaderInput> for crate::ShaderInput {
-    fn from(input: PyShaderInput) -> Self {
-        match input {
-            PyShaderInput::Source(source) => source.into(),
-            PyShaderInput::Parts(parts) => parts.into(),
+impl PyShaderInput<'_> {
+    /// The source or parts, or a `TypeError` that names `call` for a value of another type.
+    pub(crate) fn read(self, call: &str) -> PyResult<ShaderInput> {
+        match self {
+            PyShaderInput::Source(source) => Ok(source.into()),
+            PyShaderInput::Parts(parts) => Ok(parts.into()),
+            PyShaderInput::Other(value) if is_list(&value) => Err(PyTypeError::new_err(format!(
+                "{call}: input list contains a non-string element"
+            ))),
+            PyShaderInput::Other(value) => Err(refuse(
+                &value,
+                format_args!("{call}: input must be a string or a list of strings"),
+            )),
         }
     }
 }
@@ -169,13 +209,24 @@ pub enum PyUniformValue<'py> {
     Matrix(Vec<Vec<f64>>),
     #[pyo3(annotation = "float")]
     Number(f64),
+    Other(Bound<'py, PyAny>),
 }
 
 impl PyUniformValue<'_> {
     /// The loose input this value stands for.
     /// A memoryview is copied out with `tobytes`, whatever its item format.
-    fn into_input(self) -> PyResult<UniformInput> {
+    /// Any other value raises a `TypeError` that names the call and `key`, as JavaScript throws one.
+    fn into_input(self, key: &str) -> PyResult<UniformInput> {
         Ok(match self {
+            Self::Other(value) if is_list(&value) => {
+                return Err(PyTypeError::new_err(format!(
+                    "Shader.set: {key}: expected a list of numbers, or a list of number lists"
+                )));
+            }
+            Self::Other(value) => {
+                let forms = "expected a number, a list, an ndarray, bytes, or a Texture";
+                return Err(refuse(&value, format_args!("Shader.set: {key}: {forms}")));
+            }
             Self::Texture(texture) => UniformInput::Texture(*texture.id()),
             Self::Bool(flag) => UniformInput::Bool(flag),
             Self::Bytes(bytes) => UniformInput::Bytes(bytes.as_bytes().to_vec()),
@@ -200,7 +251,7 @@ pub enum PyUniformData {
     Floats(Vec<f32>),
     UInts(Vec<u32>),
     Ints(Vec<i32>),
-    Texture(crate::texture::TextureMeta),
+    Texture(crate::texture::TextureId),
     Sampler(crate::texture::SamplerInfo),
     Bytes(Vec<u8>),
 }
@@ -220,7 +271,7 @@ impl From<UniformData> for PyUniformData {
             U::HalfMat2(v) | U::HalfMat3(v) | U::HalfMat4(v) => Self::Floats(v),
             U::UVec2(v) | U::UVec3(v) | U::UVec4(v) => Self::UInts(v),
             U::IVec2(v) | U::IVec3(v) | U::IVec4(v) => Self::Ints(v),
-            U::Texture(meta) => Self::Texture(meta),
+            U::Texture(meta) => Self::Texture(meta.id),
             U::Sampler(info) => Self::Sampler(info),
             U::Bytes(bytes) => Self::Bytes(bytes),
             shape @ (U::Array(_) | U::Struct(_) | U::Storage(_) | U::PushConstant(_)) => {

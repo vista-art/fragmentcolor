@@ -638,10 +638,25 @@ mod tests {
     }
 
     #[test]
-    fn the_lowered_pbr_shader_writes_webgl2_glsl() {
-        // WebGL2 compiles GLSL ES 3.0, which the lowered PBR fragment stage must become.
-        let pbr = crate::Material::pbr();
-        let object = &pbr.shader().object;
+    fn the_lowered_material_shaders_write_webgl2_glsl() {
+        // WebGL2 compiles GLSL ES 3.0, which each lowered fragment stage must become.
+        let pbr = crate::PbrMaterial::new();
+        let toon = crate::ToonMaterial::new();
+        for (name, shader) in [("PBR", pbr.shader()), ("toon", toon.shader())] {
+            let glsl = write_webgl2(&shader.object);
+            assert!(
+                glsl.contains("uniform"),
+                "{name}: lights become a uniform block"
+            );
+            assert!(
+                !glsl.contains("buffer "),
+                "{name}: no storage buffer remains:\n{glsl}"
+            );
+        }
+    }
+
+    /// The GLSL ES 3.0 fragment stage of `object` with its light roots lowered.
+    fn write_webgl2(object: &crate::ShaderObject) -> String {
         let roots = object.light_roots.clone().expect("roots");
         let lowered = lower_roots(object.module_for_pipeline(true), &roots, 253).expect("lowered");
         let flags = naga::valid::ValidationFlags::all();
@@ -674,19 +689,15 @@ mod tests {
         )
         .and_then(|mut writer| writer.write())
         .expect("GLSL ES 3.0");
-        assert!(glsl.contains("uniform"), "lights become a uniform block");
-        assert!(
-            !glsl.contains("buffer "),
-            "no storage buffer remains:\n{glsl}"
-        );
+        glsl
     }
 
     #[test]
-    fn the_custom_page_reference_compiles() {
-        // The roots and the reference functions on the Material::custom page.
+    fn the_material_page_reference_compiles() {
+        // The roots and the reference functions in the Material page's Lights section.
         let page = include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/docs/api/scene/material/custom.md"
+            "/docs/api/scene/material/material.md"
         ));
         let blocks: Vec<&str> = page
             .split("```wgsl")

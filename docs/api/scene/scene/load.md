@@ -12,11 +12,12 @@ and uploads a copy of each map into that `Renderer`, so the Scene draws with
 every `Renderer` that loads it. On native targets the first render runs it
 for you; on the web, await it in each `Renderer` before its first render.
 
-The Materials keep each image encoded for as long as a slot holds its map:
+The materials keep each image encoded for as long as a map holds it:
 an image inside a `.glb` or a data URI keeps its file bytes, and an image in
 a file beside a `.gltf` keeps only its path, which each `Renderer` reads
 again. A scene keeps about its file's size in RAM beside its copy on each
-GPU. The Material page's Memory section lists what each kind of source keeps.
+GPU. The [`MaterialMap::texture`](https://fragmentcolor.org/api/scene/materialmap#texture)
+page's Memory section lists what each kind of source keeps.
 
 `Scene::load` reads each image's header, its format and its size, and fails
 with `SceneLoadError::Invalid`, naming the image, for one it can't read. A
@@ -25,23 +26,24 @@ a `Renderer`, with an error that names the image.
 
 The loader reads static glTF: mesh primitives (`POSITION`, `NORMAL`,
 `TEXCOORD_0`, `TEXCOORD_1`, `COLOR_0`, `TANGENT` and indices), PBR-MR
-materials with all five texture slots, per-node transforms flattened into
+materials with all five maps as `PbrMaterial`s, materials with
+`KHR_materials_unlit` as `UnlitMaterial`s, per-node transforms flattened into
 Model matrices, glTF camera nodes, and `KHR_lights_punctual` lights.
-Animation, skinning, morph targets, and material extensions beyond PBR-MR
-and `KHR_texture_transform` are out of scope; they parse cleanly and the
-loader ignores them.
+Animation, skinning, morph targets, and material extensions beyond PBR-MR,
+`KHR_materials_unlit` and `KHR_texture_transform` are out of scope; they parse
+cleanly and the loader ignores them.
 
-Each texture slot samples the UV set its `texCoord` names, through its own
+Each map samples the UV set its `texCoord` names, through its own
 `KHR_texture_transform`. The extension's `texCoord`, when it has one, wins
 over the texture's. A primitive without `TEXCOORD_1` takes its `TEXCOORD_0`
-values as `UV1`, so a slot on set 1 samples the same UVs as set 0 there.
-The PBR material samples two UV sets, so a texture that names `TEXCOORD_2`
-or above returns `SceneLoadError::Invalid`, naming the slot, such as
+values as `UV1`, so a map on set 1 samples the same UVs as set 0 there.
+Both material types sample two UV sets, so a texture that names `TEXCOORD_2`
+or above returns `SceneLoadError::Invalid`, naming the texture, such as
 `occlusionTexture`.
 
 Each texture keeps its glTF sampler's filters and wrap modes, but the PBR
-material samples all five slots with one sampler. That sampler takes the
-options of the first texture in slot order, base color first, so the
+material samples all five maps with one sampler. That sampler takes the
+options of the first texture in map order, base color first, so the
 other maps follow its wrap modes. A file whose base color texture clamps
 while a tiled normal map repeats draws the normal map clamped, and the
 edge texels smear across most of the surface.

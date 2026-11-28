@@ -1,4 +1,4 @@
-from fragmentcolor import Camera, Light, Material, Mesh, Model, Renderer, Scene, Vertex
+from fragmentcolor import Camera, Light, Mesh, Model, PbrMaterial, Renderer, Scene, Vertex
 
 renderer = Renderer()
 
@@ -8,7 +8,7 @@ mesh.add_vertices([
     Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
     Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
 ])
-model = Model(mesh, Material.pbr())
+model = Model(mesh, PbrMaterial())
 
 camera = Camera.perspective(1.047, 1.0, 0.1, 100.0).look_at([0.0, 0.0, 3.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
 sun = Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])

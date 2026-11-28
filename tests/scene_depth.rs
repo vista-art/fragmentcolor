@@ -1,8 +1,8 @@
 #![cfg(not(target_arch = "wasm32"))]
 
 use fragmentcolor::{
-    AlphaMode, Camera, Material, Mesh, Model, Pass, Renderer, Scene, Shader, Target, TextureTarget,
-    Vertex,
+    AlphaMode, Camera, Material, Mesh, Model, Pass, PbrMaterial, Renderer, Scene, Shader, Target,
+    TextureTarget, Vertex,
 };
 
 const SIZE: u32 = 16;
@@ -41,7 +41,7 @@ const RED: [f32; 3] = [1.0, 0.0, 0.0];
 const BLUE: [f32; 3] = [0.0, 0.0, 1.0];
 
 /// A one-meter square facing the camera at depth `z`, drawn with `material`.
-fn square(material: Material, z: f32) -> Model {
+fn square(material: impl Into<Material>, z: f32) -> Model {
     let mesh = Mesh::new();
     let corners = [
         [-0.5, -0.5, 0.0],
@@ -61,7 +61,7 @@ fn square(material: Material, z: f32) -> Model {
 
 /// A square at depth `z` glowing in `color`.
 fn glow(color: [f32; 3], z: f32) -> Model {
-    let material = Material::pbr()
+    let material = PbrMaterial::new()
         .base_color([0.0, 0.0, 0.0, 1.0])
         .expect("base color")
         .emissive(color)
@@ -71,7 +71,7 @@ fn glow(color: [f32; 3], z: f32) -> Model {
 
 /// A square at depth `z` of half-clear glass glowing in `color`.
 fn glass(color: [f32; 3], z: f32) -> Model {
-    let material = Material::pbr()
+    let material = PbrMaterial::new()
         .base_color([0.0, 0.0, 0.0, 0.5])
         .expect("base color")
         .emissive(color)

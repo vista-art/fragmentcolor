@@ -16,7 +16,6 @@ use std::sync::Arc;
 use lsp_doc::lsp_doc;
 
 use crate::Pass;
-use crate::PassError;
 use crate::bindings::numbers::read_color;
 use crate::errors::platform::mobile::FragmentColorError;
 use crate::{Mesh, ScreenRegion, Shader, Texture};
@@ -60,8 +59,7 @@ impl Pass {
     #[uniffi::method(name = "addMesh")]
     #[lsp_doc("docs/api/core/pass/add_mesh.md")]
     pub fn add_mesh_mobile(&self, mesh: Arc<Mesh>) -> Result<(), FragmentColorError> {
-        self.add_mesh(&mesh)
-            .map_err(|e: PassError| FragmentColorError::Render(e.to_string()))
+        Ok(self.add_mesh(&mesh)?)
     }
 
     /// Unified `Pass.add`, which branches on the runtime mobile handle. Adding
@@ -92,11 +90,10 @@ impl Pass {
         match target {
             TargetHandle::Texture(mt) => {
                 let tex_target = mt.texture_target();
-                self.set_target(&tex_target)
-                    .map_err(|e: PassError| FragmentColorError::Render(e.to_string()))
+                Ok(self.set_target(&tex_target)?)
             }
-            TargetHandle::Window(_) => Err(FragmentColorError::Render(
-                "setTarget: WindowTarget cannot be used as a Pass color target; use TextureTarget instead".into(),
+            TargetHandle::Window(_) => Err(FragmentColorError::invalid_input(
+                "setTarget: WindowTarget cannot be used as a Pass color target; use TextureTarget instead",
             )),
         }
     }
@@ -122,11 +119,10 @@ impl Pass {
         match target {
             TargetHandle::Texture(mt) => {
                 let tex_target = mt.texture_target();
-                self.set_depth_target(&tex_target)
-                    .map_err(|e: PassError| FragmentColorError::Render(e.to_string()))
+                Ok(self.set_depth_target(&tex_target)?)
             }
-            TargetHandle::Window(_) => Err(FragmentColorError::Render(
-                "setDepthTarget: WindowTarget cannot be used as a depth attachment; use a depth Texture instead".into(),
+            TargetHandle::Window(_) => Err(FragmentColorError::invalid_input(
+                "setDepthTarget: WindowTarget cannot be used as a depth attachment; use a depth Texture instead",
             )),
         }
     }
@@ -139,8 +135,7 @@ impl Pass {
         &self,
         texture: Arc<Texture>,
     ) -> Result<(), FragmentColorError> {
-        self.set_depth_target(texture.as_ref())
-            .map_err(|e: PassError| FragmentColorError::Render(e.to_string()))
+        Ok(self.set_depth_target(texture.as_ref())?)
     }
 
     /// Set the clear color for this pass as linear `[r, g, b]` or `[r, g, b, a]`.
@@ -157,7 +152,10 @@ impl Pass {
     #[uniffi::method(name = "setViewport")]
     #[lsp_doc("docs/api/core/pass/set_viewport.md")]
     pub fn set_viewport_mobile(&self, region: ScreenRegion) -> Result<(), FragmentColorError> {
-        Ok(self.set_viewport(region)?)
+        let region = region
+            .check()
+            .map_err(|error| error.name("Pass.setViewport"));
+        Ok(self.set_viewport(region?)?)
     }
 
     /// Set the compute dispatch dimensions for this pass.
@@ -178,8 +176,7 @@ impl Pass {
     #[lsp_doc("docs/api/core/pass/hidden/require_mobile.md")]
     pub fn require_mobile(&self, deps: Vec<RenderableHandle>) -> Result<(), FragmentColorError> {
         for dep in deps {
-            self.require(&dep)
-                .map_err(|e: PassError| FragmentColorError::Render(e.to_string()))?;
+            self.require(&dep)?;
         }
         Ok(())
     }

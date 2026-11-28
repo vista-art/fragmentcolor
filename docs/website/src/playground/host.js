@@ -169,6 +169,7 @@ export class Playground {
       copy: root.querySelector(".fcp-copy"),
       fullscreen: root.querySelector(".fcp-fullscreen"),
       stick: root.querySelector(".fcp-stick"),
+      buttons: root.querySelector(".fcp-buttons"),
       keyHint: root.querySelector(".fcp-key-hint"),
     };
     this.edits = new Map();
@@ -176,8 +177,11 @@ export class Playground {
     this.pointer = null;
     // Wheel, drag and pinch since the last frame, for demos with `gestures: true`.
     this.gestures = null;
-    // Keys held while the canvas has focus, and the touch stick, for demos with `keys: true`.
+    // Keys held while the canvas has focus, for demos with `keys: true`, and where
+    // the touch stick points, as [x, y], which stays [0, 0] for a demo that shows none.
     this.keys = { down: new Set(), stick: [0, 0] };
+    // The frame request that lets go of each key released since the last frame.
+    this.releases = new Map();
     this.program = null;
     this.pending = null;
     this.buildToken = 0;
@@ -778,16 +782,75 @@ export class Playground {
   }
 
   // Lets the canvas take focus and shows the touch stick when the demo takes
-  // keys. Any other demo leaves the keyboard and the touches to the page.
+  // keys, unless it sets `stick: false`. Any other demo leaves the keyboard and
+  // the touches to the page.
   takeKeys(on) {
     const { canvas, ui } = this;
     if (on) canvas.tabIndex = 0;
     else canvas.removeAttribute("tabindex");
     if (!on && document.activeElement === canvas) canvas.blur();
-    if (ui.stick) ui.stick.hidden = !on;
+    if (ui.stick) ui.stick.hidden = !on || this.demo?.stick === false;
     if (ui.keyHint) ui.keyHint.hidden = !on;
-    this.keys.down.clear();
+    this.clearKeys();
     this.releaseStick();
+    this.placeButtons(on ? (this.demo?.buttons ?? []) : []);
+  }
+
+  // Holds a key down, and drops any release still waiting for its frame.
+  pressKey(code) {
+    cancelAnimationFrame(this.releases.get(code));
+    this.releases.delete(code);
+    this.keys.down.add(code);
+  }
+
+  // Lets go of a key after the next frame has seen it.
+  releaseKey(code) {
+    cancelAnimationFrame(this.releases.get(code));
+    const release = requestAnimationFrame(() => {
+      this.releases.delete(code);
+      this.keys.down.delete(code);
+    });
+    this.releases.set(code, release);
+  }
+
+  // Lets go of every key at once.
+  clearKeys() {
+    for (const release of this.releases.values()) cancelAnimationFrame(release);
+    this.releases.clear();
+    this.keys.down.clear();
+  }
+
+  // A touch screen gets a button for each key in the demo's `buttons`, which
+  // holds the key down while a finger is on it, as the keyboard does.
+  placeButtons(buttons) {
+    const box = this.ui.buttons;
+    if (!box) return;
+    box.hidden = !buttons.length;
+    box.replaceChildren(
+      ...buttons.map(({ code, label }) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = label;
+        let finger = null;
+        button.addEventListener("pointerdown", (e) => {
+          e.preventDefault();
+          button.setPointerCapture(e.pointerId);
+          finger = e.pointerId;
+          button.dataset.held = "";
+          this.pressKey(code);
+        });
+        const release = (e) => {
+          if (e.pointerId !== finger) return;
+          finger = null;
+          delete button.dataset.held;
+          this.releaseKey(code);
+        };
+        button.addEventListener("pointerup", release);
+        button.addEventListener("pointercancel", release);
+        button.addEventListener("lostpointercapture", release);
+        return button;
+      }),
+    );
   }
 
   releaseStick() {
@@ -802,7 +865,8 @@ export class Playground {
   // -1 to 1 with y up. Keys count only while the canvas has focus, which a
   // click or Tab gives it. Shortcuts with a modifier, Tab and Escape stay
   // with the browser and the site, and only the keys that would scroll the
-  // page skip their default.
+  // page skip their default. A key lets go one frame after its keyup, so a
+  // tap shorter than a frame still reaches `frame`.
   wireKeys() {
     const { canvas, ui } = this;
     const scrolling = new Set(["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "PageUp", "PageDown", "Home", "End"]);
@@ -813,12 +877,12 @@ export class Playground {
       if (!this.demo?.keys || e.code === "Tab") return;
       if (e.code === "Escape") return canvas.blur();
       // macOS sends no keyup for a key released while Cmd is down, so a modifier lifts every key.
-      if (e.metaKey || e.ctrlKey || e.altKey) return this.keys.down.clear();
-      this.keys.down.add(e.code);
+      if (e.metaKey || e.ctrlKey || e.altKey) return this.clearKeys();
+      this.pressKey(e.code);
       if (scrolling.has(e.code)) e.preventDefault();
     });
-    this.on(canvas, "keyup", (e) => this.keys.down.delete(e.code));
-    this.on(canvas, "blur", () => this.keys.down.clear());
+    this.on(canvas, "keyup", (e) => this.releaseKey(e.code));
+    this.on(canvas, "blur", () => this.clearKeys());
 
     const stick = ui.stick;
     if (!stick) return;

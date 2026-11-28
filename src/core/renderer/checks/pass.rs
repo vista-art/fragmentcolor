@@ -452,7 +452,7 @@ mod tests {
     use crate::core::renderer::device::{create_instance, request_adapter};
     use crate::texture::TextureId;
     use crate::{
-        Material, Mesh, Model, Pass, PassType, Renderer, Scene, Shader, Size, SurfaceError,
+        Mesh, Model, Pass, PassType, PbrMaterial, Renderer, Scene, Shader, Size, SurfaceError,
         TextureData, TextureFormat, TextureInput, TextureOptions, TextureUsage, Vertex,
     };
 
@@ -600,7 +600,7 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
             let plain = open(wgpu::Features::empty()).await.expect("a device");
             let blending = open(wgpu::Features::FLOAT32_BLENDABLE).await;
             let glass = build_fullscreen("vec4<f32>", "vec4<f32>(0.5)");
-            let _ = Material::custom(glass.clone()).alpha_mode(AlphaMode::Blend);
+            glass.object.set_alpha_mode(AlphaMode::Blend);
             let integer = build_fullscreen("vec4<u32>", "vec4<u32>(1u)");
             for context in std::iter::once(plain).chain(blending) {
                 let renderer = Renderer::new();
@@ -696,7 +696,7 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
     }
 
     /// A Model that covers the view, drawn with `material`.
-    fn build_model(material: Material) -> Model {
+    fn build_model(material: PbrMaterial) -> Model {
         let mesh = Mesh::new();
         let corners = [[-1.0, -1.0, 0.0], [3.0, -1.0, 0.0], [-1.0, 3.0, 0.0]];
         mesh.add_vertices(
@@ -706,10 +706,9 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
     }
 
     /// A pass that draws `material`, whose base color map is a map of raw bytes, and its shader.
-    fn build_pass(material: Material) -> (Pass, Shader) {
-        let material = material
-            .base_color_texture((vec![255; 16], [2, 2]))
-            .expect("base color map");
+    fn build_pass(material: PbrMaterial) -> (Pass, Shader) {
+        let map = material.base_color_map().texture((vec![255; 16], [2, 2]));
+        map.expect("base color map");
         let shader = material.shader.clone();
         let pass = Pass::new("mapped");
         pass.add(&build_model(material)).expect("add");
@@ -782,7 +781,7 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
             let frame = owner.create_texture_target([8, 8]).await.expect("a target");
             let other = Renderer::new();
             let _context = other.create_texture_target([8, 8]).await.expect("a target");
-            let (pass, shader) = build_pass(Material::pbr());
+            let (pass, shader) = build_pass(PbrMaterial::new());
 
             let refused = other.render(&pass, &frame);
             assert!(
@@ -807,7 +806,7 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
             let offscreen = owner.create_texture_target([8, 8]).await.expect("a target");
             let other = Renderer::new();
             let other_frame = other.create_texture_target([8, 8]).await.expect("a target");
-            let (pass, shader) = build_pass(Material::pbr());
+            let (pass, shader) = build_pass(PbrMaterial::new());
             pass.set_target(&offscreen).expect("set_target");
 
             let refused = other.render(&pass, &other_frame);
@@ -837,8 +836,9 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
                 .expect("a texture");
             let other = Renderer::new();
             let other_frame = other.create_texture_target([8, 8]).await.expect("a target");
-            let (pass, shader) =
-                build_pass(Material::pbr().normal_texture(&normal).expect("normal map"));
+            let material = PbrMaterial::new();
+            material.normal_map().texture(&normal).expect("normal map");
+            let (pass, shader) = build_pass(material);
 
             let refused = other.render(&pass, &other_frame);
             assert!(
@@ -866,7 +866,7 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
                 .expect("a depth texture");
             let other = Renderer::new();
             let other_frame = other.create_texture_target([8, 8]).await.expect("a target");
-            let (pass, shader) = build_pass(Material::pbr());
+            let (pass, shader) = build_pass(PbrMaterial::new());
             pass.set_depth_target(&depth).expect("set_depth_target");
 
             let refused = other.render(&pass, &other_frame);
@@ -899,7 +899,7 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
             let compute = Shader::new(source).expect("a compute shader");
             compute.set("image", &image).expect("set");
             let dispatch = Pass::from_shader("dispatch", &compute);
-            let (pass, shader) = build_pass(Material::pbr());
+            let (pass, shader) = build_pass(PbrMaterial::new());
 
             let refused = other.render(&vec![pass, dispatch], &other_frame);
             assert!(
@@ -922,11 +922,12 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
                 .expect("a texture");
             let other = Renderer::new();
             let frame = other.create_texture_target([8, 8]).await.expect("a target");
-            let (pass, shader) = build_pass(
-                Material::pbr()
-                    .base_color_texture(&old)
-                    .expect("base color map"),
-            );
+            let material = PbrMaterial::new();
+            material
+                .base_color_map()
+                .texture(&old)
+                .expect("base color map");
+            let (pass, shader) = build_pass(material);
 
             other.render(&pass, &frame).expect("the new map draws");
             check_drawn(&other, &shader);
@@ -943,8 +944,10 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
                 .create_texture((vec![128; 16], [2, 2]))
                 .await
                 .expect("a texture");
-            let material = Material::pbr()
-                .base_color_texture(&old)
+            let material = PbrMaterial::new();
+            material
+                .base_color_map()
+                .texture(&old)
                 .expect("base color map");
             drop(old);
             drop(owner);
@@ -969,7 +972,7 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
                 .expect("a texture");
             let other = Renderer::new();
             let frame = other.create_texture_target([8, 8]).await.expect("a target");
-            let (pass, shader) = build_pass(Material::pbr());
+            let (pass, shader) = build_pass(PbrMaterial::new());
             shader.set("base_color_map", &old).expect("set");
 
             let refused = other.render(&pass, &frame);
@@ -994,7 +997,7 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
             let other = Renderer::new();
             let _context = other.create_texture_target([8, 8]).await.expect("a target");
             let scene = Scene::new();
-            scene.add(&build_model(Material::pbr())).expect("add");
+            scene.add(&build_model(PbrMaterial::new())).expect("add");
 
             let refused = other.render(&scene, &frame);
             assert!(
@@ -1013,7 +1016,7 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
         pollster::block_on(async move {
             let owner = Renderer::new();
             let frame = owner.create_texture_target([8, 8]).await.expect("a target");
-            let (pass, shader) = build_pass(Material::pbr());
+            let (pass, shader) = build_pass(PbrMaterial::new());
             let other = Renderer::new();
 
             let refused = other.render(&pass, &frame);
@@ -1033,7 +1036,7 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
     // such as a window without a surface, with NoContext, before it opens a device.
     #[test]
     fn a_renderer_without_a_context_refuses_an_ownerless_target() {
-        let (pass, shader) = build_pass(Material::pbr());
+        let (pass, shader) = build_pass(PbrMaterial::new());
         let renderer = Renderer::new();
 
         let refused = renderer.render(&pass, &Ownerless);
@@ -1070,7 +1073,7 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
     fn dropping_a_renderer_frees_its_map_copy() {
         pollster::block_on(async move {
             let (renderer, frame) = open_target().await;
-            let (pass, shader) = build_pass(Material::pbr());
+            let (pass, shader) = build_pass(PbrMaterial::new());
             renderer.render(&pass, &frame).expect("the pass draws");
             let copy = Arc::downgrade(&find_copy(&frame, &shader));
 
@@ -1087,7 +1090,7 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
         pollster::block_on(async move {
             let (first, first_frame) = open_target().await;
             let (second, second_frame) = open_target().await;
-            let (pass, shader) = build_pass(Material::pbr());
+            let (pass, shader) = build_pass(PbrMaterial::new());
             first.render(&pass, &first_frame).expect("the first draws");
             second
                 .render(&pass, &second_frame)
@@ -1144,8 +1147,10 @@ fn fs_main() -> @location(0) vec4<f32> {
                 options,
             };
             let shader = Shader::new(INTEGER_MAP).expect("a shader");
-            let material = Material::custom(shader)
-                .base_color_texture(input)
+            let material = PbrMaterial::wrap(shader);
+            material
+                .base_color_map()
+                .texture(input)
                 .expect("base color map");
 
             let refused = frame.context.render(material.shader(), &frame);
@@ -1168,7 +1173,7 @@ fn fs_main() -> @location(0) vec4<f32> {
     fn an_unset_map_draws_the_default() {
         pollster::block_on(async move {
             let (renderer, frame) = open_target().await;
-            let (pass, shader) = build_pass(Material::pbr());
+            let (pass, shader) = build_pass(PbrMaterial::new());
             renderer.render(&pass, &frame).expect("the pass draws");
             let id = read_bound(&shader, "base_color_map");
 
@@ -1188,7 +1193,7 @@ fn fs_main() -> @location(0) vec4<f32> {
     fn an_unregistered_copy_uploads_again() {
         pollster::block_on(async move {
             let (renderer, frame) = open_target().await;
-            let (pass, shader) = build_pass(Material::pbr());
+            let (pass, shader) = build_pass(PbrMaterial::new());
             renderer.render(&pass, &frame).expect("the pass draws");
             let id = read_bound(&shader, "base_color_map");
 

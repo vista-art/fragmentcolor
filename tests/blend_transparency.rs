@@ -7,7 +7,7 @@
 //! result depends on insertion order and can flip the layering.
 
 use fragmentcolor::{
-    AlphaMode, Camera, Light, Material, Mesh, Model, Renderer, Scene, Target, Vertex,
+    AlphaMode, Camera, Light, Mesh, Model, PbrMaterial, Renderer, Scene, Target, Vertex,
 };
 
 fn unit_quad() -> Mesh {
@@ -47,11 +47,11 @@ fn renders_two_blend_quads_at_different_depths() {
             .await
             .expect("texture target");
 
-        let far_mat = Material::pbr()
+        let far_mat = PbrMaterial::new()
             .base_color([1.0, 0.0, 0.0, 0.5])
             .expect("base color")
             .alpha_mode(AlphaMode::Blend);
-        let near_mat = Material::pbr()
+        let near_mat = PbrMaterial::new()
             .base_color([0.0, 0.0, 1.0, 0.5])
             .expect("base color")
             .alpha_mode(AlphaMode::Blend);
@@ -123,11 +123,11 @@ fn cross_shader_blend_sorts_globally() {
             .await
             .expect("texture target");
 
-        let red_mat = Material::pbr()
+        let red_mat = PbrMaterial::new()
             .base_color([1.0, 0.0, 0.0, 0.5])
             .expect("base color")
             .alpha_mode(AlphaMode::Blend);
-        let blue_mat = Material::pbr()
+        let blue_mat = PbrMaterial::new()
             .base_color([0.0, 0.0, 1.0, 0.5])
             .expect("base color")
             .alpha_mode(AlphaMode::Blend);
@@ -193,10 +193,10 @@ fn opaque_and_blend_in_same_pass_render_without_panic() {
             .await
             .expect("texture target");
 
-        let opaque_mat = Material::pbr()
+        let opaque_mat = PbrMaterial::new()
             .base_color([0.5, 0.5, 0.5, 1.0])
             .expect("base color");
-        let blend_mat = Material::pbr()
+        let blend_mat = PbrMaterial::new()
             .base_color([1.0, 1.0, 1.0, 0.5])
             .expect("base color")
             .alpha_mode(AlphaMode::Blend);

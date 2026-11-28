@@ -1,10 +1,10 @@
-import { Material, Mesh, Model, Pass, Renderer, Scene, Vertex } from "fragmentcolor";
+import { Mesh, Model, Pass, PbrMaterial, Renderer, Scene, Vertex } from "fragmentcolor";
 
 const renderer = new Renderer();
 
 const mesh = new Mesh();
 mesh.addVertices([ Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]), Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]), ]);
-const model = new Model(mesh, Material.pbr());
+const model = new Model(mesh, new PbrMaterial());
 
 // A backdrop pass that clears to a soft blue before the scene's main draw.
 const backdrop = new Pass("backdrop");

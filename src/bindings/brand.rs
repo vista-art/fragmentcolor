@@ -26,7 +26,7 @@ pub(crate) const fn same_kind(left: &str, right: &str) -> bool {
 ///
 /// Usage:
 ///   impl_fc_kind!(Renderer, "Renderer");
-///   impl_fc_kind!(CanvasTarget, "CanvasTarget");
+///   impl_fc_kind!(TextureTarget, "TextureTarget");
 macro_rules! impl_fc_kind {
     ($ty:ty, $name:literal) => {
         impl $crate::FcKind for $ty {

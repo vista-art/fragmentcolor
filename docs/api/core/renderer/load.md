@@ -1,10 +1,10 @@
 # Renderer::load
 
-Uploads into this `Renderer` every Material map of a renderable that it
-lacks, or holds from an older set. Material's texture setters
-(`base_color_texture`, `metallic_roughness_texture`, …) take an
-already-uploaded [`Texture`](https://fragmentcolor.org/api/texture/texture)
-or a source: bytes, a path, a URL or a `Mipmap`. The Material keeps a source
+Uploads into this `Renderer` every material map of a renderable that it
+lacks, or holds from an older set.
+[`MaterialMap::texture`](https://fragmentcolor.org/api/scene/materialmap#texture)
+takes an already-uploaded [`Texture`](https://fragmentcolor.org/api/texture/texture)
+or a source: bytes, a path, a URL or a `Mipmap`. The material keeps a source
 as a map with one texture id. `load` walks every Shader the renderable visits
 and decodes each map this `Renderer` needs into a copy of its own, under that id.
 
@@ -14,12 +14,11 @@ the first failure, as does every later `load` and every native `render`,
 until the source is fixed or replaced. The latest setter call for a map
 wins, even one made while `load` is uploading the older source. That older
 upload stands in, so this `Renderer` always holds a copy, until the next
-`load` uploads the latest. A slot the shader doesn't declare never becomes a map, since
-the setter logs a warning and leaves the Material as it was.
+`load` uploads the latest.
 
-Each `Renderer` holds copies of its own. One Material draws with every
+Each `Renderer` holds copies of its own. One material draws with every
 `Renderer` that loads it, and a copy goes when its `Renderer` or the
-Material drops. A map set again draws its old copy until this `Renderer`
+material drops. A map set again draws its old copy until this `Renderer`
 loads the new one.
 
 On native targets, [`Renderer::render`](https://fragmentcolor.org/api/core/renderer#render)
@@ -61,7 +60,7 @@ report their GPU errors, and throws the first one, as
 # /*[kotlin]
 # val image = java.io.File("examples/assets/logo.png").readBytes()
 # */
-use fragmentcolor::{Material, Mesh, Model, Renderer, Scene, Vertex};
+use fragmentcolor::{Mesh, Model, PbrMaterial, Renderer, Scene, Vertex};
 
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([64, 64]).await?;
@@ -74,7 +73,8 @@ mesh.add_vertices([
 ]);
 
 // The material keeps the encoded image as a map.
-let material = Material::pbr().base_color_texture(&image)?;
+let material = PbrMaterial::new();
+material.base_color_map().texture(&image)?;
 let model = Model::new(mesh, material);
 let scene = Scene::new();
 scene.add(&model)?;

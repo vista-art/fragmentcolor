@@ -1,0 +1,2035 @@
+---
+title: PbrMaterial
+description: "glTF 2.0's metallic-roughness material, drawn with FragmentColor's built-in physically-based shader: Cook-Torrance specular with GGX, Smith and Schlick, and Lambertian diffuse with energy conservation, lit by every [Light](/api/scene/light) that reaches it."
+category: scene
+categoryLabel: Scene
+sidebar:
+  order: 3
+---
+
+import { Code, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
+
+## Description
+
+glTF 2.0's metallic-roughness material, drawn with FragmentColor's built-in
+physically-based shader: Cook-Torrance specular with GGX, Smith and Schlick,
+and Lambertian diffuse with energy conservation, lit by every
+[Light](/api/scene/light) that reaches it.
+
+A `PbrMaterial` has glTF's number settings, each a builder-style setter:
+`base_color`, `metallic`, `roughness`, `normal_scale`, `occlusion_strength`,
+`emissive` and `alpha_cutoff`. It has five maps, each a
+[`MaterialMap`](/api/scene/materialmap) that sets its
+texture, UV set and transform: `base_color_map()`,
+`metallic_roughness_map()`, `normal_map()`, `occlusion_map()` and
+`emissive_map()`. `alpha_mode` and `double_sided` set how it blends and
+which faces it draws.
+
+[`PbrMaterial::new`](/api/scene/pbrmaterial#new)
+starts from glTF's defaults, as a white surface. Its maps start unbound, and
+the renderer resolves each one to a 1×1 default the first time a Pass draws
+the material, so the shader has every binding it needs without any further
+setup. `PbrMaterial::new` can't fail: the shader parts it composes are
+compiled into the library.
+
+A material draws on a [Mesh](/api/geometry/mesh)
+through a [Model](/api/scene/model), the object you
+add to a `Pass`. `Model::new` takes a `PbrMaterial` as it takes any
+[Material](/api/scene/material). The material
+draws nothing on its own.
+
+## Cloning is an Arc-share, not a deep copy
+
+`PbrMaterial` clones, and every setter's return value, point at the same
+inner shader. Mutating one handle changes the state every other handle
+reads:
+
+```text
+let red = PbrMaterial::new().base_color([1.0, 0.0, 0.0, 1.0])?;
+let same = red.clone();
+same.base_color([0.0, 1.0, 0.0, 1.0])?; // both `red` and `same` now read green
+```
+
+The same goes for the chained setter's return: `PbrMaterial::new().metallic(...)`
+gives you back a handle to the same shader, not a fresh copy. This is what
+makes setters chain cheaply and lets one material drive hundreds of Models
+without a shader for each.
+
+When you need an independent material, build a fresh `PbrMaterial::new()`
+and set the factors and maps you care about.
+
+## What lives where
+
+- **Factor uniforms** (base color, metallic, …) are stored on the shader as
+  `material.<name>` fields and read every frame. They belong to the
+  material, so the Models that share a material share these values.
+- **Maps** are stored under the canonical glTF binding names
+  (`base_color_map`, `metallic_roughness_map`, `normal_map`,
+  `occlusion_map`, `emissive_map`) and sampled by the shader. Unset maps
+  resolve to the renderer's 1×1 defaults, so the shader's bind group is
+  always complete.
+- **UV sources**: each map samples its own UV set (`UV0` or `UV1`) through
+  its own `KHR_texture_transform`. The shader keeps them in `material.uv`,
+  five entries in the order of the maps above, each with `uv_set`, `offset`,
+  `scale` and `rotation`. `MaterialMap::uv`, `MaterialMap::transform` and
+  `PbrMaterial::uv_transform` set them.
+- **Per-Model transform** rides the **per-instance vertex attribute** stream
+  as `model_0` to `model_3` (four `vec4<f32>` columns of a `mat4x4<f32>`, at
+  locations 3 to 6). The renderer fills it from each Model's transform at
+  draw time. It's *not* a material uniform, so Models that share one
+  material each draw with their own transform.
+
+## Pipeline state
+
+`alpha_mode` (`Opaque` / `Mask` / `Blend`) and `double_sided` are wired
+through to the pipeline. See `PbrMaterial::alpha_mode` and
+`PbrMaterial::double_sided`. Mask mode uses `material.alpha_cutoff` to discard
+transparent fragments. Blend uses standard `SrcAlpha/OneMinusSrcAlpha`
+over-blend with depth-write turned off.
+
+Tangent-space normal mapping is built in: the sampled normal is decoded
+from the stored `[0, 1]` bytes, its XY components are scaled by
+`material.normal_scale`, and the result is rotated from tangent space into
+world space using the per-vertex tangent, with the glTF `tangent.w`
+handedness flag preserved. For any other shading, bring a
+[Shader](/api/scene/material#a-shader-as-a-material)
+of your own.
+
+
+
+## Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::{Mesh, Model, PbrMaterial, Vertex};
+
+let mesh = Mesh::new();
+mesh.add_vertices([
+    Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]),
+    Vertex::pbr([-0.5, -0.5, 0.0]).set(Vertex::UV0, [0.0, 0.0]),
+    Vertex::pbr([0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]),
+]);
+
+let material = PbrMaterial::new()
+    .base_color([0.85, 0.2, 0.2, 1.0])?
+    .metallic(0.0)?
+    .roughness(0.4)?
+    .emissive([0.0, 0.0, 0.05])?;
+
+let model = Model::new(mesh, material);
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Mesh, Model, PbrMaterial, Vertex } from "fragmentcolor";
+
+const mesh = new Mesh();
+mesh.addVertices([ Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]), Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]), ]);
+
+const material = new PbrMaterial().baseColor([0.85, 0.2, 0.2, 1.0]).metallic(0.0).roughness(0.4).emissive([0.0, 0.0, 0.05]);
+
+const model = new Model(mesh, material);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Mesh, Model, PbrMaterial, Vertex
+
+mesh = Mesh()
+mesh.add_vertices([
+    Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
+    Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+    Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+])
+
+material = PbrMaterial().base_color([0.85, 0.2, 0.2, 1.0]).metallic(0.0).roughness(0.4).emissive([0.0, 0.0, 0.05])
+
+model = Model(mesh, material)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let mesh = Mesh()
+mesh.addVertices([
+    try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
+    try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+    try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+])
+
+let material = try PbrMaterial().baseColor([0.85, 0.2, 0.2, 1.0]).metallic(0.0).roughness(0.4).emissive([0.0, 0.0, 0.05])
+
+let model = Model(mesh, material)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val mesh = Mesh()
+mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
+
+val material = PbrMaterial().baseColor(listOf(0.85f, 0.2f, 0.2f, 1.0f)).metallic(0.0f).roughness(0.4f).emissive(listOf(0.0f, 0.0f, 0.05f))
+
+val model = Model(mesh, material)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+## Methods
+
+
+---
+
+### PbrMaterial::alpha_cutoff \{#alpha_cutoff\}
+
+Sets the alpha threshold used by `AlphaMode::Mask`. Fragments whose
+`base_color.a` falls below this value are `discard`ed in the fragment
+shader. Stored on `material.alpha_cutoff`; default `0.5`, matching glTF 2.0.
+
+Only `AlphaMode::Mask` reads this value; in `Opaque` and `Blend` modes the
+fragment shader ignores it. Use it together with `PbrMaterial::alpha_mode`
+when you want hard-edged cut-out transparency (foliage, chain-link, decals).
+
+NaN or an infinity returns `MaterialError::NotFinite`, which names the
+call, and the material keeps the value it had. The other languages also
+refuse a number past the 32-bit float range, such as `1e39`, with a
+message like `PbrMaterial.alphaCutoff: value must be a finite number that
+fits a 32-bit float, got 1e39`. JavaScript throws an `Error` named
+`InvalidInputError`, Python raises `InvalidInputError`, Swift throws
+`FragmentColorError` and Kotlin throws `FragmentColorException`.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::PbrMaterial;
+
+let foliage = PbrMaterial::new().alpha_cutoff(0.3)?;
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { PbrMaterial } from "fragmentcolor";
+
+const foliage = new PbrMaterial().alphaCutoff(0.3);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import PbrMaterial
+
+foliage = PbrMaterial().alpha_cutoff(0.3)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let foliage = try PbrMaterial().alphaCutoff(0.3)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val foliage = PbrMaterial().alphaCutoff(0.3f)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### PbrMaterial::alpha_mode \{#alpha_mode\}
+
+Set how the renderer interprets the alpha channel of the material's output. Mirrors the
+glTF 2.0 `alphaMode` semantics. Pipeline state is baked into the WebGPU pipeline, so
+different `AlphaMode` values for the same shader cache to distinct pipelines.
+
+The three variants:
+
+- `AlphaMode::Opaque` (default): depth-test is on, blending is off. Alpha is written
+  out but ignored by the framebuffer. Pick this for solid surfaces; it's the cheapest
+  option and the only one that lets the depth buffer fully describe the geometry.
+- `AlphaMode::Mask`: depth-test is on, blending is off, but the fragment shader
+  `discard`s any pixel whose `material.base_color.a` falls below `material.alpha_cutoff`.
+  The classic foliage / chain-link / decal trick: keeps the perf profile of opaque
+  geometry (no order dependence, full depth writes) while letting silhouettes punch
+  out hard-edged transparency. Tune the cut-off with `PbrMaterial::alpha_cutoff`.
+- `AlphaMode::Blend`: depth-test stays on but depth-write turns off, and the color
+  target uses standard `SrcAlpha / OneMinusSrcAlpha` over-blend. Use for glass, smoke,
+  fades, decals that need soft edges. The renderer sorts blend Models on the Pass
+  back-to-front by eye-space Z before drawing, using the Camera attached via
+  `Pass::add(&camera)`. Translucent surfaces over-blend in the right order without the
+  caller managing it. Limitation: sorts by per-Model AABB centroid (not per-fragment),
+  so self-intersecting or interpenetrating translucent meshes can still show artifacts.
+  Cross-material interleaving works correctly: translucent draws across every shader
+  in the Pass merge into one globally-sorted back-to-front pass.
+  Blending needs a color target that blends and a shader that writes a `vec4`.
+  A format that never blends, such as an integer one, and an output without alpha
+  return `PassError::InvalidColorTarget` on every device. Whether `Rgba32Float` blends
+  depends on the device: the renderer asks for float32 blending wherever the GPU offers it,
+  and a device without it returns `RendererError::FeatureError`. `Rgba16Float` and the 8-bit
+  unorm formats blend everywhere.
+
+This is a pipeline-state flag. Changing it forces the renderer to rebuild the pipeline
+for the affected `(shader, alpha_mode, double_sided)` key. Switching it every frame is
+fine in practice (the second build hits the cache from then on) but avoid toggling per
+draw call inside a frame.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::{AlphaMode, PbrMaterial};
+
+let foliage = PbrMaterial::new()
+    .alpha_mode(AlphaMode::Mask)
+    .alpha_cutoff(0.3)?;
+
+let glass = PbrMaterial::new()
+    .base_color([0.9, 0.95, 1.0, 0.25])?
+    .alpha_mode(AlphaMode::Blend);
+
+let solid = PbrMaterial::new().alpha_mode(AlphaMode::Opaque);
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { AlphaMode, PbrMaterial } from "fragmentcolor";
+
+const foliage = new PbrMaterial().alphaMode(AlphaMode.Mask).alphaCutoff(0.3);
+
+const glass = new PbrMaterial().baseColor([0.9, 0.95, 1.0, 0.25]).alphaMode(AlphaMode.Blend);
+
+const solid = new PbrMaterial().alphaMode(AlphaMode.Opaque);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import AlphaMode, PbrMaterial
+
+foliage = PbrMaterial().alpha_mode(AlphaMode.Mask).alpha_cutoff(0.3)
+
+glass = PbrMaterial().base_color([0.9, 0.95, 1.0, 0.25]).alpha_mode(AlphaMode.Blend)
+
+solid = PbrMaterial().alpha_mode(AlphaMode.Opaque)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let foliage = try PbrMaterial().alphaMode(AlphaMode.mask).alphaCutoff(0.3)
+
+let glass = try PbrMaterial().baseColor([0.9, 0.95, 1.0, 0.25]).alphaMode(AlphaMode.blend)
+
+let solid = PbrMaterial().alphaMode(AlphaMode.opaque)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val foliage = PbrMaterial().alphaMode(AlphaMode.MASK).alphaCutoff(0.3f)
+
+val glass = PbrMaterial().baseColor(listOf(0.9f, 0.95f, 1.0f, 0.25f)).alphaMode(AlphaMode.BLEND)
+
+val solid = PbrMaterial().alphaMode(AlphaMode.OPAQUE)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### PbrMaterial::base_color \{#base_color\}
+
+Set the base color factor (linear RGBA). For dielectrics this is the diffuse
+albedo; for metals it's the F0 reflectance. Alpha goes through the fragment
+output unchanged.
+
+Maps to the `material.base_color` uniform on the underlying shader. Default
+is `[1, 1, 1, 1]`.
+
+Returns a handle to the same material (Arc-shared) so calls chain. See
+[PbrMaterial: Cloning is an Arc-share](/api/scene/pbrmaterial#cloning-is-an-arc-share-not-a-deep-copy)
+for what that means for mutation visibility.
+
+An item that is NaN or an infinity returns `MaterialError::NotFinite`,
+which names the call and the item, and the material keeps the value it
+had. The other languages also refuse an item past the 32-bit float range,
+such as `1e39`, with a message like `PbrMaterial.baseColor: item 3 must be a
+finite number that fits a 32-bit float, got 1e39`. JavaScript throws an
+`Error` named `InvalidInputError`, Python raises `InvalidInputError`,
+Swift throws `FragmentColorError` and Kotlin throws
+`FragmentColorException`.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::{PbrMaterial, Renderer};
+
+let renderer = Renderer::new();
+let red = PbrMaterial::new().base_color([1.0, 0.2, 0.2, 1.0])?;
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { PbrMaterial, Renderer } from "fragmentcolor";
+
+const renderer = new Renderer();
+const red = new PbrMaterial().baseColor([1.0, 0.2, 0.2, 1.0]);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import PbrMaterial, Renderer
+
+renderer = Renderer()
+red = PbrMaterial().base_color([1.0, 0.2, 0.2, 1.0])
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let renderer = Renderer()
+let red = try PbrMaterial().baseColor([1.0, 0.2, 0.2, 1.0])
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val renderer = Renderer()
+val red = PbrMaterial().baseColor(listOf(1.0f, 0.2f, 0.2f, 1.0f))
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### PbrMaterial::base_color_map \{#base_color_map\}
+
+The base color map, as a
+[`MaterialMap`](/api/scene/materialmap) handle that
+sets its texture, UV set and transform. The PBR shader samples it in
+`fs_main` and multiplies by the factor. The albedo for each fragment is
+`material.base_color * textureSample(base_color_map, pbr_sampler, uv) * vertex_color`,
+where `uv` is `slot_uv(material.uv[0], in.uv0, in.uv1)`: the UV set the map's
+[`uv`](/api/scene/materialmap#uv) picks, through its
+[`transform`](/api/scene/materialmap#transform).
+
+A source with no format of its own reads as sRGB in this map, as glTF's base
+color does.
+
+Unset, this map draws a 1×1 white default, so `PbrMaterial::new()` without a
+texture renders under the factor alone.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::PbrMaterial;
+
+// Raw pixels with their size upload when the scene loads.
+let tint: Vec<u8> = vec![255, 128, 0, 255];
+let material = PbrMaterial::new();
+let map = material.base_color_map().texture((tint, [1, 1]))?;
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { PbrMaterial } from "fragmentcolor";
+
+// Raw pixels with their size upload when the scene loads.
+const tint = [255, 128, 0, 255];
+const material = new PbrMaterial();
+const map = material.baseColorMap().texture(tint, [1, 1]);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import PbrMaterial
+
+# Raw pixels with their size upload when the scene loads.
+tint = [255, 128, 0, 255]
+material = PbrMaterial()
+map = material.base_color_map().texture(tint, size=[1, 1])
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+// Raw pixels with their size upload when the scene loads.
+let tint = [255, 128, 0, 255]
+let material = PbrMaterial()
+let map = try material.baseColorMap().texture(tint, [1, 1])
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+// Raw pixels with their size upload when the scene loads.
+val tint = listOf(255, 128, 0, 255)
+val material = PbrMaterial()
+val map = material.baseColorMap().texture(tint, listOf(1u, 1u))
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### PbrMaterial::double_sided \{#double_sided\}
+
+Toggle backface culling for this material's pipeline. When `true`, the renderer skips
+its default back-face cull and draws both faces of every triangle. When `false`
+(the default), back faces are culled, the standard CCW-winding-is-front convention.
+
+Seen from behind, a face lights as the side the camera sees: the shader turns its normal
+around, and with it the tangent frame a normal map reads, as glTF asks. On a `Model`
+mirrored by a negative scale, whose outer faces wind the other way on screen, those faces
+still light as the front.
+
+Mirrors glTF 2.0's `doubleSided`. Reach for it on thin geometry that legitimately reads
+from both sides: a single-quad leaf card, a cloth banner, decals applied to non-closed
+meshes, or any authored asset that comes out of a tool that didn't bother to mirror its
+back faces. For closed solid geometry, leave it off; the culled back faces are a free
+~50% fragment-shader saving on every draw.
+
+Like `alpha_mode`, this is a pipeline-state flag and bakes into the WebGPU pipeline.
+The renderer caches a separate pipeline per `(shader, alpha_mode, double_sided)` key,
+so toggling it doesn't fight the shader cache as long as you stay on a small set of
+values.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::{AlphaMode, PbrMaterial, Renderer};
+
+let renderer = Renderer::new();
+// Leaf cards: thin, single-quad geometry; needs both sides + alpha cut-out.
+let leaf = PbrMaterial::new()
+    .double_sided(true)
+    .alpha_mode(AlphaMode::Mask)
+    .alpha_cutoff(0.5)?;
+
+// The default is single-sided, with back-face culling on.
+let solid_mesh = PbrMaterial::new().double_sided(false);
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { AlphaMode, PbrMaterial, Renderer } from "fragmentcolor";
+
+const renderer = new Renderer();
+// Leaf cards: thin, single-quad geometry; needs both sides + alpha cut-out.
+const leaf = new PbrMaterial().doubleSided(true).alphaMode(AlphaMode.Mask).alphaCutoff(0.5);
+
+// The default is single-sided, with back-face culling on.
+const solid_mesh = new PbrMaterial().doubleSided(false);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import AlphaMode, PbrMaterial, Renderer
+
+renderer = Renderer()
+# Leaf cards: thin, single-quad geometry; needs both sides + alpha cut-out.
+leaf = PbrMaterial().double_sided(True).alpha_mode(AlphaMode.Mask).alpha_cutoff(0.5)
+
+# The default is single-sided, with back-face culling on.
+solid_mesh = PbrMaterial().double_sided(False)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let renderer = Renderer()
+// Leaf cards: thin, single-quad geometry; needs both sides + alpha cut-out.
+let leaf = try PbrMaterial().doubleSided(true).alphaMode(AlphaMode.mask).alphaCutoff(0.5)
+
+// The default is single-sided, with back-face culling on.
+let solid_mesh = PbrMaterial().doubleSided(false)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val renderer = Renderer()
+// Leaf cards: thin, single-quad geometry; needs both sides + alpha cut-out.
+val leaf = PbrMaterial().doubleSided(true).alphaMode(AlphaMode.MASK).alphaCutoff(0.5f)
+
+// The default is single-sided, with back-face culling on.
+val solid_mesh = PbrMaterial().doubleSided(false)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### PbrMaterial::emissive \{#emissive\}
+
+Set the emissive factor (linear RGB): light the surface emits regardless of
+incident illumination. Added on top of the PBR shading and clamped only by
+the output format; for tonemapped pipelines use values in `[0, 1]`, for HDR
+you can go beyond.
+
+Maps to the `material.emissive` uniform. Default is `[0, 0, 0]`.
+
+An item that is NaN or an infinity returns `MaterialError::NotFinite`,
+which names the call and the item, and the material keeps the value it
+had. The other languages also refuse an item past the 32-bit float range,
+such as `1e39`, with a message like `PbrMaterial.emissive: item 1 must be a
+finite number that fits a 32-bit float, got 1e39`. JavaScript throws an
+`Error` named `InvalidInputError`, Python raises `InvalidInputError`,
+Swift throws `FragmentColorError` and Kotlin throws
+`FragmentColorException`.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::{PbrMaterial, Renderer};
+
+let renderer = Renderer::new();
+let lava = PbrMaterial::new()
+    .base_color([0.1, 0.05, 0.0, 1.0])?
+    .emissive([1.5, 0.4, 0.1])?;
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { PbrMaterial, Renderer } from "fragmentcolor";
+
+const renderer = new Renderer();
+const lava = new PbrMaterial().baseColor([0.1, 0.05, 0.0, 1.0]).emissive([1.5, 0.4, 0.1]);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import PbrMaterial, Renderer
+
+renderer = Renderer()
+lava = PbrMaterial().base_color([0.1, 0.05, 0.0, 1.0]).emissive([1.5, 0.4, 0.1])
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let renderer = Renderer()
+let lava = try PbrMaterial().baseColor([0.1, 0.05, 0.0, 1.0]).emissive([1.5, 0.4, 0.1])
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val renderer = Renderer()
+val lava = PbrMaterial().baseColor(listOf(0.1f, 0.05f, 0.0f, 1.0f)).emissive(listOf(1.5f, 0.4f, 0.1f))
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### PbrMaterial::emissive_map \{#emissive_map\}
+
+The emissive map, as a
+[`MaterialMap`](/api/scene/materialmap) handle that
+sets its texture, UV set and transform. The PBR shader samples it in
+`fs_main` and multiplies by the factor: per-fragment emission is
+`material.emissive * textureSample(emissive_map, pbr_sampler, uv).rgb`, where
+`uv` is `slot_uv(material.uv[4], in.uv0, in.uv1)`, the map's own UV set
+through its own transform.
+
+A source with no format of its own reads as sRGB in this map, as glTF's
+emissive texture does.
+
+Unset, this map draws a 1×1 white default, so the emission falls back to the
+`material.emissive` factor as it is.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::PbrMaterial;
+
+// Raw pixels with their size upload when the scene loads.
+let glow_bytes: Vec<u8> = vec![
+    255, 0, 0, 255,
+    255, 0, 0, 255,
+    255, 0, 0, 255,
+    255, 0, 0, 255,
+];
+let material = PbrMaterial::new().emissive([0.8, 0.0, 0.0])?;
+let map = material.emissive_map().texture((glow_bytes, [2, 2]))?;
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { PbrMaterial } from "fragmentcolor";
+
+// Raw pixels with their size upload when the scene loads.
+const glow_bytes = [ 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, ];
+const material = new PbrMaterial().emissive([0.8, 0.0, 0.0]);
+const map = material.emissiveMap().texture(glow_bytes, [2, 2]);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import PbrMaterial
+
+# Raw pixels with their size upload when the scene loads.
+glow_bytes = [
+    255, 0, 0, 255,
+    255, 0, 0, 255,
+    255, 0, 0, 255,
+    255, 0, 0, 255,
+]
+material = PbrMaterial().emissive([0.8, 0.0, 0.0])
+map = material.emissive_map().texture(glow_bytes, size=[2, 2])
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+// Raw pixels with their size upload when the scene loads.
+let glow_bytes = [
+    255, 0, 0, 255,
+    255, 0, 0, 255,
+    255, 0, 0, 255,
+    255, 0, 0, 255,
+]
+let material = try PbrMaterial().emissive([0.8, 0.0, 0.0])
+let map = try material.emissiveMap().texture(glow_bytes, [2, 2])
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+// Raw pixels with their size upload when the scene loads.
+val glow_bytes = listOf(255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255)
+val material = PbrMaterial().emissive(listOf(0.8f, 0.0f, 0.0f))
+val map = material.emissiveMap().texture(glow_bytes, listOf(2u, 2u))
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### PbrMaterial::metallic \{#metallic\}
+
+Set the metallic factor in `[0, 1]`. `0` is a pure dielectric (uses the
+default F0 of 0.04), `1` is a pure metal (F0 = `base_color`). Values in
+between linearly interpolate.
+
+Maps to the `material.metallic` uniform. Default is `0.0` (dielectric);
+`PbrMaterial::new` deviates from the glTF spec's `1.0` default here so the
+out-of-the-box surface reads as a clean dielectric rather than dark gunmetal
+under the factor-driven defaults.
+
+NaN or an infinity returns `MaterialError::NotFinite`, which names the
+call, and the material keeps the value it had. The other languages also
+refuse a number past the 32-bit float range, such as `1e39`, with a
+message like `PbrMaterial.metallic: value must be a finite number that fits a
+32-bit float, got 1e39`. JavaScript throws an `Error` named
+`InvalidInputError`, Python raises `InvalidInputError`, Swift throws
+`FragmentColorError` and Kotlin throws `FragmentColorException`.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::PbrMaterial;
+
+let chrome = PbrMaterial::new().metallic(1.0)?.roughness(0.05)?;
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { PbrMaterial } from "fragmentcolor";
+
+const chrome = new PbrMaterial().metallic(1.0).roughness(0.05);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import PbrMaterial
+
+chrome = PbrMaterial().metallic(1.0).roughness(0.05)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let chrome = try PbrMaterial().metallic(1.0).roughness(0.05)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val chrome = PbrMaterial().metallic(1.0f).roughness(0.05f)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### PbrMaterial::metallic_roughness_map \{#metallic_roughness_map\}
+
+The metallic-roughness map, as a
+[`MaterialMap`](/api/scene/materialmap) handle that
+sets its texture, UV set and transform. Following glTF 2.0, the green channel
+encodes per-fragment roughness and the blue channel encodes metallic. Both are
+multiplied by their factors at sample time inside the PBR shader.
+
+A source with no format of its own reads as linear in this map, since it
+holds data rather than color.
+
+Unset, this map draws a 1×1 default with `(R=0, G=1, B=1, A=1)`, so the
+multiplication passes both `material.metallic` and `material.roughness`
+through unchanged.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::PbrMaterial;
+
+// Raw pixels with their size upload when the scene loads.
+let mr_map_bytes: Vec<u8> = vec![
+    0, 200, 50, 255,
+    0, 240, 80, 255,
+    0, 180, 30, 255,
+    0, 220, 60, 255,
+];
+let material = PbrMaterial::new();
+let map = material.metallic_roughness_map().texture((mr_map_bytes, [2, 2]))?;
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { PbrMaterial } from "fragmentcolor";
+
+// Raw pixels with their size upload when the scene loads.
+const mr_map_bytes = [ 0, 200, 50, 255, 0, 240, 80, 255, 0, 180, 30, 255, 0, 220, 60, 255, ];
+const material = new PbrMaterial();
+const map = material.metallicRoughnessMap().texture(mr_map_bytes, [2, 2]);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import PbrMaterial
+
+# Raw pixels with their size upload when the scene loads.
+mr_map_bytes = [
+    0, 200, 50, 255,
+    0, 240, 80, 255,
+    0, 180, 30, 255,
+    0, 220, 60, 255,
+]
+material = PbrMaterial()
+map = material.metallic_roughness_map().texture(mr_map_bytes, size=[2, 2])
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+// Raw pixels with their size upload when the scene loads.
+let mr_map_bytes = [
+    0, 200, 50, 255,
+    0, 240, 80, 255,
+    0, 180, 30, 255,
+    0, 220, 60, 255,
+]
+let material = PbrMaterial()
+let map = try material.metallicRoughnessMap().texture(mr_map_bytes, [2, 2])
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+// Raw pixels with their size upload when the scene loads.
+val mr_map_bytes = listOf(0, 200, 50, 255, 0, 240, 80, 255, 0, 180, 30, 255, 0, 220, 60, 255)
+val material = PbrMaterial()
+val map = material.metallicRoughnessMap().texture(mr_map_bytes, listOf(2u, 2u))
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### PbrMaterial::new \{#new\}
+
+Construct a `PbrMaterial` on FragmentColor's built-in physically-based
+shader. It starts from glTF 2.0's metallic-roughness defaults, lightly
+tweaked so a fresh material renders as a clean white surface under the
+default light rather than dark gunmetal.
+
+The five glTF maps (`base_color_map`, `metallic_roughness_map`,
+`normal_map`, `occlusion_map`, `emissive_map`) start unbound; the renderer
+resolves each one to a sensible 1×1 default from its lazy texture cache the
+first time a Pass renders the material. That way the underlying shader has
+every binding it needs and the per-factor render is correct even when no map
+is attached. Set any of them through its
+[`MaterialMap`](/api/scene/materialmap), such as
+`material.normal_map().texture(...)`.
+
+The shader uses:
+
+- **Cook-Torrance specular** with GGX normal distribution, Smith geometry,
+  and Schlick Fresnel.
+- **Lambertian diffuse** with energy conservation against the specular
+  Fresnel and metalness.
+- **Clustered lights**: as many lights as the device allows, in the
+  read-only storage roots `lights` and `light_grid` that the renderer fills.
+  Each fragment reads only the lights whose range reaches its cluster, plus
+  every light without a range. See [Light](/api/scene/light)
+  for the cost of each kind and the cap on each device, and
+  [Material](/api/scene/material#lights)
+  for the layout of the roots.
+- **One camera** (uniform `camera`), and the per-Model transform via the
+  instance-attribute stream.
+- **glTF 2.0 PBR-MR texture sampling**: five sampled maps (`base_color_map`,
+  `metallic_roughness_map`, `normal_map`, `occlusion_map`, `emissive_map`)
+  combined with their matching factors per the spec.
+- **Output for the target**: lighting is computed in linear light. On the
+  `Rgba8Unorm` and `Bgra8Unorm` targets FragmentColor creates, which hold
+  colors encoded for display, the shader encodes it as sRGB. An sRGB target
+  encodes on write and a float target keeps linear light for the passes after
+  it, so both get linear light. The renderer picks per pipeline from the
+  target's format, through the shader's `override ENCODE_SRGB: bool`. A custom
+  shader that declares the same override gets the same value.
+
+The shader reads these vertex inputs from the mesh:
+
+- `@location(0) position : vec3<f32>`, a 3D position from `Vertex::new([...])` or `Vertex::pbr([...])`.
+- `@location(1) normal   : vec3<f32>`, set as `.set(Vertex::NORMAL, ...)`.
+- `@location(2) uv0      : vec2<f32>`, set as `.set(Vertex::UV0, ...)`.
+- `@location(7) color0   : vec4<f32>`, set as `.set(Vertex::COLOR0, ...)`, which tints the base color.
+- `@location(8) uv1      : vec2<f32>`, set as `.set(Vertex::UV1, ...)`, which the maps on UV set 1 sample.
+- `@location(9) tangent  : vec4<f32>`, set as `.set(Vertex::TANGENT, ...)`, with the bitangent sign in `w`.
+
+Each input finds its attribute by name, then by the location
+[`Vertex::set`](/api/geometry/vertex#set) gave the
+attribute. A vertex that sets them under these names can set them in any
+order. Locations 3 to 6 hold `model_0` to `model_3`, the columns of the
+Model's transform, which come from the Model rather than the mesh.
+
+The shader has no default for any mesh input. An attribute under another name
+stands in for one when it sits at the input's location and fits its type, and
+a Model fails to attach when an input finds no attribute by either rule. The
+error names the input, or the attribute at the input's location when that
+attribute has the wrong type. `Vertex::pbr` sets every input after the
+position to a neutral value. A [Shader](/api/scene/material#a-shader-as-a-material)
+of your own brings its own vertex layout.
+
+#### Defaults (post-construction)
+
+| key                          | value                |
+| ---------------------------- | -------------------- |
+| `material.base_color`        | `[1, 1, 1, 1]`       |
+| `material.metallic`          | `0.0`                |
+| `material.roughness`         | `1.0`                |
+| `material.normal_scale`      | `1.0`                |
+| `material.occlusion_strength`| `1.0`                |
+| `material.emissive`          | `[0, 0, 0]`          |
+| `material.alpha_cutoff`      | `0.5`                |
+| `base_color_map`             | 1×1 white            |
+| `metallic_roughness_map`     | 1×1 (R=0, G=1, B=1)  |
+| `normal_map`                 | 1×1 flat (128,128,255) |
+| `occlusion_map`              | 1×1 white            |
+| `emissive_map`               | 1×1 white            |
+| `camera.view_proj`           | identity 4×4         |
+| `camera.position`            | `[0, 0, 0]`          |
+| `lights.ambient`             | `[0.03, 0.03, 0.03]` |
+| placeholder light            | white, directional, pointing down `[0, -1, 0]` |
+
+The placeholder light lights a fresh material until the first
+[Light](/api/scene/light) reaches its shader,
+and returns once no Light does.
+
+The camera and lights are the user's domain, not the material's. Pass them
+to [`Pass::add`](/api/core/pass#add). The typed
+[Camera](/api/scene/camera) handle seeds the
+`camera.*` uniforms and propagates later updates into the material's shader,
+and the renderer packs every Light that reaches the shader at each render.
+`material.shader().set(...)` still sets `camera.*` and `lights.ambient`
+directly. The lights themselves have no keys: `set` and `get` on
+`lights.count` or `lights.lights[i]` return `ShaderError::UniformNotFound`.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::PbrMaterial;
+
+let bronze = PbrMaterial::new()
+    .base_color([0.8, 0.5, 0.2, 1.0])?
+    .metallic(1.0)?
+    .roughness(0.3)?;
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { PbrMaterial } from "fragmentcolor";
+
+const bronze = new PbrMaterial().baseColor([0.8, 0.5, 0.2, 1.0]).metallic(1.0).roughness(0.3);
+
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import PbrMaterial
+
+bronze = PbrMaterial().base_color([0.8, 0.5, 0.2, 1.0]).metallic(1.0).roughness(0.3)
+
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let bronze = try PbrMaterial().baseColor([0.8, 0.5, 0.2, 1.0]).metallic(1.0).roughness(0.3)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val bronze = PbrMaterial().baseColor(listOf(0.8f, 0.5f, 0.2f, 1.0f)).metallic(1.0f).roughness(0.3f)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### PbrMaterial::normal_map \{#normal_map\}
+
+The tangent-space normal map, as a
+[`MaterialMap`](/api/scene/materialmap) handle that
+sets its texture, UV set and transform. The PBR shader samples the map in
+`fs_main`, decodes the stored `[0, 1]` bytes into `[-1, 1]` floats, scales the
+XY components by `material.normal_scale`, and rotates the perturbed normal
+from tangent space into world space using the per-vertex tangent (the glTF
+`tangent.w` handedness flag is preserved).
+
+A source with no format of its own reads as linear in this map, since it
+holds directions rather than color.
+
+Unset, this map draws a 1×1 flat tangent-space default `(128, 128, 255, 255)`,
+so the decoded normal is `(0, 0, 1)` and the world normal passes through
+unchanged.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::PbrMaterial;
+
+// Raw pixels with their size upload when the scene loads.
+let normal_map_bytes: Vec<u8> = vec![
+    128, 128, 255, 255,
+    128, 128, 255, 255,
+    128, 128, 255, 255,
+    128, 128, 255, 255,
+];
+let material = PbrMaterial::new().normal_scale(1.2)?;
+let map = material.normal_map().texture((normal_map_bytes, [2, 2]))?;
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { PbrMaterial } from "fragmentcolor";
+
+// Raw pixels with their size upload when the scene loads.
+const normal_map_bytes = [ 128, 128, 255, 255, 128, 128, 255, 255, 128, 128, 255, 255, 128, 128, 255, 255, ];
+const material = new PbrMaterial().normalScale(1.2);
+const map = material.normalMap().texture(normal_map_bytes, [2, 2]);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import PbrMaterial
+
+# Raw pixels with their size upload when the scene loads.
+normal_map_bytes = [
+    128, 128, 255, 255,
+    128, 128, 255, 255,
+    128, 128, 255, 255,
+    128, 128, 255, 255,
+]
+material = PbrMaterial().normal_scale(1.2)
+map = material.normal_map().texture(normal_map_bytes, size=[2, 2])
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+// Raw pixels with their size upload when the scene loads.
+let normal_map_bytes = [
+    128, 128, 255, 255,
+    128, 128, 255, 255,
+    128, 128, 255, 255,
+    128, 128, 255, 255,
+]
+let material = try PbrMaterial().normalScale(1.2)
+let map = try material.normalMap().texture(normal_map_bytes, [2, 2])
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+// Raw pixels with their size upload when the scene loads.
+val normal_map_bytes = listOf(128, 128, 255, 255, 128, 128, 255, 255, 128, 128, 255, 255, 128, 128, 255, 255)
+val material = PbrMaterial().normalScale(1.2f)
+val map = material.normalMap().texture(normal_map_bytes, listOf(2u, 2u))
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### PbrMaterial::normal_scale \{#normal_scale\}
+
+Scales the per-fragment normal perturbation read from a tangent-space normal
+map, mirroring glTF 2.0's `normalTextureInfo.scale`. Higher values exaggerate
+the bumps; values below 1 soften them.
+
+Maps to the `material.normal_scale` uniform. Default is `1.0`. The default
+PBR shader samples `normal_map`, decodes the bytes, and scales the XY
+perturbation by this value before combining with the world-space normal.
+
+NaN or an infinity returns `MaterialError::NotFinite`, which names the
+call, and the material keeps the value it had. The other languages also
+refuse a number past the 32-bit float range, such as `1e39`, with a
+message like `PbrMaterial.normalScale: value must be a finite number that
+fits a 32-bit float, got 1e39`. JavaScript throws an `Error` named
+`InvalidInputError`, Python raises `InvalidInputError`, Swift throws
+`FragmentColorError` and Kotlin throws `FragmentColorException`.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::PbrMaterial;
+
+let detailed = PbrMaterial::new().normal_scale(1.5)?;
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { PbrMaterial } from "fragmentcolor";
+
+const detailed = new PbrMaterial().normalScale(1.5);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import PbrMaterial
+
+detailed = PbrMaterial().normal_scale(1.5)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let detailed = try PbrMaterial().normalScale(1.5)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val detailed = PbrMaterial().normalScale(1.5f)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### PbrMaterial::occlusion_map \{#occlusion_map\}
+
+The ambient-occlusion map, as a
+[`MaterialMap`](/api/scene/materialmap) handle that
+sets its texture, UV set and transform. Following glTF 2.0, only the red
+channel is read. The sampled value is blended toward `1.0` by
+`1 - material.occlusion_strength` inside the PBR shader, then multiplied into
+the diffuse term.
+
+A source with no format of its own reads as linear in this map, since it
+holds data rather than color. Baked occlusion often lives on a second UV
+layout, which the map's [`uv`](/api/scene/materialmap#uv)
+picks.
+
+Unset, this map draws a 1×1 white default, so the occlusion factor is `1.0`
+and no darkening is applied.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::PbrMaterial;
+
+// Raw pixels with their size upload when the scene loads.
+let ao_bytes: Vec<u8> = vec![
+    220, 0, 0, 255,
+    180, 0, 0, 255,
+    200, 0, 0, 255,
+    160, 0, 0, 255,
+];
+let material = PbrMaterial::new();
+let map = material.occlusion_map().texture((ao_bytes, [2, 2]))?;
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { PbrMaterial } from "fragmentcolor";
+
+// Raw pixels with their size upload when the scene loads.
+const ao_bytes = [ 220, 0, 0, 255, 180, 0, 0, 255, 200, 0, 0, 255, 160, 0, 0, 255, ];
+const material = new PbrMaterial();
+const map = material.occlusionMap().texture(ao_bytes, [2, 2]);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import PbrMaterial
+
+# Raw pixels with their size upload when the scene loads.
+ao_bytes = [
+    220, 0, 0, 255,
+    180, 0, 0, 255,
+    200, 0, 0, 255,
+    160, 0, 0, 255,
+]
+material = PbrMaterial()
+map = material.occlusion_map().texture(ao_bytes, size=[2, 2])
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+// Raw pixels with their size upload when the scene loads.
+let ao_bytes = [
+    220, 0, 0, 255,
+    180, 0, 0, 255,
+    200, 0, 0, 255,
+    160, 0, 0, 255,
+]
+let material = PbrMaterial()
+let map = try material.occlusionMap().texture(ao_bytes, [2, 2])
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+// Raw pixels with their size upload when the scene loads.
+val ao_bytes = listOf(220, 0, 0, 255, 180, 0, 0, 255, 200, 0, 0, 255, 160, 0, 0, 255)
+val material = PbrMaterial()
+val map = material.occlusionMap().texture(ao_bytes, listOf(2u, 2u))
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### PbrMaterial::occlusion_strength \{#occlusion_strength\}
+
+Blends the per-fragment ambient-occlusion factor (read from an occlusion
+map) toward `1.0`, matching glTF 2.0's `occlusionTextureInfo.strength`.
+`1.0` uses the map's value as-is; `0.0` ignores the map entirely.
+
+Maps to the `material.occlusion_strength` uniform. Default is `1.0`. The
+default PBR shader samples `occlusion_map.r` and `mix(1.0, sampled, strength)`s
+the result into the diffuse term.
+
+NaN or an infinity returns `MaterialError::NotFinite`, which names the
+call, and the material keeps the value it had. The other languages also
+refuse a number past the 32-bit float range, such as `1e39`, with a
+message like `PbrMaterial.occlusionStrength: value must be a finite number
+that fits a 32-bit float, got 1e39`. JavaScript throws an `Error` named
+`InvalidInputError`, Python raises `InvalidInputError`, Swift throws
+`FragmentColorError` and Kotlin throws `FragmentColorException`.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::PbrMaterial;
+
+let crevices = PbrMaterial::new().occlusion_strength(0.8)?;
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { PbrMaterial } from "fragmentcolor";
+
+const crevices = new PbrMaterial().occlusionStrength(0.8);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import PbrMaterial
+
+crevices = PbrMaterial().occlusion_strength(0.8)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let crevices = try PbrMaterial().occlusionStrength(0.8)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val crevices = PbrMaterial().occlusionStrength(0.8f)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### PbrMaterial::roughness \{#roughness\}
+
+Set the surface roughness in `[0, 1]`. `0` is a perfect mirror; `1` is a
+fully matte surface. The PBR shader uses the squared form (alpha = r²) for
+the GGX normal distribution, which is the GGX/Trowbridge-Reitz convention
+shared with glTF 2.0.
+
+Maps to the `material.roughness` uniform. Default is `1.0`.
+
+NaN or an infinity returns `MaterialError::NotFinite`, which names the
+call, and the material keeps the value it had. The other languages also
+refuse a number past the 32-bit float range, such as `1e39`, with a
+message like `PbrMaterial.roughness: value must be a finite number that fits
+a 32-bit float, got 1e39`. JavaScript throws an `Error` named
+`InvalidInputError`, Python raises `InvalidInputError`, Swift throws
+`FragmentColorError` and Kotlin throws `FragmentColorException`.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::{PbrMaterial, Renderer};
+
+let renderer = Renderer::new();
+let satin = PbrMaterial::new().roughness(0.35)?;
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { PbrMaterial, Renderer } from "fragmentcolor";
+
+const renderer = new Renderer();
+const satin = new PbrMaterial().roughness(0.35);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import PbrMaterial, Renderer
+
+renderer = Renderer()
+satin = PbrMaterial().roughness(0.35)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let renderer = Renderer()
+let satin = try PbrMaterial().roughness(0.35)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val renderer = Renderer()
+val satin = PbrMaterial().roughness(0.35f)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### PbrMaterial::shader \{#shader\}
+
+Borrow the underlying `Shader` to drop down to direct uniform manipulation.
+This is the escape hatch when the material's typed setters don't cover what you need
+(custom uniforms beyond the glTF PBR field set, raw texture binds, anything
+the [Camera](/api/scene/camera) and
+[Light](/api/scene/light) helpers don't speak to).
+
+The returned reference is the same `Shader` the material is built around, so
+changes propagate immediately to every Model that uses this material. If you
+want a variant with different state, build a fresh
+`PbrMaterial::new().<setters>` rather than cloning. `PbrMaterial`
+clones share their Shader handle (Arc-clone) so mutations are visible across
+all clones.
+
+For camera + light state, prefer absorbing the typed
+[Camera](/api/scene/camera) and
+[Light](/api/scene/light) handles into the
+[Pass](/api/core/pass) that's about to render this
+material rather than calling `shader().set(...)` by hand. The typed
+handles propagate updates live across every absorbed shader.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::PbrMaterial;
+
+// Direct uniform access for a custom field that isn't covered by the
+// PbrMaterial setters or by Camera / Light.
+let material = PbrMaterial::new();
+material.shader().set("material.alpha_cutoff", 0.25)?;
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { PbrMaterial } from "fragmentcolor";
+
+// Direct uniform access for a custom field that isn't covered by the
+// PbrMaterial setters or by Camera / Light.
+const material = new PbrMaterial();
+material.shader().set("material.alpha_cutoff", 0.25);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import PbrMaterial
+
+# Direct uniform access for a custom field that isn't covered by the
+# PbrMaterial setters or by Camera / Light.
+material = PbrMaterial()
+material.shader().set("material.alpha_cutoff", 0.25)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+// Direct uniform access for a custom field that isn't covered by the
+// PbrMaterial setters or by Camera / Light.
+let material = PbrMaterial()
+try material.shader().set("material.alpha_cutoff", 0.25)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+// Direct uniform access for a custom field that isn't covered by the
+// PbrMaterial setters or by Camera / Light.
+val material = PbrMaterial()
+material.shader().set("material.alpha_cutoff", 0.25f)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### PbrMaterial::uv_transform \{#uv_transform\}
+
+Set one UV transform on all five maps, the transform glTF's
+[`KHR_texture_transform`](https://github.com/KhronosGroup/glTF/tree/main/extensions/2.0/Khronos/KHR_texture_transform)
+describes. Each map's UV is scaled first, then rotated, then offset:
+
+- `scale` multiplies the UV (`[1, 1]` keeps it)
+- `rotation` turns the scaled UV around the origin, in radians. A positive
+  angle turns the UVs counter-clockwise in texture space, where `v` points
+  down, so the image itself turns clockwise
+- `offset` moves the result, in fractions of the texture (`[0, 0]` keeps it)
+
+Every map starts with the identity transform: scale `[1, 1]`, rotation
+`0` and offset `[0, 0]`.
+[`MaterialMap::transform`](/api/scene/materialmap#transform)
+sets the transform of one map, so a call after `uv_transform` replaces
+that map's transform and keeps the other four. Each map applies its
+transform to the UV set that
+[`MaterialMap::uv`](/api/scene/materialmap#uv)
+picks for it.
+
+A number that is NaN or an infinity returns `MaterialError::NotFinite`,
+which names the part, such as `PbrMaterial::uv_transform: rotation must be
+finite, got NaN`, and leaves every map as it was: the setter checks the
+offset, the scale and the rotation before it writes any of them. The other
+languages also refuse a number past the 32-bit float range, such as
+`1e39`, with a message like `PbrMaterial.uvTransform: rotation must be a
+finite number that fits a 32-bit float, got 1e39`. JavaScript throws an
+`Error` named `InvalidInputError`, Python raises `InvalidInputError`,
+Swift throws `FragmentColorError` and Kotlin throws
+`FragmentColorException`.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::PbrMaterial;
+
+// Tile the texture 4× in both directions, rotate 45°, shift by half a tile.
+let brick = PbrMaterial::new()
+    .uv_transform([0.5, 0.0], [4.0, 4.0], 0.785)?; // 45° in radians
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { PbrMaterial } from "fragmentcolor";
+
+// Tile the texture 4× in both directions, rotate 45°, shift by half a tile.
+const brick = new PbrMaterial().uvTransform([0.5, 0.0], [4.0, 4.0], 0.785);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import PbrMaterial
+
+# Tile the texture 4× in both directions, rotate 45°, shift by half a tile.
+brick = PbrMaterial().uv_transform([0.5, 0.0], [4.0, 4.0], 0.785)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+// Tile the texture 4× in both directions, rotate 45°, shift by half a tile.
+let brick = try PbrMaterial().uvTransform([0.5, 0.0], [4.0, 4.0], 0.785)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+// Tile the texture 4× in both directions, rotate 45°, shift by half a tile.
+val brick = PbrMaterial().uvTransform(listOf(0.5f, 0.0f), listOf(4.0f, 4.0f), 0.785f)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>

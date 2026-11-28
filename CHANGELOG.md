@@ -1,12 +1,111 @@
 # Changelog
 
+## 0.12.8: Materials
+
+A patch release that gives each shading model a type of its own: `PbrMaterial`, `UnlitMaterial` and `ToonMaterial`, each with a `MaterialMap` for every texture it samples. A `Shader` is the custom material, a storage `set` uploads only the bytes it changes, and one Errors page lists every error class. Signatures change in every language, as in 0.12.7, and the names kept for old ones go.
+
+### Highlights
+
+- `PbrMaterial`, `UnlitMaterial` and `ToonMaterial` replace `Material::pbr()`, and each takes only the settings its shading model reads.
+- `ToonMaterial` lights in flat steps, with a hard highlight, a rim along the edges and an optional ramp texture.
+- Each map is a `MaterialMap` that sets its texture, UV set and transform in one chain, and takes another map's texture with one upload.
+- A `Shader` is the custom material, and sets its own blending and face culling.
+- A storage `set` uploads only the bytes it changes. What a compute pass wrote beside them stays.
+- Swift and Kotlin throw the error class Python raises, with the same message and fields.
+- The playground's glTF fish takes turns between PBR, toon and unlit, and the PBR fish lies in the shadows of its own fins, with light glowing through them.
+
+### Upgrading from 0.12.7
+
+0.12.8 changes code in every language. Cargo's `0.12`, npm's `^0.12.7`, pip's `~=0.12.7` and SwiftPM's `.upToNextMinor(from: "0.12.7")` all pick it up, so pin `0.12.7` exactly until your code follows these changes:
+
+- `Material::pbr()` is `PbrMaterial::new()`: `new PbrMaterial()` in JavaScript, `PbrMaterial()` in Python, Swift and Kotlin. Its number setters keep their names and arguments.
+- `Material::custom(shader)` goes. Pass the `Shader` to `Model::new` as it is. The renderer fills the `camera`, `lights` and `model_0` to `model_3` slots it declares, as before. A custom shader culls back faces, as it did. Set blending on it with `shader.alpha_mode(AlphaMode::Blend)`.
+- Each texture setter becomes a map: `base_color_texture(input)` is `base_color_map().texture(input)`, and the same goes for `metallic_roughness`, `normal`, `occlusion` and `emissive`. `texture_uv(slot, set)` is `map.uv(set)` and `texture_transform(slot, offset, scale, rotation)` is `map.transform(offset, scale, rotation)`, so `TextureSlot` goes. On Swift and Kotlin, `baseColorSource(input, options)` and the other four are `map.texture(...)`, as in every other language. It takes the `Texture`, bytes, path or `Mipmap` itself, where `baseColorSource` took it wrapped in a `TextureData`.
+- `model.material()` returns what the Model draws with. Rust gets the `Material` enum, `Material::Pbr(PbrMaterial)`, `Material::Unlit(UnlitMaterial)`, `Material::Toon(ToonMaterial)` or `Material::Custom(Shader)`, which is `#[non_exhaustive]`. JavaScript, Python, Swift and Kotlin get the material object or the `Shader` itself, which each narrows as it narrows any value: `instanceof`, `isinstance`, `as?` or `is`. Swift types it as `any Material`, a protocol each of those four conforms to, and Kotlin as `Any`.
+- Every `Shader` culls back faces. One drawn on its own, without a Model, drew both. A triangle whose vertices run clockwise on screen no longer draws there: a flat shape wound clockwise, or a `Quad` whose `min` lies above or right of its `max`. Call `shader.double_sided(true)` to draw both faces again, or wind the triangle counter-clockwise. Models culled back faces already. `Shader::default()` and the hello triangle examples now wind counter-clockwise, and fullscreen triangles already did.
+- `Scene::load` builds an `UnlitMaterial` for a glTF material with `KHR_materials_unlit`, where it built a `PbrMaterial` that lit it.
+- `MaterialError::UvSet` is a struct variant, `{ call, set }`, whose message names the map: `PbrMaterial::normal_map().uv takes UV set 0 or 1, got 2`.
+- `MaterialError` gains `Bands`, for `bands(0)`, and `NoUv`, for a UV set or transform on the toon ramp. The enum isn't `#[non_exhaustive]`, so a Rust `match` that lists every variant needs new arms.
+- Swift's and Kotlin's `MobileTextureInput` is `TextureData`, the Rust name, as in `TextureData.bytes(data)`. The old name goes.
+- The names kept for old ones go in every language. JavaScript's `CanvasTarget` and Python's `fragmentcolor.RenderCanvasTarget` are `WindowTarget`. Swift's and Kotlin's `MobileWindowTarget`, `MobileTextureTarget` and `TextureRegionMobile` are `WindowTarget`, `TextureTarget` and `TextureRegion`.
+- The forms 0.12.6 deprecated go too. Swift's `Shader.new([...])` is `Shader([...])`, and `Shader.setRegistry(baseUrl: url)` is `Shader.setRegistry(url)`. Swift's `createTexture` and `createStorageTexture` take their parts as separate arguments, as in `createTexture(bytes, size)`, where they also took one tuple. Kotlin's top-level `ShaderFetch(input)` is `Shader.fetch(input)`, and Python's `create_storage_texture` takes `usage=bits`, not `usage_bits=bits`.
+- Rust's `App::window_id()` is `App::primary_window_id()`.
+- Swift's and Kotlin's `shader.get(key)` returns the plain value, the one JavaScript and Python return: a `Bool`, `UInt32`, `Int32` or `Float`, a list of numbers, a `TextureId`, a `SamplerInfo` or bytes, typed `Any`, as in `try shader.get("resolution") as? [Float]`. It returned the `UniformData` enum, and the `float`, `floats` and `bytes` accessors on that enum go. `TextureMeta` and its reflection enums leave the Swift and Kotlin bindings, as do the shape records `ArrayElement`, `StructShape`, `StructField`, `StorageEntry`, `PushEntry` and `StorageAccess`.
+- JavaScript's `shader.get(key)` on a sampler key returns a `SamplerInfo`, where it returned a plain `{ comparison }` object. `comparison` is a read-only getter on the class, which a spread copy or `JSON.stringify` doesn't see. Read `info.comparison`.
+- A texture slot reads back as its `TextureId` in every language. JavaScript returned the number inside it, and Python a `TextureMeta`.
+- JavaScript's sampler `compare` takes the `CompareFunction` enum, as in `{ compare: CompareFunction.LessEqual }`, the one form the other bindings take. A name such as `'less'` or `'<='` throws a `TypeError`.
+- JavaScript's `SamplerOptions` fields are `repeatX` and `repeatY`, in JavaScript's case, as Swift and Kotlin spell them. `options.repeat_x` reads `undefined` now, and a write to it sets a plain property the sampler never reads.
+- Swift's `FragmentColorError` and Kotlin's `FragmentColorException` throw the class Python raises, as a case of the same name without its `Error` suffix, where they folded most errors into `Init`, `Render` and `Shader`. The cases are `Other`, for an error Python raises as the base `FragmentColorError`, `InvalidInput`, `UnsupportedMipmapFormat`, `MalformedImage`, `OccludedSurface`, `Device`, `Limit`, `Feature`, `Binding`, `Entry`, `SceneLoad`, `Light`, `Camera` and `Material`. `Occluded` is `OccludedSurface`. A `catch` or `when` on `Init`, `Render` or `Shader` catches `Other`, or the class the error now takes, such as `Material` for `ToonMaterial.bands(0)` and `InvalidInput` for a matrix of the wrong shape.
+- Every Swift and Kotlin case carries the error's text as its first field, `message`, before the fields it had, so a Swift pattern such as `case let .Limit(item, limit, value, max)` becomes `case let .Limit(_, item, limit, value, max)`. Kotlin's `message` is that text, where it listed the fields, as `kind=VALIDATION, label=frame, detail=...`. Each error's `name` in Swift and Kotlin is the class Python raises, as a JavaScript error's `name` is, such as `"MaterialError"`.
+- Kotlin's `Model(mesh, material)` throws `IllegalArgumentException` for an object that is no material, as JavaScript and Python throw a `TypeError`.
+- Python's exceptions take the names `fragmentcolor` exports: `fragmentcolor.FragmentColorError`, `fragmentcolor.InvalidInputError` and the rest. The base class was `fragment_color.PyFragmentColorError`, and the others sat in a `fragment_color` module that doesn't exist. `type(e).__name__` now matches the `name` JavaScript gives the same error.
+- JavaScript's and Python's errors take their text and fields from the error they pass on. A texture's error from `createTexture` or a material map reads as the texture's own message, where JavaScript added `Texture error: ` in front, and a device error there carries `kind`, `label` and `detail`, which JavaScript, and Python for a material map, left out.
+
+### Materials
+
+- `PbrMaterial` is glTF's metallic-roughness model, what `Material::pbr()` built, with the number setters `base_color`, `metallic`, `roughness`, `normal_scale`, `occlusion_strength`, `emissive`, `alpha_cutoff`, `uv_transform`, `alpha_mode` and `double_sided`.
+- Its five maps, `base_color_map()`, `metallic_roughness_map()`, `normal_map()`, `occlusion_map()` and `emissive_map()`, each return a `MaterialMap`, whose `texture`, `uv` and `transform` set what that map samples and chain: `gold.normal_map().texture(&tiles)?.uv(1)?.transform([0.0, 0.0], [4.0, 4.0], 0.0)?`. A refused call names the map, such as `PbrMaterial::normal_map().transform: rotation must be finite, got NaN`, and changes nothing.
+- A map takes another map's texture: `toon.base_color_map().texture(&pbr.base_color_map())?` in Rust, `toon.baseColorMap().texture(pbr.baseColorMap())` in JavaScript, Swift and Kotlin, and `toon.base_color_map().texture(pbr.base_color_map())` in Python. Both maps sample one texture under one `TextureId`, so each Renderer uploads it once, and a `ToonMaterial` or `UnlitMaterial` can draw the textures a glTF file gave its `PbrMaterial`. A map in the other color space, such as a normal map given a base color map, uploads a copy of its own from the same source. The receiving map keeps its own UV set and transform. A map with no texture to give raises `InvalidInputError`, and a map that later takes a new source gets a texture of its own while the other keeps the old one.
+- `UnlitMaterial` draws its base color times its one map, `base_color_map()`, and the vertex color, with no lighting, for UI, sprites, baked lighting and debug views. It has `base_color`, `alpha_cutoff`, `alpha_mode` and `double_sided`, which mean what they mean on `PbrMaterial`, and takes the same vertex layout. The glTF loader builds one for each material with `KHR_materials_unlit`.
+- `ToonMaterial` is cel shading. Each light's diffuse term steps up in `bands(n)` even steps, three by default, or reads a `ramp_map()` gradient wider than one texel, `highlight` and `highlight_size` add a hard highlight, and `rim` and `rim_width` color the faces seen edge-on. It has `base_color`, `base_color_map()`, `alpha_cutoff`, `alpha_mode` and `double_sided` as the other types do, takes the same vertex layout, and reads the lights `PbrMaterial` reads, through the same clustered light loops, at the same brightness. `bands(0)` returns `MaterialError::Bands`, and the ramp's `uv` and `transform` return `MaterialError::NoUv`, since it reads the light level, not the mesh's UVs.
+- A `Shader` is the custom material. `Model::new` takes a `PbrMaterial`, an `UnlitMaterial`, a `ToonMaterial`, a `Shader` or the `Material` enum in Rust, and the material object in every binding.
+- `Shader::alpha_mode` and `Shader::double_sided` set a shader's blending and face culling, in every language, whether it draws a Model or draws on its own. A `Shader` is single-sided by default, as the materials are.
+- A double-sided `PbrMaterial` or `ToonMaterial` lights a back face as the side the camera sees, with the normal turned toward the camera. `PbrMaterial` shaded a back face with the front's normal, so it drew dark where the camera's side was lit.
+- A double-sided `PbrMaterial` or `ToonMaterial` on a `Model` mirrored by a negative scale, such as `model.scale([-1, 1, 1])` or a glTF node with a negative scale, lights its outer faces as the front. `PbrMaterial` drew the sunlit side dark, and `ToonMaterial` filled it with the rim color. Single-sided materials light each face they draw along its own normal, as before.
+- A `PbrMaterial` on a mirrored `Model` reads its normal map as the mirror image of the unmirrored one, and its bumps light from the side they face. The bitangent ignored the mirroring, which turned the map's green channel upside down.
+- The `Material` page lists the material types and what the renderer fills in a custom shader, and `PbrMaterial`, `UnlitMaterial`, `ToonMaterial` and `MaterialMap` get pages of their own.
+- Swift takes an integer literal for every number a material, a light or a camera takes, such as `light.setIntensity(3)`, `ToonMaterial().rimWidth(0)` and `Camera.perspective(1, 2, 1, 100)`, which the `Double` overloads made ambiguous.
+
+### Shaders and uniforms
+
+- A `Shader.set` on a field or an item of a storage root uploads only those bytes at the next render, in every language, so the rest of the root keeps what a compute pass wrote there. It uploaded the whole root from the shader's copy, so a compute pass that kept state in a root, such as counts beside a `step` the app sets each frame, lost that state on every `set`. An upload covers whole 4-byte words, so a `set` of one `f16` also writes the `f16` that shares its word. Raw bytes on the root still replace all of it, and so does a render that creates or recreates the root's buffer. When two Renderers draw one shader, each uploads only the sets it hasn't taken yet and keeps what its own compute passes wrote. Two shaders that declare a root at the same size share one buffer, and the first render of either on a buffer the other created uploads each field and item it ever set. Changes to items apart from each other go up through one staging buffer.
+- `shader.get(key)` on a sampler key returns a `SamplerInfo` in every language, with a read-only `comparison` that says whether the slot is a `sampler_comparison`. Rust reads it as `let info: SamplerInfo = shader.get("shadow")?`. Python imports `SamplerInfo` from `fragmentcolor`, and it compares and hashes by value.
+- A `Shader` that declares `override DOUBLE_SIDED: bool` gets its `double_sided` setting as the value, as `ENCODE_SRGB` gets the target's encoding.
+
+### Bindings
+
+- Python's `Pass.set_viewport` takes a dict, `{"x": 0, "y": 0, "width": 4, "height": 4}` or `{"min_x": 0, "min_y": 0, "max_x": 4, "max_y": 4}`, each key also in its camelCase form, as JavaScript's `setViewport` takes an object. A key set to `None` counts as missing, as JavaScript reads `null`.
+- Python's `Scene.add_pass` and `Scene.remove_pass` take the keyword `pass_`, the name the stub gives it, and `help(Scene.load)` shows its `True` defaults.
+- JavaScript's `Mesh.fromVertices`, `Mesh.addVertices` and `Mesh.addInstances` name their parameters `vertices` and `items` in the TypeScript types, as Python names them.
+
+### Errors
+
+- One Errors page at /api/errors lists every error class, when it's raised and its fields, with `kind` among `DeviceError`'s. `DeviceError` and `ErrorKind` leave the API menu, the Errors link ends it, and /api/errors/deviceerror and /api/errors/errorkind redirect to its `DeviceError` section.
+- Python's errors pickle by their class, and one raised in a `multiprocessing` worker reaches the parent as the same class with its fields. That includes a `DeviceError`'s `kind`, which pickles as the `ErrorKind` variant it names.
+- An argument of the wrong type raises a `TypeError` that names the call and what it takes, with the same text in JavaScript and Python apart from each language's spellings, such as `Pass.add_shader: shader must be a Shader, got int` in Python and `Pass.addShader: shader must be a Shader, got number` in JavaScript. That holds for a class, a list, a string, a boolean, a size, a region, sampler options and a texture id. Python's message named a binding class, such as `PyMapInput`, or gave pyo3's `'int' object is not an instance of 'Shader'`, and JavaScript's gave `expected instance of Shader` or left out the call.
+- A viewport dict or object that holds neither a whole `x`, `y`, `width` and `height` nor a whole set of bounds raises `InvalidInputError`, naming the keys it needs. JavaScript threw a `TypeError`, which both bindings keep for a value of the wrong type.
+- A size, a region or a byte list that a binding reads with a number it can't take raises `InvalidInputError` with one text in every binding, naming the call and the item or key, such as `Pass.setViewport: item 0 must be a whole number from 0 to 4294967295, got -1`. That covers `ScreenRegion`, `Size`, viewports, texture sizes, write regions and byte lists. Every binding checks a region's far edge before a side of 0, and reads arguments in one order, so one mistake in two arguments raises the same error everywhere: a write region before its bytes, a storage texture's size before its bytes, a texture source before its size, and a mip chain's format and size before its bytes. JavaScript and Python left the call out of a region or size error, several of their write region and texture input errors began with `Invalid texture input:`, and Swift and Kotlin named a bare method such as `createTexture`, with `300 is not a byte` for a byte.
+- A size that differs from the one an `ImageData`, a canvas or an ndarray brings names the call and prints both sizes as `4x4`, where it printed Rust's `Size { width: 4, ... }`. A `Texture` given beside options gets one message in JavaScript and Python, `... so it takes none`.
+- Python's size dict reads a key set to `None` as missing, as JavaScript reads `null` and Python's viewport and region dicts already did.
+- Python's `SamplerOptions` fields refuse a value of the wrong type with a `TypeError` that names the field, such as `SamplerOptions.compare must be a CompareFunction, got str`, and keep the old value, as JavaScript's do.
+
+### Website and examples
+
+- The `toon_outline` example inks the outlines of toon-shaded shapes in a pass of its own, after the scene. A first pass draws each shape's normals and depth into two textures, and a fullscreen pass blends ink over the pixels where the depth jumps, along a silhouette, or the normal turns, along a crease. It opens a window, or saves one frame with `--png`.
+- The playground's glTF fish takes turns between `PbrMaterial`, `ToonMaterial` and `UnlitMaterial`, four seconds each, until M or the Style button on a touch screen switches it by hand. For each Model the file loads, the demo adds a toon and an unlit Model over the same `Mesh`, whose maps take the PBR material's base color texture with `map.texture(map)`, and `set_visible` shows only the current style's Models. The pass that draws the fish to the screen paints the toon fish flat, inks its outline and the edges where a fin crosses the body, and names the style in a corner label. Every language's tab does the same and needs 0.12.8.
+- The PBR fish takes a third of the roughness its file gives the scales and twice the depth of their normal map, which reads wet. An orthographic `Camera` along each light draws the fish into a map in a pass of its own, with a `Shader` the demo writes. A shade pass draws the fish again from the scene's camera and reads both maps. The key light's map tells it where the fins and body shadow the fish. From the rim light's map it reads how far that light travels through the fish, and where that is a few millimeters, through the thin fins, the light comes out amber. The shade pass also lays drifting ripples of light, from the registry's `noise/worley2`, over the points the key light reaches.
+- The walkable world's tabs build their materials with `PbrMaterial` and need 0.12.8, and the Swift tab marks `setIntensity` with `try`.
+- Playground demos that take keys can list touch `buttons`, each of which holds its key down while a finger is on it, in the playground and in the `index.js` tab. A released key stays down for one more frame, and a quick tap still reaches `frame()`. A demo with keys can set `stick: false` to leave out the touch stick, as the fish does.
+- /api/scene/textureslot redirects to `MaterialMap`, the Targets group lists Target, WindowTarget, then TextureTarget, and the 3D scenes blog post links to material anchors that exist.
+
 ## 0.12.7: Device checks and typed errors
 
-A patch release that checks shaders, meshes, textures and passes against the device before the GPU sees them, and returns every failure as a typed error that matches across Rust, JavaScript, Python, Swift and Kotlin. Lights lose their fixed cap, a texture a pass draws into can resize, and each PBR texture slot picks its own UV set. Changes that can break code come last.
+A patch release that checks shaders, meshes, textures and passes against the device before the GPU sees them, and returns every failure as a typed error that matches across Rust, JavaScript, Python, Swift and Kotlin. Lights lose their fixed cap, a texture a pass draws into can resize, and each PBR texture slot picks its own UV set.
+
+### Highlights
+
+- `render` checks shaders, meshes, textures and passes against the device before it takes a frame, and returns what the GPU rejects as a `DeviceError` where it drew nothing without a word.
+- Every error has a class that matches across Rust, JavaScript, Python, Swift and Kotlin.
+- Every binding refuses NaN, infinities and numbers past the 32-bit float range, with an error that names the call and the item.
+- Lights have no fixed cap. A compute pass sorts them into a grid of cells over the camera view.
+- Shaders use `f16`, subgroups, `primitive_index`, texture atomics and `texture_external` slots where the device has them.
+- A texture is freed when the last thing holding it drops, and a texture a pass draws into can resize.
+- PBR encodes sRGB on 8-bit targets, a pass that draws models gets a depth buffer, and each texture slot samples its own UV set through its own transform.
+- Three tutorials and a walkable world demo join the website.
 
 ### Upgrading from 0.12.6
 
-0.12.7 changes code in every language. Cargo's `0.12`, npm's `^0.12.6`, pip's `~=0.12.6` and SwiftPM's `.upToNextMinor(from: "0.12.6")` all pick it up, so pin `0.12.6` exactly until your code follows these groups of changes, which the last section lists one by one:
+0.12.7 changes code in every language. Cargo's `0.12`, npm's `^0.12.6`, pip's `~=0.12.6` and SwiftPM's `.upToNextMinor(from: "0.12.6")` all pick it up, so pin `0.12.6` exactly until your code follows these groups of changes, which "Breaking and behavior changes" lists one by one:
 
 - Calls that can fail say so. `render`, `resize`, `add_shader`, `set_clear_color`, `Shader::from_mesh`, the `Camera` and `Light` constructors, `Scene::ambient`, the `Model` transform calls and every `Material` setter, among others, return a `Result` in Rust, throw in JavaScript and Kotlin, raise in Python and need `try` in Swift. `render` returns what the GPU rejects instead of success.
 - Errors have classes. Python raises a subclass of `FragmentColorError`, such as `InvalidInputError` or `DeviceError`, and a JavaScript error's `name` is that class. The Rust error enums gain variants, so a `match` that lists every variant needs new arms.
@@ -196,6 +295,7 @@ A patch release that checks shaders, meshes, textures and passes against the dev
 
 - Three tutorials join "Hello, million triangles!": "Drawing with distance", "Infinite Fractal Zoom" and "A particle system". Each one runs its shaders live beside the text, with diagrams and annotated captures.
 - The separate playground page redirects to the home page, which runs the same playground. Its demo picker shows a thumbnail of each demo, and a glTF model demo draws a model with depth and water.
+- A walkable world demo joins the playground, with a blog post kept as a draft. The picker shows it once the site loads 0.12.7 from npm, the first release that runs it.
 
 ### Packaging and CI
 

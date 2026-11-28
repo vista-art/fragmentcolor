@@ -1,9 +1,9 @@
 #![cfg(wasm)]
 
-use crate::bindings::web::{read_color, read_count, read_text};
+use crate::bindings::web::{read_color, read_count, read_object, read_text, refuse};
 use crate::core::renderer::platform::web::RenderableList;
 use crate::errors::WebError;
-use crate::{Pass, Shader, Texture, TextureTarget};
+use crate::{Mesh, Pass, ScreenRegion, Shader, Texture, TextureTarget};
 use lsp_doc::lsp_doc;
 use wasm_bindgen::JsValue;
 use wasm_bindgen::prelude::*;
@@ -30,12 +30,11 @@ impl Pass {
     #[lsp_doc("docs/api/core/pass/from_shader.md")]
     pub fn from_shader_js(
         #[wasm_bindgen(unchecked_param_type = "string")] name: &JsValue,
-        shader: &Shader,
+        #[wasm_bindgen(unchecked_param_type = "Shader")] shader: &JsValue,
     ) -> Result<Pass, WebError> {
-        Ok(Self::from_shader(
-            &read_text(name, "Pass.fromShader: name")?,
-            shader,
-        ))
+        let name = read_text(name, "Pass.fromShader: name")?;
+        let shader: Shader = read_object(shader, "Pass.fromShader: shader")?;
+        Ok(Self::from_shader(&name, &shader))
     }
 
     #[wasm_bindgen(js_name = "require")]
@@ -65,14 +64,22 @@ impl Pass {
 
     #[wasm_bindgen(js_name = "addShader")]
     #[lsp_doc("docs/api/core/pass/add_shader.md")]
-    pub fn add_shader_js(&self, shader: &Shader) -> Result<(), WebError> {
-        Ok(self.add_shader(shader)?)
+    pub fn add_shader_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "Shader")] shader: &JsValue,
+    ) -> Result<(), WebError> {
+        let shader: Shader = read_object(shader, "Pass.addShader: shader")?;
+        Ok(self.add_shader(&shader)?)
     }
 
     #[wasm_bindgen(js_name = "addMesh")]
     #[lsp_doc("docs/api/core/pass/add_mesh.md")]
-    pub fn add_mesh_js(&self, mesh: &crate::Mesh) -> Result<(), WebError> {
-        Ok(self.add_mesh(mesh)?)
+    pub fn add_mesh_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "Mesh")] mesh: &JsValue,
+    ) -> Result<(), WebError> {
+        let mesh: Mesh = read_object(mesh, "Pass.addMesh: mesh")?;
+        Ok(self.add_mesh(&mesh)?)
     }
 
     /// Unified `Pass.add`, which branches on the runtime JS type. Adding a new
@@ -90,7 +97,8 @@ impl Pass {
         } else if let Ok(light) = crate::scene::Light::try_from(object) {
             self.add(&light)?;
         } else {
-            return Err(WebError::type_error(
+            return Err(refuse(
+                object,
                 "Pass.add: expected a Model, Camera, or Light",
             ));
         }
@@ -124,8 +132,7 @@ impl Pass {
     #[wasm_bindgen(js_name = "setViewport")]
     #[lsp_doc("docs/api/core/pass/set_viewport.md")]
     pub fn set_viewport_js(&self, region: &JsValue) -> Result<(), WebError> {
-        let region: crate::ScreenRegion = region.try_into()?;
-        Ok(self.set_viewport(region)?)
+        Ok(self.set_viewport(ScreenRegion::read(region, "Pass.setViewport")?)?)
     }
 
     #[wasm_bindgen(js_name = "setTarget")]
@@ -138,8 +145,9 @@ impl Pass {
         if let Ok(tex) = Texture::try_from(target) {
             return Ok(self.set_target(&tex)?);
         }
-        Err(WebError::type_error(
-            "setTarget: expected TextureTarget or Texture",
+        Err(refuse(
+            target,
+            "Pass.setTarget: target must be a Texture or a TextureTarget",
         ))
     }
 
@@ -152,8 +160,9 @@ impl Pass {
         if let Ok(tex) = Texture::try_from(target) {
             return Ok(self.set_depth_target(&tex)?);
         }
-        Err(WebError::type_error(
-            "setDepthTarget: expected TextureTarget or Texture",
+        Err(refuse(
+            target,
+            "Pass.setDepthTarget: target must be a Texture or a TextureTarget",
         ))
     }
 

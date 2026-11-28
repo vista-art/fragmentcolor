@@ -6,6 +6,7 @@ import kotlin.math.abs
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -27,7 +28,8 @@ class Healthcheck : ExampleCase() {
 
     // A pipeline the GPU refuses throws FragmentColorException.Device, with its kind, the
     // step's label and the device's own detail. An error scope catches it, so the
-    // GPU error log stays empty, and toString() carries the full text.
+    // GPU error log stays empty. Its name is the class Python raises, and its message
+    // and toString() carry the full text.
     @Test
     fun refusedPipelineThrowsDevice() = runBlocking {
         val renderer = Renderer()
@@ -47,15 +49,21 @@ class Healthcheck : ExampleCase() {
         assertEquals(ErrorKind.VALIDATION, error.kind)
         assertEquals("render pipeline", error.label)
         assertTrue(error.detail.isNotEmpty(), "Device detail is empty")
-        assertEquals("Device error (validation) in 'render pipeline': ${error.detail}", error.toString())
+        assertEquals("DeviceError", error.name)
+        assertEquals("Device error (validation) in 'render pipeline': ${error.detail}", error.message)
+        assertEquals(error.message, error.toString())
     }
 
-    // A hidden window's frame throws FragmentColorException.Occluded, whose text is the
-    // Rust error's. An emulator can't hide a texture target, so the case is built here.
+    // A hidden window's frame throws FragmentColorException.OccludedSurface, named after
+    // the class Python raises, whose message and toString() are its text. An emulator
+    // can't hide a texture target, so the case is built here.
     @Test
     fun occludedDescribesFrame() {
-        val occluded = FragmentColorException.Occluded()
-        assertEquals("Surface error: failed to acquire frame: surface is occluded", occluded.toString())
+        val text = "Surface error: failed to acquire frame: surface is occluded"
+        val occluded = FragmentColorException.OccludedSurface(text)
+        assertEquals("OccludedSurfaceError", occluded.name)
+        assertEquals(text, occluded.message)
+        assertEquals(text, occluded.toString())
     }
 
     // A size with layers reaches the check the other languages run: a texture
@@ -87,8 +95,8 @@ class Healthcheck : ExampleCase() {
             """.trimIndent()
         )
         feedback.set("source", target.texture())
-        val conflict = assertFailsWith<FragmentColorException.Render> { renderer.render(feedback, target) }
-        assertTrue(conflict.toString().contains("Texture conflict"), conflict.toString())
+        val conflict = assertFailsWith<FragmentColorException.Other> { renderer.render(feedback, target) }
+        assertTrue(conflict.message.contains("Texture conflict"), conflict.message)
 
         val solid = Shader(
             """
@@ -100,8 +108,8 @@ class Healthcheck : ExampleCase() {
             """.trimIndent()
         )
         val foreign = Renderer().createTextureTarget(listOf(8u, 8u))
-        val owner = assertFailsWith<FragmentColorException.Render> { renderer.render(solid, foreign) }
-        assertTrue(owner.toString().contains("another Renderer"), owner.toString())
+        val owner = assertFailsWith<FragmentColorException.Other> { renderer.render(solid, foreign) }
+        assertTrue(owner.message.contains("another Renderer"), owner.message)
         renderer.render(solid, target)
     }
 
@@ -176,8 +184,8 @@ class Healthcheck : ExampleCase() {
         second.render(shader, second.createTextureTarget(listOf(8u, 8u)))
 
         painted.setIndices(listOf(0u, 1u, 5u))
-        val past = assertFailsWith<FragmentColorException.Render> { renderer.render(shader, target) }
-        assertTrue(past.toString().contains("points past the last of 3 vertices"), past.toString())
+        val past = assertFailsWith<FragmentColorException.Other> { renderer.render(shader, target) }
+        assertTrue(past.message.contains("points past the last of 3 vertices"), past.message)
         painted.setIndices(listOf(0u, 1u, 2u))
         renderer.render(shader, target)
 
@@ -309,7 +317,7 @@ class Healthcheck : ExampleCase() {
     // throws, and the message names the call, as in every binding.
     @Test
     fun floatVectorsRefuseNonFiniteNumbers() {
-        val material = Material.pbr()
+        val material = PbrMaterial()
         val cases: List<Pair<String, () -> Unit>> = listOf(
             "Light.point: position" to { Light.point(doubleArrayOf(1e39, 0.0, 0.0), doubleArrayOf(1.0, 1.0, 1.0)) },
             "Light.point: position" to { Light.point(listOf(Float.NaN, 0f, 0f), listOf(1f, 1f, 1f)) },
@@ -322,18 +330,21 @@ class Healthcheck : ExampleCase() {
             "Camera.lookAt: up" to {
                 Camera.perspective(1f, 1f, 0.1f, 100f).lookAt(listOf(0.0, 0.0, 5.0), listOf(0.0, 0.0, 0.0), listOf(0.0, 1e39, 0.0))
             },
-            "Material.baseColor" to { material.baseColor(listOf(1f, 1f, Float.NaN, 1f)) },
-            "Material.uvTransform: offset" to { material.uvTransform(doubleArrayOf(1e39, 0.0), doubleArrayOf(1.0, 1.0), 0.0) },
-            "Material.textureTransform: scale" to {
-                material.textureTransform(TextureSlot.NORMAL, listOf(0f, 0f), listOf(Float.POSITIVE_INFINITY, 1f), 0f)
+            "PbrMaterial.baseColor" to { material.baseColor(listOf(1f, 1f, Float.NaN, 1f)) },
+            "PbrMaterial.uvTransform: offset" to { material.uvTransform(doubleArrayOf(1e39, 0.0), doubleArrayOf(1.0, 1.0), 0.0) },
+            "MaterialMap.transform: scale" to {
+                material.normalMap().transform(listOf(0f, 0f), listOf(Float.POSITIVE_INFINITY, 1f), 0f)
             },
-            "Material.metallic: value" to { material.metallic(Float.NaN) },
-            "Material.alphaCutoff: value" to { material.alphaCutoff(1e39) },
-            "Material.uvTransform: rotation" to {
+            "MaterialMap.transform: scale" to {
+                material.normalMap().transform(doubleArrayOf(0.0, 0.0), doubleArrayOf(1e39, 1.0), 0.0)
+            },
+            "PbrMaterial.metallic: value" to { material.metallic(Float.NaN) },
+            "PbrMaterial.alphaCutoff: value" to { material.alphaCutoff(1e39) },
+            "PbrMaterial.uvTransform: rotation" to {
                 material.uvTransform(doubleArrayOf(0.0, 0.0), doubleArrayOf(1.0, 1.0), Double.POSITIVE_INFINITY)
             },
-            "Material.textureTransform: rotation" to {
-                material.textureTransform(TextureSlot.NORMAL, listOf(0f, 0f), listOf(1f, 1f), Float.NaN)
+            "MaterialMap.transform: rotation" to {
+                material.normalMap().transform(listOf(0f, 0f), listOf(1f, 1f), Float.NaN)
             },
             "Light.setIntensity: value" to { Light.point(listOf(0f, 1f, 0f), listOf(1f, 1f, 1f)).setIntensity(Float.NaN) },
             "Light.setIntensity: value" to { Light.point(listOf(0f, 1f, 0f), listOf(1f, 1f, 1f)).setIntensity(1e39) },
@@ -425,20 +436,21 @@ class Healthcheck : ExampleCase() {
         Mesh().addVertex(listOf(0f, 0f, 0f), listOf(0f, 1f), listOf(1f, 1f, 1f, 1f))
     }
 
-    // The Material texture setters take what createTexture takes, in every bytes form,
+    // MaterialMap.texture takes what createTexture takes, in every bytes form,
     // and raw pixels with their size, format or options reach the upload.
     @Test
     fun materialTexturesTakeCreateTextureForms() = runBlocking {
         val renderer = Renderer()
         // A black surface lit only by its emissive map, over the whole target.
-        suspend fun glow(setTexture: (Material) -> Material): List<Int> {
+        suspend fun glow(setTexture: (PbrMaterial) -> MaterialMap): List<Int> {
             val mesh = Mesh()
             for (corner in listOf(listOf(-1f, -1f, 0f), listOf(3f, -1f, 0f), listOf(-1f, 3f, 0f))) {
                 mesh.addVertex(Vertex.pbr(corner).set(Vertex.NORMAL, listOf(0f, 0f, 1f)))
             }
-            val material = Material.pbr().baseColor(listOf(0f, 0f, 0f, 1f)).emissive(listOf(1f, 1f, 1f))
+            val material = PbrMaterial().baseColor(listOf(0f, 0f, 0f, 1f)).emissive(listOf(1f, 1f, 1f))
+            setTexture(material)
             val pass = Pass("glow")
-            pass.add(Model(mesh, setTexture(material)))
+            pass.add(Model(mesh, material))
             val target = renderer.createTextureTarget(listOf(4u, 4u))
             renderer.render(pass, target)
             return target.getImage().take(4).map { it.toInt() and 0xff }
@@ -449,96 +461,142 @@ class Healthcheck : ExampleCase() {
         val options = TextureOptions(size = one, format = TextureFormat.R8_UNORM)
         val chain = Mipmap.build(red, TextureFormat.RGBA8_UNORM_SRGB, listOf(1u, 1u))
         val copyable = TextureOptions(format = TextureFormat.RGBA, usage = TextureUsage.COPY_SRC.bits)
-        val forms: List<Pair<String, (Material) -> Material>> = listOf(
-            "ByteArray and [w, h]" to { it.emissiveTexture(red, listOf(1u, 1u)) },
-            "List<Int> and [w, h]" to { it.emissiveTexture(redInts, listOf(1u, 1u)) },
-            "ByteArray and a Size" to { it.emissiveTexture(red, one) },
-            "List<Int> and a Size" to { it.emissiveTexture(redInts, one) },
-            "ByteArray with R8Unorm options" to { it.emissiveTexture(byteArrayOf(0xff.toByte()), options) },
-            "List<Int> with R8Unorm options" to { it.emissiveTexture(listOf(255), options) },
-            "a size and usage" to { it.emissiveTexture(red, listOf(1u, 1u), TextureUsage.COPY_SRC) },
-            "a Mipmap with options" to { it.emissiveTexture(chain, copyable) },
+        val forms: List<Pair<String, (PbrMaterial) -> MaterialMap>> = listOf(
+            "ByteArray and [w, h]" to { it.emissiveMap().texture(red, listOf(1u, 1u)) },
+            "List<Int> and [w, h]" to { it.emissiveMap().texture(redInts, listOf(1u, 1u)) },
+            "ByteArray and a Size" to { it.emissiveMap().texture(red, one) },
+            "List<Int> and a Size" to { it.emissiveMap().texture(redInts, one) },
+            "ByteArray with R8Unorm options" to { it.emissiveMap().texture(byteArrayOf(0xff.toByte()), options) },
+            "List<Int> with R8Unorm options" to { it.emissiveMap().texture(listOf(255), options) },
+            "a size and usage" to { it.emissiveMap().texture(red, listOf(1u, 1u), TextureUsage.COPY_SRC) },
+            "a Mipmap with options" to { it.emissiveMap().texture(chain, copyable) },
         )
         for ((label, form) in forms) {
             val pixel = glow(form)
-            assertTrue(pixel[0] > 200 && pixel[1] < 40 && pixel[2] < 40, "emissiveTexture with $label drew $pixel")
+            assertTrue(pixel[0] > 200 && pixel[1] < 40 && pixel[2] < 40, "MaterialMap.texture with $label drew $pixel")
         }
-        val setters: List<Pair<String, (Material, ByteArray, List<UInt>) -> Material>> = listOf(
-            "baseColorTexture" to { material, bytes, size -> material.baseColorTexture(bytes, size) },
-            "metallicRoughnessTexture" to { material, bytes, size -> material.metallicRoughnessTexture(bytes, size) },
-            "normalTexture" to { material, bytes, size -> material.normalTexture(bytes, size) },
-            "occlusionTexture" to { material, bytes, size -> material.occlusionTexture(bytes, size) },
-            "emissiveTexture" to { material, bytes, size -> material.emissiveTexture(bytes, size) },
+        val maps: List<Pair<String, (PbrMaterial) -> MaterialMap>> = listOf(
+            "baseColorMap" to { it.baseColorMap() },
+            "metallicRoughnessMap" to { it.metallicRoughnessMap() },
+            "normalMap" to { it.normalMap() },
+            "occlusionMap" to { it.occlusionMap() },
+            "emissiveMap" to { it.emissiveMap() },
         )
-        for ((name, setter) in setters) {
-            setter(Material.pbr(), red, listOf(1u, 1u))
-            val error = assertFailsWith<FragmentColorException> { setter(Material.pbr(), red, listOf(1u)) }
-            assertTrue(error.message.orEmpty().contains("Material.$name"), "Material.$name threw ${error.message}")
+        for ((name, map) in maps) {
+            map(PbrMaterial()).texture(red, listOf(1u, 1u))
+            val error = assertFailsWith<FragmentColorException> { map(PbrMaterial()).texture(red, listOf(1u)) }
+            assertTrue(error.message.orEmpty().contains("MaterialMap.texture"), "$name().texture threw ${error.message}")
         }
-        val byteError = assertFailsWith<FragmentColorException> { Material.pbr().normalTexture(listOf(256, 0, 0, 255), one) }
-        assertTrue(byteError.message.orEmpty().contains("Material.normalTexture"), "a byte of 256 threw ${byteError.message}")
+        val byteError = assertFailsWith<FragmentColorException> { PbrMaterial().normalMap().texture(listOf(256, 0, 0, 255), one) }
+        assertTrue(byteError.message.orEmpty().contains("MaterialMap.texture"), "a byte of 256 threw ${byteError.message}")
         // 32 is outside the five TextureUsage flags, so the upload at render refuses
         // options that reach it, from bytes and from a Mipmap.
         val outside = TextureOptions(size = one, format = TextureFormat.RGBA, usage = 32u)
-        val refused: List<Pair<String, (Material) -> Material>> = listOf(
-            "baseColorTexture" to { it.baseColorTexture(red, outside) },
-            "metallicRoughnessTexture" to { it.metallicRoughnessTexture(redInts, outside) },
-            "normalTexture" to { it.normalTexture(red, outside) },
-            "occlusionTexture" to { it.occlusionTexture(redInts, outside) },
-            "emissiveTexture" to { it.emissiveTexture(chain, TextureOptions(format = TextureFormat.RGBA, usage = 32u)) },
+        val refused: List<Pair<String, (PbrMaterial) -> MaterialMap>> = listOf(
+            "baseColorMap" to { it.baseColorMap().texture(red, outside) },
+            "metallicRoughnessMap" to { it.metallicRoughnessMap().texture(redInts, outside) },
+            "normalMap" to { it.normalMap().texture(red, outside) },
+            "occlusionMap" to { it.occlusionMap().texture(redInts, outside) },
+            "emissiveMap" to { it.emissiveMap().texture(chain, TextureOptions(format = TextureFormat.RGBA, usage = 32u)) },
         )
         for ((name, setter) in refused) {
-            assertFailsWith<FragmentColorException>("Material.$name with usage 32") { glow(setter) }
+            assertFailsWith<FragmentColorException>("$name().texture with usage 32") { glow(setter) }
         }
         assertEquals(one, renderer.createTexture(listOf(255), options).size())
         renderer.createTexture(red, one)
         renderer.createTexture(chain, copyable)
-        Material.pbr()
-            .normalTexture(red, TextureFormat.RGBA8_UNORM)
-            .occlusionTexture(red, options)
-            .metallicRoughnessTexture("examples/assets/logo.png", TextureFormat.RGBA8_UNORM)
+        val material = PbrMaterial()
+        material.normalMap().texture(red, TextureFormat.RGBA8_UNORM)
+        material.occlusionMap().texture(red, options)
+        material.metallicRoughnessMap().texture("examples/assets/logo.png", TextureFormat.RGBA8_UNORM)
         Unit
     }
 
-    // A slot a custom shader declares as a number refuses a Texture and a source and keeps
-    // its value, a slot the shader doesn't declare is skipped, and a Texture takes no options.
+    // An empty byte list holds no image, and a Texture takes no options, so the map refuses both.
     @Test
     fun materialTexturesRefuseWhatTheyCannotUse() = runBlocking {
         val renderer = Renderer()
         val red = byteArrayOf(0xff.toByte(), 0, 0, 0xff.toByte())
         val texture = renderer.createTexture(red, Size(width = 1u, height = 1u, depth = null))
-        val numbered = Material.custom(
-            Shader(
-                """
-                @group(0) @binding(0) var<uniform> base_color_map: vec4<f32>;
-                @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
-                  return vec4<f32>(f32(i), 0.0, 0.0, 1.0);
-                }
-                @fragment fn fs_main() -> @location(0) vec4<f32> { return base_color_map; }
-                """.trimIndent()
-            )
-        )
-        numbered.shader().set("base_color_map", listOf(0.25f, 0.5f, 0.75f, 1f))
-        val refusals: List<Pair<String, () -> Material>> = listOf(
-            "a Texture" to { numbered.baseColorTexture(texture) },
-            "bytes" to { numbered.baseColorTexture(red, listOf(1u, 1u)) },
-        )
-        for ((label, set) in refusals) {
-            val error = assertFailsWith<FragmentColorException>("baseColorTexture with $label on a number") { set() }
-            assertTrue(error.message.orEmpty().contains("base_color_map"), "baseColorTexture with $label threw ${error.message}")
+        PbrMaterial().normalMap().texture(texture)
+        val empty = assertFailsWith<FragmentColorException.InvalidInput> {
+            PbrMaterial().baseColorMap().texture(ByteArray(0))
         }
-        assertEquals(UniformData.Vec4(listOf(0.25f, 0.5f, 0.75f, 1f)), numbered.shader().get("base_color_map"))
-        numbered.normalTexture(texture)
-        numbered.normalTexture(red, listOf(1u, 1u))
-        // An empty byte list holds no image, so the setter refuses it at the call.
-        val empty = assertFailsWith<FragmentColorException> { Material.pbr().baseColorTexture(ByteArray(0)) }
-        assertTrue(empty.message.orEmpty().contains("it got an empty byte list"), "an empty byte list threw ${empty.message}")
+        assertTrue(empty.message.endsWith("it got an empty byte list"), "an empty byte list threw ${empty.message}")
         val options = TextureOptions(format = TextureFormat.RGBA8_UNORM)
-        val beside = assertFailsWith<FragmentColorException> {
-            Material.pbr().baseColorSource(MobileTextureInput.CloneOf(texture), options)
+        val beside = assertFailsWith<FragmentColorException.InvalidInput> {
+            PbrMaterial().baseColorMap().source(TextureData.CloneOf(texture), options)
         }
-        assertTrue(beside.message.orEmpty().contains("Material::base_color_texture"), "options beside a Texture threw ${beside.message}")
+        assertTrue(
+            beside.message.contains("PbrMaterial::base_color_map().texture"),
+            "options beside a Texture threw ${beside.message}",
+        )
         Unit
+    }
+
+    // A triangle over the whole target, drawn with `model` and lit by `light`,
+    // read back at the pixel (1, 1) of a 4x4 target.
+    private suspend fun drawOver(model: Model, light: Light): List<Int> {
+        val renderer = Renderer()
+        val pass = Pass("material")
+        pass.add(model)
+        pass.add(light)
+        val target = renderer.createTextureTarget(listOf(4u, 4u))
+        renderer.render(pass, target)
+        return target.getImage().drop(20).take(4).map { it.toInt() and 0xff }
+    }
+
+    private fun fullTarget(): Mesh {
+        val mesh = Mesh()
+        for (corner in listOf(listOf(-1f, -1f, 0f), listOf(3f, -1f, 0f), listOf(-1f, 3f, 0f))) {
+            mesh.addVertex(Vertex.pbr(corner))
+        }
+        return mesh
+    }
+
+    // An UnlitMaterial draws its base color times its map with no lighting. A Model hands
+    // the material back itself, and a Model built from what it handed back draws the same.
+    @Test
+    fun unlitMaterialDrawsWithNoLighting() = runBlocking {
+        val material = UnlitMaterial().baseColor(listOf(1f, 1f, 0.5f, 1f)).doubleSided(true)
+        material.baseColorMap().texture(byteArrayOf(0, 0xff.toByte(), 0xff.toByte(), 0xff.toByte()), listOf(1u, 1u))
+        val model = Model(fullTarget(), material)
+        assertIs<UnlitMaterial>(model.material())
+        val again = Model(fullTarget(), model.material())
+        // A Mesh is no material: a wrong type throws IllegalArgumentException, as it throws a TypeError in JS and Python.
+        val refused = assertFailsWith<IllegalArgumentException> { Model(Mesh(), Mesh()) }
+        assertTrue(refused.message.orEmpty().contains("Model: expected a PbrMaterial"), "a Mesh for a material threw '$refused'")
+        // A black light would darken a PbrMaterial, and leaves an unlit one as it is.
+        val (red, green, blue) = drawOver(again, Light.directional(listOf(0f, 0f, -1f), listOf(0f, 0f, 0f)))
+        // Linear 0.5 encodes as sRGB 188 on the 8-bit target.
+        assertTrue(red == 0 && green == 255 && abs(blue - 188) <= 1, "an UnlitMaterial drew [$red, $green, $blue]")
+    }
+
+    // A ToonMaterial lights in bands from the lights a PbrMaterial reads, a Model hands it
+    // back itself, and it refuses 0 bands and a UV set on its ramp.
+    @Test
+    fun toonMaterialLightsInBands() = runBlocking {
+        val material = ToonMaterial().bands(3u).doubleSided(true)
+        val shader = material.shader()
+        shader.set("camera.position", listOf(0f, 0f, 1f))
+        shader.set("lights.ambient", listOf(0f, 0f, 0f))
+        val model = Model(fullTarget(), material)
+        val held = assertIs<ToonMaterial>(model.material())
+        // Rays at the cosine 0.6 to the face's normal, with a color that cancels the shader's 1/pi.
+        val pi = Math.PI.toFloat()
+        val pixel = drawOver(model, Light.directional(listOf(-0.8f, 0f, -0.6f), listOf(pi, pi, pi)))
+        // Three bands light the face at 2/3, which encodes as sRGB 213 on the 8-bit target.
+        assertTrue(pixel.take(3).all { abs(it - 213) <= 2 }, "three bands drew $pixel")
+        // The refusals run on the ToonMaterial the Model handed back.
+        val refusals: List<Pair<String, () -> Unit>> = listOf(
+            "ToonMaterial::bands" to { held.bands(0u) },
+            "ToonMaterial::ramp_map().uv" to { held.rampMap().uv(0u) },
+        )
+        for ((label, call) in refusals) {
+            val error = assertFailsWith<FragmentColorException.Material>(label) { call() }
+            assertEquals("MaterialError", error.name, label)
+            assertTrue(error.message.contains(label), "$label threw '$error', which doesn't name the call")
+        }
     }
 
     // Shader.set shapes each Kotlin value to the uniform's declared WGSL type.
@@ -547,7 +605,7 @@ class Healthcheck : ExampleCase() {
     // of any other shape throws and names the column.
     @Test
     fun matricesAreColumns() {
-        val model = Model(Mesh(), Material.pbr())
+        val model = Model(Mesh(), PbrMaterial())
         model.setTransform(listOf(listOf(2f, 0f, 0f, 0f), listOf(0f, 2f, 0f, 0f), listOf(0f, 0f, 2f, 0f), listOf(3f, 0f, 0f, 1f)))
         val columns = model.transform()
         assertEquals(4, columns.size)
@@ -559,8 +617,8 @@ class Healthcheck : ExampleCase() {
             listOf(listOf(1f, 0f, 0f, 0f), listOf(0f, 1f, 0f), listOf(0f, 0f, 1f, 0f), listOf(0f, 0f, 0f, 1f)),
         )
         for (shape in shapes) {
-            val error = assertFailsWith<FragmentColorException> { model.setTransform(shape) }
-            assertTrue(error.toString().contains("Model.setTransform"), error.toString())
+            val error = assertFailsWith<FragmentColorException.InvalidInput> { model.setTransform(shape) }
+            assertTrue(error.message.startsWith("Model.setTransform"), error.message)
         }
         assertFailsWith<FragmentColorException> {
             model.setTransform(listOf(listOf(1.0, 0.0, 0.0, 0.0), listOf(0.0, 1.0, 0.0, 0.0), listOf(0.0, 0.0, Double.NaN, 0.0), listOf(0.0, 0.0, 0.0, 1.0)))
@@ -600,23 +658,22 @@ class Healthcheck : ExampleCase() {
         )
 
         shader.set("count", 3)
-        assertEquals(UniformData.UInt(3u), shader.get("count"))
+        assertEquals(3u, shader.get("count"))
         shader.set("cell", intArrayOf(2, -1))
-        assertEquals(UniformData.IVec2(listOf(2, -1)), shader.get("cell"))
+        assertEquals(listOf(2, -1), shader.get("cell"))
         shader.set("rot", floatArrayOf(1f, 2f, 3f, 4f))
-        assertEquals(UniformData.Mat2(listOf(1f, 2f, 3f, 4f)), shader.get("rot"))
+        assertEquals(listOf(1f, 2f, 3f, 4f), shader.get("rot"))
         shader.set("offset", intArrayOf(5, 6))
-        assertEquals(UniformData.Vec2(listOf(5f, 6f)), shader.get("offset"))
+        assertEquals(listOf(5f, 6f), shader.get("offset"))
 
         assertFailsWith<FragmentColorException> { shader.set("offset", floatArrayOf(1f, 2f, 3f)) }
-        assertEquals(UniformData.Vec2(listOf(5f, 6f)), shader.get("offset"))
+        assertEquals(listOf(5f, 6f), shader.get("offset"))
         assertFailsWith<FragmentColorException> { shader.set("count", -1) }
         assertFailsWith<FragmentColorException> { shader.set("offset", ByteArray(8)) }
 
         val blob = ByteArray(32) { it.toByte() }
         shader.set("particles", blob)
-        val (bytes) = shader.get("particles") as UniformData.Bytes
-        assertContentEquals(blob, bytes)
+        assertContentEquals(blob, shader.get("particles") as ByteArray)
     }
 
     // f16 uniforms take plain numbers rounded to the nearest f16 and read back as floats,
@@ -640,15 +697,13 @@ class Healthcheck : ExampleCase() {
         )
 
         shader.set("gain", 0.1)
-        assertEquals(UniformData.Float(0.099975586f), shader.get("gain"))
-        assertEquals(0.099975586f, shader.get("gain").float)
+        assertEquals(0.099975586f, shader.get("gain"))
         shader.set("tint", listOf(0.25f, 0.5f, 0.75f, 1f))
-        assertEquals(UniformData.Vec4(listOf(0.25f, 0.5f, 0.75f, 1f)), shader.get("tint"))
+        assertEquals(listOf(0.25f, 0.5f, 0.75f, 1f), shader.get("tint"))
         for (value in listOf(70000.0, Double.NaN, Double.POSITIVE_INFINITY)) {
             assertFailsWith<FragmentColorException> { shader.set("gain", value) }
         }
-        assertEquals(UniformData.Float(0.099975586f), shader.get("gain"))
-        assertEquals(listOf(1f, 2f), UniformData.HalfVec2(listOf(1f, 2f)).floats)
+        assertEquals(0.099975586f, shader.get("gain"))
 
         shader.set("gain", 1.0)
         try {

@@ -27,7 +27,7 @@ impl Renderer {
         let (buffer, span) = context
             .storage_registry
             .get(binding)
-            .map(|entry| (entry.0.clone(), entry.1))
+            .map(|entry| (entry.buffer.clone(), entry.span))
             .ok_or_else(|| RendererError::StorageBindingNotFound(binding.to_string()))?;
         read_buffer_bytes(&context, &buffer, span).await
     }

@@ -3,8 +3,16 @@ use std::convert::Infallible;
 use thiserror::Error;
 
 use crate::ScreenRegionError;
+#[cfg(any(python, wasm, mobile, test))]
+use crate::core::Field;
 #[cfg(not(wasm))]
 use crate::core::MapError;
+#[cfg(wasm)]
+use crate::errors::WebError;
+#[cfg(python)]
+use crate::errors::raise_error;
+#[cfg(any(python, wasm, mobile, test))]
+use crate::errors::{Classify, ErrorClass};
 
 #[derive(Error, Debug)]
 pub enum TextureError {
@@ -108,10 +116,9 @@ impl From<pyo3::PyErr> for TextureError {
 }
 
 /// Four texture errors take their own class of `FragmentColorError`, so a caller can tell them apart.
-#[cfg(any(python, wasm, test))]
-impl crate::errors::Classify for TextureError {
-    fn classify(&self) -> crate::errors::ErrorClass {
-        use crate::errors::ErrorClass;
+#[cfg(any(python, wasm, mobile, test))]
+impl Classify for TextureError {
+    fn classify(&self) -> ErrorClass {
         match self {
             TextureError::InvalidInput(_) | TextureError::Region(_) => ErrorClass::InvalidInput,
             TextureError::UnsupportedMipmapFormat { .. } => ErrorClass::UnsupportedMipmapFormat,
@@ -120,20 +127,28 @@ impl crate::errors::Classify for TextureError {
             _ => ErrorClass::Base,
         }
     }
-}
 
-#[cfg(python)]
-impl From<TextureError> for pyo3::PyErr {
-    fn from(e: TextureError) -> Self {
-        let message = e.to_string();
-        match e {
+    /// A device error carries its `kind`, the `label` of its step and the device's own `detail`.
+    fn list_fields(&self) -> Vec<(&'static str, Field)> {
+        match self {
             TextureError::DeviceError {
                 kind,
                 label,
                 detail,
-            } => crate::errors::DeviceError::raise(kind, label, detail, message),
-            other => crate::errors::raise_error(&other),
+            } => vec![
+                ("kind", Field::Kind(*kind)),
+                ("label", Field::Text(label.clone())),
+                ("detail", Field::Text(detail.clone())),
+            ],
+            _ => Vec::new(),
         }
+    }
+}
+
+#[cfg(python)]
+impl From<TextureError> for pyo3::PyErr {
+    fn from(error: TextureError) -> Self {
+        raise_error(&error)
     }
 }
 
@@ -154,24 +169,16 @@ impl From<wasm_bindgen::JsValue> for TextureError {
 /// The JS `Error` a texture error throws, named after its class.
 /// A device error also carries its `kind`, `label` and `detail`.
 #[cfg(wasm)]
-impl From<TextureError> for crate::errors::WebError {
+impl From<TextureError> for WebError {
     fn from(error: TextureError) -> Self {
-        let message = error.to_string();
-        match error {
-            TextureError::DeviceError {
-                kind,
-                label,
-                detail,
-            } => crate::core::throw_device(kind, &label, &detail, &message),
-            other => crate::errors::WebError::from_error(&other),
-        }
+        WebError::from_error(&error)
     }
 }
 
 #[cfg(wasm)]
 impl From<TextureError> for wasm_bindgen::JsValue {
     fn from(error: TextureError) -> Self {
-        crate::errors::WebError::from(error).into()
+        WebError::from(error).into()
     }
 }
 

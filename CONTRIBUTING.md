@@ -51,7 +51,7 @@ Contributions are welcome! This document outlines the current workflow for devel
 5. Merging runs the **Prepare release** workflow (`prepare_release.yml`) on its own, because the merge changes the version in `Cargo.toml` and that version has no tag yet. Run it by hand from the Actions tab or with `gh workflow run prepare_release.yml --ref main` to rebuild the draft. It:
    - Builds the iOS **xcframework** from `main`, and fails if the committed Swift wrapper differs from what `./fc build_ios` generates.
    - Commits the root `Package.swift` pin (`fragmentcolorVersion` / `fragmentcolorChecksum`) on top of that commit and pushes it to `release/vMAJOR.MINOR.PATCH`.
-   - Creates a draft GitHub Release `vMAJOR.MINOR.PATCH` that targets the pinned commit, with `FragmentColorFFI.xcframework.zip` attached. The notes are the `CHANGELOG.md` entry followed by GitHub's generated list of changes.
+   - Creates a draft GitHub Release `vMAJOR.MINOR.PATCH` that targets the pinned commit, with `FragmentColorFFI.xcframework.zip` attached. The notes are the opening of the version's `CHANGELOG.md` entry, its `### Highlights` list and its upgrade section, then a link to the whole entry and GitHub's list of the pull requests merged since the latest published release.
 
    Running it again replaces the binary, the pin commit, and the draft's target, and keeps the draft's notes.
 6. Review the draft and publish it. Publishing creates the `vMAJOR.MINOR.PATCH` tag on the pinned commit, one commit ahead of the merge commit on `main`. Swift Package Manager resolves `from: "X.Y.Z"` to that tag. Consumers get the xcframework built from the tag's own sources. Don't create the release by hand: a tag without the pin ships the previous release's binary next to the new Swift wrapper.
@@ -70,6 +70,10 @@ Contributions are welcome! This document outlines the current workflow for devel
 9. Vercel auto-deploys `docs/website` (subfolder). Its Ignored Build Step skips build when neither `docs/website` nor `docs/api` changed.
 10. Swift consumers add `.package(url: "https://github.com/vista-art/fragmentcolor", from: "X.Y.Z")` to their dependencies. SPM resolves the matching tag and downloads the xcframework that the tag's `Package.swift` pins.
 11. Kotlin / Android consumers: for 0.11.x, download `fragmentcolor-<version>.aar` from the GitHub Release and drop it into `libs/`; Maven Central publishing is tracked as follow-up work (CHANGELOG "Unfinished work").
+
+### CHANGELOG entries
+
+Each version's entry in `CHANGELOG.md` opens with a short intro and a `### Highlights` list of a few bullets that a reader of the GitHub Release takes in at a glance. A release that breaks code adds an `### Upgrading from X.Y.Z` section next, which lists what to change. The release notes keep only these three parts, because a whole entry can pass GitHub's limit of 125,000 characters. Write them to read whole without the sections after them, which the notes replace with a link to the full entry. Keep the version heading to plain ASCII words, since the link's anchor is built from it.
 
 ### Ad-hoc website updates
 

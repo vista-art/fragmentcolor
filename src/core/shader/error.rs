@@ -1,5 +1,11 @@
 //! `ShaderError`, and the diagnostics naga reports with their source locations.
 
+#[cfg(wasm)]
+use crate::errors::WebError;
+#[cfg(python)]
+use crate::errors::raise_error;
+#[cfg(any(python, wasm, mobile, test))]
+use crate::errors::{Classify, ErrorClass};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -63,8 +69,8 @@ pub enum ShaderError {
         fixed: String,
         declared: String,
     },
-    /// A Material map's id set on a slot that doesn't hold the map.
-    /// The map's copies go when the map does, so the slot couldn't keep them.
+    /// A map texture's id set on a slot that doesn't hold the texture. Its copies go
+    /// when the last slot that holds it lets go, so this slot couldn't keep them.
     #[error(
         "Texture id {id} is a Material map of another slot, so '{key}' can't bind it. Set the map's source or a Texture on '{key}' instead"
     )]
@@ -255,17 +261,17 @@ impl From<pyo3::PyErr> for ShaderError {
     }
 }
 
-#[cfg(any(python, wasm, test))]
-impl crate::errors::Classify for ShaderError {
-    fn classify(&self) -> crate::errors::ErrorClass {
-        crate::errors::ErrorClass::Base
+#[cfg(any(python, wasm, mobile, test))]
+impl Classify for ShaderError {
+    fn classify(&self) -> ErrorClass {
+        ErrorClass::Base
     }
 }
 
 #[cfg(python)]
 impl From<ShaderError> for pyo3::PyErr {
     fn from(e: ShaderError) -> Self {
-        crate::errors::raise_error(&e)
+        raise_error(&e)
     }
 }
 
@@ -286,7 +292,7 @@ impl From<wasm_bindgen::JsValue> for ShaderError {
 #[cfg(wasm)]
 impl From<ShaderError> for wasm_bindgen::JsValue {
     fn from(error: ShaderError) -> Self {
-        crate::errors::WebError::from(error).into()
+        WebError::from(error).into()
     }
 }
 

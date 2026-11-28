@@ -18,7 +18,7 @@ across `await` in a `Send` future.
 fun Renderer.createTarget(surface: Surface): WindowTarget {
     val window = SurfaceBridge.native_window_from_surface(surface)
     if (window == 0L) {
-        throw FragmentColorException.Init("createTarget: the Surface has no ANativeWindow")
+        throw FragmentColorException.Other("createTarget: the Surface has no ANativeWindow")
     }
     try {
         return createTarget(window.toULong())

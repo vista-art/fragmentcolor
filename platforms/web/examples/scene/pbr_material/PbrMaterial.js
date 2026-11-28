@@ -1,0 +1,8 @@
+import { Mesh, Model, PbrMaterial, Vertex } from "fragmentcolor";
+
+const mesh = new Mesh();
+mesh.addVertices([ Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]), Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]), ]);
+
+const material = new PbrMaterial().baseColor([0.85, 0.2, 0.2, 1.0]).metallic(0.0).roughness(0.4).emissive([0.0, 0.0, 0.05]);
+
+const model = new Model(mesh, material);

@@ -13,19 +13,58 @@ import Foundation
 /// Throws unless it holds 4 columns of 4 numbers, naming the column that doesn't.
 private func flattenColumns(_ columns: [[Float]], _ label: String) throws -> [Float] {
     guard columns.count == 4 else {
-        throw FragmentColorError.Render("\(label) takes 4 columns of 4 numbers, got \(columns.count) columns")
+        throw FragmentColorError.InvalidInput(message: "\(label) takes 4 columns of 4 numbers, got \(columns.count) columns")
     }
     for (index, column) in columns.enumerated() where column.count != 4 {
-        throw FragmentColorError.Render("\(label): column \(index) takes 4 numbers, got \(column.count)")
+        throw FragmentColorError.InvalidInput(message: "\(label): column \(index) takes 4 numbers, got \(column.count)")
     }
     return columns.flatMap { $0 }
+}
+
+/// What a Model draws with, as `Model(mesh, material)` takes it.
+/// PbrMaterial, UnlitMaterial, ToonMaterial and Shader conform to it, and `model.material()`
+/// returns the one a Model holds, which `as?` narrows, as in `model.material() as? PbrMaterial`.
+public protocol Material: AnyObject {
+    /// The uniffi plumbing behind `Model(mesh, material)`, which DocC leaves out.
+    var _materialHandle: MaterialHandle { get }
+}
+
+extension PbrMaterial: Material {
+    public var _materialHandle: MaterialHandle { .pbr(self) }
+}
+
+extension UnlitMaterial: Material {
+    public var _materialHandle: MaterialHandle { .unlit(self) }
+}
+
+extension ToonMaterial: Material {
+    public var _materialHandle: MaterialHandle { .toon(self) }
+}
+
+extension Shader: Material {
+    public var _materialHandle: MaterialHandle { .custom(self) }
 }
 
 extension Model {
     // MARK: - Constructors
 
-    public convenience init(_ mesh: Mesh, _ material: Material) {
-        self.init(mesh: mesh, material: material)
+    /// A Model that draws `mesh` with a PbrMaterial, an UnlitMaterial, a ToonMaterial or a Shader,
+    /// including what another Model's `material()` returned.
+    public convenience init(_ mesh: Mesh, _ material: any Material) {
+        self.init(mesh: mesh, material: material._materialHandle)
+    }
+
+    // MARK: - Getters
+
+    /// What the Model draws with: the PbrMaterial, UnlitMaterial, ToonMaterial or Shader itself,
+    /// as JavaScript and Python return it. Narrow it with `as?`, as in `model.material() as? PbrMaterial`.
+    public func material() -> any Material {
+        switch materialHandle() {
+        case .pbr(let material): return material
+        case .unlit(let material): return material
+        case .toon(let material): return material
+        case .custom(let shader): return shader
+        }
     }
 
     // MARK: - Setters

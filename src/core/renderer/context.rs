@@ -16,7 +16,9 @@ use crate::texture::{TextureId, TextureObject};
 use crate::{ShaderHash, ShaderObject};
 use dashmap::DashMap;
 use parking_lot::{RwLock, RwLockUpgradableReadGuard};
+use std::borrow::Cow;
 use std::collections::HashMap;
+use std::ops::Range;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 
@@ -58,8 +60,8 @@ pub(crate) struct RenderContext {
     /// then goes as WGSL that keeps its layout (`layout::pick_source`).
     pub(super) writes_wgsl: AtomicBool,
 
-    // Persistent storage buffer registry: root name -> (buffer, span)
-    pub(super) storage_registry: DashMap<String, (wgpu::Buffer, u64)>,
+    // Persistent storage buffer registry: root name -> the buffer behind it
+    pub(super) storage_registry: DashMap<String, RootBuffer>,
     /// What `check_shader` decided for each shader source on this device,
     /// so a source is checked once, whether it passed or not.
     pub(super) checked: DashMap<ShaderHash, checks::shader::Verdict>,
@@ -76,7 +78,7 @@ pub(crate) struct RenderContext {
 
     // Lazy-init 1x1 fallback textures for the default PBR shader's glTF
     // texture-map bindings. Populated synchronously on first use inside
-    // `process_render_pass`, so `Material::pbr` doesn't need a Renderer.
+    // `process_render_pass`, so `PbrMaterial::new` doesn't need a Renderer.
     pub(super) pbr_defaults: RwLock<Option<Arc<PbrDefaults>>>,
 
     // Reusable scratch buffers for `build_pass_draws`. Cleared at the
@@ -102,6 +104,20 @@ pub(crate) struct RenderContext {
     /// The next render, load or readback returns it.
     #[cfg(wasm)]
     pub(crate) late: Arc<device_errors::late::ErrorSlot>,
+}
+
+/// The persistent buffer behind a storage root, and what tells it from any other.
+#[derive(Debug)]
+pub(super) struct RootBuffer {
+    pub(super) buffer: wgpu::Buffer,
+    /// The root's size. The buffer holds it rounded up to 4 bytes.
+    pub(super) span: u64,
+    /// Tells this buffer from every other one, the one that replaces it included,
+    /// so a shader's storage changes know which of its sets this buffer holds.
+    id: u64,
+    /// Lives as long as the registry holds this buffer. A shader's storage
+    /// changes keep a weak copy, so they forget a buffer that was replaced or dropped.
+    token: Arc<()>,
 }
 
 /// Frame-local scratch allocations cached on `RenderContext`. Cleared at
@@ -167,10 +183,12 @@ impl RenderContext {
         }
     }
 
-    /// The persistent buffer behind the storage root `name`.
-    /// It is created, or recreated at a new `span`, with the shader's bytes,
-    /// and takes a fresh upload only when `set` has changed them since the last frame.
-    /// It holds `span` rounded up to 4 bytes, the size the root binds and reads back at.
+    /// The persistent buffer behind the storage root `name`, with `shader`'s changes in it.
+    ///
+    /// It is created, or recreated at a new `span`, with the shader's whole root, and
+    /// holds `span` rounded up to 4 bytes, the size the root binds and reads back at. After
+    /// that, it takes only the word ranges `UniformStorage::list_changes` gives this buffer,
+    /// so the rest of the root keeps what a compute pass wrote, which a whole upload would lose.
     pub(super) fn storage_buffer(
         &self,
         shader: &ShaderObject,
@@ -180,40 +198,112 @@ impl RenderContext {
         let existing = self
             .storage_registry
             .get(name)
-            .filter(|entry| entry.value().1 == span)
-            .map(|entry| entry.value().0.clone());
+            .filter(|entry| entry.span == span)
+            .map(|entry| (entry.buffer.clone(), entry.id, entry.token.clone()));
         let created = existing.is_none();
-        let buffer = existing.unwrap_or_else(|| {
-            let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some(&format!("Persistent Storage Buffer: {name}")),
-                size: pools::align_size(span),
-                usage: wgpu::BufferUsages::STORAGE
-                    | wgpu::BufferUsages::COPY_DST
-                    | wgpu::BufferUsages::COPY_SRC,
-                mapped_at_creation: false,
-            });
-            self.storage_registry
-                .insert(name.to_string(), (buffer.clone(), span));
-            buffer
-        });
-        // An upgradable read blocks a `set` until the dirty flag is cleared, so no update is lost.
+        let (buffer, id, token) = existing.unwrap_or_else(|| self.create_root_buffer(name, span));
+        // An upgradable read blocks a `set` until the upload is recorded, so no change is lost.
         let storage = shader.storage.upgradable_read();
-        let dirty = storage.is_storage_dirty(name);
-        if created || dirty {
-            match storage.get_bytes(name) {
-                Some(bytes) => self
-                    .queue
-                    .write_buffer(&buffer, 0, &pools::pad_bytes(bytes)),
-                None => {
-                    let zeros = vec![0u8; pools::align_size(span) as usize];
-                    self.queue.write_buffer(&buffer, 0, &zeros)
-                }
+        let bytes = storage.get_bytes(name);
+        if created {
+            let whole = match bytes {
+                Some(bytes) => pools::pad_bytes(bytes),
+                None => Cow::Owned(vec![0u8; pools::align_size(span) as usize]),
+            };
+            self.queue.write_buffer(&buffer, 0, &whole);
+        } else {
+            let ranges = storage.list_changes(name, id);
+            if ranges.is_empty() {
+                return buffer;
+            }
+            if let Some(bytes) = bytes {
+                self.write_ranges(&buffer, &pools::pad_bytes(bytes), &ranges);
             }
         }
-        if dirty {
-            RwLockUpgradableReadGuard::upgrade(storage).clear_storage_dirty(name);
-        }
+        RwLockUpgradableReadGuard::upgrade(storage).record_upload(name, id, &token);
         buffer
+    }
+
+    /// Creates the buffer behind the storage root `name` at `span`, in place of any other,
+    /// and returns it with its id and token.
+    fn create_root_buffer(&self, name: &str, span: u64) -> (wgpu::Buffer, u64, Arc<()>) {
+        static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+        let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some(&format!("Persistent Storage Buffer: {name}")),
+            size: pools::align_size(span),
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: false,
+        });
+        let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
+        let token = Arc::new(());
+        let root = RootBuffer {
+            buffer: buffer.clone(),
+            span,
+            id,
+            token: token.clone(),
+        };
+        self.storage_registry.insert(name.to_string(), root);
+        (buffer, id, token)
+    }
+
+    /// Copies each of `ranges` of `bytes` to the same offset in `buffer`.
+    ///
+    /// The ranges are word-aligned, as buffer copies need.
+    /// One range goes through `write_buffer`. More go into one staging buffer, packed,
+    /// with one copy each, since each `write_buffer` stages its bytes in a buffer of its own.
+    /// The copies are submitted before the frame that binds `buffer`, as `write_buffer` is too.
+    fn write_ranges(&self, buffer: &wgpu::Buffer, bytes: &[u8], ranges: &[Range<usize>]) {
+        let slices: Vec<(usize, &[u8])> = ranges
+            .iter()
+            .filter_map(|range| {
+                let end = range.end.min(bytes.len());
+                bytes
+                    .get(range.start..end)
+                    .map(|slice| (range.start, slice))
+            })
+            .filter(|(_, slice)| !slice.is_empty())
+            .collect();
+        if let [(offset, slice)] = slices[..] {
+            self.queue.write_buffer(buffer, offset as u64, slice);
+            return;
+        }
+        let size: usize = slices.iter().map(|(_, slice)| slice.len()).sum();
+        if size == 0 {
+            return;
+        }
+        let staging = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Storage Ranges Staging Buffer"),
+            size: size as u64,
+            usage: wgpu::BufferUsages::MAP_WRITE | wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: true,
+        });
+        let Ok(mut view) = staging.slice(..).get_mapped_range_mut() else {
+            for (offset, slice) in slices {
+                self.queue.write_buffer(buffer, offset as u64, slice);
+            }
+            return;
+        };
+        let mut at = 0;
+        for (_, slice) in &slices {
+            view.slice(at..at + slice.len()).copy_from_slice(slice);
+            at += slice.len();
+        }
+        drop(view);
+        staging.unmap();
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Storage Ranges Upload"),
+            });
+        let mut at = 0;
+        for (offset, slice) in &slices {
+            let len = slice.len() as u64;
+            encoder.copy_buffer_to_buffer(&staging, at, buffer, *offset as u64, len);
+            at += len;
+        }
+        self.queue.submit([encoder.finish()]);
     }
 
     pub(crate) fn set_sample_count(&self, count: u32) {

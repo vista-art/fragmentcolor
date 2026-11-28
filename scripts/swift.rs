@@ -759,7 +759,7 @@ mod swift {
 
     /// `T.new(args)` → `T(args)`, nested calls too,
     /// wherever [`init_call`] finds an initializer to call.
-    /// Otherwise `T.new` stays, as for the static `Shader.new([...])`.
+    /// Otherwise `T.new` stays as written.
     fn rewrite_dot_new(line: &str) -> String {
         let mut out = String::with_capacity(line.len());
         let mut rest = line;
@@ -1071,7 +1071,7 @@ mod swift {
         if own.is_empty() { all } else { own }
     }
 
-    /// The postfix chain that ends `head`, such as `Material.pbr()` or `mesh`.
+    /// The postfix chain that ends `head`, such as `PbrMaterial.new()` or `mesh`.
     fn chain_before(head: &str) -> &str {
         let code = code_only(head);
         let mut start = head.len();

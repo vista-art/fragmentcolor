@@ -64,6 +64,7 @@ extension Light {
         return try setIntensity(value: value)
     }
     @discardableResult
+    @_disfavoredOverload
     public func setIntensity(_ value: Double) throws -> Light {
         return try setIntensity(value: readFinite(value, "Light.setIntensity: value"))
     }
@@ -93,6 +94,7 @@ extension Light {
         return try setRange(value: value)
     }
     @discardableResult
+    @_disfavoredOverload
     public func setRange(_ value: Double) throws -> Light {
         return try setRange(value: Float(value))
     }
@@ -102,6 +104,7 @@ extension Light {
         return try setConeAngles(innerRadians: innerRadians, outerRadians: outerRadians)
     }
     @discardableResult
+    @_disfavoredOverload
     public func setConeAngles(_ innerRadians: Double, _ outerRadians: Double) throws -> Light {
         return try setConeAngles(
             innerRadians: readFinite(innerRadians, "Light.setConeAngles: inner_radians"),

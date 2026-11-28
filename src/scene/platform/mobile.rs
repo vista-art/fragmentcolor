@@ -6,10 +6,9 @@ use std::sync::Arc;
 use crate::SceneObjectHandle;
 use crate::bindings::numbers::{read_finite, read_floats, read_vector};
 use crate::errors::platform::mobile::FragmentColorError;
-use crate::scene::{
-    Camera, CameraError, GltfSource, Light, LightError, LightKind, Model, ModelError, Scene,
-};
-use crate::{Material, Mesh, Pass};
+use crate::scene::material::platform::mobile::MaterialHandle;
+use crate::scene::{Camera, GltfSource, Light, LightKind, Model, Scene};
+use crate::{Mesh, Pass};
 
 /// Mobile-marshallable target for [`Scene::add_to`]: a pass index or a pass
 /// name. Uniffi can't marshal `impl Into<PassRef>`, so Swift / Kotlin pick a
@@ -26,33 +25,12 @@ pub enum PassTarget {
     Name(String),
 }
 
-/// Refused camera parameters reach Swift and Kotlin as a render error.
-impl From<CameraError> for FragmentColorError {
-    fn from(error: CameraError) -> Self {
-        FragmentColorError::Render(error.to_string())
-    }
-}
-
-/// A light setter's refusal reaches Swift and Kotlin as a render error.
-impl From<LightError> for FragmentColorError {
-    fn from(error: LightError) -> Self {
-        FragmentColorError::Render(error.to_string())
-    }
-}
-
-/// A Model transform call's refusal reaches Swift and Kotlin as a render error.
-impl From<ModelError> for FragmentColorError {
-    fn from(error: ModelError) -> Self {
-        FragmentColorError::Render(error.to_string())
-    }
-}
-
 #[uniffi::export]
 impl Model {
     #[uniffi::constructor(name = "new")]
     #[lsp_doc("docs/api/scene/model/new.md")]
-    pub fn new_mobile(mesh: Arc<Mesh>, material: Arc<Material>) -> Arc<Self> {
-        Arc::new(Model::new((*mesh).clone(), (*material).clone()))
+    pub fn new_mobile(mesh: Arc<Mesh>, material: MaterialHandle) -> Arc<Self> {
+        Arc::new(Model::new((*mesh).clone(), material.into_material()))
     }
 
     #[uniffi::method(name = "mesh")]
@@ -61,10 +39,10 @@ impl Model {
         Arc::new(self.mesh.clone())
     }
 
-    #[uniffi::method(name = "material")]
-    #[lsp_doc("docs/api/scene/model/material.md")]
-    pub fn material_mobile(self: Arc<Self>) -> Arc<Material> {
-        Arc::new(self.material.clone())
+    #[uniffi::method(name = "materialHandle")]
+    #[lsp_doc("docs/api/scene/model/hidden/material_handle_mobile.md")]
+    pub fn material_handle_mobile(self: Arc<Self>) -> MaterialHandle {
+        MaterialHandle::from(&self.material)
     }
 
     #[uniffi::method(name = "transform")]
@@ -81,8 +59,8 @@ impl Model {
     ) -> Result<(), FragmentColorError> {
         let flat = read_floats(matrix, "Model.setTransform")?;
         let Ok(flat) = <[f32; 16]>::try_from(flat.as_slice()) else {
-            return Err(FragmentColorError::Render(
-                "Model.setTransform: expected 16 floats (column-major mat4)".into(),
+            return Err(FragmentColorError::invalid_input(
+                "Model.setTransform: expected 16 floats (column-major mat4)",
             ));
         };
         let columns =

@@ -1,10 +1,11 @@
-//! Reads each glTF material into a `Material`, with the sampler
-//! and the UV set and transform each of its texture slots reads.
+//! Reads each glTF material into an `UnlitMaterial` when it carries `KHR_materials_unlit`
+//! and a `PbrMaterial` otherwise, with the sampler and the UV set and transform each of its
+//! maps reads.
 
 use super::SceneLoadError;
-use crate::Material;
-use crate::scene::{TextureSlot, UvSet, UvTransform};
+use crate::scene::{MapSlot, UvSet, UvTransform};
 use crate::texture::TextureSource;
+use crate::{AlphaMode, Material, MaterialMap, PbrMaterial, UnlitMaterial};
 
 /// Translates a glTF texture's sampler into [`SamplerOptions`].
 /// `MIRRORED_REPEAT` becomes `REPEAT`, since the sampler has no mirror mode.
@@ -38,24 +39,62 @@ pub(super) fn map_sampler_options(sampler: &gltf::texture::Sampler<'_>) -> crate
     }
 }
 
-/// Build the PBR Material of a glTF material. Each texture slot becomes a map
-/// of its image's source in `images`, which every slot that reads the image shares.
+/// Build the material of a glTF material: an `UnlitMaterial` for one that carries
+/// `KHR_materials_unlit`, and a `PbrMaterial` for any other. Each texture reference becomes
+/// a map of its image's source in `images`, which every map that reads the image shares.
 pub(super) fn build_material(
     gltf_material: &gltf::Material<'_>,
     images: &[TextureSource],
 ) -> Result<Material, SceneLoadError> {
+    if gltf_material.unlit() {
+        return Ok(build_unlit(gltf_material, images)?.into());
+    }
+    Ok(build_pbr(gltf_material, images)?.into())
+}
+
+/// The `AlphaMode` of a glTF material's `alphaMode`.
+fn read_alpha_mode(gltf_material: &gltf::Material<'_>) -> AlphaMode {
+    match gltf_material.alpha_mode() {
+        gltf::material::AlphaMode::Opaque => AlphaMode::Opaque,
+        gltf::material::AlphaMode::Mask => AlphaMode::Mask,
+        gltf::material::AlphaMode::Blend => AlphaMode::Blend,
+    }
+}
+
+/// Build the unlit material of a glTF material with `KHR_materials_unlit`. The extension
+/// keeps the base color factor and texture, the alpha settings and `doubleSided`, and
+/// tells a renderer to skip lighting, so the material's other properties go unread.
+fn build_unlit(
+    gltf_material: &gltf::Material<'_>,
+    images: &[TextureSource],
+) -> Result<UnlitMaterial, SceneLoadError> {
     let pbr = gltf_material.pbr_metallic_roughness();
-    let mut material = Material::pbr()
+    let material = UnlitMaterial::new()
+        .base_color(pbr.base_color_factor())?
+        .alpha_cutoff(gltf_material.alpha_cutoff().unwrap_or(0.5))?
+        .alpha_mode(read_alpha_mode(gltf_material))
+        .double_sided(gltf_material.double_sided());
+    if let Some(info) = pbr.base_color_texture() {
+        let map = material.base_color_map();
+        map.set_map(convert_image(&info.texture(), images)?)?;
+        apply_uv(&map, read_info_uv(&info))?;
+    }
+    Ok(material)
+}
+
+/// Build the PBR material of a glTF material.
+fn build_pbr(
+    gltf_material: &gltf::Material<'_>,
+    images: &[TextureSource],
+) -> Result<PbrMaterial, SceneLoadError> {
+    let pbr = gltf_material.pbr_metallic_roughness();
+    let mut material = PbrMaterial::new()
         .base_color(pbr.base_color_factor())?
         .metallic(pbr.metallic_factor())?
         .roughness(pbr.roughness_factor())?
         .emissive(gltf_material.emissive_factor())?
         .alpha_cutoff(gltf_material.alpha_cutoff().unwrap_or(0.5))?
-        .alpha_mode(match gltf_material.alpha_mode() {
-            gltf::material::AlphaMode::Opaque => crate::AlphaMode::Opaque,
-            gltf::material::AlphaMode::Mask => crate::AlphaMode::Mask,
-            gltf::material::AlphaMode::Blend => crate::AlphaMode::Blend,
-        })
+        .alpha_mode(read_alpha_mode(gltf_material))
         .double_sided(gltf_material.double_sided());
 
     if let Some(scale) = gltf_material.normal_texture().map(|info| info.scale()) {
@@ -70,32 +109,33 @@ pub(super) fn build_material(
 
     let read = |texture: gltf::Texture<'_>| convert_image(&texture, images);
     if let Some(info) = pbr.base_color_texture() {
-        material.set_map(TextureSlot::BaseColor, read(info.texture())?)?;
-        apply_uv(&material, TextureSlot::BaseColor, read_info_uv(&info))?;
+        let map = material.base_color_map();
+        map.set_map(read(info.texture())?)?;
+        apply_uv(&map, read_info_uv(&info))?;
     }
     if let Some(info) = pbr.metallic_roughness_texture() {
-        material.set_map(TextureSlot::MetallicRoughness, read(info.texture())?)?;
-        apply_uv(
-            &material,
-            TextureSlot::MetallicRoughness,
-            read_info_uv(&info),
-        )?;
+        let map = material.metallic_roughness_map();
+        map.set_map(read(info.texture())?)?;
+        apply_uv(&map, read_info_uv(&info))?;
     }
     if let Some(info) = gltf_material.normal_texture() {
-        material.set_map(TextureSlot::Normal, read(info.texture())?)?;
+        let map = material.normal_map();
+        map.set_map(read(info.texture())?)?;
         let extension = info.extension_value(TEXTURE_TRANSFORM);
         let uv = read_extension_uv(info.tex_coord(), extension)?;
-        apply_uv(&material, TextureSlot::Normal, uv)?;
+        apply_uv(&map, uv)?;
     }
     if let Some(info) = gltf_material.occlusion_texture() {
-        material.set_map(TextureSlot::Occlusion, read(info.texture())?)?;
+        let map = material.occlusion_map();
+        map.set_map(read(info.texture())?)?;
         let extension = info.extension_value(TEXTURE_TRANSFORM);
         let uv = read_extension_uv(info.tex_coord(), extension)?;
-        apply_uv(&material, TextureSlot::Occlusion, uv)?;
+        apply_uv(&map, uv)?;
     }
     if let Some(info) = gltf_material.emissive_texture() {
-        material.set_map(TextureSlot::Emissive, read(info.texture())?)?;
-        apply_uv(&material, TextureSlot::Emissive, read_info_uv(&info))?;
+        let map = material.emissive_map();
+        map.set_map(read(info.texture())?)?;
+        apply_uv(&map, read_info_uv(&info))?;
     }
 
     Ok(material)
@@ -160,33 +200,35 @@ fn read_extension_uv(
     })
 }
 
-/// Point one material slot at the UV set and transform its glTF texture reads.
-/// The PBR shader samples two UV sets, so `TEXCOORD_2` and above are an error,
+/// Point `map` at the UV set and transform its glTF texture reads.
+/// The material shaders sample two UV sets, so `TEXCOORD_2` and above are an error,
 /// and so is a transform with a number that isn't finite, such as `1e39`.
-fn apply_uv(material: &Material, slot: TextureSlot, uv: TextureUv) -> Result<(), SceneLoadError> {
+fn apply_uv(map: &MaterialMap, uv: TextureUv) -> Result<(), SceneLoadError> {
     let Ok(set) = UvSet::try_from(uv.uv_set) else {
         return Err(SceneLoadError::Invalid(format!(
-            "glTF {} reads TEXCOORD_{}, and the PBR material samples TEXCOORD_0 and TEXCOORD_1 only",
-            name_slot(slot),
+            "glTF {} reads TEXCOORD_{}, and the material samples TEXCOORD_0 and TEXCOORD_1 only",
+            name_slot(map.slot()),
             uv.uv_set
         )));
     };
     let transform = uv.transform.check(TEXTURE_TRANSFORM)?;
-    Ok(material.set_slot_uv(slot, set, transform)?)
+    Ok(map.set_uv(set, transform)?)
 }
 
 /// The glTF property that holds a slot's texture reference.
-fn name_slot(slot: TextureSlot) -> &'static str {
+fn name_slot(slot: MapSlot) -> &'static str {
     match slot {
-        TextureSlot::BaseColor => "baseColorTexture",
-        TextureSlot::MetallicRoughness => "metallicRoughnessTexture",
-        TextureSlot::Normal => "normalTexture",
-        TextureSlot::Occlusion => "occlusionTexture",
-        TextureSlot::Emissive => "emissiveTexture",
+        MapSlot::BaseColor => "baseColorTexture",
+        MapSlot::MetallicRoughness => "metallicRoughnessTexture",
+        MapSlot::Normal => "normalTexture",
+        MapSlot::Occlusion => "occlusionTexture",
+        MapSlot::Emissive => "emissiveTexture",
+        // glTF has no toon ramp, so the loader never fills one.
+        MapSlot::Ramp => "ramp",
     }
 }
 
-/// Convert a glTF texture reference into the source a Material map keeps, with the
+/// Convert a glTF texture reference into the source a material map keeps, with the
 /// texture's own sampler. Every reference to one image shares that image's source.
 fn convert_image(
     texture: &gltf::Texture<'_>,

@@ -1,6 +1,6 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use fragmentcolor::{Camera, Light, Material, Mesh, Model, Pass, Renderer, Target, Vertex};
+use fragmentcolor::{Camera, Light, Mesh, Model, Pass, PbrMaterial, Renderer, Target, Vertex};
 
 /// A four-meter white square at the origin, facing the camera on +Z.
 fn wall() -> Model {
@@ -16,7 +16,7 @@ fn wall() -> Model {
     mesh.add_vertices(
         corners.map(|corner| Vertex::pbr(corner).set(Vertex::NORMAL, [0.0, 0.0, 1.0])),
     );
-    let material = Material::pbr()
+    let material = PbrMaterial::new()
         .base_color([1.0, 1.0, 1.0, 1.0])
         .expect("base color")
         .roughness(1.0)

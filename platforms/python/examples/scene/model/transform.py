@@ -1,4 +1,4 @@
-from fragmentcolor import Material, Mesh, Model, Renderer, Vertex
+from fragmentcolor import Mesh, Model, PbrMaterial, Renderer, Vertex
 
 renderer = Renderer()
 mesh = Mesh()
@@ -8,5 +8,5 @@ mesh.add_vertices([
     Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
 ])
 
-model = Model(mesh, Material.pbr())
+model = Model(mesh, PbrMaterial())
 identity = model.transform()

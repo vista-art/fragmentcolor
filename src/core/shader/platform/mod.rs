@@ -1,5 +1,5 @@
 mod python;
-mod web;
+pub(super) mod web;
 
 #[cfg(mobile)]
 pub mod mobile;

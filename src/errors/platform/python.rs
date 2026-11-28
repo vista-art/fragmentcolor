@@ -1,82 +1,85 @@
-//! The Python exception classes, `raise` and `PythonError`.
+//! The Python exception classes, `raise_error` and `PythonError`.
 
 use crate::core::Field;
-use crate::errors::{Classify, ErrorClass};
-use pyo3::{
-    create_exception,
-    exceptions::{PyBaseException, PyException},
-    prelude::*,
+use crate::errors::{Classify, ErrorClass, ErrorShape};
+use crate::{DisplayError, ErrorKind};
+use pyo3::exceptions::{PyRuntimeError, PyValueError};
+use pyo3::prelude::*;
+use pyo3::sync::PyOnceLock;
+use pyo3::types::{PyDict, PyTuple, PyType};
+
+pub use classes::FragmentColorError as PyFragmentColorError;
+pub use classes::{
+    BindingError, DeviceError, EntryError, FeatureError, InvalidInputError, LimitError,
+    MalformedImageError, OccludedSurfaceError, UnsupportedMipmapFormatError,
 };
 
-create_exception!(fragment_color, PyFragmentColorError, PyException);
-create_exception!(
-    fragment_color,
-    InvalidInputError,
-    PyFragmentColorError,
-    "A value the call can't take, such as a negative size or bytes that don't match their texture."
-);
-create_exception!(
-    fragment_color,
-    UnsupportedMipmapFormatError,
-    PyFragmentColorError,
-    "A texture format the CPU mipmap builder can't fill."
-);
-create_exception!(
-    fragment_color,
-    MalformedImageError,
-    PyFragmentColorError,
-    "Image bytes that can't be decoded."
-);
-create_exception!(
-    fragment_color,
-    OccludedSurfaceError,
-    PyFragmentColorError,
-    "A window that is hidden or minimized, so render skips the frame."
-);
-create_exception!(
-    fragment_color,
-    DeviceError,
-    PyFragmentColorError,
-    "A GPU error an error scope caught, with its kind, the label of the step that raised it and the device's own detail."
-);
+/// The classes pyo3 builds, named as Python prints them.
+/// In a module of their own, the base class can take the name
+/// `FragmentColorError`, which the crate's error enum holds outside it.
+mod classes {
+    use pyo3::{create_exception, exceptions::PyException};
 
-create_exception!(
-    fragment_color,
-    LimitError,
-    PyFragmentColorError,
-    "Something in a shader or mesh past one of the device's limits, with the item, the limit's name, the value it needs and the device's maximum."
-);
-create_exception!(
-    fragment_color,
-    FeatureError,
-    PyFragmentColorError,
-    "Something in a shader that needs a feature the device lacks, with the item and the feature."
-);
-create_exception!(
-    fragment_color,
-    BindingError,
-    PyFragmentColorError,
-    "A texture uniform whose slot can't take its texture, or that was never set, with the uniform's name, what the slot takes and what it got."
-);
-create_exception!(
-    fragment_color,
-    EntryError,
-    PyFragmentColorError,
-    "A shader without the entry point its pass runs, with the stage."
-);
-
-/// An exception of class `T` with the full `message`, carrying the attributes `fields` sets.
-pub(crate) fn raise<T: pyo3::PyTypeInfo>(
-    message: String,
-    fields: impl FnOnce(&Bound<'_, PyBaseException>) -> PyResult<()>,
-) -> PyErr {
-    Python::attach(|py| {
-        let error = PyErr::new::<T, _>(message);
-        match fields(error.value(py)) {
-            Ok(()) => error,
-            Err(failure) => failure,
-        }
-    })
+    create_exception!(
+        fragmentcolor,
+        FragmentColorError,
+        PyException,
+        "The base class of every FragmentColor exception."
+    );
+    create_exception!(
+        fragmentcolor,
+        InvalidInputError,
+        FragmentColorError,
+        "A value the call can't take, such as a negative size or bytes that don't match their texture."
+    );
+    create_exception!(
+        fragmentcolor,
+        UnsupportedMipmapFormatError,
+        FragmentColorError,
+        "A texture format the CPU mipmap builder can't fill."
+    );
+    create_exception!(
+        fragmentcolor,
+        MalformedImageError,
+        FragmentColorError,
+        "Image bytes that can't be decoded."
+    );
+    create_exception!(
+        fragmentcolor,
+        OccludedSurfaceError,
+        FragmentColorError,
+        "A window that is hidden or minimized, so render skips the frame."
+    );
+    create_exception!(
+        fragmentcolor,
+        DeviceError,
+        FragmentColorError,
+        "A GPU error an error scope caught, with its kind, the label of the step that raised it and the device's own detail."
+    );
+    create_exception!(
+        fragmentcolor,
+        LimitError,
+        FragmentColorError,
+        "Something in a shader or mesh past one of the device's limits, with the item, the limit's name, the value it needs and the device's maximum."
+    );
+    create_exception!(
+        fragmentcolor,
+        FeatureError,
+        FragmentColorError,
+        "Something in a shader that needs a feature the device lacks, with the item and the feature."
+    );
+    create_exception!(
+        fragmentcolor,
+        BindingError,
+        FragmentColorError,
+        "A texture uniform whose slot can't take its texture, or that was never set, with the uniform's name, what the slot takes and what it got."
+    );
+    create_exception!(
+        fragmentcolor,
+        EntryError,
+        FragmentColorError,
+        "A shader without the entry point its pass runs, with the stage."
+    );
 }
 
 /// An exception of `class` with the full `message`.
@@ -99,9 +102,14 @@ pub(crate) fn raise_class(class: ErrorClass, message: String) -> PyErr {
     }
 }
 
-/// The exception for `error`, of the class it names.
-pub(crate) fn raise_error<E: Classify + std::fmt::Display>(error: &E) -> PyErr {
-    raise_class(error.classify(), error.to_string())
+/// The exception for `error`: its class, its full message and its fields as attributes.
+pub(crate) fn raise_error<E: Classify + ?Sized>(error: &E) -> PyErr {
+    let ErrorShape {
+        class,
+        message,
+        fields,
+    } = error.shape();
+    raise_fields(class, message, fields)
 }
 
 /// An exception of `class` with the full `message` that carries each of `fields` as an attribute.
@@ -111,12 +119,16 @@ pub(crate) fn raise_fields(
     fields: Vec<(&'static str, Field)>,
 ) -> PyErr {
     let error = raise_class(class, message);
+    if fields.is_empty() {
+        return error;
+    }
     Python::attach(|py| {
         let value = error.value(py);
         for (name, field) in fields {
             let set = match field {
                 Field::Text(text) => value.setattr(name, text),
                 Field::Number(number) => value.setattr(name, number),
+                Field::Kind(kind) => value.setattr(name, kind),
             };
             if let Err(failure) = set {
                 return failure;
@@ -124,23 +136,6 @@ pub(crate) fn raise_fields(
         }
         error
     })
-}
-
-impl DeviceError {
-    /// A `DeviceError` with the full `message` that carries the GPU error's `kind`,
-    /// the `label` of its step and the device's own `detail`.
-    pub(crate) fn raise(
-        kind: crate::ErrorKind,
-        label: String,
-        detail: String,
-        message: String,
-    ) -> PyErr {
-        raise::<DeviceError>(message, |error| {
-            error.setattr("kind", kind)?;
-            error.setattr("label", label)?;
-            error.setattr("detail", detail)
-        })
-    }
 }
 
 /// Python exceptions with two bases, `FragmentColorError` and a builtin,
@@ -171,11 +166,7 @@ impl PythonError {
     }
 
     /// The class, built on first use.
-    pub(crate) fn class(self, py: Python<'_>) -> PyResult<Bound<'_, pyo3::types::PyType>> {
-        use pyo3::exceptions::{PyRuntimeError, PyValueError};
-        use pyo3::sync::PyOnceLock;
-        use pyo3::types::{PyDict, PyTuple, PyType};
-
+    pub(crate) fn class(self, py: Python<'_>) -> PyResult<Bound<'_, PyType>> {
         static SCENE_LOAD: PyOnceLock<Py<PyType>> = PyOnceLock::new();
         static LIGHT: PyOnceLock<Py<PyType>> = PyOnceLock::new();
         static CAMERA: PyOnceLock<Py<PyType>> = PyOnceLock::new();
@@ -207,14 +198,29 @@ impl PythonError {
     }
 }
 
-impl From<PyErr> for crate::DisplayError {
-    fn from(e: PyErr) -> Self {
-        crate::DisplayError::Error(e.to_string())
+#[pymethods]
+impl ErrorKind {
+    /// Pickles a kind as the class attribute it names, such as `ErrorKind.Memory`,
+    /// so a `DeviceError` that carries one pickles back from a worker process.
+    fn __reduce__<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyTuple>> {
+        let name = match self {
+            ErrorKind::Validation => "Validation",
+            ErrorKind::Internal => "Internal",
+            ErrorKind::Memory => "Memory",
+        };
+        let getattr = py.import("builtins")?.getattr("getattr")?;
+        (getattr, (py.get_type::<ErrorKind>(), name)).into_pyobject(py)
     }
 }
 
-impl From<crate::DisplayError> for PyErr {
-    fn from(e: crate::DisplayError) -> Self {
+impl From<PyErr> for DisplayError {
+    fn from(e: PyErr) -> Self {
+        DisplayError::Error(e.to_string())
+    }
+}
+
+impl From<DisplayError> for PyErr {
+    fn from(e: DisplayError) -> Self {
         raise_error(&e)
     }
 }

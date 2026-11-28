@@ -1,9 +1,11 @@
 //! `Shader`, and `ShaderObject`, the module, uniforms and meshes a shader keeps.
 
+mod alpha_mode;
+pub use alpha_mode::AlphaMode;
 pub(crate) mod error;
 use crate::geometry::MeshObject;
 use crate::texture::{Registration, TextureId};
-use crate::{AlphaMode, Mesh, PassObject, Renderable, Vertex};
+use crate::{Mesh, PassObject, Renderable, Vertex};
 use dashmap::DashMap;
 pub use error::{Diagnostic, ShaderError, SourceLocation};
 use lsp_doc::lsp_doc;
@@ -51,6 +53,8 @@ pub(in crate::core) mod lights;
 use lights::roots::LightRoots;
 pub(crate) use lights::{ShaderLights, lower_cap, share_light};
 mod platform;
+#[cfg(wasm)]
+pub(crate) use platform::web::read_alpha_mode;
 use uniforms::bytes::*;
 
 /// The hash of a shader source.
@@ -175,6 +179,18 @@ impl Shader {
     pub fn set_registry(base_url: &str) {
         source::registry::set_registry(base_url);
     }
+
+    #[lsp_doc("docs/api/core/shader/alpha_mode.md")]
+    pub fn alpha_mode(&self, mode: AlphaMode) -> Self {
+        self.object.set_alpha_mode(mode);
+        self.clone()
+    }
+
+    #[lsp_doc("docs/api/core/shader/double_sided.md")]
+    pub fn double_sided(&self, value: bool) -> Self {
+        self.object.set_double_sided(value);
+        self.clone()
+    }
 }
 
 /// FragmentColor's Shader internal implementation.
@@ -182,12 +198,10 @@ impl Shader {
 /// The ShaderObject is wrapped in an Arc and managed by the Shader struct.
 /// This allows it to be shared between multiple passes and render pipelines.
 ///
-/// `alpha_mode` and `double_sided` are pipeline-state back-references owned
-/// by Material (see `src/scene/material/`). The renderer reads them when building
-/// a `RenderPipelineKey` so different Material configurations cache to
-/// distinct pipelines. They live here rather than on Material because the
-/// renderer iterates `pass.shaders` (Arc<ShaderObject>) at draw time and
-/// doesn't otherwise know which Material a shader belongs to.
+/// `alpha_mode` and `double_sided` are pipeline state.
+/// `Shader::alpha_mode` and `Shader::double_sided` set them,
+/// as do the material setters of the same names. The renderer reads both
+/// into the `RenderPipelineKey`, which gives each combination a pipeline of its own.
 #[derive(Debug)]
 pub(crate) struct ShaderObject {
     /// Tells this shader from every other one, so a mesh keeps
@@ -241,11 +255,11 @@ impl Drop for ShaderObject {
     }
 }
 
-/// What a texture write lets go of: the registration bound before, and the key's map.
+/// What a texture write lets go of: the bound registration and the map's texture.
 /// The caller drops it after `texture_writes`, so no GPU copy is freed under that lock.
 type Released = (
     Option<Arc<Registration>>,
-    Option<uniforms::texture_maps::TextureMap>,
+    Option<Arc<uniforms::texture_maps::MapTexture>>,
 );
 
 /// A `set` queued while the storage was busy, applied by `flush_pending`.
@@ -373,7 +387,7 @@ impl ShaderObject {
     }
 
     /// Holds the texture `id` names for `key` and ends the key's map, unless `id` is
-    /// that map's own. Returns the registration bound before and the map it ended.
+    /// that map's own. Returns the registration bound before and the texture of the map it ended.
     fn bind_texture(&self, key: &str, id: TextureId) -> Released {
         let bound = match Registration::find(id) {
             Some(registration) => self.bound_textures.insert(key.to_string(), registration),
@@ -423,15 +437,15 @@ impl ShaderObject {
         Ok(shader)
     }
 
-    /// Set the pipeline-state alpha mode for this shader. Called by
-    /// `Material::alpha_mode`; the renderer reads it when building a
-    /// `RenderPipelineKey`. See [`AlphaMode`].
+    /// Sets the alpha mode this shader's pipelines use.
+    /// `Shader::alpha_mode` and the materials' `alpha_mode` call it,
+    /// and the renderer reads it into the `RenderPipelineKey`. See [`AlphaMode`].
     pub(crate) fn set_alpha_mode(&self, mode: AlphaMode) {
         *self.alpha_mode.write() = mode;
     }
 
     /// Set the pipeline-state double-sided flag for this shader. Called by
-    /// `Material::double_sided`; the renderer reads it to flip the
+    /// `Shader::double_sided` and the materials' `double_sided`; the renderer reads it to flip the
     /// `cull_mode` and key it into the pipeline cache.
     pub(crate) fn set_double_sided(&self, value: bool) {
         *self.double_sided.write() = value;
@@ -528,13 +542,9 @@ impl ShaderObject {
             pending: DashMap::new(),
             meshes: RwLock::new(Vec::new()),
             alpha_mode: RwLock::new(AlphaMode::default()),
-            // Default `double_sided=true` for shaders used directly: this
-            // preserves the pre-Material renderer behavior (no back-face
-            // cull) for callers who build a Shader without going through
-            // Material. `Material::pbr()` flips it back to `false` so that
-            // path follows the glTF 2.0 default (single-sided = back-face
-            // cull on).
-            double_sided: RwLock::new(true),
+            // Single-sided, glTF 2.0's default: back faces are culled, with
+            // counter-clockwise winding as the front, until `double_sided(true)`.
+            double_sided: RwLock::new(false),
             maps: RwLock::new(Vec::new()),
             light_roots,
             lights: RwLock::new(ShaderLights::default()),

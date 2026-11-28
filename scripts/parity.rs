@@ -1469,6 +1469,8 @@ mod parity {
             required: usize,
             /// Whether more arguments than `params` are accepted, as `**kwargs` allows.
             open: bool,
+            /// Whether a parameter keeps a value of any type in a fallback, so the binding may reject it.
+            loose: bool,
             throws: bool,
             is_async: bool,
             returns: Class,
@@ -1800,8 +1802,9 @@ mod parity {
                 .collect();
             let params: Vec<(Class, Option<String>)> = inputs
                 .iter()
-                .map(|t| (classify(model, &t.ty, site), read_core(&t.ty)))
+                .map(|t| (classify(model, &t.ty, site), read_form(model, &t.ty, site)))
                 .collect();
+            let loose = inputs.iter().any(|t| keeps_any(model, &t.ty, site));
             let names: Vec<String> = inputs.iter().map(|t| read_name(&t.pat)).collect();
             let (required, open) = match site.build {
                 None => (params.len(), false),
@@ -1835,6 +1838,7 @@ mod parity {
                 params,
                 required,
                 open,
+                loose,
                 throws,
                 is_async: sig.asyncness.is_some() || promise,
                 returns,
@@ -1913,6 +1917,48 @@ mod parity {
                 Type::Path(p) => p.path.segments.last(),
                 _ => None,
             }
+        }
+
+        /// The one form of an argument enum that keeps any other value in a fallback,
+        /// such as the `Bound<Mesh>` of an enum that takes a `Mesh` or refuses anything else.
+        /// A binding reads such an enum as that form, which its fallback loosens.
+        fn unwrap_form<'model>(
+            model: &'model Reflection,
+            ident: &str,
+            site: &Site,
+        ) -> Option<&'model Type> {
+            let build = site.build?;
+            let ty = model.type_named(ident, build)?;
+            let variants: Vec<_> = ty.variants.iter().filter(|v| v.cfg.holds(build)).collect();
+            let fallback = variants.iter().any(|v| v.is_fallback(build));
+            let forms: Vec<_> = variants.iter().filter(|v| !v.is_fallback(build)).collect();
+            match (fallback, forms.as_slice()) {
+                (true, [form]) => match form.fields.as_slice() {
+                    [field] => Some(field),
+                    _ => None,
+                },
+                _ => None,
+            }
+        }
+
+        /// The type a binding parameter names, as [`read_core`] reads it,
+        /// seen through an argument enum of one form.
+        fn read_form(model: &Reflection, ty: &Type, site: &Site) -> Option<String> {
+            let core = read_core(ty)?;
+            match unwrap_form(model, &core, site) {
+                Some(field) => read_form(model, field, site),
+                None => Some(core),
+            }
+        }
+
+        /// Whether a binding parameter keeps a value of any type in a fallback variant.
+        fn keeps_any(model: &Reflection, ty: &Type, site: &Site) -> bool {
+            let (Some(core), Some(build)) = (read_core(ty), site.build) else {
+                return false;
+            };
+            model
+                .type_named(&core, build)
+                .is_some_and(|def| def.variants.iter().any(|v| v.cfg.holds(build) && v.is_fallback(build)))
         }
 
         /// The type a value names under its `&`, `Option`, `Arc`, `Py` and `Vec` wrappers.
@@ -2104,10 +2150,14 @@ mod parity {
             }
         }
 
-        /// A crate type, a generic parameter, or a handle that stands in for a trait.
+        /// A crate type, a generic parameter, a handle that stands in for a trait,
+        /// or the one form of an argument enum with a fallback.
         fn classify_named(model: &Reflection, ident: &str, site: &Site) -> Class {
             if let Some(bound) = find_bound(model, site, ident) {
                 return bound;
+            }
+            if let Some(field) = unwrap_form(model, ident, site) {
+                return classify(model, field, site);
             }
             let name = match site.build {
                 Some(build) => export_name(model, ident, build),
@@ -2215,7 +2265,7 @@ mod parity {
                 &rust.returns,
             );
             // A binding that reads a looser value than Rust takes may reject it.
-            let loosened = pairs.iter().any(|((b, _), (r, _))| b != r);
+            let loosened = binding.loose || pairs.iter().any(|((b, _), (r, _))| b != r);
             let throws = binding.throws == rust.throws || (binding.throws && loosened);
             let is_async = platform == Platform::Python || binding.is_async == rust.is_async;
             returns && throws && is_async
@@ -2292,23 +2342,29 @@ mod parity {
                 }
             }
 
-            /// Whether a binding value meets a Rust `impl Trait` parameter: it names a type that
-            /// implements the trait, or a list of them where lists implement it, or has the
-            /// class of one of its implementors.
+            /// Whether a binding value meets a Rust `impl Trait` parameter.
+            ///
+            /// It meets it when it names a type that implements the trait,
+            /// or whose reference does, with `self` for the binding's own type,
+            /// when it is a list of them and lists implement the trait, or when it has the class
+            /// of an implementor. The `T` of a blanket `impl<T: Into<X>> Trait for T` has the class of its bound.
             fn implements(&self, b: &Class, raw: Option<&str>, name: &str, depth: usize) -> bool {
                 let build = self.build().unwrap_or(Build::Python);
                 let impls: Vec<&ImplDef> = self.model.trait_impls(name, build).collect();
                 let names = |ident: Option<&str>| {
                     ident.is_some_and(|ident| {
                         impls.iter().any(|imp| {
-                            imp.self_ident == ident
-                                || export_name(self.model, &imp.self_ident, build) == ident
+                            let own = read_ident(&imp.self_ty).unwrap_or_default();
+                            own == ident || export_name(self.model, &own, build) == ident
                         })
                     })
                 };
-                if let Class::Named(named) = b
-                    && (names(raw) || names(Some(named)))
-                {
+                let named = match b {
+                    Class::Named(named) => Some(named.as_str()),
+                    Class::This => Some(self.site.imp.self_ident.as_str()),
+                    _ => None,
+                };
+                if matches!(b, Class::Named(_) | Class::This) && (names(raw) || names(named)) {
                     return true;
                 }
                 if let Class::List(item) = b {
@@ -2321,13 +2377,13 @@ mod parity {
                     });
                     return lists && self.fits(item, None, &Class::Trait(name.to_string()), depth);
                 }
-                let rust_site = Site {
-                    imp: self.site.imp,
-                    f: self.site.f,
-                    build: None,
-                };
                 impls.iter().any(|imp| {
-                    let class = classify(self.model, &imp.self_ty, &rust_site);
+                    let impl_site = Site {
+                        imp,
+                        f: self.site.f,
+                        build: None,
+                    };
+                    let class = classify(self.model, &imp.self_ty, &impl_site);
                     !matches!(class, Class::Trait(_) | Class::Named(_) | Class::This)
                         && self.fits(b, raw, &class, depth)
                 })
@@ -2360,6 +2416,7 @@ mod parity {
 
             /// The classes of the one-field variants of the binding enum `raw`,
             /// which a binding reads as a union, such as a `derive(FromPyObject)` enum.
+            /// A fallback, which keeps a value of the wrong type, is no class the binding takes.
             fn variants(&self, raw: Option<&str>) -> Vec<Class> {
                 let (Some(raw), Some(build)) = (raw, self.build()) else {
                     return Vec::new();
@@ -2369,7 +2426,7 @@ mod parity {
                 };
                 ty.variants
                     .iter()
-                    .filter(|v| v.cfg.holds(build))
+                    .filter(|v| v.cfg.holds(build) && !v.is_fallback(build))
                     .filter_map(|v| match v.fields.as_slice() {
                         [only] => Some(classify(self.model, only, self.site)),
                         _ => None,

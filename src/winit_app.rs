@@ -328,11 +328,6 @@ impl App {
             .expect("SAFETY: primary_window set during resumed(); call only after App resumes")
     }
 
-    /// Backwards-compatible alias for examples; forwards to primary_window_id().
-    pub fn window_id(&self) -> WindowId {
-        self.primary_window_id()
-    }
-
     /// Convenience helper for single-window apps: resize the primary window target.
     pub fn resize(&self, size: impl Into<Size>) -> Result<(), TextureError> {
         let id = self.primary_window_id();

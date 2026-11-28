@@ -24,7 +24,8 @@ mod python_stubs {
     //! binding documents (same `lsp_doc` page), expanded through the crate's
     //! conversions: `Into<X>` reads every `From` impl for `X`, `TryInto<X>`
     //! every `TryFrom`, a trait bound every implementor, and a
-    //! `derive(FromPyObject)` enum its variants. Only types Python can see make
+    //! `derive(FromPyObject)` enum its variants, except the fallback that keeps
+    //! a value of the wrong type. Only types Python can see make
     //! it into a hint. A union of three or more types that two parameters share
     //! becomes a private alias named after its Rust source.
 
@@ -998,7 +999,7 @@ mod python_stubs {
             TypeKind::Enum => def
                 .variants
                 .iter()
-                .filter(|v| v.cfg.holds(Build::Python))
+                .filter(|v| v.cfg.holds(Build::Python) && !v.is_fallback(Build::Python))
                 .flat_map(|v| match v.fields.as_slice() {
                     [only] => annotated(
                         expand(only, mode, scope, self_name, ctx),

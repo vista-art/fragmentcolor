@@ -8,11 +8,12 @@ use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyByteArray, PyBytes, PyMemoryView, PySequence, PyString};
 use pyo3::wrap_pyfunction;
 
-use crate::bindings::numbers;
+use crate::bindings::{name_class, numbers};
 use crate::errors::{InvalidInputError, PythonError};
 
 use crate::{
-    Color, Pass, Renderer, ScreenRegion, Shader, Size,
+    AlphaMode, Camera, Color, CompareFunction, Light, LogLevel, Mesh, Pass, Renderer, ScreenRegion,
+    Shader, Size, TextureFormat, Vertex,
     targets::{PyTextureTarget, RenderCanvasFrame, RenderCanvasTarget, rendercanvas_context_hook},
 };
 
@@ -38,19 +39,22 @@ pub fn fragmentcolor(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Mesh primitives
     m.add_class::<crate::Quad>()?;
 
-    // Scene graph: Scene + Model + Camera + Light + Material + AlphaMode are
-    // the v0.12.0 surface for 3D content. Their pyclass impls live next to
-    // the Rust types (see `src/scene/platform/python.rs`,
-    // `src/scene/material/platform/python.rs`); registering them here makes them
-    // importable as `from fragmentcolor import Scene, Model, ...`.
+    // Scene graph: Scene + Model + Camera + Light + the material types are
+    // the surface for 3D content. Their pyclass impls live next to the Rust
+    // types (see `src/scene/platform/python.rs`,
+    // `src/scene/pbr_material/platform/python.rs`); registering them here makes them
+    // importable as `from fragmentcolor import Scene, Model, ...`. `Material` is a
+    // Rust enum, so Python gets the material object itself.
     m.add_class::<crate::scene::Scene>()?;
     m.add_class::<crate::scene::Model>()?;
     m.add_class::<crate::scene::Camera>()?;
     m.add_class::<crate::scene::Light>()?;
     m.add_class::<crate::scene::LightKind>()?;
-    m.add_class::<crate::Material>()?;
+    m.add_class::<crate::PbrMaterial>()?;
+    m.add_class::<crate::UnlitMaterial>()?;
+    m.add_class::<crate::ToonMaterial>()?;
+    m.add_class::<crate::MaterialMap>()?;
     m.add_class::<crate::AlphaMode>()?;
-    m.add_class::<crate::TextureSlot>()?;
 
     // Texture handle + format
     m.add_class::<crate::texture::Texture>()?;
@@ -58,6 +62,7 @@ pub fn fragmentcolor(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<crate::TextureFormat>()?;
     m.add_class::<crate::texture::Mipmap>()?;
     m.add_class::<crate::SamplerOptions>()?;
+    m.add_class::<crate::SamplerInfo>()?;
     m.add_class::<crate::CompareFunction>()?;
     m.add_class::<crate::TextureUsage>()?;
 
@@ -220,6 +225,67 @@ pub(crate) fn read_unsigned<T: Unsigned>(value: &Bound<'_, PyAny>, label: &str) 
     }
 }
 
+/// A Python bool, which a binding reads with [`PyFlag::read`].
+/// Its `Other` variant keeps a value of any other type, which the stub leaves out,
+/// so the reader raises a `TypeError` that names the parameter where pyo3's message wouldn't.
+#[derive(FromPyObject)]
+pub enum PyFlag<'py> {
+    Value(bool),
+    Other(Bound<'py, PyAny>),
+}
+
+impl PyFlag<'_> {
+    /// The bool, or a `TypeError` that names `label` for a value of another type.
+    pub(crate) fn read(&self, label: &str) -> PyResult<bool> {
+        match self {
+            PyFlag::Value(value) => Ok(*value),
+            PyFlag::Other(value) => Err(refuse_flag(value, label)),
+        }
+    }
+}
+
+/// A Python str, which a binding reads with [`PyText::read`].
+/// Its `Other` variant keeps a value of any other type, which the stub leaves out,
+/// so the reader raises a `TypeError` that names the parameter where pyo3's message wouldn't.
+#[derive(FromPyObject)]
+pub enum PyText<'py> {
+    Value(Bound<'py, PyString>),
+    Other(Bound<'py, PyAny>),
+}
+
+impl PyText<'_> {
+    /// The text, or a `TypeError` that names `label` for a value of another type.
+    pub(crate) fn read(self, label: &str) -> PyResult<String> {
+        match self {
+            PyText::Value(text) => read_text(&text),
+            PyText::Other(value) => Err(refuse(&value, format_args!("{label} must be a str"))),
+        }
+    }
+}
+
+/// The text of a str, read as JavaScript reads the same string:
+/// each lone surrogate becomes U+FFFD, and a pair of surrogates the character it encodes.
+fn read_text(text: &Bound<'_, PyString>) -> PyResult<String> {
+    if let Ok(text) = text.to_cow() {
+        return Ok(text.into_owned());
+    }
+    let encoded = text.call_method1("encode", ("utf-16-le", "surrogatepass"))?;
+    let (units, _) = encoded.cast::<PyBytes>()?.as_bytes().as_chunks::<2>();
+    let units: Vec<u16> = units.iter().map(|unit| u16::from_le_bytes(*unit)).collect();
+    Ok(String::from_utf16_lossy(&units))
+}
+
+/// A bool, as [`PyFlag::read`] reads one, for a `from_py_with` reader.
+/// Such a parameter keeps a literal default, such as `True`, that `help()` can print.
+pub(crate) fn read_flag(value: &Bound<'_, PyAny>, label: &str) -> PyResult<bool> {
+    value.extract().map_err(|_| refuse_flag(value, label))
+}
+
+/// A `TypeError` for a value that is no bool, such as `Model.set_visible: visible must be a bool, got str`.
+fn refuse_flag(value: &Bound<'_, PyAny>, label: &str) -> PyErr {
+    refuse(value, format_args!("{label} must be a bool"))
+}
+
 /// A color, a vector or another list of floats from Python: any sequence of numbers, NumPy arrays
 /// included, except the bytes forms. Its readers name the parameter in their errors.
 /// The hint's ndarray leaves out the uint8 and bool arrays the readers refuse.
@@ -248,21 +314,33 @@ impl PyChannels<'_> {
     }
 }
 
-/// Each item of a Python sequence as an `f64`. A bytes form, a `bool` or a value that isn't
-/// a number raises `TypeError`, and an int too large for a float raises `InvalidInputError`.
+/// Each item of a Python sequence as an `f64`. A value that is no list, a `bool` or an item that
+/// isn't a number raises `TypeError`, and an int too large for a float raises `InvalidInputError`.
 pub(crate) fn read_numbers(value: &Bound<'_, PyAny>, label: &str) -> PyResult<Vec<f64>> {
-    if is_bytes(value) {
-        return Err(PyTypeError::new_err(format!(
-            "{label} takes numbers, got {}",
-            name_type(value)
-        )));
-    }
-    value
-        .extract::<Vec<Bound<'_, PyAny>>>()?
+    read_items(value, label)?
         .iter()
         .enumerate()
         .map(|(index, item)| read_number(item, label, index))
         .collect()
+}
+
+/// The items of a list of numbers, such as a Python list or an ndarray.
+/// A bytes form or any other value raises a `TypeError` that names `label`.
+pub(crate) fn read_items<'py>(
+    value: &Bound<'py, PyAny>,
+    label: &str,
+) -> PyResult<Vec<Bound<'py, PyAny>>> {
+    if is_bytes(value) {
+        return Err(refuse(value, format_args!("{label} takes numbers")));
+    }
+    match value.extract::<Vec<Bound<'py, PyAny>>>() {
+        Ok(items) => Ok(items),
+        Err(error) if !error.is_instance_of::<PyTypeError>(value.py()) => Err(error),
+        Err(_) => Err(refuse(
+            value,
+            format_args!("{label} takes a list or an ndarray of numbers"),
+        )),
+    }
 }
 
 /// The bytes of a `bytes`, `bytearray` or `memoryview`, or of a sequence of ints, each read by
@@ -347,6 +425,99 @@ fn show(value: &Bound<'_, PyAny>) -> String {
         Ok(text) => text.to_string(),
         Err(_) => "an int too long to print".to_string(),
     }
+}
+
+/// A `TypeError` for a value the call can't take.
+/// Its message reads `{expected}, got {type}`, as JavaScript's does.
+/// An argument enum keeps such a value in a last `Bound<PyAny>` or `Py<PyAny>` variant,
+/// which the stub leaves out, so its reader raises this in place of pyo3's message, which names the enum.
+pub(crate) fn refuse(value: &Bound<'_, PyAny>, expected: impl Display) -> PyErr {
+    PyTypeError::new_err(format!("{expected}, got {}", name_type(value)))
+}
+
+/// A `TypeError` for a value that is no `class`, such as `Pass.add_shader: shader must be a Shader, got int`.
+pub(crate) fn refuse_class(value: &Bound<'_, PyAny>, label: &str, class: &str) -> PyErr {
+    refuse(value, format_args!("{label} must be {}", name_class(class)))
+}
+
+/// Declares the argument type of a parameter that takes one class.
+///
+/// Its `Other` variant keeps a value of any other type, which the stub leaves out,
+/// so `read` raises a `TypeError` that names the call where pyo3's message wouldn't.
+/// The class is read by type alone, so a borrow conflict raises its own error.
+macro_rules! take_class {
+    ($name:ident, $class:ident) => {
+        /// An argument that takes one class, or any other value for `read` to refuse.
+        #[derive(pyo3::FromPyObject)]
+        pub enum $name<'py> {
+            Object(pyo3::Bound<'py, $class>),
+            Other(pyo3::Bound<'py, pyo3::PyAny>),
+        }
+
+        impl $name<'_> {
+            /// The object, or a `TypeError` that names `label` for a value of another type.
+            pub(crate) fn read(self, label: &str) -> pyo3::PyResult<$class> {
+                match self {
+                    Self::Object(object) => Ok(object.try_borrow()?.clone()),
+                    Self::Other(value) => Err($crate::bindings::python::refuse_class(
+                        &value,
+                        label,
+                        stringify!($class),
+                    )),
+                }
+            }
+        }
+    };
+}
+
+take_class!(PyMesh, Mesh);
+take_class!(PyShader, Shader);
+take_class!(PyVertex, Vertex);
+take_class!(PyPass, Pass);
+take_class!(PyCamera, Camera);
+take_class!(PyLight, Light);
+take_class!(PyAlphaMode, AlphaMode);
+take_class!(PyTextureFormat, TextureFormat);
+take_class!(PyLogLevel, LogLevel);
+take_class!(PyCompareFunction, CompareFunction);
+
+/// Declares the argument type of a list parameter.
+///
+/// Its `Other` variant keeps a value that is no list, which the stub leaves out,
+/// so `items` raises a `TypeError` that names the call where pyo3's message wouldn't.
+/// Each item reads as its own type, which names a failing item.
+macro_rules! take_list {
+    ($name:ident, $item:ident, $things:literal) => {
+        /// A list argument, or any other value for `items` to refuse.
+        #[derive(pyo3::FromPyObject)]
+        pub enum $name<'py> {
+            Items(Vec<$item<'py>>),
+            Other(pyo3::Bound<'py, pyo3::PyAny>),
+        }
+
+        impl<'py> $name<'py> {
+            /// The items, or a `TypeError` that names `label` for a value that is no list.
+            pub(crate) fn items(self, label: &str) -> pyo3::PyResult<Vec<$item<'py>>> {
+                match self {
+                    Self::Items(items) => Ok(items),
+                    Self::Other(value) => Err($crate::bindings::python::refuse(
+                        &value,
+                        format_args!(concat!("{} must be a list of ", $things), label),
+                    )),
+                }
+            }
+        }
+    };
+}
+pub(crate) use take_list;
+
+take_list!(PyMeshes, PyMesh, "meshes");
+take_list!(PyPasses, PyPass, "passes");
+take_list!(PyIndices, PyUnsigned, "ints");
+
+/// Whether the value is a list of items: a sequence other than a `str` or a bytes form.
+pub(crate) fn is_list(value: &Bound<'_, PyAny>) -> bool {
+    !value.is_instance_of::<PyString>() && !is_bytes(value) && value.cast::<PySequence>().is_ok()
 }
 
 /// The name of the value's type, such as `float`.

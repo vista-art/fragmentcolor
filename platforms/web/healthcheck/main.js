@@ -1,5 +1,5 @@
 import init, {
-  Renderer, Shader, Pass, Mesh, Vertex, Instance, Scene, Model, Material, Camera, Light, Mipmap,
+  Renderer, Shader, Pass, Mesh, Vertex, Instance, Scene, Model, PbrMaterial, UnlitMaterial, ToonMaterial, MaterialMap, Camera, Light, Mipmap,
   TextureFormat, TextureUsage, ErrorKind, LightKind, LogLevel,
 } from "fragmentcolor";
 import * as fc from "fragmentcolor";
@@ -190,7 +190,13 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
     shader.set("tex", tex);
     shader.set("resolution", [64.0, 64.0]);
     console.log('Set texture on shader successfully');
-    
+
+    // A sampler reads back as a SamplerInfo, as in Python, Swift and Kotlin.
+    const sampler = shader.get("samp");
+    if (!(sampler instanceof fc.SamplerInfo) || sampler.comparison !== false) {
+      throw new Error(`shader.get("samp") should be a SamplerInfo, got ${JSON.stringify(sampler)}`);
+    }
+
     renderer.render(shader, target);
     const img = await target.getImage();
     console.log('Rendered textured shader:', img);
@@ -537,7 +543,7 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     // Builder methods return the receiver.
     const mesh = new Mesh();
     mesh.addVertices([Vertex.pbr([0.0, 0.5, 0.0]), Vertex.pbr([-0.5, -0.5, 0.0]), Vertex.pbr([0.5, -0.5, 0.0])]);
-    const model = new Model(mesh, Material.pbr());
+    const model = new Model(mesh, new PbrMaterial());
     const camera = Camera.perspective(1.047, 1.0, 0.1, 100.0);
     const built = new Scene().add(model).add(camera).ambient([0.1, 0.1, 0.1]).noDefaultLight();
     if (built.models().length !== 1) fail('chained Scene.add lost the model');
@@ -549,12 +555,12 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     throws('Mesh.setInstanceCount(-1)', () => mesh.setInstanceCount(-1));
     throws('Mesh.setIndices([0.5])', () => mesh.setIndices([0.5]));
     throws('Pass.setComputeDispatch(-1, 1, 1)', () => first.setComputeDispatch(-1, 1, 1));
-    const occlusion = fc.TextureSlot.Occlusion;
-    throws('Material.textureUv(Occlusion, 1.5)', () => Material.pbr().textureUv(occlusion, 1.5));
-    throws('Material.textureUv(Occlusion, -1)', () => Material.pbr().textureUv(occlusion, -1));
+    const occlusion = () => new PbrMaterial().occlusionMap();
+    throws('MaterialMap.uv(1.5)', () => occlusion().uv(1.5));
+    throws('MaterialMap.uv(-1)', () => occlusion().uv(-1));
     // A UV set past 1 is a whole number, but no texture can sample it.
-    throws('Material.textureUv(Occlusion, 2)', () => Material.pbr().textureUv(occlusion, 2));
-    if (!(Material.pbr().textureUv(occlusion, 1) instanceof Material)) fail('textureUv should return the material');
+    throws('MaterialMap.uv(2)', () => occlusion().uv(2));
+    if (!(occlusion().uv(1) instanceof MaterialMap)) fail('MaterialMap.uv should return the map');
 
     // Size fields take only the numbers the constructor takes, and ScreenRegion has no setters.
     const extent = new fc.Size(64, 64);
@@ -582,10 +588,13 @@ await withModule('platforms.web.healthcheck.parity', async () => {
 
     // A color or vector item that is NaN, an infinity or past the 32-bit float range
     // throws, and the message names the call, as in every binding.
-    const named = (label, run) => {
+    // Checks that `run` throws an error whose message names `label`, and, given `name`,
+    // whose class is `name`.
+    const named = (label, run, name) => {
       try { run(); } catch (e) {
         caught(label, e);
         if (!e.message.includes(label)) fail(`${label} threw "${e.message}", which doesn't name the call`);
+        if (name && e.name !== name) fail(`${label} threw a ${e.name}, not a ${name}`);
         return;
       }
       fail(`${label} should throw`);
@@ -597,16 +606,19 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     named('Model.translate', () => model.translate([0, 1e39, 0]));
     named('Model.rotate: axis', () => model.rotate([0, NaN, 0], 1));
     named('Camera.lookAt: up', () => camera.lookAt([0, 0, 5], [0, 0, 0], [0, 1e39, 0]));
-    named('Material.baseColor', () => Material.pbr().baseColor([1, 1, NaN, 1]));
-    named('Material.uvTransform: offset', () => Material.pbr().uvTransform([1e39, 0], [1, 1], 0));
-    named('Material.textureTransform: scale',
-      () => Material.pbr().textureTransform(occlusion, [0, 0], [Infinity, 1], 0));
-    // A Material factor or a UV rotation follows the same rule.
-    named('Material.metallic: value', () => Material.pbr().metallic(NaN));
-    named('Material.alphaCutoff: value', () => Material.pbr().alphaCutoff(1e39));
-    named('Material.uvTransform: rotation', () => Material.pbr().uvTransform([0, 0], [1, 1], Infinity));
-    named('Material.textureTransform: rotation',
-      () => Material.pbr().textureTransform(occlusion, [0, 0], [1, 1], -Infinity));
+    named('PbrMaterial.baseColor', () => new PbrMaterial().baseColor([1, 1, NaN, 1]));
+    named('PbrMaterial.uvTransform: offset', () => new PbrMaterial().uvTransform([1e39, 0], [1, 1], 0));
+    named('MaterialMap.transform: scale', () => occlusion().transform([0, 0], [Infinity, 1], 0));
+    // A material factor or a UV rotation follows the same rule.
+    named('PbrMaterial.metallic: value', () => new PbrMaterial().metallic(NaN));
+    named('PbrMaterial.alphaCutoff: value', () => new PbrMaterial().alphaCutoff(1e39));
+    named('UnlitMaterial.baseColor', () => new UnlitMaterial().baseColor([1, NaN, 1, 1]));
+    named('UnlitMaterial.alphaCutoff: value', () => new UnlitMaterial().alphaCutoff(Infinity));
+    named('ToonMaterial.highlight', () => new ToonMaterial().highlight([1, NaN, 1]));
+    named('ToonMaterial.rimWidth: value', () => new ToonMaterial().rimWidth(-Infinity));
+    named('ToonMaterial.bands: count', () => new ToonMaterial().bands(1.5));
+    named('PbrMaterial.uvTransform: rotation', () => new PbrMaterial().uvTransform([0, 0], [1, 1], Infinity));
+    named('MaterialMap.transform: rotation', () => occlusion().transform([0, 0], [1, 1], -Infinity));
     // So does a light's intensity or cone angle, and a rotation angle,
     // and a refused call leaves the light and the transform as they were.
     const dimmer = Light.point([0, 1, 0], [1, 1, 1]).setIntensity(2.5);
@@ -623,7 +635,7 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     // A light direction of length 0 points nowhere, and finite moves that carry a
     // transform past the f32 range are refused, each with Rust's message.
     named('Light::directional: direction has length 0', () => Light.directional([0, 0, 0], [1, 1, 1]));
-    const far = new Model(new Mesh(), Material.pbr());
+    const far = new Model(new Mesh(), new PbrMaterial());
     far.translate([3e38, 0, 0]);
     named('Model::translate would carry the transform past the f32 range', () => far.translate([3e38, 0, 0]));
     same('a refused rotate', model.transform().map((column) => Array.from(column)).flat(), turned.flat());
@@ -694,7 +706,7 @@ await withModule('platforms.web.healthcheck.parity', async () => {
       ["Pass.add('nope')", () => first.add('nope'), 'TypeError'],
       ["Pass.addShader('nope')", () => first.addShader('nope'), 'TypeError'],
       ['Scene.addPass(1)', () => new fc.Scene().addPass(1), 'TypeError'],
-      ['Material.custom({})', () => Material.custom({}), 'TypeError'],
+      ['new Model(mesh, {})', () => new Model(mesh, {}), 'TypeError'],
       ['new Model(mesh, 42)', () => new Model(mesh, 42), 'TypeError'],
       ['new Shader(42)', () => new Shader(42), 'TypeError'],
       ['Shader.fetch(42)', () => Shader.fetch(42), 'TypeError'],
@@ -717,13 +729,13 @@ await withModule('platforms.web.healthcheck.parity', async () => {
       ["Texture.resize({ width: 'a', height: 2 })", () => writable.resize({ width: 'a', height: 2 }), 'TypeError'],
       ["readTexture('x')", () => renderer.readTexture('x'), 'TypeError'],
       ["unregisterTexture('a')", () => renderer.unregisterTexture('a'), 'TypeError'],
-      ['Material.metallic(null)', () => Material.pbr().metallic(null), 'TypeError'],
+      ['PbrMaterial.metallic(null)', () => new PbrMaterial().metallic(null), 'TypeError'],
       ["Model.setVisible('yes')", () => model.setVisible('yes'), 'TypeError'],
       ["Camera.setAspect('wide')", () => camera.setAspect('wide'), 'TypeError'],
       ["Light.setIntensity('x')", () => Light.point([0, 1, 0], [1, 1, 1]).setIntensity('x'), 'TypeError'],
       ['Light.setIntensity(NaN)', () => Light.point([0, 1, 0], [1, 1, 1]).setIntensity(NaN), 'InvalidInputError'],
       ['Model.rotate([0, 0, 0], 1)', () => model.rotate([0, 0, 0], 1), 'InvalidInputError'],
-      ["SamplerOptions.repeat_x = 'yes'", () => { new fc.SamplerOptions().repeat_x = 'yes'; }, 'TypeError'],
+      ["SamplerOptions.repeatX = 'yes'", () => { new fc.SamplerOptions().repeatX = 'yes'; }, 'TypeError'],
       ["new SamplerOptions('yes')", () => new fc.SamplerOptions('yes'), 'TypeError'],
       ['Mesh.addVertex with 4 parts', () => new Mesh().addVertex([[0, 0, 0], [0, 0], [1, 1, 1, 1], [0]]), 'TypeError'],
       // Another class where a size or region goes is the wrong type, and an object without
@@ -740,6 +752,8 @@ await withModule('platforms.web.healthcheck.parity', async () => {
       // A texture id past 2**64 - 1 is a value error, never the largest id.
       ['readTexture(2 ** 64)', () => renderer.readTexture(2 ** 64), 'InvalidInputError'],
       ['unregisterTexture(2 ** 64)', () => renderer.unregisterTexture(2 ** 64), 'InvalidInputError'],
+      // An object that free() released is no value a call can take, though its type is right.
+      ['Pass.addShader(freed)', () => { const shader = Shader.default(); shader.free(); new Pass('p').addShader(shader); }, 'InvalidInputError'],
       ["TextureId.id = 7n", () => { 'use strict'; writable.id().id = 7n; }, 'TypeError'],
     ]) {
       try { await run(); } catch (e) {
@@ -762,6 +776,172 @@ await withModule('platforms.web.healthcheck.parity', async () => {
         continue;
       }
       fail(`${label} should throw`);
+    }
+    // An argument of the wrong type throws a TypeError that names the call, and the parameter or
+    // the item, with the text Python raises in check_type_messages, in JavaScript's own spellings.
+    const typeTarget = await renderer.createTextureTarget([4, 4]);
+    const typeLight = Light.point([0, 1, 0], [1, 1, 1]);
+    const instance = 'expected an Instance, a Vertex, or an object of named attributes';
+    const sampler = 'sampler options must be a SamplerOptions or { repeatX?, repeatY?, smooth?, compare? }';
+    for (const [run, message] of [
+      [() => renderer.createTextureTarget('big'),
+        'Renderer.createTextureTarget: a size is [w, h], [w, h, d], a Size or { width, height, depth? }, got string'],
+      [() => writable.resize({ width: 'a', height: 2 }), 'Texture.resize: size: width must be a number, got string'],
+      [() => writable.setSamplerOptions(1), `Texture.setSamplerOptions: ${sampler}, got number`],
+      [() => writable.setSamplerOptions([true]), `Texture.setSamplerOptions: ${sampler}, got array`],
+      [() => writable.setSamplerOptions(new Mesh()), `Texture.setSamplerOptions: ${sampler}, got Mesh`],
+      [() => renderer.createTexture(new Uint8Array(16), { size: [2, 2], sampler: 'x' }),
+        `Renderer.createTexture: ${sampler}, got string`],
+      [() => writable.setSamplerOptions({ repeatX: 'yes' }), 'Texture.setSamplerOptions: repeatX must be a boolean, got string'],
+      [() => new fc.SamplerOptions(undefined, undefined, undefined, true),
+        'SamplerOptions: compare must be a CompareFunction, got boolean'],
+      [() => first.setViewport('all'),
+        'Pass.setViewport: a region is [w, h], [x, y, w, h], [[x, y], [w, h]], { x, y, width, height } or a ScreenRegion, got string'],
+      [() => first.setViewport({ x: 0, y: 0, width: '4', height: 4 }), 'Pass.setViewport: width must be a number, got string'],
+      [() => new Pass('p').addShader(42), 'Pass.addShader: shader must be a Shader, got number'],
+      [() => new Shader(42), 'Shader: input must be a string or an array of strings, got number'],
+      [() => new Shader(['a', 1]), 'Shader: input array contains a non-string element'],
+      [() => Scene.load(42),
+        'Scene.load: expected a path, or the bytes of a .glb file as an ArrayBuffer or a typed array, got number'],
+      [() => new Scene().addTo([], typeLight), 'Scene.addTo: target must be an index or a name, got array'],
+      [() => Pass.fromShader('p', 42), 'Pass.fromShader: shader must be a Shader, got number'],
+      [() => new Model(42, new PbrMaterial()), 'Model: mesh must be a Mesh, got number'],
+      [() => new Scene().addPass(42), 'Scene.addPass: pass must be a Pass, got number'],
+      [() => new Scene().setDefaultCamera(typeLight), 'Scene.setDefaultCamera: camera must be a Camera, got Light'],
+      [() => new PbrMaterial().alphaMode('blend'), 'PbrMaterial.alphaMode: mode must be an AlphaMode, got string'],
+      [() => renderer.createStorageTexture([4, 4], null),
+        'Renderer.createStorageTexture: format must be a TextureFormat, got null'],
+      [() => renderer.createTexture(new Uint8Array(16), { size: [2, 2], format: 'rgba8' }),
+        'Renderer.createTexture: format must be a TextureFormat, got string'],
+      [() => renderer.render(new Pass('p'), 42),
+        'Renderer.render: target must be a WindowTarget or a TextureTarget, got number'],
+      [() => renderer.render(42, typeTarget),
+        'Renderer.render: expected a Shader, Pass, Mesh, Scene, or an array of them, got number'],
+      [() => renderer.render([new Pass('p'), 'x'], typeTarget),
+        'Renderer.render: item 1: expected a Shader, Pass, Mesh, or Scene, got string'],
+      [() => new Mesh().addInstances(1), 'Mesh.addInstances: items must be an array of instances, got number'],
+      [() => Mesh.fromVertices(1), 'Mesh.fromVertices: vertices must be an array of vertices, got number'],
+      [() => new Mesh().setIndices('012'), 'Mesh.setIndices: indices must be an array of numbers, got string'],
+      [() => new Scene().setPasses(1), 'Scene.setPasses: passes must be an array of passes, got number'],
+      [() => new Scene().setPasses([new Pass('a'), 1]), 'Scene.setPasses: item 1 must be a Pass, got number'],
+      [() => Shader.default().removeMeshes('x'), 'Shader.removeMeshes: list must be an array of meshes, got string'],
+      [() => Shader.default().removeMeshes([1]), 'Shader.removeMeshes: item 0 must be a Mesh, got number'],
+      [() => new Mesh().addInstance(3), `Mesh.addInstance: ${instance}, got number`],
+      [() => new Mesh().addInstances([new Instance(), 3]), `Mesh.addInstances: instance 1: ${instance}, got number`],
+      [() => renderer.readTexture('x'), 'Renderer.readTexture: texture_id must be a TextureId or a whole number, got string'],
+      [() => renderer.createTexture(new Uint8Array(16), { size: [2, 2], mipmaps: 'x' }),
+        'Renderer.createTexture: mipmaps must be a boolean, got string'],
+      [() => new PbrMaterial().doubleSided('x'), 'PbrMaterial.doubleSided: value must be a boolean, got string'],
+      [() => new Model(new Mesh(), new PbrMaterial()).setVisible('yes'), 'Model.setVisible: visible must be a boolean, got string'],
+      [() => new fc.SamplerOptions('yes'), 'SamplerOptions: repeat_x must be a boolean, got string'],
+      [() => renderer.unregisterTexture(null),
+        'Renderer.unregisterTexture: texture_id must be a TextureId or a whole number, got null'],
+      [() => Scene.load(new Uint8Array(0), { cameras: 'x' }), 'Scene.load: cameras must be a boolean, got string'],
+      // Python takes cameras and lights as keywords, so only JavaScript has an options object.
+      [() => Scene.load(new Uint8Array(0), 5), 'Scene.load: options must be an object of cameras and lights, got number'],
+      [() => Scene.load(new Uint8Array(0), [false, false]),
+        'Scene.load: options must be an object of cameras and lights, got array'],
+      [() => Scene.load(new Uint8Array(0), new Mesh()), 'Scene.load: options must be an object of cameras and lights, got Mesh'],
+      // A string parameter names the call and the parameter.
+      [() => new Pass(42), 'Pass: name must be a string, got number'],
+      [() => Pass.compute(42), 'Pass.compute: name must be a string, got number'],
+      [() => Pass.fromShader(42, Shader.default()), 'Pass.fromShader: name must be a string, got number'],
+      [() => new Scene().findPass(42), 'Scene.findPass: name must be a string, got number'],
+      [() => renderer.readStorage(Shader.default(), 42), 'Renderer.readStorage: binding must be a string, got number'],
+      [() => Shader.setRegistry(42), 'Shader.setRegistry: base_url must be a string, got number'],
+      [() => Shader.default().set(42, 1), 'Shader.set: key must be a string, got number'],
+      [() => Shader.default().get(42), 'Shader.get: key must be a string, got number'],
+      [() => new Vertex([0, 0]).set(42, 1), 'Vertex.set: key must be a string, got number'],
+      [() => new Instance().set(42, 1), 'Instance.set: key must be a string, got number'],
+      // A compare function is the enum, which JavaScript holds as a number, and never its name.
+      [() => new fc.SamplerOptions(undefined, undefined, undefined, 'less'),
+        'SamplerOptions: compare must be a CompareFunction, got string'],
+      [() => { new fc.SamplerOptions().compare = 'less'; }, 'SamplerOptions.compare must be a CompareFunction, got string'],
+      [() => { new fc.SamplerOptions().repeatX = 1; }, 'SamplerOptions.repeatX must be a boolean, got number'],
+      [() => new fc.ScreenRegion(5, [4, 4]), 'ScreenRegion: origin takes two numbers, got number'],
+    ]) {
+      try { await run(); } catch (e) {
+        if (!(e instanceof TypeError)) fail(`"${message}" came as ${e.name}`);
+        if (e.message !== message) fail(`threw "${e.message}", not "${message}"`);
+        continue;
+      }
+      fail(`"${message}" should throw`);
+    }
+    // A size or region that holds the wrong numbers throws an InvalidInputError that names the call,
+    // and the item or the key, with the text Python raises in check_value_messages.
+    const whole = 'must be a whole number from 0 to 4294967295, got -1';
+    for (const [run, message] of [
+      [() => new fc.ScreenRegion([0, 0], [0, 4]), 'ScreenRegion: a region needs a width and a height of at least 1, got 0 by 4'],
+      [() => new fc.ScreenRegion([2 ** 32 - 1, 0], [5, 5]),
+        'ScreenRegion: a region at 4294967295, 0 sized 5 by 5 reaches past 4294967295'],
+      // The far edge is checked before a side of 0, in every binding.
+      [() => new fc.ScreenRegion([2 ** 32 - 1, 0], [5, 0]),
+        'ScreenRegion: a region at 4294967295, 0 sized 5 by 0 reaches past 4294967295'],
+      [() => new fc.ScreenRegion([0, 0, 0], [4, 4]), 'ScreenRegion: origin takes two numbers, got 3'],
+      [() => new fc.ScreenRegion([-1, 0], [4, 4]), `ScreenRegion: origin: item 0 ${whole}`],
+      [() => first.setViewport([0, 0, 0, 4]), 'Pass.setViewport: a region needs a width and a height of at least 1, got 0 by 4'],
+      [() => first.setViewport([1, 2, 3]), 'Pass.setViewport: a region takes [w, h] or [x, y, w, h], got 3 numbers'],
+      [() => first.setViewport([-1, 4]), `Pass.setViewport: item 0 ${whole}`],
+      [() => first.setViewport([[0, 0], [4, 4, 4]]), 'Pass.setViewport: size takes two numbers, got 3'],
+      [() => first.setViewport({ x: -1, y: 0, width: 4, height: 4 }), `Pass.setViewport: x ${whole}`],
+      [() => first.setViewport({ minX: 8, minY: 0, maxX: 2, maxY: 4 }),
+        'Pass.setViewport: a region needs each max past its min, got x from 8 to 2 and y from 0 to 4'],
+      [() => renderer.createTextureTarget([4, 4, 4, 4]), 'Renderer.createTextureTarget: a size takes 2 or 3 numbers, got 4'],
+      [() => renderer.createTextureTarget([-1, 4]), `Renderer.createTextureTarget: size: item 0 ${whole}`],
+      [() => renderer.createTextureTarget({ width: 4 }), 'Renderer.createTextureTarget: a size object needs a width and a height'],
+      [() => new fc.Size(-1, 2), `Size: width ${whole}`],
+      [() => { new fc.Size(4, 2).depth = -1; }, `Size.depth ${whole}`],
+      // The region reads before the bytes, in every binding.
+      [() => writable.writeRegion([300], [1, 2, 3]), 'Texture.writeRegion: a region takes 2, 4 or 6 numbers, got 3'],
+      [() => writable.writeRegion(new Uint8Array(4), [-1, 0, 1, 1]), `Texture.writeRegion: item 0 ${whole}`],
+      [() => writable.writeRegion(new Uint8Array(4), { x: 0, y: 0, width: 1 }),
+        'Texture.writeRegion: a region needs its width and height, or min and max bounds'],
+      [() => writable.writeRegion(new Uint8Array(4), { minX: 2, maxX: 1, maxY: 1 }),
+        'Texture.writeRegion: max x (1) must be greater than min x (2)'],
+      // A source reads before its size, and a chain's size before its bytes, in every binding.
+      [() => renderer.createTexture([0, 0, 0, 0, 0, 0, 0, 300], [1, 2, 3, 4]),
+        'Renderer.createTexture: item 7 must be a whole number from 0 to 255, got 300'],
+      [() => Mipmap.build([300], TextureFormat.Rgba8Unorm, [1, 2, 3, 4]), 'Mipmap.build: a size takes 2 or 3 numbers, got 4'],
+      [() => writable.writeRegion([300]), 'Texture.writeRegion: data: item 0 must be a whole number from 0 to 255, got 300'],
+      // JavaScript holds the enum as a number, so only a number past it can fail this way.
+      [() => new fc.SamplerOptions(undefined, undefined, undefined, 9), 'SamplerOptions: compare: 9 is not a CompareFunction'],
+    ]) {
+      try { await run(); } catch (e) {
+        if (e.name !== 'InvalidInputError') fail(`"${message}" came as ${e.name}`);
+        if (e.message !== message) fail(`threw "${e.message}", not "${message}"`);
+        continue;
+      }
+      fail(`"${message}" should throw`);
+    }
+    // SamplerOptions reads and writes its fields in camelCase, as JavaScript spells every property.
+    const sampling = new fc.SamplerOptions(true, false, false, fc.CompareFunction.LessEqual);
+    sampling.repeatY = true;
+    if (!sampling.repeatX || !sampling.repeatY || sampling.smooth || sampling.compare !== fc.CompareFunction.LessEqual) {
+      fail('SamplerOptions fields did not read back');
+    }
+    // A string reads with U+FFFD for each lone surrogate, as Python reads a str.
+    if (new Pass('\ud800').name() !== '\ufffd') fail('Pass kept a lone surrogate in its name');
+    if (new Pass('\ud83d\ude00').name() !== '\u{1f600}') fail('Pass split a surrogate pair in its name');
+    // A viewport takes an object of its box or its bounds, as Python takes a dict.
+    for (const fields of [
+      { x: 0, y: 0, width: 4, height: 4 },
+      { minX: 2, minY: 2, maxX: 6, maxY: 6 },
+      { min_x: 0, min_y: 0, max_x: 4, max_y: 4 },
+      // A key set to null counts as missing, as None does in Python.
+      { minX: null, min_x: 0, min_y: 0, max_x: 4, max_y: 4 },
+      { x: 0, y: 0, width: 4, height: 4, min_x: null },
+    ]) {
+      new Pass('object').setViewport(fields);
+    }
+    // An object is a form the call takes, so one that holds neither form whole is a value error.
+    const keys = 'Pass.setViewport: a region object needs x, y, width and height, or minX, minY, maxX and maxY';
+    for (const fields of [{ x: 0, y: 0, width: 4 }, {}, { minX: 0, minY: 0, maxX: 4 }]) {
+      try { first.setViewport(fields); } catch (e) {
+        if (e.name !== 'InvalidInputError') fail(`setViewport(${JSON.stringify(fields)}) threw ${e.name}`);
+        if (e.message !== keys) fail(`threw "${e.message}", not "${keys}"`);
+        continue;
+      }
+      fail(`setViewport(${JSON.stringify(fields)}) should throw`);
     }
     // A viewport takes an origin and a size as two pairs, as Rust's ((x, y), (w, h)) does.
     first.setViewport([[8, 0], [2, 4]]);
@@ -803,12 +983,12 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     const corner = Array.from((await target.getImage()).slice(252, 255));
     if (Math.max(...corner) !== 255 || Math.min(...corner) < 50) fail(`[1.2, 0.5, 0.25] cleared to ${corner}`);
 
-    // The window target is WindowTarget, and CanvasTarget names the same class.
+    // The window target is WindowTarget, under no other name.
     const canvas = document.createElement('canvas');
     canvas.width = 8; canvas.height = 8;
     const windowTarget = await renderer.createTarget(canvas);
     if (!(windowTarget instanceof fc.WindowTarget)) fail('createTarget should return a WindowTarget');
-    if (fc.CanvasTarget !== fc.WindowTarget) fail('CanvasTarget should alias WindowTarget');
+    if ('CanvasTarget' in fc) fail('the package should export no CanvasTarget');
     // A frame on screen can't be read back, so getImage rejects with an Error.
     await rejects('WindowTarget.getImage', () => windowTarget.getImage());
 
@@ -872,17 +1052,18 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     await rejects('createTexture options with width and format', () =>
       renderer.createTexture(new Uint8Array(4), { width: 1, height: 1, format: TextureFormat.Rgba8Unorm }));
 
-    // Material texture setters take what createTexture takes, and each option reaches the upload.
-    Material.pbr().baseColorTexture(fromImage);
+    // MaterialMap.texture takes what createTexture takes, and each option reaches the upload.
+    new PbrMaterial().baseColorMap().texture(fromImage);
     const flat = [[0, 0], [0, 0], [0, 0]];
     const glow = async (setTexture, uvs = flat) => {
       // A black surface lit only by its emissive map, over the whole target.
       const surface = new Mesh();
       surface.addVertices([[-1, -1, 0], [3, -1, 0], [-1, 3, 0]]
         .map((corner, i) => Vertex.pbr(corner).set(Vertex.NORMAL, [0, 0, 1]).set(Vertex.UV0, uvs[i])));
-      const material = Material.pbr().baseColor([0, 0, 0, 1]).emissive([1, 1, 1]);
+      const material = new PbrMaterial().baseColor([0, 0, 0, 1]).emissive([1, 1, 1]);
       const glowing = new Pass('glow');
-      glowing.add(new Model(surface, setTexture(material)));
+      setTexture(material);
+      glowing.add(new Model(surface, material));
       const frame = await renderer.createTextureTarget([4, 4]);
       await renderer.load(glowing);
       renderer.render(glowing, frame);
@@ -891,33 +1072,33 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     const isRed = ([r, g, b]) => r > 200 && g < 40 && b < 40;
     const redPixel = [255, 0, 0, 255];
     const forms = {
-      'a bare size': (m) => m.emissiveTexture(new Uint8Array(redPixel), [1, 1]),
-      '{ size }': (m) => m.emissiveTexture(redPixel, { size: [1, 1] }),
+      'a bare size': (m) => m.emissiveMap().texture(new Uint8Array(redPixel), [1, 1]),
+      '{ size }': (m) => m.emissiveMap().texture(redPixel, { size: [1, 1] }),
       '{ size, format: R8Unorm }': (m) =>
-        m.emissiveTexture(new Uint8Array([255]), { size: [1, 1], format: TextureFormat.R8Unorm }),
-      'an ImageData': (m) => m.emissiveTexture(new ImageData(new Uint8ClampedArray(redPixel), 1, 1)),
+        m.emissiveMap().texture(new Uint8Array([255]), { size: [1, 1], format: TextureFormat.R8Unorm }),
+      'an ImageData': (m) => m.emissiveMap().texture(new ImageData(new Uint8ClampedArray(redPixel), 1, 1)),
     };
     for (const [label, form] of Object.entries(forms)) {
       const pixel = await glow(form);
-      if (!isRed(pixel)) fail(`emissiveTexture with ${label} drew [${pixel}]`);
+      if (!isRed(pixel)) fail(`MaterialMap.texture with ${label} drew [${pixel}]`);
     }
     // Each option changes what draws, so an option the setter drops fails here.
     const gray = new Uint8Array([128, 128, 128, 255]);
-    const linear = await glow((m) => m.emissiveTexture(gray, { size: [1, 1], format: TextureFormat.Rgba8Unorm }));
-    const srgb = await glow((m) => m.emissiveTexture(gray, [1, 1]));
+    const linear = await glow((m) => m.emissiveMap().texture(gray, { size: [1, 1], format: TextureFormat.Rgba8Unorm }));
+    const srgb = await glow((m) => m.emissiveMap().texture(gray, [1, 1]));
     if (linear[0] < srgb[0] + 30) fail(`format: Rgba8Unorm drew [${linear}], the sRGB default [${srgb}]`);
     const pair = new Uint8Array([...redPixel, 0, 255, 0, 255]);
-    const shift = (m, offset) => m.textureTransform(fc.TextureSlot.Emissive, [offset, 0], [1, 1], 0);
-    const wrapped = await glow((m) => shift(m, 1.25).emissiveTexture(pair, { size: [2, 1], sampler: { repeatX: true } }));
-    const clamped = await glow((m) => shift(m, 1.25).emissiveTexture(pair, [2, 1]));
+    const shift = (m, offset) => m.emissiveMap().transform([offset, 0], [1, 1], 0);
+    const wrapped = await glow((m) => shift(m, 1.25).texture(pair, { size: [2, 1], sampler: { repeatX: true } }));
+    const clamped = await glow((m) => shift(m, 1.25).texture(pair, [2, 1]));
     if (!isRed(wrapped)) fail(`sampler: { repeatX: true } drew [${wrapped}] past the edge`);
     if (clamped[1] < 200 || clamped[0] > 40) fail(`the clamped default drew [${clamped}] past the edge`);
     // 16 texels to a pixel: a mip chain samples its 1x1 level, a mix of red and green.
     const dense = [[0, 0], [64, 0], [0, 64]];
     const repeat = { repeatX: true };
-    const chained = await glow((m) => shift(m, 0.25).emissiveTexture(pair, { size: [2, 1], sampler: repeat }), dense);
+    const chained = await glow((m) => shift(m, 0.25).texture(pair, { size: [2, 1], sampler: repeat }), dense);
     const single = await glow((m) =>
-      shift(m, 0.25).emissiveTexture(pair, { size: [2, 1], sampler: repeat, mipmaps: false }), dense);
+      shift(m, 0.25).texture(pair, { size: [2, 1], sampler: repeat, mipmaps: false }), dense);
     if (!isRed(single)) fail(`mipmaps: false drew [${single}]`);
     if (chained[1] < 60) fail(`the default mip chain drew [${chained}]`);
     const refusesBesideTexture = (name, run) => {
@@ -932,48 +1113,25 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     if (besideTexture?.name !== 'InvalidInputError' || !besideTexture.message.includes('Renderer.createTexture')) {
       fail(`createTexture with a format beside a Texture gave ${besideTexture}`);
     }
-    for (const name of ['baseColorTexture', 'metallicRoughnessTexture', 'normalTexture', 'occlusionTexture', 'emissiveTexture']) {
-      const material = Material.pbr();
-      material[name](new Uint8Array(redPixel), { size: [1, 1], format: TextureFormat.Rgba8Unorm, mipmaps: false });
-      material[name](fromImage);
+    for (const name of ['baseColorMap', 'metallicRoughnessMap', 'normalMap', 'occlusionMap', 'emissiveMap']) {
+      const map = new PbrMaterial()[name]();
+      map.texture(new Uint8Array(redPixel), { size: [1, 1], format: TextureFormat.Rgba8Unorm, mipmaps: false });
+      map.texture(fromImage);
       // 32 is outside the five TextureUsage flags, so the upload at load refuses it.
-      await rejects(`Material.${name} with usage 32`, () => glow((m) => m[name](redPixel, { size: [1, 1], usage: 32 })));
-      refusesBesideTexture(`Material.${name}`, () => material[name](fromImage, { sampler: { repeatX: true } }));
-      throws(`Material.${name} with a fractional size`, () => material[name](new Uint8Array(redPixel), [1.5, 1]));
-      throws(`Material.${name} with mipmaps: "yes"`, () => material[name](new Uint8Array(redPixel), { size: [1, 1], mipmaps: 'yes' }));
+      await rejects(`PbrMaterial.${name}().texture with usage 32`,
+        () => glow((m) => m[name]().texture(redPixel, { size: [1, 1], usage: 32 })));
+      refusesBesideTexture('MaterialMap.texture', () => map.texture(fromImage, { sampler: { repeatX: true } }));
+      throws(`PbrMaterial.${name}().texture with a fractional size`, () => map.texture(new Uint8Array(redPixel), [1.5, 1]));
+      throws(`PbrMaterial.${name}().texture with mipmaps: "yes"`,
+        () => map.texture(new Uint8Array(redPixel), { size: [1, 1], mipmaps: 'yes' }));
     }
-    // A slot a custom shader declares as a number refuses a Texture and a source with a
-    // MaterialError and keeps its value, and a slot the shader doesn't declare is skipped.
-    const numbered = Material.custom(new Shader(`
-@group(0) @binding(0) var<uniform> base_color_map: vec4<f32>;
-@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
-  return vec4<f32>(f32(i), 0.0, 0.0, 1.0);
-}
-@fragment fn fs_main() -> @location(0) vec4<f32> { return base_color_map; }`));
-    numbered.shader().set('base_color_map', [0.25, 0.5, 0.75, 1]);
-    const onNumber = {
-      'a Texture': () => numbered.baseColorTexture(fromImage),
-      'bytes': () => numbered.baseColorTexture(new Uint8Array(redPixel), [1, 1]),
-    };
-    for (const [label, run] of Object.entries(onNumber)) {
-      try { run(); } catch (e) {
-        if (e.name !== 'MaterialError' || !e.message.includes('base_color_map')) {
-          fail(`Material.baseColorTexture with ${label} on a number threw ${e.name}: ${e.message}`);
-        }
-        continue;
-      }
-      fail(`Material.baseColorTexture with ${label} on a number should throw`);
-    }
-    same('a slot that refused a texture', numbered.shader().get('base_color_map'), [0.25, 0.5, 0.75, 1]);
-    numbered.normalTexture(fromImage);
-    numbered.normalTexture(new Uint8Array(redPixel), [1, 1]);
-    // An empty byte list holds no image, so the setter refuses it at the call.
+    // An empty byte list holds no image, so the map refuses it at the call.
     try {
-      Material.pbr().baseColorTexture(new Uint8Array(0));
-      fail('Material.baseColorTexture with an empty byte list should throw');
+      new PbrMaterial().baseColorMap().texture(new Uint8Array(0));
+      fail('MaterialMap.texture with an empty byte list should throw');
     } catch (e) {
       if (e.name !== 'InvalidInputError' || !e.message.endsWith('it got an empty byte list')) {
-        fail(`Material.baseColorTexture with an empty byte list threw ${e.name}: ${e.message}`);
+        fail(`MaterialMap.texture with an empty byte list threw ${e.name}: ${e.message}`);
       }
     }
 
@@ -1037,11 +1195,13 @@ struct Data { items: array<vec4<f32>, 2> };
     throws('Mipmap.level(1.5)', () => chain.level(1.5));
     throws('Mipmap.level(NaN)', () => chain.level(NaN));
     throws('Mipmap.build without a format', () => Mipmap.build(new Uint8Array(4 * 4 * 4), undefined, [4, 4]));
-    throws('Material.alphaMode(undefined)', () => Material.pbr().alphaMode(undefined));
-    throws('Material.alphaMode(0.5)', () => Material.pbr().alphaMode(0.5));
-    throws('Material.textureUv(undefined, 0)', () => Material.pbr().textureUv(undefined, 0));
-    throws('Material.textureTransform(5, ...)', () =>
-      Material.pbr().textureTransform(5, [0, 0], [1, 1], 0));
+    throws('PbrMaterial.alphaMode(undefined)', () => new PbrMaterial().alphaMode(undefined));
+    throws('PbrMaterial.alphaMode(0.5)', () => new PbrMaterial().alphaMode(0.5));
+    throws('UnlitMaterial.alphaMode(3)', () => new UnlitMaterial().alphaMode(3));
+    named('ToonMaterial::bands', () => new ToonMaterial().bands(0), 'MaterialError');
+    named('ToonMaterial::ramp_map().uv', () => new ToonMaterial().rampMap().uv(0), 'MaterialError');
+    throws('Shader.alphaMode(3)', () => Shader.default().alphaMode(3));
+    throws('MaterialMap.uv(undefined)', () => new PbrMaterial().normalMap().uv(undefined));
     await rejects('createStorageTexture with a format string', () =>
       renderer.createStorageTexture([4, 4], 'rgba8unorm'));
     await rejects('createStorageTexture with usage 32', () =>
@@ -1116,7 +1276,7 @@ await withModule('platforms.web.healthcheck.pass_checks', async () => {
 }
 @fragment fn fs_main() -> @location(0) f32 { return 0.5; }
 `);
-    Material.custom(single).alphaMode(fc.AlphaMode.Blend);
+    single.alphaMode(fc.AlphaMode.Blend);
     const blend = Pass.fromShader('blend', single);
     blend.setTarget(red);
     refuses('a one-channel output blended', 'reads an alpha channel', () => renderer.render(blend, target));
@@ -1218,77 +1378,117 @@ struct VOut { @builtin(position) pos: vec4<f32>, @location(0) color: vec4<f32> }
     await target.getImage();
 });
 
-// One Material map draws with every Renderer that awaits load, each from a copy of its own.
-// A set made before a load runs wins. Before load, a map draws its PBR default where the
-// default fits the slot and throws, asking for load, where it doesn't. A freed Renderer
-// leaves the others drawing.
+// One PbrMaterial map draws with every Renderer that awaits load, each from a copy of its own.
+// A set made before a load runs wins. Before load, a map draws its PBR default. A freed
+// Renderer leaves the others drawing. The crate tests cover an integer map, which only a
+// shader of FragmentColor's own can bind as a map.
 await withModule('platforms.web.healthcheck.material_maps', async () => {
     const fail = (message) => { throw new Error(message); };
-    const mapped = (texel, value) => Material.custom(new Shader(`
-@group(0) @binding(0) var base_color_map: texture_2d<${texel}>;
-@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
-  let p = array<vec2<f32>, 3>(vec2f(-1.0, -1.0), vec2f(3.0, -1.0), vec2f(-1.0, 3.0));
-  return vec4<f32>(p[i], 0.0, 1.0);
-}
-@fragment fn fs_main() -> @location(0) vec4<f32> { let t = textureLoad(base_color_map, vec2<i32>(0), 0); return ${value}; }
-`));
+    // A black surface lit only by its emissive map, over the whole target.
+    const material = new PbrMaterial().baseColor([0, 0, 0, 1]).emissive([1, 1, 1]);
+    const surface = new Mesh();
+    surface.addVertices([[-1, -1, 0], [3, -1, 0], [-1, 3, 0]]
+      .map((corner) => Vertex.pbr(corner).set(Vertex.NORMAL, [0, 0, 1]).set(Vertex.UV0, [0, 0])));
+    const pass = new Pass('mapped');
+    pass.add(new Model(surface, material));
     const open = async () => {
       const renderer = new Renderer();
       return [renderer, await renderer.createTextureTarget([4, 4])];
     };
     const reads = async (label, target, expected) => {
       const pixel = Array.from((await target.getImage()).slice(0, 4));
-      if (pixel.join() !== expected.join()) fail(`${label} drew [${pixel}], not [${expected}]`);
+      if (pixel.some((channel, i) => Math.abs(channel - expected[i]) > 2)) {
+        fail(`${label} drew [${pixel}], not [${expected}]`);
+      }
     };
     const red = [255, 0, 0, 255];
     const blue = [0, 0, 255, 255];
 
-    const material = mapped('f32', 't').baseColorTexture(new Uint8Array(red), [1, 1]);
-    const shader = material.shader();
+    material.emissiveMap().texture(new Uint8Array(red), [1, 1]);
     const [first, firstTarget] = await open();
     const [second, secondTarget] = await open();
-    await first.load(shader);
-    await second.load(shader);
-    first.render(shader, firstTarget);
-    second.render(shader, secondTarget);
+    await first.load(pass);
+    await second.load(pass);
+    first.render(pass, firstTarget);
+    second.render(pass, secondTarget);
     await reads('the first Renderer', firstTarget, red);
     await reads('the second Renderer', secondTarget, red);
 
     // `load` starts on a later microtask, so this set lands before the load collects its maps.
     // The crate tests cover a set that lands during an upload.
-    const loading = first.load(shader);
-    material.baseColorTexture(new Uint8Array(blue), [1, 1]);
+    const loading = first.load(pass);
+    material.emissiveMap().texture(new Uint8Array(blue), [1, 1]);
     await loading;
-    await second.load(shader);
-    first.render(shader, firstTarget);
-    second.render(shader, secondTarget);
+    await second.load(pass);
+    first.render(pass, firstTarget);
+    second.render(pass, secondTarget);
     await reads('the first Renderer after a set before its load ran', firstTarget, blue);
     await reads('the second Renderer after the set', secondTarget, blue);
 
+    // The emissive default is white, so the surface glows white until the map loads.
     const [third, thirdTarget] = await open();
-    third.render(shader, thirdTarget);
+    third.render(pass, thirdTarget);
     await reads('a Renderer that has not loaded the map', thirdTarget, [255, 255, 255, 255]);
-    await third.load(shader);
-    third.render(shader, thirdTarget);
+    await third.load(pass);
+    third.render(pass, thirdTarget);
     await reads('that Renderer after load', thirdTarget, blue);
-
-    // The 1x1 default can't fill an integer slot, so before load the render throws.
-    const integer = mapped('u32', 'vec4<f32>(t) / 255.0').baseColorTexture(
-      new Uint8Array(new Uint32Array(red).buffer),
-      { size: [1, 1], format: TextureFormat.Rgba32Uint, mipmaps: false });
-    let early = null;
-    try { third.render(integer.shader(), thirdTarget); } catch (e) { early = e; }
-    if (!(early instanceof Error) || !early.message.includes('load')) {
-      fail(`an integer map before load threw ${early?.message ?? 'nothing'}`);
-    }
-    await third.load(integer.shader());
-    third.render(integer.shader(), thirdTarget);
-    await reads('an integer map after load', thirdTarget, red);
 
     first.free();
     firstTarget.free();
-    second.render(shader, secondTarget);
+    second.render(pass, secondTarget);
     await reads('the second Renderer after the first was freed', secondTarget, blue);
+});
+
+// An UnlitMaterial draws its base color times its map with no lighting, and a Model
+// hands the same object back.
+await withModule('platforms.web.healthcheck.unlit_material', async () => {
+    const fail = (message) => { throw new Error(message); };
+    const material = new UnlitMaterial().baseColor([1, 1, 0.5, 1]).doubleSided(true);
+    material.baseColorMap().texture(new Uint8Array([0, 255, 255, 255]), [1, 1]);
+    const surface = new Mesh();
+    surface.addVertices([[-1, -1, 0], [3, -1, 0], [-1, 3, 0]].map((corner) => Vertex.pbr(corner)));
+    const model = new Model(surface, material);
+    if (!(model.material() instanceof UnlitMaterial)) fail('Model.material lost the UnlitMaterial');
+    const pass = new Pass('unlit');
+    pass.add(model);
+    // A black light would darken a PbrMaterial, and leaves an unlit one as it is.
+    pass.add(Light.directional([0, 0, -1], [0, 0, 0]));
+    const renderer = new Renderer();
+    const target = await renderer.createTextureTarget([4, 4]);
+    await renderer.load(pass);
+    renderer.render(pass, target);
+    const pixel = Array.from((await target.getImage()).slice(0, 3));
+    // Linear 0.5 encodes as sRGB 188 on the 8-bit target.
+    const expected = [0, 255, 188];
+    if (pixel.some((channel, i) => Math.abs(channel - expected[i]) > 2)) {
+      fail(`an UnlitMaterial drew [${pixel}], not [${expected}]`);
+    }
+});
+
+// A ToonMaterial lights in bands from the lights a PbrMaterial reads, and a Model
+// hands the same object back.
+await withModule('platforms.web.healthcheck.toon_material', async () => {
+    const fail = (message) => { throw new Error(message); };
+    const material = new ToonMaterial().bands(3).doubleSided(true);
+    material.shader().set('camera.position', [0, 0, 1]);
+    material.shader().set('lights.ambient', [0, 0, 0]);
+    const surface = new Mesh();
+    surface.addVertices([[-1, -1, 0], [3, -1, 0], [-1, 3, 0]].map((corner) => Vertex.pbr(corner)));
+    const model = new Model(surface, material);
+    if (!(model.material() instanceof ToonMaterial)) fail('Model.material lost the ToonMaterial');
+    const pass = new Pass('toon');
+    pass.add(model);
+    // Rays at the cosine 0.6 to the face's normal, with a color that cancels the shader's 1/pi.
+    pass.add(Light.directional([-0.8, 0, -0.6], [Math.PI, Math.PI, Math.PI]));
+    const renderer = new Renderer();
+    const target = await renderer.createTextureTarget([4, 4]);
+    await renderer.load(pass);
+    renderer.render(pass, target);
+    const pixel = Array.from((await target.getImage()).slice(0, 3));
+    // Three bands light the face at 2/3, which encodes as sRGB 213 on the 8-bit target.
+    if (pixel.some((channel) => Math.abs(channel - 213) > 2)) {
+      fail(`a ToonMaterial drew [${pixel}], not 213 in each channel`);
+    }
 });
 
 // A shader the device can't run, or a texture its slot can't take, throws from render
@@ -1708,7 +1908,7 @@ await withModule('platforms.web.healthcheck.lights.clustered', async () => {
         floor.addVertex(Vertex.pbr([x, 0.0, z]).set('normal', [0.0, 1.0, 0.0]));
       }
       const pass = new Pass('1100 lights');
-      pass.add(new Model(floor, Material.pbr()));
+      pass.add(new Model(floor, new PbrMaterial()));
       pass.add(Camera.perspective(1.0, 1.0, 0.1, 100.0)
         .lookAt([0.0, 6.0, 8.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]));
       for (let index = 0; index < 1100; index++) {

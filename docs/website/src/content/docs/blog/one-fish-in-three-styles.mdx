@@ -1,0 +1,94 @@
+---
+title: "One fish in three styles"
+excerpt: "The glTF fish in the playground now takes turns between PBR, toon and unlit shading. 0.12.8 gives each shading model a type of its own, and a new material borrows the loaded texture with one call, in all five languages."
+authors: ["rafaelbeckel"]
+date: 2026-11-27T00:00:00Z # placeholder: set to the day 0.12.8 publishes on npm
+tags: ["demo", "playground", "materials", "rust", "javascript", "python", "swift", "kotlin", "webgpu"]
+draft: true
+---
+
+The [Barramundi in the playground](/welcome/playground/#model) opens physically based, with every scale and fin ray, shadows on its flank, daylight rippling over its back and light glowing through its fins. Four seconds later it turns into a cartoon. Four more, and it shows the flat colors of its texture with no light at all. Then it starts over, until you click the canvas and press M, or tap Style on a phone, and take the switch yourself. A label in the corner names the look.
+
+<img src="/blog/fish-styles-toon.webp" alt="The Barramundi fish in toon shading over blue water: thick dark outlines around its body and fins, an olive back and a lavender belly painted in flat strokes, and a hard white glint along its side. A label in the top right corner reads TOON." width="768" height="432" loading="lazy" style={{ width: "100%", height: "auto", borderRadius: "0.5rem" }} />
+
+Each look is one of the material types that 0.12.8 brings: [`PbrMaterial`](/api/scene/pbrmaterial/), [`ToonMaterial`](/api/scene/toonmaterial/) and [`UnlitMaterial`](/api/scene/unlitmaterial/).
+
+## A type for each shading model
+
+Until 0.12.8, `Material::pbr()` built the one material the renderer shipped, and `Material::custom(shader)` wrapped anything else. Now each shading model is a type with the settings it reads and nothing more.
+
+`PbrMaterial` is glTF's metallic-roughness model, what `Material::pbr()` used to build. `UnlitMaterial` draws its base color times its map and the vertex color, which suits UI, sprites, baked lighting and debug views. `ToonMaterial` cuts each light into flat steps, three by default, or reads the steps from a gradient texture. On top of that it can add a hard highlight where the light glints and a rim color along the edges the camera sees.
+
+A [`Shader`](/api/core/shader/) of your own is the fourth kind. `Model::new` takes it as it is, and the renderer fills its `camera`, `lights` and `model` slots as it fills them for the built-in types.
+
+## Three Models over one mesh
+
+The glTF loader gives each part of the fish a `Model` with a `PbrMaterial`. The demo walks `scene.models()`, narrows each material, and builds a toon and an unlit one beside it:
+
+```js
+for (const model of scene.models()) {
+  const pbr = model.material();
+  if (!(pbr instanceof PbrMaterial)) continue;
+  const toon = new ToonMaterial()
+    .bands(3)
+    .highlight([1, 1, 1])
+    .highlightSize(0.012)
+    .rim([0.2, 0.35, 0.4])
+    .rimWidth(0.12);
+  toon.baseColorMap().texture(pbr.baseColorMap());
+  const unlit = new UnlitMaterial();
+  unlit.baseColorMap().texture(pbr.baseColorMap());
+  // ...
+}
+```
+
+Given another map, [`texture`](/api/scene/materialmap/#texture) takes the texture that map samples, under the same `TextureId`. The fish's image stays one upload on the GPU, and the `Renderer` that loaded the scene draws it for the new maps at once.
+
+Each new material goes on a `Model` of its own, over the loaded mesh at the loaded transform. A switch hides one style's Models with `setVisible(false)` and shows the next style's. A hidden Model stays in its pass and costs no draw call.
+
+<img src="/blog/fish-styles-pbr.webp" alt="The same fish in PBR shading: wet scales catch the light along its silver side, faint ripples of light cross its back, and its thin dorsal spines and belly fin glow amber where light comes through them. The label reads PBR." width="768" height="432" loading="lazy" style={{ width: "100%", height: "auto", borderRadius: "0.5rem" }} />
+
+## Shadows, ripples and glowing fins
+
+`PbrMaterial` lights each point by every light that reaches it, with no idea what stands in the way. The demo draws the shadows itself, in two passes, each with its own `Shader`. An orthographic `Camera` looks along the key light and draws the fish into a shadow map, which keeps how far along the light each texel's nearest point lies. Then the scene's camera draws the fish again in a shade pass, and each point compares its own distance with the map's. A point that lies farther than the map's nearest is in the shadow of a fin or of the body, and 25 lookups around it soften the edge.
+
+Light from behind comes through a fin, a thin skin over bony rays. A second orthographic camera looks along the rim light, which shines from behind the fish toward the viewer, and draws a separate map. The shade pass reads how far the rim light travels through the fish to reach each point. Inside a fin that path is a few millimeters long, short enough for the fin to glow a dark amber. A fin in front of the body stays dark, since the body blocks the light.
+
+The shade pass also marks ripples on the points the key light reaches, the way sunlight falls on a fish through a moving surface. Two layers of Worley cells, from the shader registry's `noise/worley2`, slide past each other over time. The light gathers along the edges of both.
+
+With the roughness their file gives them, the scales looked like plastic. The demo cuts it to a third and doubles the depth of their normal map. Each scale then catches a glint of its own, as on a wet fish.
+
+## Paint and ink
+
+Flat bands of light on a photographed skin still read as a photograph, scales and all. The rest of the look comes from the pass that draws the fish to the screen.
+
+The fish draws into a float image with a depth buffer, and a fullscreen pass turns that light into screen colors over the water. In the toon style it does three more things. A Kuwahara filter paints the scales flat: of the four quarters of the square around each pixel, it keeps the mean color of the quarter that varies least, and a quarter that crosses an edge varies most, which keeps the band edges sharp. Ink goes where the fish's coverage changes, along its silhouette, and where the depth jumps, as a fin passes in front of the body. And the colors skip ACES, the filmic curve the PBR fish goes through, which would fade them toward white.
+
+The toon fish also takes its key light from overhead and more ambient light. Its shadow becomes a darker band along the belly, where a cartoonist would put it.
+
+Unlit ignores both lights and shows the texture as its artist painted it. The shading baked into the image stays, and the fins lose their gloss.
+
+<img src="/blog/fish-styles-unlit.webp" alt="The fish in unlit shading: its texture's own colors, a gray-olive back, a pale belly and dark fins, with no light or shadow across the body. The label reads UNLIT." width="768" height="432" loading="lazy" style={{ width: "100%", height: "auto", borderRadius: "0.5rem" }} />
+
+## A label drawn in WGSL
+
+The corner label belongs to the same pass. A 5x5 bitmap font spells PBR, TOON or UNLIT from a number the program sets each frame with `present.set("look.style", style)`. A label on the page would exist only on the web. Drawn in the shader, it shows the same in the Rust, Python, Swift and Kotlin tabs.
+
+## Maps that chain
+
+Each texture a material samples is now a [`MaterialMap`](/api/scene/materialmap/), and its calls chain: the texture, the UV set it reads and the transform on those UVs. In Rust:
+
+```rust
+gold.normal_map().texture(&tiles)?.uv(1)?.transform([0.0, 0.0], [4.0, 4.0], 0.0)?;
+```
+
+A refused call names the map and changes nothing, as in `PbrMaterial::normal_map().transform: rotation must be finite, got NaN`.
+
+## Also in 0.12.8
+
+- A storage `set` uploads only the bytes it changes. What a compute pass wrote in the rest of the root stays, and two Renderers that draw one shader each keep their own output.
+- Swift and Kotlin throw the error class Python raises, with the same message and fields, and one [Errors](/api/errors/) page lists them all.
+- A mirrored `Model` with a double-sided material lights its outer faces as the front, and a mirrored normal map lights its bumps from the side they face.
+- Playground demos that take keys can list touch buttons, as the fish does for its Style button.
+
+0.12.8 changes signatures in every language and drops the names 0.12.6 kept for old ones. Pin 0.12.7 until your code follows the upgrade notes in the [changelog](https://github.com/vista-art/fragmentcolor/blob/main/CHANGELOG.md).

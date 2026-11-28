@@ -5,7 +5,7 @@ mod binding_checks {
     //!   crate root exports in a plain Rust build: the classes in the generated
     //!   Swift wrapper (which Kotlin shares), in the Python stub, and in the
     //!   wasm exports, along with the classes the TypeScript types name. A
-    //!   name only bindings use, such as `MobileWindowTarget`, needs a `type`
+    //!   name only bindings use, such as `RenderableHandle`, needs a `type`
     //!   entry with a reason in `docs/api/PARITY`, and every entry there must
     //!   still name a class some binding declares.
     //! - **JS errors.** Every JS error is a `WebError`, an `Error` named after the class

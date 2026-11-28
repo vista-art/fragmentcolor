@@ -4,8 +4,9 @@
 //! returns a typed error, where the frame failed with a GPU error before.
 
 use fragmentcolor::{
-    AlphaMode, Material, Mesh, Model, Pass, PassError, Renderer, RendererError, Shader, Target,
-    TextureData, TextureFormat, TextureInput, TextureOptions, TextureTarget, TextureUsage, Vertex,
+    AlphaMode, Material, Mesh, Model, Pass, PassError, PbrMaterial, Renderer, RendererError,
+    Shader, Target, TextureData, TextureFormat, TextureInput, TextureOptions, TextureTarget,
+    TextureUsage, Vertex,
 };
 
 /// A fullscreen triangle that samples `source`.
@@ -83,7 +84,7 @@ async fn drawable(renderer: &Renderer, side: u32, format: TextureFormat) -> frag
 }
 
 /// A Model that covers the view, drawn with `material`.
-fn cover(material: Material) -> Model {
+fn cover(material: impl Into<Material>) -> Model {
     let mesh = Mesh::new();
     let corners = [[-1.0, -1.0, 0.0], [3.0, -1.0, 0.0], [-1.0, 3.0, 0.0]];
     mesh.add_vertices(
@@ -165,7 +166,7 @@ fn a_model_pass_checks_its_depth_size() {
             .await
             .expect("depth texture");
         let pass = Pass::new("models");
-        pass.add(&cover(Material::pbr())).expect("add");
+        pass.add(&cover(PbrMaterial::new())).expect("add");
         pass.set_depth_target(&depth).expect("set_depth_target");
         renderer.render(&pass, &frame).expect("the same size");
 
@@ -192,7 +193,7 @@ fn a_missing_depth_target_errors() {
         let renderer = Renderer::new();
         let frame = target(&renderer, 16).await;
         let pass = Pass::new("models");
-        pass.add(&cover(Material::pbr())).expect("add");
+        pass.add(&cover(PbrMaterial::new())).expect("add");
 
         let depth = renderer
             .create_depth_texture([16, 16])
@@ -318,9 +319,9 @@ fn vs_main(@builtin(vertex_index) index: u32) -> @builtin(position) vec4<f32> {{
 fn fs_main() -> @location(0) {output} {{ return {value}; }}
 "#
     );
-    let shader = Shader::new(source.as_str()).expect("blended shader");
-    let _ = Material::custom(shader.clone()).alpha_mode(AlphaMode::Blend);
-    shader
+    Shader::new(source.as_str())
+        .expect("blended shader")
+        .alpha_mode(AlphaMode::Blend)
 }
 
 // Story: AlphaMode::Blend into a format no device blends, an integer one, is refused
@@ -346,7 +347,7 @@ fn blending_into_a_target_that_cannot_blend_errors() {
 
         let glass = Pass::new("glass");
         glass
-            .add(&cover(Material::pbr().alpha_mode(AlphaMode::Blend)))
+            .add(&cover(PbrMaterial::new().alpha_mode(AlphaMode::Blend)))
             .expect("add");
         let half = drawable(&renderer, 8, TextureFormat::Rgba16Float).await;
         glass.set_target(&half).expect("set_target");
@@ -490,8 +491,10 @@ fn a_pbr_map_from_another_renderer_errors() {
             .create_texture((vec![255; 16], [2, 2]))
             .await
             .expect("a texture");
-        let material = Material::pbr()
-            .base_color_texture(&foreign)
+        let material = PbrMaterial::new();
+        material
+            .base_color_map()
+            .texture(&foreign)
             .expect("base color map");
         let pass = Pass::new("pbr");
         pass.add(&cover(material)).expect("add");

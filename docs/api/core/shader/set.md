@@ -13,7 +13,7 @@ The uniform's declared WGSL type decides how the value is read, so a call behave
 - A `Texture` created by a `Renderer` binds to a texture uniform, a `texture_external` one included.
 - Raw bytes replace a whole storage-buffer or push-constant root: a byte slice in Rust, a `Uint8Array` in JavaScript, `bytes` (or a `bytearray` or `memoryview`) in Python, `Data` in Swift, or a `ByteArray` in Kotlin. The byte count must equal the root's size, and any other length throws.
 
-Setting one field of a storage root uploads the whole root from the shader's CPU copy at the next render that binds it, which overwrites everything a compute pass wrote to that root.
+Setting a field or an item of a storage root uploads only its bytes at the next render that binds the root, so the rest of the root keeps what a compute pass wrote there. Several Renderers can draw one shader: each uploads only the sets it hasn't taken yet and keeps what its own passes wrote. Uploads cover whole 4-byte words, so setting one `f16` also writes the `f16` that shares its word, from the shader's copy. Raw bytes on the root upload all of it, and so does a render that creates the root's buffer.
 
 ## Example
 

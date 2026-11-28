@@ -64,36 +64,33 @@ docs/api/core/pass/hidden/set_depth_texture_mobile.md=>docs/api/core/pass/set_de
 # Swift/Kotlin extensions spell both as setTarget(...).
 docs/api/core/pass/hidden/set_target_texture_mobile.md=>docs/api/core/pass/set_target.md: Mobile splits the Texture form of Pass::set_target into a separate setTargetTexture method.
 
-# Material's five texture setters take impl Into<TextureInput>: a Texture, or bytes, a
-# path, a URL or a mipmap chain that upload when the scene loads. Mobile takes the
-# Texture through <slot>Texture(texture) and the other inputs through <slot>Source(input);
-# Swift/Kotlin extensions spell both as <slot>Texture(...).
-docs/api/scene/material/hidden/base_color_source_mobile.md=>docs/api/scene/material/base_color_texture.md: Mobile splits the texture input form of Material::base_color_texture into a separate baseColorSource method.
-docs/api/scene/material/hidden/metallic_roughness_source_mobile.md=>docs/api/scene/material/metallic_roughness_texture.md: Mobile splits the texture input form of Material::metallic_roughness_texture into a separate metallicRoughnessSource method.
-docs/api/scene/material/hidden/normal_source_mobile.md=>docs/api/scene/material/normal_texture.md: Mobile splits the texture input form of Material::normal_texture into a separate normalSource method.
-docs/api/scene/material/hidden/occlusion_source_mobile.md=>docs/api/scene/material/occlusion_texture.md: Mobile splits the texture input form of Material::occlusion_texture into a separate occlusionSource method.
-docs/api/scene/material/hidden/emissive_source_mobile.md=>docs/api/scene/material/emissive_texture.md: Mobile splits the texture input form of Material::emissive_texture into a separate emissiveSource method.
+# MaterialMap::texture takes another MaterialMap, a Texture, or bytes, a path, a URL or
+# a mipmap chain that upload when the scene loads. Mobile takes the Texture through
+# texture(texture), the map through share(map) and the other inputs through source(input);
+# Swift/Kotlin extensions spell all three as texture(...).
+docs/api/scene/material_map/hidden/source_mobile.md=>docs/api/scene/material_map/texture.md: Mobile splits the texture input form of MaterialMap::texture into a separate source method.
+docs/api/scene/material_map/hidden/share_mobile.md=>docs/api/scene/material_map/texture.md: Mobile splits the map form of MaterialMap::texture into a separate share method.
+
+# Model::material returns one of four object types. uniffi can't return one of
+# several object types, so the raw materialHandle method returns the MaterialHandle
+# enum, and the Swift and Kotlin extensions spell it material(), returning the object.
+docs/api/scene/model/hidden/material_handle_mobile.md=>docs/api/scene/model/material.md: Mobile returns the material through the raw materialHandle method; Swift/Kotlin extensions spell it material() and return the PbrMaterial, UnlitMaterial, ToonMaterial or Shader itself.
+
+# Shader::get returns one of several value types. uniffi can't return one of
+# several types, so the raw getData method returns the mobile UniformData enum,
+# with one case per plain value get returns, and the Swift and Kotlin extensions
+# spell it get(key), returning the plain value.
+docs/api/core/shader/hidden/get_data_mobile.md=>docs/api/core/shader/get.md: Mobile reads the value through the raw getData method; Swift/Kotlin extensions spell it get(key) and return the plain value, as JavaScript and Python do.
 
 # ---- Types documented through their methods (no page of their own) ----
 #
-# `AlphaMode` exists in every binding. Its three values are documented on
-# docs/api/scene/material/alpha_mode.md, the one method that takes it, like the
-# other value enums (`TextureFormat`, `CompareFunction`). `TextureSlot` has a
-# page of its own, docs/api/scene/texture_slot/texture_slot.md, since two
-# methods take it.
+# `AlphaMode` exists in every binding. Its three values are documented on each
+# method that takes it, like the other value enums (`TextureFormat`, `CompareFunction`):
+# docs/api/core/shader/alpha_mode.md, and the alpha_mode.md pages of PbrMaterial,
+# UnlitMaterial and ToonMaterial under docs/api/scene/.
 #
 # `LightKind` exists in every binding and is what `Light.kind()` returns.
 # Its three values are documented on docs/api/scene/light/kind.md.
-
-# ---- Old type names kept as deprecated aliases ----
-#
-# Each binding's window and texture targets and `TextureRegion` carry the
-# Rust name. The old names stay as aliases so existing code keeps working,
-# and no doc shows them:
-#   JS:     CanvasTarget -> WindowTarget
-#   Python: RenderCanvasTarget -> WindowTarget
-#   Swift/Kotlin: MobileWindowTarget -> WindowTarget, MobileTextureTarget -> TextureTarget,
-#           TextureRegionMobile -> TextureRegion
 
 # ---- Trait-level docs (no platform binding required) ----
 #
@@ -123,13 +120,13 @@ type RenderableHandle:swift,kotlin:uniffi can't marshal &impl Renderable, so mob
 type TargetHandle:swift,kotlin:uniffi can't marshal &impl Target, so mobile render and the pass target setters take this enum; the Swift and Kotlin extensions overload the natural shapes on top.
 type SceneObjectHandle:swift,kotlin:uniffi can't marshal &impl SceneObject, so mobile Scene.add and Pass.add take this enum; the Swift and Kotlin extensions overload Model, Camera and Light on top.
 type PassTarget:swift,kotlin:uniffi can't marshal impl Into<PassRef>, so the mobile Scene methods that pick a pass take this index-or-name enum.
-type MobileTextureInput:swift,kotlin:uniffi can't marshal impl Into<TextureInput>, so the mobile texture inputs take this enum, which mirrors TextureData without Empty.
 type UniformValue:swift,kotlin:uniffi can't marshal impl Into<UniformData>, so mobile Shader.set takes this enum; the Swift and Kotlin extensions overload set on top.
+type MaterialHandle:swift,kotlin:uniffi can't marshal impl Into<Material> or return one of several object types, so the raw Model constructor and materialHandle take and return this enum; the Swift and Kotlin extensions take and return the material object itself, and the Swift Material protocol hands it to the raw constructor through _materialHandle, a requirement whose leading underscore keeps it out of DocC and marks it as plumbing.
 type RenderCanvasFrame:python:the frame object of the rendercanvas present protocol, which only Python uses.
-type InvalidInputError:python:Python raises a FragmentColorError subclass for a value the call can't take, such as an int past u32, a bad size, or texture bytes that don't match their size; Rust reports a TextureError, SizeError, ScreenRegionError, ColorError or PassError, and JavaScript an Error named InvalidInputError.
-type UnsupportedMipmapFormatError:python:Python raises a FragmentColorError subclass for a format the CPU mipmap builder can't fill; Rust reports a TextureError, and JavaScript an Error of that name.
-type MalformedImageError:python:Python raises a FragmentColorError subclass for image bytes that can't be decoded; Rust reports a TextureError, and JavaScript an Error of that name.
-type OccludedSurfaceError:python:Python raises a FragmentColorError subclass for a hidden or minimized window; Rust reports SurfaceError::Occluded, JavaScript an Error of that name, Swift FragmentColorError.Occluded and Kotlin FragmentColorException.Occluded.
+type InvalidInputError:python:Python raises a FragmentColorError subclass for a value the call can't take, such as an int past u32, a bad size, or texture bytes that don't match their size; Rust reports a TextureError, SizeError, ScreenRegionError, ColorError or PassError, JavaScript an Error named InvalidInputError, Swift FragmentColorError.InvalidInput and Kotlin FragmentColorException.InvalidInput.
+type UnsupportedMipmapFormatError:python:Python raises a FragmentColorError subclass for a format the CPU mipmap builder can't fill; Rust reports a TextureError, JavaScript an Error of that name, Swift FragmentColorError.UnsupportedMipmapFormat and Kotlin FragmentColorException.UnsupportedMipmapFormat.
+type MalformedImageError:python:Python raises a FragmentColorError subclass for image bytes that can't be decoded; Rust reports a TextureError, JavaScript an Error of that name, Swift FragmentColorError.MalformedImage and Kotlin FragmentColorException.MalformedImage.
+type OccludedSurfaceError:python:Python raises a FragmentColorError subclass for a hidden or minimized window; Rust reports SurfaceError::Occluded, JavaScript an Error of that name, Swift FragmentColorError.OccludedSurface and Kotlin FragmentColorException.OccludedSurface.
 type DeviceError:python:Python raises a FragmentColorError subclass with kind, label and detail attributes for a GPU error an error scope caught; Rust reports RendererError::DeviceError or TextureError::DeviceError, JavaScript an Error named DeviceError with kind, label and detail properties, Swift FragmentColorError.Device and Kotlin FragmentColorException.Device.
 type LimitError:python:Python raises a FragmentColorError subclass with item, limit, value and max attributes for a shader or mesh past a device limit; Rust reports RendererError::LimitError, JavaScript an Error of that name with the same properties, Swift FragmentColorError.Limit and Kotlin FragmentColorException.Limit.
 type FeatureError:python:Python raises a FragmentColorError subclass with item and feature attributes for a shader that needs a feature the device lacks; Rust reports RendererError::FeatureError, JavaScript an Error of that name with the same properties, Swift FragmentColorError.Feature and Kotlin FragmentColorException.Feature.

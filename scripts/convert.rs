@@ -1071,7 +1071,7 @@ mod convert {
                 // non-identifier character: closes the same set of contexts
                 // as the original allowlist (`;`, `\n`, ` `) plus `,` and
                 // `)` which appear when `?` is on a nested call inside a
-                // function call: `Model.new(mesh, Material.pbr()?)`.
+                // function call: `Model.new(mesh, PbrMaterial.new()?)`.
                 let chars: Vec<char> = out.chars().collect();
                 let mut s = String::with_capacity(out.len());
                 let mut i = 0usize;
@@ -1810,7 +1810,9 @@ mod convert {
 
     /// The arguments the tuple `tuple` starts with spreads into for the method `name`,
     /// and the byte length of the tuple, when it is the call's only argument
-    /// and every method of that name takes its items the same way.
+    /// and every method of that name that takes that many arguments takes its items
+    /// the same way. A method of the name with fewer parameters, such as the
+    /// `TextureTarget.texture()` getter beside `MaterialMap.texture`, can't be the callee.
     fn py_spread(name: &str, tuple: &str) -> Option<(String, usize)> {
         let close = closing(tuple, 0)?;
         if !tuple[close + 1..].starts_with(')') {
@@ -1820,21 +1822,22 @@ mod convert {
         if items.len() < 2 {
             return None;
         }
-        let spellings: BTreeSet<Option<String>> = facts()
+        let spellings: BTreeSet<String> = facts()
             .py_methods
             .get(name)?
             .iter()
+            .filter(|params| items.len() <= params.len())
             .map(|params| {
-                let spelled: Vec<String> = items
+                items
                     .iter()
                     .zip(params)
                     .map(|(item, (param, default))| if *default { format!("{param}={item}") } else { item.clone() })
-                    .collect();
-                (items.len() <= params.len()).then(|| spelled.join(", "))
+                    .collect::<Vec<String>>()
+                    .join(", ")
             })
             .collect();
         match Vec::from_iter(spellings).as_slice() {
-            [Some(only)] => Some((only.clone(), close + 1)),
+            [only] => Some((only.clone(), close + 1)),
             _ => None,
         }
     }

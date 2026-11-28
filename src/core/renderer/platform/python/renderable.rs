@@ -1,12 +1,10 @@
 //! `PyRenderable`: what Python hands `render`, a Shader, Pass, Mesh, Scene or a list.
 
+use crate::bindings::python::refuse;
 use crate::{Mesh, Pass, PassObject, Renderable, Scene, Shader};
-use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PySequence, PyString};
 use std::sync::Arc;
-
-const EXPECTED: &str = "Expected a Scene, Pass, Shader, Mesh, or a sequence of them";
 
 /// A renderable built from Python: one object, or a sequence of them.
 ///
@@ -20,26 +18,32 @@ pub struct PyRenderable {
 }
 
 impl PyRenderable {
-    pub fn from_any(obj: &Bound<'_, PyAny>) -> PyResult<Self> {
+    /// Reads one renderable or a list of them. A value of another type raises
+    /// a `TypeError` that names `call`, and the item for a list.
+    pub fn from_any(obj: &Bound<'_, PyAny>, call: &str) -> PyResult<Self> {
         if let Some(item) = Self::read_object(obj) {
             return Ok(Self { items: vec![item] });
         }
+        let expected =
+            || format!("{call}: expected a Shader, Pass, Mesh, Scene, or a list of them");
         // A str is a sequence of one-letter strs, never of renderables.
         if obj.is_instance_of::<PyString>() {
-            return Err(PyTypeError::new_err(EXPECTED));
+            return Err(refuse(obj, expected()));
         }
         let Ok(sequence) = obj.cast::<PySequence>() else {
-            return Err(PyTypeError::new_err(EXPECTED));
+            return Err(refuse(obj, expected()));
         };
         let mut items = Vec::new();
         for index in 0..sequence.len()? {
             let item = sequence.get_item(index)?;
-            let item = Self::read_object(&item).ok_or_else(|| {
-                PyTypeError::new_err(format!(
-                    "item {index}: expected a Scene, Pass, Shader, or Mesh"
-                ))
-            })?;
-            items.push(item);
+            let Some(renderable) = Self::read_object(&item) else {
+                let expected = "expected a Shader, Pass, Mesh, or Scene";
+                return Err(refuse(
+                    &item,
+                    format_args!("{call}: item {index}: {expected}"),
+                ));
+            };
+            items.push(renderable);
         }
         Ok(Self { items })
     }

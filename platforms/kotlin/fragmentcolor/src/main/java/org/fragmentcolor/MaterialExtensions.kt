@@ -1,282 +1,155 @@
 package org.fragmentcolor
 
-// Idiomatic Kotlin wrappers on top of the uniffi-generated Material API,
+// Idiomatic Kotlin wrappers on top of the uniffi-generated material API,
 // matching Material+Extensions.swift. The generated calls take Float and
 // List<Float>; these take Double, FloatArray and DoubleArray as well.
 // A number setter throws for NaN, an infinity or a Double past the Float range.
 
-fun Material.metallic(value: Double): Material = metallic(readFinite(value, "Material.metallic: value"))
+fun PbrMaterial.metallic(value: Double): PbrMaterial = metallic(readFinite(value, "PbrMaterial.metallic: value"))
 
-fun Material.roughness(value: Double): Material = roughness(readFinite(value, "Material.roughness: value"))
+fun PbrMaterial.roughness(value: Double): PbrMaterial = roughness(readFinite(value, "PbrMaterial.roughness: value"))
 
-fun Material.normalScale(value: Double): Material = normalScale(readFinite(value, "Material.normalScale: value"))
+fun PbrMaterial.normalScale(value: Double): PbrMaterial = normalScale(readFinite(value, "PbrMaterial.normalScale: value"))
 
-fun Material.occlusionStrength(value: Double): Material = occlusionStrength(readFinite(value, "Material.occlusionStrength: value"))
+fun PbrMaterial.occlusionStrength(value: Double): PbrMaterial =
+    occlusionStrength(readFinite(value, "PbrMaterial.occlusionStrength: value"))
 
-fun Material.alphaCutoff(value: Double): Material = alphaCutoff(readFinite(value, "Material.alphaCutoff: value"))
+fun PbrMaterial.alphaCutoff(value: Double): PbrMaterial = alphaCutoff(readFinite(value, "PbrMaterial.alphaCutoff: value"))
 
-fun Material.baseColor(color: FloatArray): Material = baseColor(color.toList())
+fun PbrMaterial.baseColor(color: FloatArray): PbrMaterial = baseColor(color.toList())
 
 @JvmName("baseColorDoubles")
-fun Material.baseColor(color: List<Double>): Material = baseColor(readFloats(color, "Material.baseColor"))
+fun PbrMaterial.baseColor(color: List<Double>): PbrMaterial = baseColor(readFloats(color, "PbrMaterial.baseColor"))
 
-fun Material.baseColor(color: DoubleArray): Material = baseColor(readFloats(color, "Material.baseColor"))
+fun PbrMaterial.baseColor(color: DoubleArray): PbrMaterial = baseColor(readFloats(color, "PbrMaterial.baseColor"))
 
-fun Material.emissive(factor: FloatArray): Material = emissive(factor.toList())
+fun PbrMaterial.emissive(factor: FloatArray): PbrMaterial = emissive(factor.toList())
 
 @JvmName("emissiveDoubles")
-fun Material.emissive(factor: List<Double>): Material = emissive(readFloats(factor, "Material.emissive"))
+fun PbrMaterial.emissive(factor: List<Double>): PbrMaterial = emissive(readFloats(factor, "PbrMaterial.emissive"))
 
-fun Material.emissive(factor: DoubleArray): Material = emissive(readFloats(factor, "Material.emissive"))
+fun PbrMaterial.emissive(factor: DoubleArray): PbrMaterial = emissive(readFloats(factor, "PbrMaterial.emissive"))
 
-fun Material.uvTransform(offset: FloatArray, scale: FloatArray, rotation: Float): Material =
+fun PbrMaterial.uvTransform(offset: FloatArray, scale: FloatArray, rotation: Float): PbrMaterial =
     uvTransform(offset.toList(), scale.toList(), rotation)
 
 @JvmName("uvTransformDoubles")
-fun Material.uvTransform(offset: List<Double>, scale: List<Double>, rotation: Double): Material =
+fun PbrMaterial.uvTransform(offset: List<Double>, scale: List<Double>, rotation: Double): PbrMaterial =
     uvTransform(
-        readFloats(offset, "Material.uvTransform: offset"),
-        readFloats(scale, "Material.uvTransform: scale"),
-        readFinite(rotation, "Material.uvTransform: rotation"),
+        readFloats(offset, "PbrMaterial.uvTransform: offset"),
+        readFloats(scale, "PbrMaterial.uvTransform: scale"),
+        readFinite(rotation, "PbrMaterial.uvTransform: rotation"),
     )
 
-fun Material.uvTransform(offset: DoubleArray, scale: DoubleArray, rotation: Double): Material =
+fun PbrMaterial.uvTransform(offset: DoubleArray, scale: DoubleArray, rotation: Double): PbrMaterial =
     uvTransform(
-        readFloats(offset, "Material.uvTransform: offset"),
-        readFloats(scale, "Material.uvTransform: scale"),
-        readFinite(rotation, "Material.uvTransform: rotation"),
+        readFloats(offset, "PbrMaterial.uvTransform: offset"),
+        readFloats(scale, "PbrMaterial.uvTransform: scale"),
+        readFinite(rotation, "PbrMaterial.uvTransform: rotation"),
     )
 
-fun Material.textureTransform(slot: TextureSlot, offset: FloatArray, scale: FloatArray, rotation: Float): Material =
-    textureTransform(slot, offset.toList(), scale.toList(), rotation)
+fun UnlitMaterial.alphaCutoff(value: Double): UnlitMaterial =
+    alphaCutoff(readFinite(value, "UnlitMaterial.alphaCutoff: value"))
 
-@JvmName("textureTransformDoubles")
-fun Material.textureTransform(slot: TextureSlot, offset: List<Double>, scale: List<Double>, rotation: Double): Material =
-    textureTransform(
-        slot,
-        readFloats(offset, "Material.textureTransform: offset"),
-        readFloats(scale, "Material.textureTransform: scale"),
-        readFinite(rotation, "Material.textureTransform: rotation"),
+fun UnlitMaterial.baseColor(color: FloatArray): UnlitMaterial = baseColor(color.toList())
+
+@JvmName("baseColorDoubles")
+fun UnlitMaterial.baseColor(color: List<Double>): UnlitMaterial = baseColor(readFloats(color, "UnlitMaterial.baseColor"))
+
+fun UnlitMaterial.baseColor(color: DoubleArray): UnlitMaterial = baseColor(readFloats(color, "UnlitMaterial.baseColor"))
+
+fun ToonMaterial.alphaCutoff(value: Double): ToonMaterial =
+    alphaCutoff(readFinite(value, "ToonMaterial.alphaCutoff: value"))
+
+fun ToonMaterial.highlightSize(value: Double): ToonMaterial =
+    highlightSize(readFinite(value, "ToonMaterial.highlightSize: value"))
+
+fun ToonMaterial.rimWidth(value: Double): ToonMaterial = rimWidth(readFinite(value, "ToonMaterial.rimWidth: value"))
+
+fun ToonMaterial.baseColor(color: FloatArray): ToonMaterial = baseColor(color.toList())
+
+@JvmName("baseColorDoubles")
+fun ToonMaterial.baseColor(color: List<Double>): ToonMaterial = baseColor(readFloats(color, "ToonMaterial.baseColor"))
+
+fun ToonMaterial.baseColor(color: DoubleArray): ToonMaterial = baseColor(readFloats(color, "ToonMaterial.baseColor"))
+
+fun ToonMaterial.highlight(color: FloatArray): ToonMaterial = highlight(color.toList())
+
+@JvmName("highlightDoubles")
+fun ToonMaterial.highlight(color: List<Double>): ToonMaterial = highlight(readFloats(color, "ToonMaterial.highlight"))
+
+fun ToonMaterial.highlight(color: DoubleArray): ToonMaterial = highlight(readFloats(color, "ToonMaterial.highlight"))
+
+fun ToonMaterial.rim(color: FloatArray): ToonMaterial = rim(color.toList())
+
+@JvmName("rimDoubles")
+fun ToonMaterial.rim(color: List<Double>): ToonMaterial = rim(readFloats(color, "ToonMaterial.rim"))
+
+fun ToonMaterial.rim(color: DoubleArray): ToonMaterial = rim(readFloats(color, "ToonMaterial.rim"))
+
+fun MaterialMap.transform(offset: FloatArray, scale: FloatArray, rotation: Float): MaterialMap =
+    transform(offset.toList(), scale.toList(), rotation)
+
+@JvmName("transformDoubles")
+fun MaterialMap.transform(offset: List<Double>, scale: List<Double>, rotation: Double): MaterialMap =
+    transform(
+        readFloats(offset, "MaterialMap.transform: offset"),
+        readFloats(scale, "MaterialMap.transform: scale"),
+        readFinite(rotation, "MaterialMap.transform: rotation"),
     )
 
-fun Material.textureTransform(slot: TextureSlot, offset: DoubleArray, scale: DoubleArray, rotation: Double): Material =
-    textureTransform(
-        slot,
-        readFloats(offset, "Material.textureTransform: offset"),
-        readFloats(scale, "Material.textureTransform: scale"),
-        readFinite(rotation, "Material.textureTransform: rotation"),
+fun MaterialMap.transform(offset: DoubleArray, scale: DoubleArray, rotation: Double): MaterialMap =
+    transform(
+        readFloats(offset, "MaterialMap.transform: offset"),
+        readFloats(scale, "MaterialMap.transform: scale"),
+        readFinite(rotation, "MaterialMap.transform: rotation"),
     )
 
-// Each texture setter takes what `Renderer.createTexture` takes, spelled the same way.
-// A Texture binds at once, and every other input uploads when the scene loads, as in Rust.
-// A setter throws for an input it can't use, such as a slot a custom shader declares as a number.
+// `texture` takes what `Renderer.createTexture` takes, spelled the same way, and another map.
+// A Texture binds at once, another map shares its texture, and every other input uploads
+// when the scene loads, as in Rust. The generated `texture(texture)` takes the Texture,
+// `texture(map)` reaches `share`, and the rest reach `source`.
 
-fun Material.baseColorTexture(bytes: ByteArray, usage: TextureUsage? = null): Material =
-    baseColorSource(MobileTextureInput.Bytes(bytes), textureOptions(usage = usage))
+fun MaterialMap.texture(map: MaterialMap): MaterialMap = share(map)
 
-fun Material.baseColorTexture(bytes: List<Int>, usage: TextureUsage? = null): Material =
-    baseColorTexture(byteArray(bytes, "Material.baseColorTexture"), usage)
+fun MaterialMap.texture(bytes: ByteArray, usage: TextureUsage? = null): MaterialMap =
+    source(TextureData.Bytes(bytes), textureOptions(usage = usage))
 
-fun Material.baseColorTexture(bytes: ByteArray, format: TextureFormat, usage: TextureUsage? = null): Material =
-    baseColorSource(MobileTextureInput.Bytes(bytes), textureOptions(format = format, usage = usage))
+fun MaterialMap.texture(bytes: List<Int>, usage: TextureUsage? = null): MaterialMap =
+    texture(byteArray(bytes, "MaterialMap.texture"), usage)
 
-fun Material.baseColorTexture(bytes: List<Int>, format: TextureFormat, usage: TextureUsage? = null): Material =
-    baseColorTexture(byteArray(bytes, "Material.baseColorTexture"), format, usage)
+fun MaterialMap.texture(bytes: ByteArray, format: TextureFormat, usage: TextureUsage? = null): MaterialMap =
+    source(TextureData.Bytes(bytes), textureOptions(format = format, usage = usage))
 
-fun Material.baseColorTexture(bytes: ByteArray, size: Size, usage: TextureUsage? = null): Material =
-    baseColorSource(MobileTextureInput.Bytes(bytes), textureOptions(size = size, usage = usage))
+fun MaterialMap.texture(bytes: List<Int>, format: TextureFormat, usage: TextureUsage? = null): MaterialMap =
+    texture(byteArray(bytes, "MaterialMap.texture"), format, usage)
 
-fun Material.baseColorTexture(bytes: List<Int>, size: Size, usage: TextureUsage? = null): Material =
-    baseColorTexture(byteArray(bytes, "Material.baseColorTexture"), size, usage)
+fun MaterialMap.texture(bytes: ByteArray, size: Size, usage: TextureUsage? = null): MaterialMap =
+    source(TextureData.Bytes(bytes), textureOptions(size = size, usage = usage))
 
-fun Material.baseColorTexture(bytes: ByteArray, size: List<UInt>, usage: TextureUsage? = null): Material =
-    baseColorTexture(bytes, sizeRecord(size, "Material.baseColorTexture"), usage)
+fun MaterialMap.texture(bytes: List<Int>, size: Size, usage: TextureUsage? = null): MaterialMap =
+    texture(byteArray(bytes, "MaterialMap.texture"), size, usage)
 
-fun Material.baseColorTexture(bytes: List<Int>, size: List<UInt>, usage: TextureUsage? = null): Material =
-    baseColorTexture(byteArray(bytes, "Material.baseColorTexture"), size, usage)
+fun MaterialMap.texture(bytes: ByteArray, size: List<UInt>, usage: TextureUsage? = null): MaterialMap =
+    texture(bytes, sizeRecord(size, "MaterialMap.texture"), usage)
 
-fun Material.baseColorTexture(bytes: ByteArray, options: TextureOptions): Material =
-    baseColorSource(MobileTextureInput.Bytes(bytes), options)
+fun MaterialMap.texture(bytes: List<Int>, size: List<UInt>, usage: TextureUsage? = null): MaterialMap =
+    texture(byteArray(bytes, "MaterialMap.texture"), size, usage)
 
-fun Material.baseColorTexture(bytes: List<Int>, options: TextureOptions): Material =
-    baseColorTexture(byteArray(bytes, "Material.baseColorTexture"), options)
+fun MaterialMap.texture(bytes: ByteArray, options: TextureOptions): MaterialMap =
+    source(TextureData.Bytes(bytes), options)
 
-fun Material.baseColorTexture(path: String): Material = baseColorSource(pathInput(path))
+fun MaterialMap.texture(bytes: List<Int>, options: TextureOptions): MaterialMap =
+    texture(byteArray(bytes, "MaterialMap.texture"), options)
 
-fun Material.baseColorTexture(path: String, format: TextureFormat): Material =
-    baseColorSource(pathInput(path), textureOptions(format = format))
+fun MaterialMap.texture(path: String): MaterialMap = source(pathInput(path))
 
-fun Material.baseColorTexture(path: String, options: TextureOptions): Material = baseColorSource(pathInput(path), options)
+fun MaterialMap.texture(path: String, format: TextureFormat): MaterialMap =
+    source(pathInput(path), textureOptions(format = format))
 
-fun Material.baseColorTexture(chain: Mipmap): Material = baseColorSource(MobileTextureInput.Prepared(chain))
+fun MaterialMap.texture(path: String, options: TextureOptions): MaterialMap = source(pathInput(path), options)
 
-fun Material.baseColorTexture(chain: Mipmap, options: TextureOptions): Material =
-    baseColorSource(MobileTextureInput.Prepared(chain), options)
+fun MaterialMap.texture(chain: Mipmap): MaterialMap = source(TextureData.Prepared(chain))
 
-fun Material.metallicRoughnessTexture(bytes: ByteArray, usage: TextureUsage? = null): Material =
-    metallicRoughnessSource(MobileTextureInput.Bytes(bytes), textureOptions(usage = usage))
-
-fun Material.metallicRoughnessTexture(bytes: List<Int>, usage: TextureUsage? = null): Material =
-    metallicRoughnessTexture(byteArray(bytes, "Material.metallicRoughnessTexture"), usage)
-
-fun Material.metallicRoughnessTexture(bytes: ByteArray, format: TextureFormat, usage: TextureUsage? = null): Material =
-    metallicRoughnessSource(MobileTextureInput.Bytes(bytes), textureOptions(format = format, usage = usage))
-
-fun Material.metallicRoughnessTexture(bytes: List<Int>, format: TextureFormat, usage: TextureUsage? = null): Material =
-    metallicRoughnessTexture(byteArray(bytes, "Material.metallicRoughnessTexture"), format, usage)
-
-fun Material.metallicRoughnessTexture(bytes: ByteArray, size: Size, usage: TextureUsage? = null): Material =
-    metallicRoughnessSource(MobileTextureInput.Bytes(bytes), textureOptions(size = size, usage = usage))
-
-fun Material.metallicRoughnessTexture(bytes: List<Int>, size: Size, usage: TextureUsage? = null): Material =
-    metallicRoughnessTexture(byteArray(bytes, "Material.metallicRoughnessTexture"), size, usage)
-
-fun Material.metallicRoughnessTexture(bytes: ByteArray, size: List<UInt>, usage: TextureUsage? = null): Material =
-    metallicRoughnessTexture(bytes, sizeRecord(size, "Material.metallicRoughnessTexture"), usage)
-
-fun Material.metallicRoughnessTexture(bytes: List<Int>, size: List<UInt>, usage: TextureUsage? = null): Material =
-    metallicRoughnessTexture(byteArray(bytes, "Material.metallicRoughnessTexture"), size, usage)
-
-fun Material.metallicRoughnessTexture(bytes: ByteArray, options: TextureOptions): Material =
-    metallicRoughnessSource(MobileTextureInput.Bytes(bytes), options)
-
-fun Material.metallicRoughnessTexture(bytes: List<Int>, options: TextureOptions): Material =
-    metallicRoughnessTexture(byteArray(bytes, "Material.metallicRoughnessTexture"), options)
-
-fun Material.metallicRoughnessTexture(path: String): Material = metallicRoughnessSource(pathInput(path))
-
-fun Material.metallicRoughnessTexture(path: String, format: TextureFormat): Material =
-    metallicRoughnessSource(pathInput(path), textureOptions(format = format))
-
-fun Material.metallicRoughnessTexture(path: String, options: TextureOptions): Material = metallicRoughnessSource(pathInput(path), options)
-
-fun Material.metallicRoughnessTexture(chain: Mipmap): Material = metallicRoughnessSource(MobileTextureInput.Prepared(chain))
-
-fun Material.metallicRoughnessTexture(chain: Mipmap, options: TextureOptions): Material =
-    metallicRoughnessSource(MobileTextureInput.Prepared(chain), options)
-
-fun Material.normalTexture(bytes: ByteArray, usage: TextureUsage? = null): Material =
-    normalSource(MobileTextureInput.Bytes(bytes), textureOptions(usage = usage))
-
-fun Material.normalTexture(bytes: List<Int>, usage: TextureUsage? = null): Material =
-    normalTexture(byteArray(bytes, "Material.normalTexture"), usage)
-
-fun Material.normalTexture(bytes: ByteArray, format: TextureFormat, usage: TextureUsage? = null): Material =
-    normalSource(MobileTextureInput.Bytes(bytes), textureOptions(format = format, usage = usage))
-
-fun Material.normalTexture(bytes: List<Int>, format: TextureFormat, usage: TextureUsage? = null): Material =
-    normalTexture(byteArray(bytes, "Material.normalTexture"), format, usage)
-
-fun Material.normalTexture(bytes: ByteArray, size: Size, usage: TextureUsage? = null): Material =
-    normalSource(MobileTextureInput.Bytes(bytes), textureOptions(size = size, usage = usage))
-
-fun Material.normalTexture(bytes: List<Int>, size: Size, usage: TextureUsage? = null): Material =
-    normalTexture(byteArray(bytes, "Material.normalTexture"), size, usage)
-
-fun Material.normalTexture(bytes: ByteArray, size: List<UInt>, usage: TextureUsage? = null): Material =
-    normalTexture(bytes, sizeRecord(size, "Material.normalTexture"), usage)
-
-fun Material.normalTexture(bytes: List<Int>, size: List<UInt>, usage: TextureUsage? = null): Material =
-    normalTexture(byteArray(bytes, "Material.normalTexture"), size, usage)
-
-fun Material.normalTexture(bytes: ByteArray, options: TextureOptions): Material =
-    normalSource(MobileTextureInput.Bytes(bytes), options)
-
-fun Material.normalTexture(bytes: List<Int>, options: TextureOptions): Material =
-    normalTexture(byteArray(bytes, "Material.normalTexture"), options)
-
-fun Material.normalTexture(path: String): Material = normalSource(pathInput(path))
-
-fun Material.normalTexture(path: String, format: TextureFormat): Material =
-    normalSource(pathInput(path), textureOptions(format = format))
-
-fun Material.normalTexture(path: String, options: TextureOptions): Material = normalSource(pathInput(path), options)
-
-fun Material.normalTexture(chain: Mipmap): Material = normalSource(MobileTextureInput.Prepared(chain))
-
-fun Material.normalTexture(chain: Mipmap, options: TextureOptions): Material =
-    normalSource(MobileTextureInput.Prepared(chain), options)
-
-fun Material.occlusionTexture(bytes: ByteArray, usage: TextureUsage? = null): Material =
-    occlusionSource(MobileTextureInput.Bytes(bytes), textureOptions(usage = usage))
-
-fun Material.occlusionTexture(bytes: List<Int>, usage: TextureUsage? = null): Material =
-    occlusionTexture(byteArray(bytes, "Material.occlusionTexture"), usage)
-
-fun Material.occlusionTexture(bytes: ByteArray, format: TextureFormat, usage: TextureUsage? = null): Material =
-    occlusionSource(MobileTextureInput.Bytes(bytes), textureOptions(format = format, usage = usage))
-
-fun Material.occlusionTexture(bytes: List<Int>, format: TextureFormat, usage: TextureUsage? = null): Material =
-    occlusionTexture(byteArray(bytes, "Material.occlusionTexture"), format, usage)
-
-fun Material.occlusionTexture(bytes: ByteArray, size: Size, usage: TextureUsage? = null): Material =
-    occlusionSource(MobileTextureInput.Bytes(bytes), textureOptions(size = size, usage = usage))
-
-fun Material.occlusionTexture(bytes: List<Int>, size: Size, usage: TextureUsage? = null): Material =
-    occlusionTexture(byteArray(bytes, "Material.occlusionTexture"), size, usage)
-
-fun Material.occlusionTexture(bytes: ByteArray, size: List<UInt>, usage: TextureUsage? = null): Material =
-    occlusionTexture(bytes, sizeRecord(size, "Material.occlusionTexture"), usage)
-
-fun Material.occlusionTexture(bytes: List<Int>, size: List<UInt>, usage: TextureUsage? = null): Material =
-    occlusionTexture(byteArray(bytes, "Material.occlusionTexture"), size, usage)
-
-fun Material.occlusionTexture(bytes: ByteArray, options: TextureOptions): Material =
-    occlusionSource(MobileTextureInput.Bytes(bytes), options)
-
-fun Material.occlusionTexture(bytes: List<Int>, options: TextureOptions): Material =
-    occlusionTexture(byteArray(bytes, "Material.occlusionTexture"), options)
-
-fun Material.occlusionTexture(path: String): Material = occlusionSource(pathInput(path))
-
-fun Material.occlusionTexture(path: String, format: TextureFormat): Material =
-    occlusionSource(pathInput(path), textureOptions(format = format))
-
-fun Material.occlusionTexture(path: String, options: TextureOptions): Material = occlusionSource(pathInput(path), options)
-
-fun Material.occlusionTexture(chain: Mipmap): Material = occlusionSource(MobileTextureInput.Prepared(chain))
-
-fun Material.occlusionTexture(chain: Mipmap, options: TextureOptions): Material =
-    occlusionSource(MobileTextureInput.Prepared(chain), options)
-
-fun Material.emissiveTexture(bytes: ByteArray, usage: TextureUsage? = null): Material =
-    emissiveSource(MobileTextureInput.Bytes(bytes), textureOptions(usage = usage))
-
-fun Material.emissiveTexture(bytes: List<Int>, usage: TextureUsage? = null): Material =
-    emissiveTexture(byteArray(bytes, "Material.emissiveTexture"), usage)
-
-fun Material.emissiveTexture(bytes: ByteArray, format: TextureFormat, usage: TextureUsage? = null): Material =
-    emissiveSource(MobileTextureInput.Bytes(bytes), textureOptions(format = format, usage = usage))
-
-fun Material.emissiveTexture(bytes: List<Int>, format: TextureFormat, usage: TextureUsage? = null): Material =
-    emissiveTexture(byteArray(bytes, "Material.emissiveTexture"), format, usage)
-
-fun Material.emissiveTexture(bytes: ByteArray, size: Size, usage: TextureUsage? = null): Material =
-    emissiveSource(MobileTextureInput.Bytes(bytes), textureOptions(size = size, usage = usage))
-
-fun Material.emissiveTexture(bytes: List<Int>, size: Size, usage: TextureUsage? = null): Material =
-    emissiveTexture(byteArray(bytes, "Material.emissiveTexture"), size, usage)
-
-fun Material.emissiveTexture(bytes: ByteArray, size: List<UInt>, usage: TextureUsage? = null): Material =
-    emissiveTexture(bytes, sizeRecord(size, "Material.emissiveTexture"), usage)
-
-fun Material.emissiveTexture(bytes: List<Int>, size: List<UInt>, usage: TextureUsage? = null): Material =
-    emissiveTexture(byteArray(bytes, "Material.emissiveTexture"), size, usage)
-
-fun Material.emissiveTexture(bytes: ByteArray, options: TextureOptions): Material =
-    emissiveSource(MobileTextureInput.Bytes(bytes), options)
-
-fun Material.emissiveTexture(bytes: List<Int>, options: TextureOptions): Material =
-    emissiveTexture(byteArray(bytes, "Material.emissiveTexture"), options)
-
-fun Material.emissiveTexture(path: String): Material = emissiveSource(pathInput(path))
-
-fun Material.emissiveTexture(path: String, format: TextureFormat): Material =
-    emissiveSource(pathInput(path), textureOptions(format = format))
-
-fun Material.emissiveTexture(path: String, options: TextureOptions): Material = emissiveSource(pathInput(path), options)
-
-fun Material.emissiveTexture(chain: Mipmap): Material = emissiveSource(MobileTextureInput.Prepared(chain))
-
-fun Material.emissiveTexture(chain: Mipmap, options: TextureOptions): Material =
-    emissiveSource(MobileTextureInput.Prepared(chain), options)
+fun MaterialMap.texture(chain: Mipmap, options: TextureOptions): MaterialMap =
+    source(TextureData.Prepared(chain), options)

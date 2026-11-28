@@ -4,9 +4,9 @@
 //! becomes a [`SceneSource`] tagged with its format, so the loader knows
 //! which parser reads it. glTF 2.0, with its `.glb` binary container, is the one format.
 //!
-//! The shape mirrors `Material::pbr()` and `Camera::perspective(...)`: sync
+//! The shape mirrors `PbrMaterial::new()` and `Camera::perspective(...)`: sync
 //! return, no `Renderer` argument. Each image stays encoded, as its file's bytes or
-//! its path, and every slot that reads it becomes a Material map of that one source.
+//! its path, and every map that reads it becomes a material map of that one source.
 //! Each Renderer that draws the Scene decodes it into a copy of its own (see [`crate::Renderer::load`]).
 //!
 //! The loader covers static glTF: mesh primitives (positions, normals,
@@ -24,6 +24,8 @@ use std::path::PathBuf;
 use glam::{Mat4, Quat, Vec3};
 
 use crate::core::shader::error::describe;
+#[cfg(any(python, wasm, mobile, test))]
+use crate::errors::{Classify, ErrorClass};
 use crate::scene::{Camera, Light, Scene};
 use crate::texture::TextureSource;
 use crate::{Material, Model};
@@ -525,10 +527,10 @@ fn add_light(
     Ok(())
 }
 
-#[cfg(any(python, wasm, test))]
-impl crate::errors::Classify for SceneLoadError {
-    fn classify(&self) -> crate::errors::ErrorClass {
-        crate::errors::ErrorClass::SceneLoad
+#[cfg(any(python, wasm, mobile, test))]
+impl Classify for SceneLoadError {
+    fn classify(&self) -> ErrorClass {
+        ErrorClass::SceneLoad
     }
 }
 

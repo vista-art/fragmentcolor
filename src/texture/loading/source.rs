@@ -58,6 +58,17 @@ impl TextureSource {
             self.hinted = true;
         }
     }
+
+    /// This source as a Material slot with the hint `format` reads it, or `None` when that
+    /// slot reads it as this one does. Only a hint gives way, and a format the caller picked stays.
+    pub(crate) fn swap_hint(&self, format: TextureFormat) -> Option<Self> {
+        let differs = self.hinted && self.options.format != format;
+        differs.then(|| {
+            let mut source = self.clone();
+            source.options.format = format;
+            source
+        })
+    }
 }
 
 impl TextureInput {

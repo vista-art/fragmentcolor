@@ -1,9 +1,10 @@
 //! The `Renderer` methods JavaScript calls.
 
-use crate::bindings::web::{describe, read_text, read_unsigned};
+use crate::bindings::web::{describe, read_object, read_text, read_unsigned, refuse};
 use crate::errors::{ErrorClass, WebError, defer};
 use crate::texture::{
-    js_to_texture_bytes, js_to_texture_id, read_format, read_texture_input, read_usage,
+    TEXTURE_INPUTS, js_to_texture_bytes, js_to_texture_id, read_format, read_texture_input,
+    read_usage,
 };
 use crate::{
     InitializationError, LogLevel, Mesh, Pass, PassObject, Renderable, Renderer, Scene, Shader,
@@ -99,10 +100,15 @@ fn read_storage_input(
     data: Option<JsValue>,
     usage: Option<JsValue>,
 ) -> Result<TextureInput, WebError> {
+    const CALL: &str = "Renderer.createStorageTexture";
     let given = |value: &JsValue| !value.is_undefined() && !value.is_null();
-    let size: Size = size.try_into()?;
-    let format = read_format(format)?;
-    let usage = usage.filter(given).as_ref().map(read_usage).transpose()?;
+    let size = Size::read(size, CALL)?;
+    let format = read_format(format, &format!("{CALL}: format"))?;
+    let usage = usage.filter(given);
+    let usage = usage
+        .as_ref()
+        .map(|usage| read_usage(usage, &format!("{CALL}: usage")))
+        .transpose()?;
     let data = match data.filter(given) {
         Some(bytes) => {
             let label = "Renderer.createStorageTexture: data";
@@ -155,7 +161,8 @@ impl Renderer {
         input: &JsValue,
         options: Option<JsValue>,
     ) -> Result<Texture, WebError> {
-        let input = read_texture_input(input, options.as_ref(), "Renderer.createTexture")?;
+        let call = "Renderer.createTexture";
+        let input = read_texture_input(input, options.as_ref(), call, TEXTURE_INPUTS)?;
         Ok(self.create_texture(input).await?)
     }
 
@@ -165,7 +172,7 @@ impl Renderer {
         &self,
         size: &JsValue,
     ) -> Result<TextureTarget, WebError> {
-        let size: Size = size.try_into()?;
+        let size = Size::read(size, "Renderer.createTextureTarget")?;
         let target = self.create_texture_target(size).await?;
         Ok(target)
     }
@@ -191,14 +198,14 @@ impl Renderer {
     #[wasm_bindgen(js_name = "createDepthTexture")]
     #[lsp_doc("docs/api/core/renderer/create_depth_texture.md")]
     pub async fn create_depth_texture_js(&self, size: &JsValue) -> Result<Texture, WebError> {
-        let size: Size = size.try_into()?;
+        let size = Size::read(size, "Renderer.createDepthTexture")?;
         Ok(self.create_depth_texture(size).await?)
     }
 
     #[wasm_bindgen(js_name = "unregisterTexture")]
     #[lsp_doc("docs/api/core/renderer/unregister_texture.md")]
     pub fn unregister_texture_js(&self, texture_id: &JsValue) -> Result<(), WebError> {
-        let id = js_to_texture_id(texture_id)?;
+        let id = js_to_texture_id(texture_id, "Renderer.unregisterTexture: texture_id")?;
         Ok(self.unregister_texture(id)?)
     }
 
@@ -209,7 +216,7 @@ impl Renderer {
     pub fn read_texture_js(&self, texture_id: &JsValue) -> js_sys::Promise {
         let start = self.start();
         let renderer = self.share();
-        let id = js_to_texture_id(texture_id);
+        let id = js_to_texture_id(texture_id, "Renderer.readTexture: texture_id");
         defer(async move {
             let id = id?;
             let bytes = renderer.read_texture_from(id, start).await?;
@@ -240,14 +247,15 @@ impl Renderer {
     #[lsp_doc("docs/api/core/renderer/read_storage.md")]
     pub fn read_storage_js(
         &self,
-        shader: &Shader,
+        #[wasm_bindgen(unchecked_param_type = "Shader")] shader: &JsValue,
         #[wasm_bindgen(unchecked_param_type = "string")] binding: &JsValue,
     ) -> js_sys::Promise {
         let start = self.start();
         let renderer = self.share();
-        let shader = shader.clone();
+        let shader = read_object::<Shader>(shader, "Renderer.readStorage: shader");
         let binding = read_text(binding, "Renderer.readStorage: binding");
         defer(async move {
+            let shader = shader?;
             let binding = binding?;
             let bytes = renderer.read_storage_from(&shader, &binding, start).await?;
             Ok(js_sys::Uint8Array::from(bytes.as_slice()).into())
@@ -271,8 +279,9 @@ impl Renderer {
         if let Ok(texture) = TextureTarget::try_from(target) {
             return Ok(self.render(&renderables, &texture)?);
         }
-        Err(WebError::type_error(
-            "Renderer.render: expected a WindowTarget or a TextureTarget",
+        Err(refuse(
+            target,
+            "Renderer.render: target must be a WindowTarget or a TextureTarget",
         ))
     }
 }
@@ -312,15 +321,13 @@ impl RenderableList {
             return Ok(Self(vec![item]));
         }
         let Some(array) = value.dyn_ref::<Array>() else {
-            return Err(WebError::type_error(&format!(
-                "{method}: expected a Shader, Pass, Mesh, Scene, or an array of them"
-            )));
+            let expected = "expected a Shader, Pass, Mesh, Scene, or an array of them";
+            return Err(refuse(value, &format!("{method}: {expected}")));
         };
         let read = |(index, item): (usize, JsValue)| {
             read_renderable(&item).ok_or_else(|| {
-                WebError::type_error(&format!(
-                    "{method}: item {index} is not a Shader, Pass, Mesh, or Scene"
-                ))
+                let expected = "expected a Shader, Pass, Mesh, or Scene";
+                refuse(&item, &format!("{method}: item {index}: {expected}"))
             })
         };
         array

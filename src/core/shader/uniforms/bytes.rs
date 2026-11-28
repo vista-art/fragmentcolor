@@ -1,7 +1,10 @@
 //! `UniformStorage`: the CPU bytes of every uniform,
 //! storage and immediate root, and the keys that address them.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BinaryHeap, HashMap};
+use std::mem;
+use std::ops::Range;
+use std::sync::{Arc, Weak};
 
 use crate::ShaderError;
 
@@ -16,8 +19,8 @@ pub(crate) struct UniformStorage {
     pub(crate) uniforms: HashMap<String, (u32, u32, Uniform)>, // (offset, size, original data)
     // CPU-side blobs for storage buffers: root name -> raw bytes
     pub(crate) storage_blobs: HashMap<String, Vec<u8>>,
-    // Track which storage roots have been modified on CPU since last GPU upload
-    pub(crate) storage_dirty: HashSet<String>,
+    // What changed in each storage root on the CPU, and how far each buffer behind it has caught up.
+    storage_changes: HashMap<String, StorageChanges>,
     // CPU-side blobs for push constants: root name -> raw bytes
     pub(crate) push_blobs: HashMap<String, Vec<u8>>,
 }
@@ -29,7 +32,7 @@ impl UniformStorage {
             uniform_bytes: Vec::new(),
             uniforms: HashMap::new(),
             storage_blobs: HashMap::new(),
-            storage_dirty: HashSet::new(),
+            storage_changes: HashMap::new(),
             push_blobs: HashMap::new(),
         };
 
@@ -214,7 +217,8 @@ impl UniformStorage {
             .get_mut(root)
             .ok_or_else(|| ShaderError::UniformNotFound(root.into()))?;
         replace_blob(root, blob, bytes)?;
-        self.storage_dirty.insert(root.to_string());
+        let len = blob.len();
+        mark_storage(&mut self.storage_changes, root, 0..len);
         Ok(())
     }
 
@@ -256,7 +260,7 @@ impl UniformStorage {
                     uniform.data = UniformData::Texture(merged);
                 }
                 _ => {
-                    if std::mem::discriminant(value) != std::mem::discriminant(&uniform.data) {
+                    if mem::discriminant(value) != mem::discriminant(&uniform.data) {
                         return Err(ShaderError::TypeMismatch(key.into()));
                     }
                     uniform.data = value.clone();
@@ -308,8 +312,8 @@ impl UniformStorage {
                                     *b = 0;
                                 }
                             }
-                            // Mark dirty
-                            self.storage_dirty.insert(root.to_string());
+                            let len = blob.len();
+                            mark_storage(&mut self.storage_changes, root, 0..len);
                         }
                     }
                     _ => {
@@ -319,8 +323,7 @@ impl UniformStorage {
                         let end = start.saturating_add(data.len());
                         if end <= blob.len() {
                             blob[start..end].copy_from_slice(&data);
-                            // Mark dirty for nested update as well
-                            self.storage_dirty.insert(root.to_string());
+                            mark_storage(&mut self.storage_changes, root, start..end);
                         }
                     }
                 }
@@ -363,7 +366,7 @@ impl UniformStorage {
             // Slow path: keys with array indices like "data.arr[3].field" or "u[2]"
             let (root, blob, start, leaf) = self.locate_key(key)?;
             let bytes = value.to_bytes();
-            if std::mem::discriminant(value) != std::mem::discriminant(leaf)
+            if mem::discriminant(value) != mem::discriminant(leaf)
                 || bytes.len() != leaf.size() as usize
             {
                 return Err(ShaderError::TypeMismatch(key.into()));
@@ -380,7 +383,7 @@ impl UniformStorage {
                 _ => return Err(ShaderError::InvalidKey(key.into())),
             }
             if blob == Blob::Storage {
-                self.storage_dirty.insert(root);
+                mark_storage(&mut self.storage_changes, &root, start..end);
             }
             Ok(())
         }
@@ -491,13 +494,29 @@ impl UniformStorage {
         source.get(start..end)
     }
 
-    // ----- Storage dirty helpers (crate-private) -----
-    pub(crate) fn is_storage_dirty(&self, root: &str) -> bool {
-        self.storage_dirty.contains(root)
+    /// The word ranges of the storage root `root` that the buffer with the id `buffer` lacks.
+    ///
+    /// A buffer this shader uploaded to lacks the bytes set since that upload.
+    /// One it never uploaded to, which another shader created, lacks each
+    /// byte this shader ever set, and only those, so what the other shader keeps
+    /// there stays. Ranges come sorted and apart, each starting and ending on a word,
+    /// so the last one can reach past a root whose size isn't a multiple of 4, into its padding.
+    pub(crate) fn list_changes(&self, root: &str, buffer: u64) -> Vec<Range<usize>> {
+        self.storage_changes
+            .get(root)
+            .map_or_else(Vec::new, |changes| changes.list(buffer))
     }
-    pub(crate) fn clear_storage_dirty(&mut self, root: &str) {
-        self.storage_dirty.remove(root);
+
+    /// Records that `buffer` holds every change to the storage root `root`
+    /// after an upload or its creation. `token` lives as long as the buffer,
+    /// so the next upload forgets a buffer that a Renderer replaced or dropped.
+    pub(crate) fn record_upload(&mut self, root: &str, buffer: u64, token: &Arc<()>) {
+        self.storage_changes
+            .entry(root.to_string())
+            .or_default()
+            .record(buffer, token);
     }
+
     /// True iff the shader's source declared a top-level storage binding
     /// named `root` (i.e. there is a CPU-side blob for it).
     pub(crate) fn has_storage(&self, root: &str) -> bool {
@@ -519,6 +538,149 @@ fn reserve(bytes: &mut Vec<u8>, name: &str, size: usize) -> Result<(), ShaderErr
 fn allocate_zeros(name: &str, span: u32) -> Result<Vec<u8>, ShaderError> {
     reserve(&mut Vec::new(), name, span as usize)?;
     Ok(vec![0u8; span as usize])
+}
+
+/// The changes to one storage root, and how far each buffer behind it has caught up.
+///
+/// Each set takes the current epoch, and each upload ends one. A buffer holds
+/// every change up to the epoch of its last upload, so it takes only the words
+/// set after that, and never takes the CPU copy over what a compute pass wrote.
+#[derive(Debug, Clone, Default)]
+struct StorageChanges {
+    /// Each set, as whole 4-byte words and the epoch it came in, in epoch order.
+    log: Vec<Change>,
+    /// How many entries the last compaction left, so the log compacts again once it doubles.
+    compacted: usize,
+    /// The epoch of the sets made now.
+    epoch: u64,
+    /// The oldest epoch a live buffer holds. Compaction raises older entries to it.
+    floor: u64,
+    /// How far each live buffer has caught up, by buffer id.
+    buffers: HashMap<u64, Seen>,
+}
+
+/// One set of a storage root: the words it changed, and the epoch it came in.
+#[derive(Debug, Clone)]
+struct Change {
+    range: Range<usize>,
+    epoch: u64,
+}
+
+/// How far one buffer has caught up.
+#[derive(Debug, Clone)]
+struct Seen {
+    /// The buffer holds every change up to this epoch.
+    epoch: u64,
+    /// Dies with the buffer, so its entry can go.
+    token: Weak<()>,
+}
+
+impl StorageChanges {
+    /// Records that the words in `range` changed.
+    /// The log compacts once it doubles, so sets with no upload between them keep it short.
+    fn mark(&mut self, range: Range<usize>) {
+        let epoch = self.epoch;
+        self.log.push(Change { range, epoch });
+        if self.log.len() > (self.compacted * 2).max(64) {
+            self.log = compact(mem::take(&mut self.log), self.floor);
+            self.compacted = self.log.len();
+        }
+    }
+
+    /// The ranges `buffer` lacks, sorted and apart:
+    /// the ones set after its last upload, or every one ever set for a buffer that never took one.
+    fn list(&self, buffer: u64) -> Vec<Range<usize>> {
+        let first = self.buffers.get(&buffer).map_or(0, |seen| {
+            self.log
+                .partition_point(|change| change.epoch <= seen.epoch)
+        });
+        let ranges = self
+            .log
+            .iter()
+            .skip(first)
+            .map(|change| change.range.clone());
+        merge_ranges(ranges.collect())
+    }
+
+    /// Records that `buffer` holds every change so far, and starts a new epoch. It forgets
+    /// the buffers that are gone, and raises the floor to the oldest epoch a live buffer holds.
+    fn record(&mut self, buffer: u64, token: &Arc<()>) {
+        let token = Arc::downgrade(token);
+        let epoch = self.epoch;
+        self.buffers.insert(buffer, Seen { epoch, token });
+        self.epoch += 1;
+        self.buffers.retain(|_, seen| seen.token.strong_count() > 0);
+        let oldest = self.buffers.values().map(|seen| seen.epoch).min();
+        self.floor = oldest.unwrap_or(self.floor);
+    }
+}
+
+/// Records in `changes` that the bytes in `range` of the storage root `root` changed on the CPU.
+/// The range widens to whole 4-byte words, which is what a buffer copy takes.
+fn mark_storage(changes: &mut HashMap<String, StorageChanges>, root: &str, range: Range<usize>) {
+    let start = range.start & !3;
+    let end = range.end.saturating_add(3) & !3;
+    if start >= end {
+        return;
+    }
+    changes
+        .entry(root.to_string())
+        .or_default()
+        .mark(start..end);
+}
+
+/// Rewrites `log` as one entry per run of words that share the epoch of their last set.
+///
+/// Each word keeps the newest epoch that set it, so every buffer lacks the same
+/// words in the result as in `log`. An epoch below `floor` rises to it, since every
+/// live buffer holds it, so the runs they all hold join. The result is in epoch order.
+fn compact(mut log: Vec<Change>, floor: u64) -> Vec<Change> {
+    let mut points: Vec<usize> = log
+        .iter()
+        .flat_map(|change| [change.range.start, change.range.end])
+        .collect();
+    points.sort_unstable();
+    points.dedup();
+    log.sort_unstable_by_key(|change| change.range.start);
+    let mut waiting = log.into_iter().peekable();
+    let mut open = BinaryHeap::new();
+    let mut runs: Vec<Change> = Vec::new();
+    for pair in points.windows(2) {
+        let &[start, end] = pair else {
+            continue;
+        };
+        while let Some(change) = waiting.next_if(|change| change.range.start <= start) {
+            open.push((change.epoch.max(floor), change.range.end));
+        }
+        while open.peek().is_some_and(|&(_, until)| until <= start) {
+            open.pop();
+        }
+        let Some(&(epoch, _)) = open.peek() else {
+            continue;
+        };
+        match runs.last_mut() {
+            Some(last) if last.range.end == start && last.epoch == epoch => last.range.end = end,
+            _ => runs.push(Change {
+                range: start..end,
+                epoch,
+            }),
+        }
+    }
+    runs.sort_by_key(|change| change.epoch);
+    runs
+}
+
+/// Sorts `ranges` and joins the ones that overlap or touch, so they come sorted and apart.
+fn merge_ranges(mut ranges: Vec<Range<usize>>) -> Vec<Range<usize>> {
+    ranges.sort_unstable_by_key(|range| range.start);
+    let mut merged: Vec<Range<usize>> = Vec::with_capacity(ranges.len());
+    for range in ranges {
+        match merged.last_mut() {
+            Some(last) if range.start <= last.end => last.end = last.end.max(range.end),
+            _ => merged.push(range),
+        }
+    }
+    merged
 }
 
 /// Copies `bytes` over `blob`, refusing any other length.
@@ -691,4 +853,231 @@ fn locate<'a>(
     }
 
     Ok((ofs, cur))
+}
+
+#[cfg(test)]
+// The expected uploads hold one byte range, such as `[0..4]`, which this lint reads as a typo.
+#[allow(clippy::single_range_in_vec_init)]
+mod tests {
+    use super::*;
+
+    /// The ranges a new buffer takes after marking each `(start, end)` in order, as `(start, end)` pairs.
+    fn marked(ranges: &[(usize, usize)]) -> Vec<(usize, usize)> {
+        let mut storage = UniformStorage::new(&HashMap::new()).expect("empty storage");
+        for &(start, end) in ranges {
+            mark(&mut storage, start..end);
+        }
+        storage
+            .list_changes("root", 1)
+            .into_iter()
+            .map(|range| (range.start, range.end))
+            .collect()
+    }
+
+    /// Marks the words in `range` of the storage root `root` as changed.
+    fn mark(storage: &mut UniformStorage, range: Range<usize>) {
+        mark_storage(&mut storage.storage_changes, "root", range);
+    }
+
+    // Story: Each change widens to whole 4-byte words, as write_buffer takes them.
+    #[test]
+    fn changes_widen_to_whole_words() {
+        assert_eq!(
+            marked(&[(2, 4)]),
+            [(0, 4)],
+            "a 2-byte f16 in the second half"
+        );
+        assert_eq!(marked(&[(5, 10)]), [(4, 12)], "bytes that cross a word");
+        assert_eq!(marked(&[(8, 8)]), [], "nothing");
+    }
+
+    // Story: Changes that overlap or touch join, and the others stay apart and sorted.
+    #[test]
+    fn changes_join_when_they_meet() {
+        assert_eq!(marked(&[(16, 20), (0, 4)]), [(0, 4), (16, 20)], "apart");
+        assert_eq!(marked(&[(0, 4), (4, 8), (8, 12)]), [(0, 12)], "in order");
+        assert_eq!(marked(&[(0, 4), (8, 12), (4, 8)]), [(0, 12)], "gap filled");
+        assert_eq!(
+            marked(&[(0, 4), (8, 12), (16, 20), (6, 18)]),
+            [(0, 20)],
+            "one change over several"
+        );
+        assert_eq!(marked(&[(4, 12), (6, 8)]), [(4, 12)], "inside another");
+    }
+    // Story: Sets in descending order, with no render between them, join at upload
+    // and keep the log short, so no set pays for the ones before it.
+    #[test]
+    fn many_changes_merge_once_the_log_doubles() {
+        // Arrange
+        let mut storage = UniformStorage::new(&HashMap::new()).expect("empty storage");
+
+        // Act
+        for word in (0..1000).rev() {
+            mark(&mut storage, word * 4..word * 4 + 4);
+        }
+
+        // Assert
+        let kept = storage.storage_changes["root"].log.len();
+        assert!(kept <= 128, "{kept} entries kept");
+        assert_eq!(
+            storage.list_changes("root", 1),
+            [0..4000],
+            "one range covers every word"
+        );
+    }
+
+    // Story: Each buffer catches up on its own. It takes the ranges set since its last
+    // upload, the ones another buffer took included, and never one it already holds.
+    #[test]
+    fn each_buffer_catches_up_on_its_own() {
+        // Arrange
+        let mut storage = UniformStorage::new(&HashMap::new()).expect("empty storage");
+        let (first, second) = (1, 2);
+        let (first_token, second_token) = (Arc::new(()), Arc::new(()));
+        storage.record_upload("root", first, &first_token);
+        storage.record_upload("root", second, &second_token);
+
+        // Act
+        mark(&mut storage, 0..4);
+        let first_takes = storage.list_changes("root", first);
+        storage.record_upload("root", first, &first_token);
+        mark(&mut storage, 8..12);
+        let second_takes = storage.list_changes("root", second);
+        storage.record_upload("root", second, &second_token);
+        let first_then = storage.list_changes("root", first);
+        storage.record_upload("root", first, &first_token);
+        let first_again = storage.list_changes("root", first);
+
+        // Assert
+        assert_eq!(first_takes, [0..4], "first takes its range");
+        assert_eq!(
+            second_takes,
+            [0..4, 8..12],
+            "second takes both, with 0..4, which first took"
+        );
+        assert_eq!(
+            first_then,
+            [8..12],
+            "first takes only 8..12, which second took"
+        );
+        assert!(first_again.is_empty(), "first holds every change");
+    }
+
+    // Story: Another shader created the buffer, so this shader never uploaded
+    // to it. The buffer takes every range this shader ever set, and no other.
+    #[test]
+    fn a_new_buffer_takes_every_range_ever_set() {
+        // Arrange
+        let mut storage = UniformStorage::new(&HashMap::new()).expect("empty storage");
+        let (first, third) = (1, 3);
+        let first_token = Arc::new(());
+        mark(&mut storage, 0..4);
+        storage.record_upload("root", first, &first_token);
+        mark(&mut storage, 8..12);
+        storage.record_upload("root", first, &first_token);
+        mark(&mut storage, 16..20);
+
+        // Act
+        let first_lacks = storage.list_changes("root", first);
+        let third_lacks = storage.list_changes("root", third);
+
+        // Assert
+        assert_eq!(first_lacks, [16..20], "first took the others");
+        assert_eq!(third_lacks, [0..4, 8..12, 16..20], "third took none");
+    }
+
+    // Story: One buffer takes an upload each frame and another lags behind. Once the
+    // log compacts, each still takes exactly what it lacks, and the log stays short.
+    #[test]
+    fn compaction_keeps_what_each_buffer_lacks() {
+        // Arrange
+        let mut storage = UniformStorage::new(&HashMap::new()).expect("empty storage");
+        let (first, second) = (1, 2);
+        let (first_token, second_token) = (Arc::new(()), Arc::new(()));
+        storage.record_upload("root", first, &first_token);
+        storage.record_upload("root", second, &second_token);
+
+        // Act
+        for frame in 0..1000 {
+            let start = (frame % 10) * 8;
+            mark(&mut storage, start..start + 4);
+            storage.record_upload("root", first, &first_token);
+        }
+        mark(&mut storage, 200..204);
+
+        // Assert
+        let places = (0..10).map(|place| place * 8..place * 8 + 4);
+        let missed: Vec<Range<usize>> = places.chain([200..204]).collect();
+        let kept = storage.storage_changes["root"].log.len();
+        assert_eq!(
+            storage.list_changes("root", first),
+            [200..204],
+            "first took the rest"
+        );
+        assert_eq!(
+            storage.list_changes("root", second),
+            missed,
+            "second took none"
+        );
+        assert!(kept <= 128, "{kept} entries kept");
+    }
+
+    // Story: Every buffer keeps up while the app sets touching words in turn, so
+    // compaction joins the runs they all hold and the log stays one entry long.
+    #[test]
+    fn runs_every_buffer_holds_join() {
+        // Arrange
+        let mut storage = UniformStorage::new(&HashMap::new()).expect("empty storage");
+        let first = 1;
+        let first_token = Arc::new(());
+
+        // Act
+        for word in 0..1000 {
+            mark(&mut storage, word * 4..word * 4 + 4);
+            storage.record_upload("root", first, &first_token);
+        }
+
+        // Assert
+        let changes = &storage.storage_changes["root"];
+        assert!(
+            changes.log.len() <= 64,
+            "{} entries kept",
+            changes.log.len()
+        );
+        assert!(
+            storage.list_changes("root", first).is_empty(),
+            "first holds them all"
+        );
+        assert_eq!(
+            storage.list_changes("root", 2),
+            [0..4000],
+            "a new buffer takes every word"
+        );
+    }
+
+    // Story: A buffer a Renderer replaced or dropped leaves its entry until the next
+    // upload, which forgets it, so the floor follows the buffers still alive.
+    #[test]
+    fn a_buffer_that_is_gone_is_forgotten() {
+        // Arrange
+        let mut storage = UniformStorage::new(&HashMap::new()).expect("empty storage");
+        let (first, second) = (1, 2);
+        let (first_token, second_token) = (Arc::new(()), Arc::new(()));
+        storage.record_upload("root", first, &first_token);
+        storage.record_upload("root", second, &second_token);
+
+        // Act
+        drop(second_token);
+        mark(&mut storage, 0..4);
+        storage.record_upload("root", first, &first_token);
+
+        // Assert
+        let changes = &storage.storage_changes["root"];
+        let known: Vec<u64> = changes.buffers.keys().copied().collect();
+        assert_eq!(known, [first], "only first is left");
+        assert_eq!(
+            changes.floor, changes.buffers[&first].epoch,
+            "the floor follows first alone"
+        );
+    }
 }

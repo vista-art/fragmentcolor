@@ -103,9 +103,9 @@ fn float_vector_hints_name_their_ndarray() {
         ("Model.rotate", "axis"),
         ("Model.set_transform", "matrix"),
         ("Camera.look_at", "up"),
-        ("Material.base_color", "color"),
-        ("Material.uv_transform", "offset"),
-        ("Material.texture_transform", "scale"),
+        ("PbrMaterial.base_color", "color"),
+        ("PbrMaterial.uv_transform", "offset"),
+        ("MaterialMap.transform", "scale"),
         ("Quad.__new__", "min"),
         ("Quad.__new__", "max"),
         ("Vertex.__new__", "position"),
@@ -133,7 +133,7 @@ fn float_vector_hints_name_their_ndarray() {
 }
 
 // Story: a list of ints takes an integer ndarray and nothing wider, and a size's fields
-// come in any mapping, which the runtime reads as it reads a dict.
+// come in any mapping, which the runtime reads as it reads a dict, with `None` as a missing key.
 #[test]
 fn integer_hints_take_integer_arrays_and_mappings() {
     let hints = read_hints();
@@ -143,7 +143,32 @@ fn integer_hints_take_integer_arrays_and_mappings() {
         "Sequence[SupportsIndex] | npt.NDArray[numpy.integer[Any]]"
     );
     let size = hint(&hints, "TextureTarget.resize", "size");
-    assert!(size.contains("Mapping[str, SupportsIndex]"), "{size}");
+    assert!(
+        size.contains("Mapping[str, SupportsIndex | None]"),
+        "{size}"
+    );
     assert!(size.contains("npt.NDArray[numpy.integer[Any]]"), "{size}");
     assert!(!size.contains("NDArray[Any]"), "{size}");
+}
+
+// Story: `Shader.get` on a sampler key returns `SamplerInfo`, a class the module exports
+// with a read-only `comparison`, so `isinstance` and pyright both know it by that name.
+#[test]
+fn sampler_info_is_a_public_class() {
+    let stub = fs::read_to_string(STUB).expect("the build writes the Python stub");
+    assert!(
+        stub.contains("    \"SamplerInfo\",\n"),
+        "__all__ lacks SamplerInfo"
+    );
+    assert!(
+        !stub.contains("_SamplerInfo"),
+        "the stub keeps a private _SamplerInfo"
+    );
+    let class = "class SamplerInfo:\n    @property\n    def comparison(self) -> bool: ...\n";
+    assert!(stub.contains(class), "the stub lacks {class:?}");
+    let get = stub
+        .lines()
+        .find(|line| line.trim_start().starts_with("def get(self, key: str)"))
+        .expect("the stub declares Shader.get");
+    assert!(get.contains("| SamplerInfo |"), "{get}");
 }

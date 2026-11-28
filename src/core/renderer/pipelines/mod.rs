@@ -55,12 +55,12 @@ pub(super) struct RenderPipelineKey {
     pub(super) color_format: wgpu::TextureFormat,
     pub(super) depth: DepthUse,
     pub(super) sample_count: u32,
-    /// `Material::alpha_mode` bakes into the pipeline: `Opaque`/`Mask`
+    /// `Shader::alpha_mode`, which the materials' `alpha_mode` sets, bakes into the pipeline: `Opaque`/`Mask`
     /// turn blending off, `Blend` flips on standard alpha-over and disables
     /// depth-write. Different modes against the same shader hash therefore
     /// need different pipelines.
     pub(super) alpha_mode: crate::AlphaMode,
-    /// `Material::double_sided` flips the `cull_mode` on the primitive
+    /// `Shader::double_sided`, which the materials' `double_sided` sets, flips the `cull_mode` on the primitive
     /// state, so it also baked into the pipeline.
     pub(super) double_sided: bool,
     /// Vertex buffer layouts of the shader's mesh, if any.
@@ -112,7 +112,7 @@ impl RenderContext {
 }
 
 /// The override a shader declares to learn whether its target stores colors
-/// encoded for display. `Material::pbr` encodes its linear light when it does.
+/// encoded for display. `PbrMaterial` and `ToonMaterial` encode their linear light when it does.
 const ENCODE_SRGB: &str = "ENCODE_SRGB";
 
 /// Whether `format` stores colors encoded for display without encoding them
@@ -124,16 +124,31 @@ fn is_display(format: wgpu::TextureFormat) -> bool {
     )
 }
 
-/// `module` with its `ENCODE_SRGB` override set for a target of `format`.
-/// FragmentColor resolves it here, because the WGSL that wgpu writes for the
-/// browser from a naga module doesn't carry overrides. A module without that
-/// override, or one whose overrides fail to resolve, comes back unchanged.
-fn set_encoding(module: &naga::Module, format: wgpu::TextureFormat) -> naga::Module {
-    let declared = module
-        .overrides
-        .iter()
-        .any(|(_, item)| item.name.as_deref() == Some(ENCODE_SRGB));
-    if !declared {
+/// The override a shader declares to learn whether its pipeline draws both faces.
+/// `PbrMaterial` and `ToonMaterial` light a mirrored model's outer faces as the front when it does.
+const DOUBLE_SIDED: &str = "DOUBLE_SIDED";
+
+/// `module` with the overrides its pipeline decides resolved.
+///
+/// `ENCODE_SRGB` takes whether a target of `format` stores colors for display,
+/// and `DOUBLE_SIDED` takes `double_sided`. FragmentColor resolves them here, because
+/// the WGSL that wgpu writes for the browser from a naga module doesn't carry overrides.
+/// A module that declares neither, or one whose overrides fail to resolve, comes back unchanged.
+fn set_overrides(
+    module: &naga::Module,
+    format: wgpu::TextureFormat,
+    double_sided: bool,
+) -> naga::Module {
+    let mut constants = naga::back::PipelineConstants::default();
+    for (name, value) in [
+        (ENCODE_SRGB, is_display(format)),
+        (DOUBLE_SIDED, double_sided),
+    ] {
+        if declares(module, name) {
+            constants.insert(name.to_string(), if value { 1.0 } else { 0.0 });
+        }
+    }
+    if constants.is_empty() {
         return module.clone();
     }
     let flags = naga::valid::ValidationFlags::all();
@@ -142,20 +157,25 @@ fn set_encoding(module: &naga::Module, format: wgpu::TextureFormat) -> naga::Mod
     {
         Ok(info) => info,
         Err(error) => {
-            log::error!("{ENCODE_SRGB} stays at its default: {error}");
+            log::error!("the pipeline overrides stay at their defaults: {error}");
             return module.clone();
         }
     };
-    let mut constants = naga::back::PipelineConstants::default();
-    let encode = if is_display(format) { 1.0 } else { 0.0 };
-    constants.insert(ENCODE_SRGB.to_string(), encode);
     match naga::back::pipeline_constants::process_overrides(module, &info, None, &constants) {
         Ok((resolved, _)) => resolved.into_owned(),
         Err(error) => {
-            log::error!("{ENCODE_SRGB} stays at its default: {error}");
+            log::error!("the pipeline overrides stay at their defaults: {error}");
             module.clone()
         }
     }
+}
+
+/// Whether `module` declares the override `name`.
+fn declares(module: &naga::Module, name: &str) -> bool {
+    module
+        .overrides
+        .iter()
+        .any(|(_, item)| item.name.as_deref() == Some(name))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -176,7 +196,7 @@ pub(super) fn create_render_pipeline(
     // Every CPU check comes before the first wgpu call, so a refusal builds nothing.
     let module = build_module(shader, layout, pad_uniforms, light_path.uniform_lights())?;
     let PipelineSource { source, entries } =
-        pick_source(set_encoding(&module, format), writes_wgsl)?;
+        pick_source(set_overrides(&module, format, double_sided), writes_wgsl)?;
     let vs_entry = find_entry(&entries, naga::ShaderStage::Vertex)?;
     let fs_entry = find_entry(&entries, naga::ShaderStage::Fragment)?;
 
@@ -210,7 +230,7 @@ pub(super) fn create_render_pipeline(
             entry_point: Some(fs_entry),
             targets: &[Some(wgpu::ColorTargetState {
                 format,
-                // Blend state baked from Material::alpha_mode:
+                // Blend state baked from Shader::alpha_mode:
                 //   Opaque / Mask -> no blending (alpha bits go to the FB
                 //                    but the equation ignores them; Mask
                 //                    does its work via `discard` in the
@@ -221,17 +241,14 @@ pub(super) fn create_render_pipeline(
                     AlphaMode::Opaque | AlphaMode::Mask => None,
                     AlphaMode::Blend => Some(wgpu::BlendState::ALPHA_BLENDING),
                 },
-                // Material's AlphaMode covers the three glTF 2.0 modes.
                 write_mask: checks::pass::pick_writes(shader),
             })],
             compilation_options: wgpu::PipelineCompilationOptions::default(),
         }),
         primitive: wgpu::PrimitiveState {
-            // `double_sided=true` (the ShaderObject default) leaves
-            // `cull_mode: None`, so a bare Shader draws both faces.
-            // `Material::pbr` (and `Material::custom`) flip it to
-            // `false`, which engages standard back-face culling, the
-            // glTF 2.0 default for single-sided materials.
+            // Single-sided, the default of every Shader and material, culls
+            // back faces, glTF 2.0's default. `double_sided(true)` leaves
+            // `cull_mode: None`, so the shader draws both faces.
             cull_mode: if double_sided {
                 None
             } else {

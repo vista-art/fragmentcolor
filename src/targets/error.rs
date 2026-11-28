@@ -1,5 +1,9 @@
 //! `DisplayError`: a window or display handle a target can't get, or a platform it doesn't run on.
 
+#[cfg(wasm)]
+use crate::errors::WebError;
+#[cfg(any(python, wasm, mobile, test))]
+use crate::errors::{Classify, ErrorClass};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -26,16 +30,16 @@ impl From<wasm_bindgen::JsValue> for DisplayError {
     }
 }
 
-#[cfg(any(python, wasm, test))]
-impl crate::errors::Classify for DisplayError {
-    fn classify(&self) -> crate::errors::ErrorClass {
-        crate::errors::ErrorClass::Base
+#[cfg(any(python, wasm, mobile, test))]
+impl Classify for DisplayError {
+    fn classify(&self) -> ErrorClass {
+        ErrorClass::Base
     }
 }
 
 #[cfg(wasm)]
 impl From<DisplayError> for wasm_bindgen::JsValue {
     fn from(error: DisplayError) -> Self {
-        crate::errors::WebError::from(error).into()
+        WebError::from(error).into()
     }
 }

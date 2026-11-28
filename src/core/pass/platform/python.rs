@@ -1,38 +1,45 @@
 #![cfg(python)]
 
-use crate::bindings::python::{PyChannels, PyUnsigned, read_list, read_pair};
-use crate::{Pass, PassObject, PassType, ScreenRegion, Shader};
+use crate::bindings::Key;
+use crate::bindings::python::{
+    PyChannels, PyMesh, PyShader, PyText, PyUnsigned, read_list, read_pair, read_unsigned, refuse,
+};
+use crate::{Pass, PassObject, PassType, ScreenRegion, ScreenRegionError};
 use lsp_doc::lsp_doc;
 use pyo3::prelude::*;
-use pyo3::types::PyAny;
+use pyo3::types::{PyAny, PyDict};
 use std::sync::Arc;
 
 #[pymethods]
 impl Pass {
     #[new]
     #[lsp_doc("docs/api/core/pass/new.md")]
-    pub fn new_py(name: &str) -> Self {
-        Self {
-            object: Arc::new(PassObject::new(name, PassType::Render)),
-        }
+    pub fn new_py(name: PyText<'_>) -> PyResult<Self> {
+        let name = name.read("Pass: name")?;
+        Ok(Self {
+            object: Arc::new(PassObject::new(&name, PassType::Render)),
+        })
     }
 
     #[staticmethod]
     #[pyo3(name = "compute")]
     #[lsp_doc("docs/api/core/pass/compute.md")]
-    pub fn compute_py(name: &str) -> Self {
-        Self {
-            object: Arc::new(PassObject::new(name, PassType::Compute)),
-        }
+    pub fn compute_py(name: PyText<'_>) -> PyResult<Self> {
+        let name = name.read("Pass.compute: name")?;
+        Ok(Self {
+            object: Arc::new(PassObject::new(&name, PassType::Compute)),
+        })
     }
 
     #[staticmethod]
     #[pyo3(name = "from_shader")]
     #[lsp_doc("docs/api/core/pass/from_shader.md")]
-    pub fn from_shader_py(name: &str, shader: &Shader) -> Self {
-        Self {
-            object: Arc::new(PassObject::from_shader(name, shader.object.clone())),
-        }
+    pub fn from_shader_py(name: PyText<'_>, shader: PyShader<'_>) -> PyResult<Self> {
+        let name = name.read("Pass.from_shader: name")?;
+        let shader = shader.read("Pass.from_shader: shader")?;
+        Ok(Self {
+            object: Arc::new(PassObject::from_shader(&name, shader.object)),
+        })
     }
 
     // Internal duck-typed interface used by PyRenderable dispatch, not part of public docs.
@@ -56,14 +63,14 @@ impl Pass {
 
     #[pyo3(name = "add_shader")]
     #[lsp_doc("docs/api/core/pass/add_shader.md")]
-    pub fn add_shader_py(&self, shader: &Shader) -> Result<(), PyErr> {
-        Ok(self.add_shader(shader)?)
+    pub fn add_shader_py(&self, shader: PyShader<'_>) -> Result<(), PyErr> {
+        Ok(self.add_shader(&shader.read("Pass.add_shader: shader")?)?)
     }
 
     #[pyo3(name = "add_mesh")]
     #[lsp_doc("docs/api/core/pass/add_mesh.md")]
-    pub fn add_mesh_py(&self, mesh: &crate::Mesh) -> Result<(), PyErr> {
-        Ok(self.add_mesh(mesh)?)
+    pub fn add_mesh_py(&self, mesh: PyMesh<'_>) -> Result<(), PyErr> {
+        Ok(self.add_mesh(&mesh.read("Pass.add_mesh: mesh")?)?)
     }
 
     /// Unified `Pass.add`, which branches on the runtime Python type. Adding a
@@ -81,7 +88,8 @@ impl Pass {
         } else if let Ok(light) = object.cast::<crate::scene::Light>() {
             slf.add(&*light.borrow())?;
         } else {
-            return Err(pyo3::exceptions::PyTypeError::new_err(
+            return Err(refuse(
+                object,
                 "Pass.add: expected a Model, Camera, or Light",
             ));
         }
@@ -134,8 +142,9 @@ impl Pass {
                 let t = tex.borrow();
                 return Ok(self.set_target(&*t)?);
             }
-            Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
-                "Unsupported target type. Expected TextureTarget or Texture",
+            Err(refuse(
+                target.bind(py),
+                "Pass.set_target: target must be a Texture or a TextureTarget",
             ))
         })
     }
@@ -154,8 +163,9 @@ impl Pass {
                 let tt = bound.borrow();
                 return Ok(self.set_depth_target(&tt.inner)?);
             }
-            Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
-                "Unsupported depth target type. Expected Texture or TextureTarget",
+            Err(refuse(
+                target.bind(py),
+                "Pass.set_depth_target: target must be a Texture or a TextureTarget",
             ))
         })
     }
@@ -171,7 +181,7 @@ impl Pass {
     pub fn require_py(&self, deps: Py<PyAny>) -> Result<(), PyErr> {
         Python::attach(|py| -> Result<(), PyErr> {
             let any = deps.bind(py);
-            let r = crate::PyRenderable::from_any(any)?;
+            let r = crate::PyRenderable::from_any(any, "Pass.require")?;
             Ok(self.require(&r)?)
         })
     }
@@ -183,32 +193,69 @@ impl Pass {
     }
 }
 
-/// A viewport from Python: a `ScreenRegion`, `[x, y, w, h]`, a size `(w, h)` at the origin,
+/// A viewport from Python: a `ScreenRegion`, a dict of `x`, `y`, `width` and `height`
+/// or of `min_x`, `min_y`, `max_x` and `max_y`, `[x, y, w, h]`, a size `(w, h)` at the origin,
 /// or an origin and a size as two pairs, `((x, y), (w, h))`, as Rust reads them.
 #[derive(FromPyObject)]
 pub enum PyViewport<'py> {
     #[pyo3(annotation = "ScreenRegion")]
     Region(ScreenRegion),
+    #[pyo3(annotation = "dict[str, int | None]")]
+    Fields(Bound<'py, PyDict>),
     Pairs([Vec<PyUnsigned<'py>>; 2]),
     Numbers(Vec<PyUnsigned<'py>>),
+    Other(Bound<'py, PyAny>),
 }
 
+/// The call that reads a viewport, which its errors name.
+const CALL: &str = "Pass.set_viewport";
+
+/// The forms `Pass.set_viewport` reads a region from, as its `TypeError` lists them.
+const VIEWPORT_FORMS: &str = "Pass.set_viewport: a region is [w, h], [x, y, w, h], [[x, y], [w, h]], a dict of x, y, width and height or a ScreenRegion";
+
+/// The keys a viewport dict needs, as its `InvalidInputError` lists them.
+const VIEWPORT_KEYS: &str = "Pass.set_viewport: a region dict needs x, y, width and height, or min_x, min_y, max_x and max_y";
+
 /// Reads each number as an int that [`PyUnsigned::read`] checks.
+/// Any value of another type raises a `TypeError` that lists the forms.
+/// A dict that holds neither form whole is the right type, so it raises `InvalidInputError`.
 impl TryFrom<PyViewport<'_>> for ScreenRegion {
     type Error = PyErr;
 
     fn try_from(viewport: PyViewport<'_>) -> Result<Self, Self::Error> {
         match viewport {
             PyViewport::Region(region) => Ok(region),
+            PyViewport::Fields(fields) => match read_fields(&fields)? {
+                Some(region) => Ok(region),
+                None => Err(ScreenRegionError::Invalid(VIEWPORT_KEYS.into()).into()),
+            },
+            PyViewport::Other(value) => Err(refuse(&value, VIEWPORT_FORMS)),
             PyViewport::Pairs([origin, size]) => {
-                let origin = read_pair(&origin, "Pass.set_viewport: origin")?;
-                let size = read_pair(&size, "Pass.set_viewport: size")?;
-                Ok(ScreenRegion::new(origin, size)?)
+                let origin = read_pair(&origin, &format!("{CALL}: origin"))?;
+                let size = read_pair(&size, &format!("{CALL}: size"))?;
+                let region = ScreenRegion::new(origin, size);
+                Ok(region.map_err(|error| error.name(CALL))?)
             }
             PyViewport::Numbers(items) => {
-                let dimensions = read_list(&items, "Pass.set_viewport")?;
-                Ok(ScreenRegion::try_from(dimensions.as_slice())?)
+                let dimensions = read_list(&items, CALL)?;
+                let region = ScreenRegion::try_from(dimensions.as_slice());
+                Ok(region.map_err(|error| error.name(CALL))?)
             }
         }
     }
+}
+
+/// Reads the dict form as JavaScript reads it, each key in either spelling, `minX` first.
+/// A key set to `None` counts as missing, and the result is `None` when neither form is complete.
+fn read_fields(fields: &Bound<'_, PyDict>) -> PyResult<Option<ScreenRegion>> {
+    let read = |(camel, snake): Key| -> PyResult<Option<u32>> {
+        for name in [camel, snake] {
+            if let Some(value) = fields.get_item(name)?.filter(|value| !value.is_none()) {
+                let label = format!("{CALL}: {name}");
+                return read_unsigned(&value, &label).map(Some);
+            }
+        }
+        Ok(None)
+    };
+    ScreenRegion::read_fields(read, CALL)
 }

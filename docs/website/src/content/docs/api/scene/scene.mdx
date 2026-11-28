@@ -102,11 +102,12 @@ and uploads a copy of each map into that `Renderer`, so the Scene draws with
 every `Renderer` that loads it. On native targets the first render runs it
 for you; on the web, await it in each `Renderer` before its first render.
 
-The Materials keep each image encoded for as long as a slot holds its map:
+The materials keep each image encoded for as long as a map holds it:
 an image inside a `.glb` or a data URI keeps its file bytes, and an image in
 a file beside a `.gltf` keeps only its path, which each `Renderer` reads
 again. A scene keeps about its file's size in RAM beside its copy on each
-GPU. The Material page's Memory section lists what each kind of source keeps.
+GPU. The [`MaterialMap::texture`](/api/scene/materialmap#texture)
+page's Memory section lists what each kind of source keeps.
 
 `Scene::load` reads each image's header, its format and its size, and fails
 with `SceneLoadError::Invalid`, naming the image, for one it can't read. A
@@ -115,23 +116,24 @@ a `Renderer`, with an error that names the image.
 
 The loader reads static glTF: mesh primitives (`POSITION`, `NORMAL`,
 `TEXCOORD_0`, `TEXCOORD_1`, `COLOR_0`, `TANGENT` and indices), PBR-MR
-materials with all five texture slots, per-node transforms flattened into
+materials with all five maps as `PbrMaterial`s, materials with
+`KHR_materials_unlit` as `UnlitMaterial`s, per-node transforms flattened into
 Model matrices, glTF camera nodes, and `KHR_lights_punctual` lights.
-Animation, skinning, morph targets, and material extensions beyond PBR-MR
-and `KHR_texture_transform` are out of scope; they parse cleanly and the
-loader ignores them.
+Animation, skinning, morph targets, and material extensions beyond PBR-MR,
+`KHR_materials_unlit` and `KHR_texture_transform` are out of scope; they parse
+cleanly and the loader ignores them.
 
-Each texture slot samples the UV set its `texCoord` names, through its own
+Each map samples the UV set its `texCoord` names, through its own
 `KHR_texture_transform`. The extension's `texCoord`, when it has one, wins
 over the texture's. A primitive without `TEXCOORD_1` takes its `TEXCOORD_0`
-values as `UV1`, so a slot on set 1 samples the same UVs as set 0 there.
-The PBR material samples two UV sets, so a texture that names `TEXCOORD_2`
-or above returns `SceneLoadError::Invalid`, naming the slot, such as
+values as `UV1`, so a map on set 1 samples the same UVs as set 0 there.
+Both material types sample two UV sets, so a texture that names `TEXCOORD_2`
+or above returns `SceneLoadError::Invalid`, naming the texture, such as
 `occlusionTexture`.
 
 Each texture keeps its glTF sampler's filters and wrap modes, but the PBR
-material samples all five slots with one sampler. That sampler takes the
-options of the first texture in slot order, base color first, so the
+material samples all five maps with one sampler. That sampler takes the
+options of the first texture in map order, base color first, so the
 other maps follow its wrap modes. A file whose base color texture clamps
 while a tiled normal map repeats draws the normal map clamped, and the
 edge texels smear across most of the surface.
@@ -461,7 +463,7 @@ the first frame renders something recognizable. Add your own to take over.
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::{Camera, Light, Material, Mesh, Model, Renderer, Scene, Vertex};
+use fragmentcolor::{Camera, Light, Mesh, Model, PbrMaterial, Renderer, Scene, Vertex};
 
 let renderer = Renderer::new();
 
@@ -471,7 +473,7 @@ mesh.add_vertices([
     Vertex::pbr([-0.5, -0.5, 0.0]).set(Vertex::UV0, [0.0, 0.0]),
     Vertex::pbr([0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]),
 ]);
-let model = Model::new(mesh, Material::pbr());
+let model = Model::new(mesh, PbrMaterial::new());
 
 let camera = Camera::perspective(1.047, 1.0, 0.1, 100.0)?
     .look_at([0.0, 0.0, 3.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])?;
@@ -494,13 +496,13 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Camera, Light, Material, Mesh, Model, Renderer, Scene, Vertex } from "fragmentcolor";
+import { Camera, Light, Mesh, Model, PbrMaterial, Renderer, Scene, Vertex } from "fragmentcolor";
 
 const renderer = new Renderer();
 
 const mesh = new Mesh();
 mesh.addVertices([ Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]), Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]), ]);
-const model = new Model(mesh, Material.pbr());
+const model = new Model(mesh, new PbrMaterial());
 
 const camera = Camera.perspective(1.047, 1.0, 0.1, 100.0).lookAt([0.0, 0.0, 3.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
 const sun = Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]);
@@ -522,7 +524,7 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Camera, Light, Material, Mesh, Model, Renderer, Scene, Vertex
+from fragmentcolor import Camera, Light, Mesh, Model, PbrMaterial, Renderer, Scene, Vertex
 
 renderer = Renderer()
 
@@ -532,7 +534,7 @@ mesh.add_vertices([
     Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
     Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
 ])
-model = Model(mesh, Material.pbr())
+model = Model(mesh, PbrMaterial())
 
 camera = Camera.perspective(1.047, 1.0, 0.1, 100.0).look_at([0.0, 0.0, 3.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
 sun = Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])
@@ -564,7 +566,7 @@ mesh.addVertices([
     try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
     try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
 ])
-let model = Model(mesh, Material.pbr())
+let model = Model(mesh, PbrMaterial())
 
 let camera = try Camera.perspective(1.047, 1.0, 0.1, 100.0).lookAt([0.0, 0.0, 3.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
 let sun = try Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])
@@ -592,7 +594,7 @@ val renderer = Renderer()
 
 val mesh = Mesh()
 mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
-val model = Model(mesh, Material.pbr())
+val model = Model(mesh, PbrMaterial())
 
 val camera = Camera.perspective(1.047f, 1.0f, 0.1f, 100.0f).lookAt(listOf(0.0f, 0.0f, 3.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
 val sun = Light.directional(listOf(0.3f, -1.0f, -0.4f), listOf(1.0f, 0.95f, 0.9f))
@@ -640,7 +642,7 @@ leaves the pass and its mesh as they were, as with `add`.
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::{Material, Mesh, Model, Pass, Scene, Vertex};
+use fragmentcolor::{Mesh, Model, Pass, PbrMaterial, Scene, Vertex};
 
 let mesh = Mesh::new();
 mesh.add_vertices([
@@ -648,7 +650,7 @@ mesh.add_vertices([
     Vertex::pbr([-0.5, -0.5, 0.0]).set(Vertex::UV0, [0.0, 0.0]),
     Vertex::pbr([0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]),
 ]);
-let model = Model::new(mesh, Material::pbr());
+let model = Model::new(mesh, PbrMaterial::new());
 
 let scene = Scene::new();
 scene.add_pass(&Pass::new("geometry"));
@@ -664,11 +666,11 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Material, Mesh, Model, Pass, Scene, Vertex } from "fragmentcolor";
+import { Mesh, Model, Pass, PbrMaterial, Scene, Vertex } from "fragmentcolor";
 
 const mesh = new Mesh();
 mesh.addVertices([ Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]), Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]), ]);
-const model = new Model(mesh, Material.pbr());
+const model = new Model(mesh, new PbrMaterial());
 
 const scene = new Scene();
 scene.addPass(new Pass("geometry"));
@@ -684,7 +686,7 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Material, Mesh, Model, Pass, Scene, Vertex
+from fragmentcolor import Mesh, Model, Pass, PbrMaterial, Scene, Vertex
 
 mesh = Mesh()
 mesh.add_vertices([
@@ -692,7 +694,7 @@ mesh.add_vertices([
     Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
     Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
 ])
-model = Model(mesh, Material.pbr())
+model = Model(mesh, PbrMaterial())
 
 scene = Scene()
 scene.add_pass(Pass("geometry"))
@@ -716,7 +718,7 @@ mesh.addVertices([
     try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
     try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
 ])
-let model = Model(mesh, Material.pbr())
+let model = Model(mesh, PbrMaterial())
 
 let scene = Scene()
 scene.addPass(Pass("geometry"))
@@ -736,7 +738,7 @@ import org.fragmentcolor.*
 
 val mesh = Mesh()
 mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
-val model = Model(mesh, Material.pbr())
+val model = Model(mesh, PbrMaterial())
 
 val scene = Scene()
 scene.addPass(Pass("geometry"))
@@ -777,7 +779,7 @@ order; user-added Models appear after.
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::{Material, Mesh, Model, Scene, Vertex};
+use fragmentcolor::{Mesh, Model, PbrMaterial, Scene, Vertex};
 
 let mesh = Mesh::new();
 mesh.add_vertices([
@@ -785,7 +787,7 @@ mesh.add_vertices([
     Vertex::pbr([-0.5, -0.5, 0.0]).set(Vertex::UV0, [0.0, 0.0]),
     Vertex::pbr([0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]),
 ]);
-let model = Model::new(mesh, Material::pbr());
+let model = Model::new(mesh, PbrMaterial::new());
 
 let scene = Scene::new();
 scene.add(&model)?;
@@ -804,11 +806,11 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Material, Mesh, Model, Scene, Vertex } from "fragmentcolor";
+import { Mesh, Model, PbrMaterial, Scene, Vertex } from "fragmentcolor";
 
 const mesh = new Mesh();
 mesh.addVertices([ Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]), Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]), ]);
-const model = new Model(mesh, Material.pbr());
+const model = new Model(mesh, new PbrMaterial());
 
 const scene = new Scene();
 scene.add(model);
@@ -825,7 +827,7 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Material, Mesh, Model, Scene, Vertex
+from fragmentcolor import Mesh, Model, PbrMaterial, Scene, Vertex
 
 mesh = Mesh()
 mesh.add_vertices([
@@ -833,7 +835,7 @@ mesh.add_vertices([
     Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
     Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
 ])
-model = Model(mesh, Material.pbr())
+model = Model(mesh, PbrMaterial())
 
 scene = Scene()
 scene.add(model)
@@ -859,7 +861,7 @@ mesh.addVertices([
     try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
     try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
 ])
-let model = Model(mesh, Material.pbr())
+let model = Model(mesh, PbrMaterial())
 
 let scene = Scene()
 try scene.add(model)
@@ -882,7 +884,7 @@ import org.fragmentcolor.*
 
 val mesh = Mesh()
 mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
-val model = Model(mesh, Material.pbr())
+val model = Model(mesh, PbrMaterial())
 
 val scene = Scene()
 scene.add(model)
@@ -1154,7 +1156,7 @@ Set the scene-wide ambient color. The PBR shader adds
 attached, so unlit faces don't read pitch-black and lit faces get a
 subtle warm/cool fill on top of direct lighting.
 
-Defaults: every Material seeded by `Material::pbr()` starts with
+Defaults: every Material seeded by `PbrMaterial::new()` starts with
 `ambient = [0.03, 0.03, 0.03]` (the dim gray the PBR shader had
 hardcoded before this knob existed). Calling `Scene::ambient` overrides
 that for every shader the scene visits today *and* for any Models added
@@ -1184,7 +1186,7 @@ Returns `Ok` with a handle to the same Scene (Arc-shared) for chaining.
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::{Light, Material, Mesh, Model, Renderer, Scene, Vertex};
+use fragmentcolor::{Light, Mesh, Model, PbrMaterial, Renderer, Scene, Vertex};
 
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([64, 64]).await?;
@@ -1199,7 +1201,7 @@ mesh.add_vertices([
 let scene = Scene::new();
 // A warm dusk ambient. It applies to every Material added below.
 scene.ambient([0.06, 0.04, 0.03])?;
-scene.add(&Model::new(mesh, Material::pbr()))?;
+scene.add(&Model::new(mesh, PbrMaterial::new()))?;
 scene.add(&Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])?)?;
 
 renderer.render(&scene, &target)?;
@@ -1212,7 +1214,7 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Light, Material, Mesh, Model, Renderer, Scene, Vertex } from "fragmentcolor";
+import { Light, Mesh, Model, PbrMaterial, Renderer, Scene, Vertex } from "fragmentcolor";
 
 const renderer = new Renderer();
 const target = await renderer.createTextureTarget([64, 64]);
@@ -1223,7 +1225,7 @@ mesh.addVertices([ Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), Vert
 const scene = new Scene();
 // A warm dusk ambient. It applies to every Material added below.
 scene.ambient([0.06, 0.04, 0.03]);
-scene.add(new Model(mesh, Material.pbr()));
+scene.add(new Model(mesh, new PbrMaterial()));
 scene.add(Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]));
 
 renderer.render(scene, target);
@@ -1236,7 +1238,7 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Light, Material, Mesh, Model, Renderer, Scene, Vertex
+from fragmentcolor import Light, Mesh, Model, PbrMaterial, Renderer, Scene, Vertex
 
 renderer = Renderer()
 target = renderer.create_texture_target([64, 64])
@@ -1251,7 +1253,7 @@ mesh.add_vertices([
 scene = Scene()
 # A warm dusk ambient. It applies to every Material added below.
 scene.ambient([0.06, 0.04, 0.03])
-scene.add(Model(mesh, Material.pbr()))
+scene.add(Model(mesh, PbrMaterial()))
 scene.add(Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]))
 
 renderer.render(scene, target)
@@ -1279,7 +1281,7 @@ mesh.addVertices([
 let scene = Scene()
 // A warm dusk ambient. It applies to every Material added below.
 try scene.ambient([0.06, 0.04, 0.03])
-try scene.add(Model(mesh, Material.pbr()))
+try scene.add(Model(mesh, PbrMaterial()))
 try scene.add(Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]))
 
 try renderer.render(scene, target)
@@ -1303,7 +1305,7 @@ mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, lis
 val scene = Scene()
 // A warm dusk ambient. It applies to every Material added below.
 scene.ambient(listOf(0.06f, 0.04f, 0.03f))
-scene.add(Model(mesh, Material.pbr()))
+scene.add(Model(mesh, PbrMaterial()))
 scene.add(Light.directional(listOf(0.3f, -1.0f, -0.4f), listOf(1.0f, 0.95f, 0.9f)))
 
 renderer.render(scene, target)
@@ -1363,7 +1365,7 @@ them through the same `set_target(...)` and use `load_previous` to compose.
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::{Material, Mesh, Model, Pass, Renderer, Scene, Vertex};
+use fragmentcolor::{Mesh, Model, Pass, PbrMaterial, Renderer, Scene, Vertex};
 
 let renderer = Renderer::new();
 
@@ -1373,7 +1375,7 @@ mesh.add_vertices([
     Vertex::pbr([-0.5, -0.5, 0.0]).set(Vertex::UV0, [0.0, 0.0]),
     Vertex::pbr([0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]),
 ]);
-let model = Model::new(mesh, Material::pbr());
+let model = Model::new(mesh, PbrMaterial::new());
 
 // A backdrop pass that clears to a soft blue before the scene's main draw.
 let backdrop = Pass::new("backdrop");
@@ -1391,13 +1393,13 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Material, Mesh, Model, Pass, Renderer, Scene, Vertex } from "fragmentcolor";
+import { Mesh, Model, Pass, PbrMaterial, Renderer, Scene, Vertex } from "fragmentcolor";
 
 const renderer = new Renderer();
 
 const mesh = new Mesh();
 mesh.addVertices([ Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]), Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]), ]);
-const model = new Model(mesh, Material.pbr());
+const model = new Model(mesh, new PbrMaterial());
 
 // A backdrop pass that clears to a soft blue before the scene's main draw.
 const backdrop = new Pass("backdrop");
@@ -1416,7 +1418,7 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Material, Mesh, Model, Pass, Renderer, Scene, Vertex
+from fragmentcolor import Mesh, Model, Pass, PbrMaterial, Renderer, Scene, Vertex
 
 renderer = Renderer()
 
@@ -1426,7 +1428,7 @@ mesh.add_vertices([
     Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
     Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
 ])
-model = Model(mesh, Material.pbr())
+model = Model(mesh, PbrMaterial())
 
 # A backdrop pass that clears to a soft blue before the scene's main draw.
 backdrop = Pass("backdrop")
@@ -1455,7 +1457,7 @@ mesh.addVertices([
     try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
     try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
 ])
-let model = Model(mesh, Material.pbr())
+let model = Model(mesh, PbrMaterial())
 
 // A backdrop pass that clears to a soft blue before the scene's main draw.
 let backdrop = Pass("backdrop")
@@ -1479,7 +1481,7 @@ val renderer = Renderer()
 
 val mesh = Mesh()
 mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
-val model = Model(mesh, Material.pbr())
+val model = Model(mesh, PbrMaterial())
 
 // A backdrop pass that clears to a soft blue before the scene's main draw.
 val backdrop = Pass("backdrop")
@@ -1858,7 +1860,7 @@ the renderer alongside whatever else the frame needs.
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::{Material, Mesh, Model, Scene, Vertex};
+use fragmentcolor::{Mesh, Model, PbrMaterial, Scene, Vertex};
 
 let mesh = Mesh::new();
 mesh.add_vertices([
@@ -1867,7 +1869,7 @@ mesh.add_vertices([
     Vertex::pbr([0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]),
 ]);
 let scene = Scene::new();
-scene.add(&Model::new(mesh, Material::pbr()))?;
+scene.add(&Model::new(mesh, PbrMaterial::new()))?;
 
 // Compose, don't clear: keep whatever the previous pass drew.
 for p in scene.list_passes() {
@@ -1882,12 +1884,12 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Material, Mesh, Model, Scene, Vertex } from "fragmentcolor";
+import { Mesh, Model, PbrMaterial, Scene, Vertex } from "fragmentcolor";
 
 const mesh = new Mesh();
 mesh.addVertices([ Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]), Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]), ]);
 const scene = new Scene();
-scene.add(new Model(mesh, Material.pbr()));
+scene.add(new Model(mesh, new PbrMaterial()));
 
 // Compose, don't clear: keep whatever the previous pass drew.
 for (const p of scene.listPasses()) { p.loadPrevious(); };
@@ -1900,7 +1902,7 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Material, Mesh, Model, Scene, Vertex
+from fragmentcolor import Mesh, Model, PbrMaterial, Scene, Vertex
 
 mesh = Mesh()
 mesh.add_vertices([
@@ -1909,7 +1911,7 @@ mesh.add_vertices([
     Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
 ])
 scene = Scene()
-scene.add(Model(mesh, Material.pbr()))
+scene.add(Model(mesh, PbrMaterial()))
 
 # Compose, don't clear: keep whatever the previous pass drew.
 for p in scene.list_passes():
@@ -1932,7 +1934,7 @@ mesh.addVertices([
     try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
 ])
 let scene = Scene()
-try scene.add(Model(mesh, Material.pbr()))
+try scene.add(Model(mesh, PbrMaterial()))
 
 // Compose, don't clear: keep whatever the previous pass drew.
 for p in scene.listPasses() {
@@ -1952,7 +1954,7 @@ import org.fragmentcolor.*
 val mesh = Mesh()
 mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
 val scene = Scene()
-scene.add(Model(mesh, Material.pbr()))
+scene.add(Model(mesh, PbrMaterial()))
 
 // Compose, don't clear: keep whatever the previous pass drew.
 for (p in scene.listPasses()) {
@@ -2110,7 +2112,7 @@ and [`set_default_light`](/api/scene/scene#set_default_light).
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::{Material, Mesh, Model, Scene, Vertex};
+use fragmentcolor::{Mesh, Model, PbrMaterial, Scene, Vertex};
 
 let mesh = Mesh::new();
 mesh.add_vertices([
@@ -2119,7 +2121,7 @@ mesh.add_vertices([
     Vertex::pbr([0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]),
 ]);
 let scene = Scene::new();
-scene.add(&Model::new(mesh, Material::pbr()))?;
+scene.add(&Model::new(mesh, PbrMaterial::new()))?;
 
 // The host overrides every uniform, so suppress FC's stock camera + light.
 scene.no_defaults();
@@ -2135,12 +2137,12 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Material, Mesh, Model, Scene, Vertex } from "fragmentcolor";
+import { Mesh, Model, PbrMaterial, Scene, Vertex } from "fragmentcolor";
 
 const mesh = new Mesh();
 mesh.addVertices([ Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]), Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]), ]);
 const scene = new Scene();
-scene.add(new Model(mesh, Material.pbr()));
+scene.add(new Model(mesh, new PbrMaterial()));
 
 // The host overrides every uniform, so suppress FC's stock camera + light.
 scene.noDefaults();
@@ -2154,7 +2156,7 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Material, Mesh, Model, Scene, Vertex
+from fragmentcolor import Mesh, Model, PbrMaterial, Scene, Vertex
 
 mesh = Mesh()
 mesh.add_vertices([
@@ -2163,7 +2165,7 @@ mesh.add_vertices([
     Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
 ])
 scene = Scene()
-scene.add(Model(mesh, Material.pbr()))
+scene.add(Model(mesh, PbrMaterial()))
 
 # The host overrides every uniform, so suppress FC's stock camera + light.
 scene.no_defaults()
@@ -2187,7 +2189,7 @@ mesh.addVertices([
     try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
 ])
 let scene = Scene()
-try scene.add(Model(mesh, Material.pbr()))
+try scene.add(Model(mesh, PbrMaterial()))
 
 // The host overrides every uniform, so suppress FC's stock camera + light.
 scene.noDefaults()
@@ -2208,7 +2210,7 @@ import org.fragmentcolor.*
 val mesh = Mesh()
 mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
 val scene = Scene()
-scene.add(Model(mesh, Material.pbr()))
+scene.add(Model(mesh, PbrMaterial()))
 
 // The host overrides every uniform, so suppress FC's stock camera + light.
 scene.noDefaults()
@@ -2245,7 +2247,7 @@ keep injection on but supply your own camera, use
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::{Material, Mesh, Model, Scene, Vertex};
+use fragmentcolor::{Mesh, Model, PbrMaterial, Scene, Vertex};
 
 let mesh = Mesh::new();
 mesh.add_vertices([
@@ -2254,7 +2256,7 @@ mesh.add_vertices([
     Vertex::pbr([0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]),
 ]);
 let scene = Scene::new();
-scene.add(&Model::new(mesh, Material::pbr()))?;
+scene.add(&Model::new(mesh, PbrMaterial::new()))?;
 
 scene.no_default_camera();
 `}
@@ -2266,12 +2268,12 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Material, Mesh, Model, Scene, Vertex } from "fragmentcolor";
+import { Mesh, Model, PbrMaterial, Scene, Vertex } from "fragmentcolor";
 
 const mesh = new Mesh();
 mesh.addVertices([ Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]), Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]), ]);
 const scene = new Scene();
-scene.add(new Model(mesh, Material.pbr()));
+scene.add(new Model(mesh, new PbrMaterial()));
 
 scene.noDefaultCamera();
 `}
@@ -2283,7 +2285,7 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Material, Mesh, Model, Scene, Vertex
+from fragmentcolor import Mesh, Model, PbrMaterial, Scene, Vertex
 
 mesh = Mesh()
 mesh.add_vertices([
@@ -2292,7 +2294,7 @@ mesh.add_vertices([
     Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
 ])
 scene = Scene()
-scene.add(Model(mesh, Material.pbr()))
+scene.add(Model(mesh, PbrMaterial()))
 
 scene.no_default_camera()
 `}
@@ -2313,7 +2315,7 @@ mesh.addVertices([
     try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
 ])
 let scene = Scene()
-try scene.add(Model(mesh, Material.pbr()))
+try scene.add(Model(mesh, PbrMaterial()))
 
 scene.noDefaultCamera()
 `}
@@ -2330,7 +2332,7 @@ import org.fragmentcolor.*
 val mesh = Mesh()
 mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
 val scene = Scene()
-scene.add(Model(mesh, Material.pbr()))
+scene.add(Model(mesh, PbrMaterial()))
 
 scene.noDefaultCamera()
 `}
@@ -2363,7 +2365,7 @@ keep injection on but supply your own light, use
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::{Material, Mesh, Model, Scene, Vertex};
+use fragmentcolor::{Mesh, Model, PbrMaterial, Scene, Vertex};
 
 let mesh = Mesh::new();
 mesh.add_vertices([
@@ -2372,7 +2374,7 @@ mesh.add_vertices([
     Vertex::pbr([0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]),
 ]);
 let scene = Scene::new();
-scene.add(&Model::new(mesh, Material::pbr()))?;
+scene.add(&Model::new(mesh, PbrMaterial::new()))?;
 
 scene.no_default_light();
 `}
@@ -2384,12 +2386,12 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Material, Mesh, Model, Scene, Vertex } from "fragmentcolor";
+import { Mesh, Model, PbrMaterial, Scene, Vertex } from "fragmentcolor";
 
 const mesh = new Mesh();
 mesh.addVertices([ Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]), Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]), ]);
 const scene = new Scene();
-scene.add(new Model(mesh, Material.pbr()));
+scene.add(new Model(mesh, new PbrMaterial()));
 
 scene.noDefaultLight();
 `}
@@ -2401,7 +2403,7 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Material, Mesh, Model, Scene, Vertex
+from fragmentcolor import Mesh, Model, PbrMaterial, Scene, Vertex
 
 mesh = Mesh()
 mesh.add_vertices([
@@ -2410,7 +2412,7 @@ mesh.add_vertices([
     Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
 ])
 scene = Scene()
-scene.add(Model(mesh, Material.pbr()))
+scene.add(Model(mesh, PbrMaterial()))
 
 scene.no_default_light()
 `}
@@ -2431,7 +2433,7 @@ mesh.addVertices([
     try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
 ])
 let scene = Scene()
-try scene.add(Model(mesh, Material.pbr()))
+try scene.add(Model(mesh, PbrMaterial()))
 
 scene.noDefaultLight()
 `}
@@ -2448,7 +2450,7 @@ import org.fragmentcolor.*
 val mesh = Mesh()
 mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
 val scene = Scene()
-scene.add(Model(mesh, Material.pbr()))
+scene.add(Model(mesh, PbrMaterial()))
 
 scene.noDefaultLight()
 `}
@@ -2482,7 +2484,7 @@ the camera you pass.
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::{Camera, Material, Mesh, Model, Scene, Vertex};
+use fragmentcolor::{Camera, Mesh, Model, PbrMaterial, Scene, Vertex};
 
 let mesh = Mesh::new();
 mesh.add_vertices([
@@ -2491,7 +2493,7 @@ mesh.add_vertices([
     Vertex::pbr([0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]),
 ]);
 let scene = Scene::new();
-scene.add(&Model::new(mesh, Material::pbr()))?;
+scene.add(&Model::new(mesh, PbrMaterial::new()))?;
 
 let camera = Camera::perspective(1.047, 16.0 / 9.0, 0.1, 100.0)?
     .look_at([0.0, 1.5, 4.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])?;
@@ -2505,12 +2507,12 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Camera, Material, Mesh, Model, Scene, Vertex } from "fragmentcolor";
+import { Camera, Mesh, Model, PbrMaterial, Scene, Vertex } from "fragmentcolor";
 
 const mesh = new Mesh();
 mesh.addVertices([ Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]), Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]), ]);
 const scene = new Scene();
-scene.add(new Model(mesh, Material.pbr()));
+scene.add(new Model(mesh, new PbrMaterial()));
 
 const camera = Camera.perspective(1.047, 16.0 / 9.0, 0.1, 100.0).lookAt([0.0, 1.5, 4.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
 scene.setDefaultCamera(camera);
@@ -2523,7 +2525,7 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Camera, Material, Mesh, Model, Scene, Vertex
+from fragmentcolor import Camera, Mesh, Model, PbrMaterial, Scene, Vertex
 
 mesh = Mesh()
 mesh.add_vertices([
@@ -2532,7 +2534,7 @@ mesh.add_vertices([
     Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
 ])
 scene = Scene()
-scene.add(Model(mesh, Material.pbr()))
+scene.add(Model(mesh, PbrMaterial()))
 
 camera = Camera.perspective(1.047, 16.0 / 9.0, 0.1, 100.0).look_at([0.0, 1.5, 4.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
 scene.set_default_camera(camera)
@@ -2554,7 +2556,7 @@ mesh.addVertices([
     try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
 ])
 let scene = Scene()
-try scene.add(Model(mesh, Material.pbr()))
+try scene.add(Model(mesh, PbrMaterial()))
 
 let camera = try Camera.perspective(1.047, 16.0 / 9.0, 0.1, 100.0).lookAt([0.0, 1.5, 4.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
 scene.setDefaultCamera(camera)
@@ -2572,7 +2574,7 @@ import org.fragmentcolor.*
 val mesh = Mesh()
 mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
 val scene = Scene()
-scene.add(Model(mesh, Material.pbr()))
+scene.add(Model(mesh, PbrMaterial()))
 
 val camera = Camera.perspective(1.047f, 16.0f / 9.0f, 0.1f, 100.0f).lookAt(listOf(0.0f, 1.5f, 4.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
 scene.setDefaultCamera(camera)
@@ -2607,7 +2609,7 @@ the light you pass.
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::{Light, Material, Mesh, Model, Scene, Vertex};
+use fragmentcolor::{Light, Mesh, Model, PbrMaterial, Scene, Vertex};
 
 let mesh = Mesh::new();
 mesh.add_vertices([
@@ -2616,7 +2618,7 @@ mesh.add_vertices([
     Vertex::pbr([0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]),
 ]);
 let scene = Scene::new();
-scene.add(&Model::new(mesh, Material::pbr()))?;
+scene.add(&Model::new(mesh, PbrMaterial::new()))?;
 
 let key = Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])?;
 scene.set_default_light(&key);
@@ -2629,12 +2631,12 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Light, Material, Mesh, Model, Scene, Vertex } from "fragmentcolor";
+import { Light, Mesh, Model, PbrMaterial, Scene, Vertex } from "fragmentcolor";
 
 const mesh = new Mesh();
 mesh.addVertices([ Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]), Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]), ]);
 const scene = new Scene();
-scene.add(new Model(mesh, Material.pbr()));
+scene.add(new Model(mesh, new PbrMaterial()));
 
 const key = Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]);
 scene.setDefaultLight(key);
@@ -2647,7 +2649,7 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Light, Material, Mesh, Model, Scene, Vertex
+from fragmentcolor import Light, Mesh, Model, PbrMaterial, Scene, Vertex
 
 mesh = Mesh()
 mesh.add_vertices([
@@ -2656,7 +2658,7 @@ mesh.add_vertices([
     Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
 ])
 scene = Scene()
-scene.add(Model(mesh, Material.pbr()))
+scene.add(Model(mesh, PbrMaterial()))
 
 key = Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])
 scene.set_default_light(key)
@@ -2678,7 +2680,7 @@ mesh.addVertices([
     try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
 ])
 let scene = Scene()
-try scene.add(Model(mesh, Material.pbr()))
+try scene.add(Model(mesh, PbrMaterial()))
 
 let key = try Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])
 scene.setDefaultLight(key)
@@ -2696,7 +2698,7 @@ import org.fragmentcolor.*
 val mesh = Mesh()
 mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
 val scene = Scene()
-scene.add(Model(mesh, Material.pbr()))
+scene.add(Model(mesh, PbrMaterial()))
 
 val key = Light.directional(listOf(0.3f, -1.0f, -0.4f), listOf(1.0f, 0.95f, 0.9f))
 scene.setDefaultLight(key)

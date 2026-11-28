@@ -8,10 +8,10 @@ use pyo3::prelude::*;
 use wasm_bindgen::prelude::*;
 
 #[cfg_attr(wasm, wasm_bindgen)]
-#[cfg_attr(python, pyclass(eq, eq_int, from_py_object))]
+#[cfg_attr(python, pyclass(eq, eq_int, from_py_object, module = "fragmentcolor"))]
 #[cfg_attr(mobile, derive(uniffi::Enum))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[lsp_doc("docs/api/errors/error_kind/error_kind.md")]
+#[lsp_doc("docs/api/hidden/errors/error_kind/error_kind.md")]
 pub enum ErrorKind {
     /// The GPU refused a call that breaks a rule of the API.
     Validation,

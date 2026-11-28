@@ -4,10 +4,11 @@ Scale the Model by per-axis `factor` (in local space). Post-multiplies the
 current transform by a scale matrix, so the Model grows or shrinks around
 its own origin without sliding through space.
 
-Use uniform scales (`[s, s, s]`) when possible. Non-uniform scale breaks
-the cheap normal-transform path the default PBR shader uses, so a stretched
-Model will shade slightly off. For a correct non-uniform-scale normal, use
-`Material::custom` with a shader that ships the explicit cofactor matrix.
+Unequal factors are fine: the built-in materials light a stretched Model
+the way its surfaces face. A negative factor mirrors the Model, which turns
+its faces' winding around on screen. A single-sided material then culls the
+outer faces, so give a mirrored Model a double-sided material, which lights
+them as the front.
 
 A factor that is NaN or an infinity returns `ModelError::NotFinite`, which
 names the call and the item, and the Model keeps its size. The other
@@ -26,7 +27,7 @@ keeps its size. JavaScript and Python raise it as `InvalidInputError`, too.
 
 ```rust
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Material, Mesh, Model, Renderer, Vertex};
+use fragmentcolor::{Mesh, Model, PbrMaterial, Renderer, Vertex};
 
 let renderer = Renderer::new();
 let mesh = Mesh::new();
@@ -36,7 +37,7 @@ mesh.add_vertices([
     Vertex::pbr([0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]),
 ]);
 
-let model = Model::new(mesh, Material::pbr());
+let model = Model::new(mesh, PbrMaterial::new());
 model.scale([2.0, 2.0, 2.0])?;
 # Ok(())
 # }

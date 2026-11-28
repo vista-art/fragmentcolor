@@ -10,8 +10,8 @@ use std::sync::Arc;
 
 #[derive(Debug)]
 pub(crate) struct PbrDefaults {
-    /// Five views the renderer binds to the PBR-named slots
-    /// when a Material::pbr Shader doesn't have a user-supplied texture for
+    /// Five views the renderer binds to the PBR-named slots, and `ramp_map`,
+    /// when a material's shader has no user-supplied texture for
     /// the slot. The byte payload is chosen so `factor * sample = factor`
     /// (binding the default is equivalent to "no map").
     pub(crate) base_color: wgpu::TextureView,
@@ -22,7 +22,8 @@ pub(crate) struct PbrDefaults {
 }
 
 impl PbrDefaults {
-    /// Whether `uniform_name` is a PBR map slot, which takes a default when no texture is set.
+    /// Whether `uniform_name` is a map slot of a built-in material shader, PBR, unlit or toon,
+    /// which takes a default when no texture is set.
     pub(in crate::core::renderer) fn has_slot(uniform_name: &str) -> bool {
         matches!(
             uniform_name,
@@ -31,6 +32,7 @@ impl PbrDefaults {
                 | "normal_map"
                 | "occlusion_map"
                 | "emissive_map"
+                | "ramp_map"
         )
     }
 
@@ -41,6 +43,8 @@ impl PbrDefaults {
             "normal_map" => Some(&self.normal),
             "occlusion_map" => Some(&self.occlusion),
             "emissive_map" => Some(&self.emissive),
+            // The toon shader reads a ramp one texel wide as no ramp, whatever its color.
+            "ramp_map" => Some(&self.base_color),
             _ => None,
         }
     }
@@ -49,7 +53,7 @@ impl PbrDefaults {
 impl RenderContext {
     /// Borrow the lazy 1x1 PBR fallback textures, creating them on first use.
     /// Used to fill the default PBR shader's texture-map bindings when a
-    /// `Material::pbr` doesn't supply its own texture for the slot. Pure
+    /// `PbrMaterial`, or a `ToonMaterial`, doesn't supply its own texture for the slot. Pure
     /// sync calls against the wgpu device, with no FC texture registry
     /// and no async hop.
     pub(super) fn pbr_defaults(&self) -> Arc<PbrDefaults> {

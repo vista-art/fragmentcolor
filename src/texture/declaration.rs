@@ -8,7 +8,6 @@ use crate::texture::TextureId;
 
 /// Image-view dimension. Mirrors `naga::ImageDimension`.
 #[cfg_attr(python, pyclass(from_py_object))]
-#[cfg_attr(mobile, derive(uniffi::Enum))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TextureDim {
     D1,
@@ -33,7 +32,6 @@ impl TextureDim {
 /// variants. Naga's abstract numeric variants are folded into `Float` since they
 /// cannot reach the runtime backends.
 #[cfg_attr(python, pyclass(from_py_object))]
-#[cfg_attr(mobile, derive(uniffi::Enum))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TextureScalarKind {
     Sint,
@@ -61,7 +59,6 @@ impl TextureScalarKind {
 ///
 /// Every variant binds as the `wgpu::TextureFormat` of the same name.
 #[cfg_attr(python, pyclass(from_py_object))]
-#[cfg_attr(mobile, derive(uniffi::Enum))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TextureStorageFormat {
     R8Unorm,
@@ -215,7 +212,6 @@ impl TextureStorageFormat {
 
 /// Storage-texture access flags. Boolean mirror of the `naga::StorageAccess` bitflags.
 #[cfg_attr(python, pyclass(from_py_object))]
-#[cfg_attr(mobile, derive(uniffi::Record))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TextureStorageAccess {
     pub load: bool,
@@ -237,7 +233,6 @@ impl TextureStorageAccess {
 
 /// Image sub-class. Mirrors `naga::ImageClass`.
 #[cfg_attr(python, pyclass(from_py_object))]
-#[cfg_attr(mobile, derive(uniffi::Enum))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TextureClass {
     Sampled {
@@ -274,7 +269,6 @@ impl TextureClass {
 
 // Metadata for textures parsed from shader source; users do not construct directly.
 #[cfg_attr(python, pyo3::pyclass(from_py_object))]
-#[cfg_attr(mobile, derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct TextureMeta {
     pub id: TextureId,

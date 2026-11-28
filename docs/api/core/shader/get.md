@@ -9,8 +9,18 @@ Only a storage-buffer or push-constant root takes its whole bytes.
 
 An `f16` uniform reads back as `f32` numbers that hold the value rounded to `f16`, so `0.1` reads back as `0.0999755859375`.
 
-A texture slot reads back the id of what it binds. A `Material` map's slot
+A texture slot reads back the `TextureId` of what it binds. A `Material` map's slot
 holds the map's id from the setter call on, before any `Renderer` loads it.
+
+A sampler slot reads back a `SamplerInfo`, whose `comparison` says whether the
+slot is a `sampler_comparison`. A sampler binds on its own, so `set` refuses its key.
+
+Rust names the type it reads into, as in `let res: [f32; 2] = shader.get("resolution")?`.
+JavaScript, Python, Swift and Kotlin return the plain value: a number or a bool
+for a scalar, a list of numbers for a vector or a matrix, column by column (a
+typed array in JavaScript), a `TextureId` for a texture, a `SamplerInfo` for a
+sampler, and bytes for a struct, array or buffer root. Swift and Kotlin type it
+as `Any`, which `as?` or `as` narrows, as in `try shader.get("resolution") as? [Float]`.
 
 ## Example
 

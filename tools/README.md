@@ -29,4 +29,9 @@ dispatcher at the root, which lists everything when called without arguments:
 | `bump_version` | Bumps the crate version across every manifest and badge |
 
 `js/` holds the Node helpers behind `sync_js` and the docs dependency gate.
+`shell/` holds the bash functions the tools source, such as `stop_tree`.
 The Rust modules that `build.rs` includes stay in `scripts/`.
+
+The bash tools run on Linux CI with bash 5 and on a Mac with bash 3.2. In a UTF-8 locale,
+bash 3.2 reads a non-ASCII byte right after `$NAME` as part of the name, so `"$PORT…"` fails
+under `set -u` where `"${PORT}…"` works.

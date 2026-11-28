@@ -5,6 +5,36 @@ package org.fragmentcolor
 // List<Float>; these take Double, FloatArray and DoubleArray as well,
 // and a 4x4 matrix as its four columns.
 
+/**
+ * A Model that draws `mesh` with a PbrMaterial, an UnlitMaterial, a ToonMaterial or a Shader,
+ * including what another Model's [material] returned, as JavaScript and Python take it.
+ * Throws [IllegalArgumentException] for any other object, as JavaScript and Python
+ * throw a `TypeError` for an argument of the wrong type.
+ */
+fun Model(mesh: Mesh, material: Any): Model {
+    val handle = when (material) {
+        is PbrMaterial -> MaterialHandle.Pbr(material)
+        is UnlitMaterial -> MaterialHandle.Unlit(material)
+        is ToonMaterial -> MaterialHandle.Toon(material)
+        is Shader -> MaterialHandle.Custom(material)
+        else -> throw IllegalArgumentException(
+            "Model: expected a PbrMaterial, an UnlitMaterial, a ToonMaterial or a Shader, got ${material::class.simpleName}",
+        )
+    }
+    return Model(mesh, handle)
+}
+
+/**
+ * What the Model draws with: the PbrMaterial, UnlitMaterial, ToonMaterial or Shader itself,
+ * as JavaScript and Python return it. Narrow it with `is` or `as`, as in `model.material() as PbrMaterial`.
+ */
+fun Model.material(): Any = when (val handle = materialHandle()) {
+    is MaterialHandle.Pbr -> handle.v1
+    is MaterialHandle.Unlit -> handle.v1
+    is MaterialHandle.Toon -> handle.v1
+    is MaterialHandle.Custom -> handle.v1
+}
+
 /** Replace the model's transform with a column-major 4x4 matrix of 16 numbers. */
 fun Model.setTransform(matrix: FloatArray) {
     setTransform(matrix.toList())
@@ -37,11 +67,11 @@ fun Model.setTransform(columns: List<List<Double>>) {
 /** A 4x4 matrix from its four columns, flat, column after column, or the error that names the column. */
 private fun flattenColumns(columns: List<List<Float>>, label: String): List<Float> {
     if (columns.size != 4) {
-        throw FragmentColorException.Render("$label takes 4 columns of 4 numbers, got ${columns.size} columns")
+        throw FragmentColorException.InvalidInput("$label takes 4 columns of 4 numbers, got ${columns.size} columns")
     }
     columns.forEachIndexed { index, column ->
         if (column.size != 4) {
-            throw FragmentColorException.Render("$label: column $index takes 4 numbers, got ${column.size}")
+            throw FragmentColorException.InvalidInput("$label: column $index takes 4 numbers, got ${column.size}")
         }
     }
     return columns.flatten()

@@ -10,8 +10,9 @@ use crate::core::renderer::pipelines::layout::{
     describe_texture, find_entry, pick_source, plan_layout,
 };
 use crate::core::renderer::*;
+use crate::errors::Classify;
 use crate::texture::{Registration, Texture, TextureObject};
-use crate::{Material, Mesh, Shader, ShaderError, Vertex};
+use crate::{Mesh, PbrMaterial, Shader, ShaderError, Vertex};
 use std::sync::atomic::Ordering;
 
 const VERTEX: &str = r#"
@@ -614,9 +615,9 @@ fn material_maps_check_their_textures() {
             .create_depth_texture([4, 4])
             .await
             .expect("depth texture");
-        let material = Material::pbr()
-            .base_color_texture(&depth)
-            .expect("base color map");
+        let material = PbrMaterial::new();
+        let map = material.base_color_map().texture(&depth);
+        map.expect("base color map");
 
         let error = refuse(&renderer, &context, &uncaptured, material.shader()).expect("refused");
 

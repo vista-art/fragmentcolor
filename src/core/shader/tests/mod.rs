@@ -154,7 +154,7 @@ const SHADER: &str = r#"
 
         @vertex
         fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput {
-            let x = f32(i32(in_vertex_index) - 1);
+            let x = f32(1 - i32(in_vertex_index));
             let y = f32(i32(in_vertex_index & 1u) * 2 - 1);
             return VertexOutput(vec4<f32>(x, y, 0.0, 1.0));
         }
@@ -313,6 +313,30 @@ fn parses_texture_and_sampler_uniforms_meta() {
         }
         _ => panic!("samp is not a sampler uniform"),
     }
+}
+
+// Story: `get` reads a sampler slot into the `SamplerInfo` every binding returns,
+// and a key that holds no sampler into a plain one.
+#[test]
+fn reads_sampler_info() {
+    use crate::texture::SamplerInfo;
+    let wgsl = r#"
+@group(0) @binding(0) var plain: sampler;
+@group(0) @binding(1) var shadow: sampler_comparison;
+@group(0) @binding(2) var<uniform> gain: f32;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+  return vec4f(p[i], 0., 1.);
+}
+@fragment fn main() -> @location(0) vec4<f32> { return vec4f(gain); }
+        "#;
+    let shader = Shader::new(wgsl).expect("shader");
+    let plain: SamplerInfo = shader.get("plain").expect("plain");
+    let shadow: SamplerInfo = shader.get("shadow").expect("shadow");
+    let gain: SamplerInfo = shader.get("gain").expect("gain");
+    assert_eq!(plain, SamplerInfo { comparison: false });
+    assert_eq!(shadow, SamplerInfo { comparison: true });
+    assert_eq!(gain, SamplerInfo { comparison: false });
 }
 
 // Story: A simple read-only storage buffer with a single vec4 field should be parsed,

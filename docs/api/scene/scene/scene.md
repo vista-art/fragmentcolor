@@ -99,7 +99,7 @@ To read the depth in a later pass, create a texture with `Renderer::create_depth
 
 ```rust
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Camera, Light, Material, Mesh, Model, Renderer, Scene, Vertex};
+use fragmentcolor::{Camera, Light, Mesh, Model, PbrMaterial, Renderer, Scene, Vertex};
 
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([256, 256]).await?;
@@ -110,7 +110,7 @@ mesh.add_vertices([
     Vertex::pbr([-0.5, -0.5, 0.0]).set(Vertex::UV0, [0.0, 0.0]),
     Vertex::pbr([0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]),
 ]);
-let model = Model::new(mesh, Material::pbr().base_color([0.8, 0.3, 0.2, 1.0])?);
+let model = Model::new(mesh, PbrMaterial::new().base_color([0.8, 0.3, 0.2, 1.0])?);
 
 let camera = Camera::perspective(1.047, 1.0, 0.1, 100.0)?
     .look_at([0.0, 0.0, 3.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])?;

@@ -5,7 +5,7 @@ Set the scene-wide ambient color. The PBR shader adds
 attached, so unlit faces don't read pitch-black and lit faces get a
 subtle warm/cool fill on top of direct lighting.
 
-Defaults: every Material seeded by `Material::pbr()` starts with
+Defaults: every Material seeded by `PbrMaterial::new()` starts with
 `ambient = [0.03, 0.03, 0.03]` (the dim gray the PBR shader had
 hardcoded before this knob existed). Calling `Scene::ambient` overrides
 that for every shader the scene visits today *and* for any Models added
@@ -32,7 +32,7 @@ Returns `Ok` with a handle to the same Scene (Arc-shared) for chaining.
 
 ```rust
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Light, Material, Mesh, Model, Renderer, Scene, Vertex};
+use fragmentcolor::{Light, Mesh, Model, PbrMaterial, Renderer, Scene, Vertex};
 
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([64, 64]).await?;
@@ -47,7 +47,7 @@ mesh.add_vertices([
 let scene = Scene::new();
 // A warm dusk ambient. It applies to every Material added below.
 scene.ambient([0.06, 0.04, 0.03])?;
-scene.add(&Model::new(mesh, Material::pbr()))?;
+scene.add(&Model::new(mesh, PbrMaterial::new()))?;
 scene.add(&Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])?)?;
 
 renderer.render(&scene, &target)?;

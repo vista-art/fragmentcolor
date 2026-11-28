@@ -4,7 +4,7 @@ description: "`Light` is the unified type covering the three glTF `KHR_lights_pu
 category: scene
 categoryLabel: Scene
 sidebar:
-  order: 5
+  order: 8
 ---
 
 import { Code, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
@@ -70,7 +70,7 @@ shaders it reached draw without it.
 
 ## Cost model
 
-`Material::pbr` shades each fragment with the lights that reach it. At
+`PbrMaterial` shades each fragment with the lights that reach it. At
 each render the renderer sorts every light with a finite `range` into a
 grid of clusters over the pass's camera view, and a fragment loops over
 the lights of its own cluster. The cost of a fragment grows with the
@@ -115,9 +115,9 @@ lights:
   Material as the lighting model and the Passes as views into the same
   lit world.
 
-For independent lighting setups, build a separate Material per scene
-(each `Material::pbr()` makes a new shader with its own list) or pass
-your own shader to `Material::custom`. One scene with one Material
+For independent lighting setups, build a separate material per scene
+(each `PbrMaterial::new()` makes a new shader with its own list) or draw
+with a shader of your own. One scene with one material
 covers the typical case, and the shared list is what lets
 `Scene::add(&light)` reach every Pass that renders the Scene.
 
@@ -275,7 +275,7 @@ renderer skip it everywhere else. Without one, every fragment pays for it.
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::{Camera, Light, Material, Mesh, Model, Pass, Renderer, Vertex};
+use fragmentcolor::{Camera, Light, Mesh, Model, Pass, PbrMaterial, Renderer, Vertex};
 
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([64, 64]).await?;
@@ -295,7 +295,7 @@ let bulb = Light::point([0.0, 0.5, 1.0], [1.0, 0.95, 0.8])?.set_intensity(15.0)?
 bulb.set_range(3.0)?;
 
 let pass = Pass::new("lamp");
-pass.add(&Model::new(wall, Material::pbr()))?;
+pass.add(&Model::new(wall, PbrMaterial::new()))?;
 pass.add(&camera)?;
 pass.add(&bulb)?;
 renderer.render(&pass, &target)?;
@@ -308,7 +308,7 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Camera, Light, Material, Mesh, Model, Pass, Renderer, Vertex } from "fragmentcolor";
+import { Camera, Light, Mesh, Model, Pass, PbrMaterial, Renderer, Vertex } from "fragmentcolor";
 
 const renderer = new Renderer();
 const target = await renderer.createTextureTarget([64, 64]);
@@ -322,7 +322,7 @@ const bulb = Light.point([0.0, 0.5, 1.0], [1.0, 0.95, 0.8]).setIntensity(15.0);
 bulb.setRange(3.0);
 
 const pass = new Pass("lamp");
-pass.add(new Model(wall, Material.pbr()));
+pass.add(new Model(wall, new PbrMaterial()));
 pass.add(camera);
 pass.add(bulb);
 renderer.render(pass, target);
@@ -336,7 +336,7 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Camera, Light, Material, Mesh, Model, Pass, Renderer, Vertex
+from fragmentcolor import Camera, Light, Mesh, Model, Pass, PbrMaterial, Renderer, Vertex
 
 renderer = Renderer()
 target = renderer.create_texture_target([64, 64])
@@ -355,7 +355,7 @@ bulb = Light.point([0.0, 0.5, 1.0], [1.0, 0.95, 0.8]).set_intensity(15.0)
 bulb.set_range(3.0)
 
 rpass = Pass("lamp")
-rpass.add(Model(wall, Material.pbr()))
+rpass.add(Model(wall, PbrMaterial()))
 rpass.add(camera)
 rpass.add(bulb)
 renderer.render(rpass, target)
@@ -388,7 +388,7 @@ let bulb = try Light.point([0.0, 0.5, 1.0], [1.0, 0.95, 0.8]).setIntensity(15.0)
 try bulb.setRange(3.0)
 
 let pass = Pass("lamp")
-try pass.add(Model(wall, Material.pbr()))
+try pass.add(Model(wall, PbrMaterial()))
 try pass.add(camera)
 try pass.add(bulb)
 try renderer.render(pass, target)
@@ -415,7 +415,7 @@ val bulb = Light.point(listOf(0.0f, 0.5f, 1.0f), listOf(1.0f, 0.95f, 0.8f)).setI
 bulb.setRange(3.0f)
 
 val pass = Pass("lamp")
-pass.add(Model(wall, Material.pbr()))
+pass.add(Model(wall, PbrMaterial()))
 pass.add(camera)
 pass.add(bulb)
 renderer.render(pass, target)

@@ -1,5 +1,9 @@
 //! The errors `Size`, `ScreenRegion` and `Color` refuse their input with.
 
+#[cfg(python)]
+use crate::errors::raise_error;
+#[cfg(any(python, wasm, mobile, test))]
+use crate::errors::{Classify, ErrorClass};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -9,17 +13,25 @@ pub enum SizeError {
     Invalid(String),
 }
 
-#[cfg(any(python, wasm, test))]
-impl crate::errors::Classify for SizeError {
-    fn classify(&self) -> crate::errors::ErrorClass {
-        crate::errors::ErrorClass::InvalidInput
+#[cfg(any(python, wasm))]
+impl SizeError {
+    /// This error as a binding raises it for `call`, with the call's name first.
+    pub(crate) fn name(self, call: &str) -> Self {
+        Self::Invalid(format!("{call}: {self}"))
+    }
+}
+
+#[cfg(any(python, wasm, mobile, test))]
+impl Classify for SizeError {
+    fn classify(&self) -> ErrorClass {
+        ErrorClass::InvalidInput
     }
 }
 
 #[cfg(python)]
 impl From<SizeError> for pyo3::PyErr {
     fn from(error: SizeError) -> Self {
-        crate::errors::raise_error(&error)
+        raise_error(&error)
     }
 }
 
@@ -54,17 +66,25 @@ pub enum ScreenRegionError {
     },
 }
 
-#[cfg(any(python, wasm, test))]
-impl crate::errors::Classify for ScreenRegionError {
-    fn classify(&self) -> crate::errors::ErrorClass {
-        crate::errors::ErrorClass::InvalidInput
+#[cfg(any(python, wasm, mobile, test))]
+impl ScreenRegionError {
+    /// This error as a binding raises it for `call`, with the call's name first.
+    pub(crate) fn name(self, call: &str) -> Self {
+        Self::Invalid(format!("{call}: {self}"))
+    }
+}
+
+#[cfg(any(python, wasm, mobile, test))]
+impl Classify for ScreenRegionError {
+    fn classify(&self) -> ErrorClass {
+        ErrorClass::InvalidInput
     }
 }
 
 #[cfg(python)]
 impl From<ScreenRegionError> for pyo3::PyErr {
     fn from(error: ScreenRegionError) -> Self {
-        crate::errors::raise_error(&error)
+        raise_error(&error)
     }
 }
 
@@ -97,16 +117,16 @@ impl From<CssFailure<'_>> for ColorError {
     }
 }
 
-#[cfg(any(python, wasm, test))]
-impl crate::errors::Classify for ColorError {
-    fn classify(&self) -> crate::errors::ErrorClass {
-        crate::errors::ErrorClass::InvalidInput
+#[cfg(any(python, wasm, mobile, test))]
+impl Classify for ColorError {
+    fn classify(&self) -> ErrorClass {
+        ErrorClass::InvalidInput
     }
 }
 
 #[cfg(python)]
 impl From<ColorError> for pyo3::PyErr {
     fn from(error: ColorError) -> Self {
-        crate::errors::raise_error(&error)
+        raise_error(&error)
     }
 }

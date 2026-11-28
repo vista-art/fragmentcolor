@@ -5,20 +5,22 @@ package org.fragmentcolor
 // and with_rows. The uniffi record is plain fields, so these functions
 // reproduce the Rust call shape, as Region+Extensions.swift does on Swift.
 
-@Deprecated("Use TextureRegion", ReplaceWith("TextureRegion"))
-typealias TextureRegionMobile = TextureRegion
-
 /**
  * A texture region from `[width, height]`, `[x, y, width, height]`
  * or `[x, y, z, width, height, depth]`, as Rust's `TextureRegion::from` reads them.
  * Throws [FragmentColorException] for any other length.
  */
-fun TextureRegion.Companion.from(rect: List<UInt>): TextureRegion {
+fun TextureRegion.Companion.from(rect: List<UInt>): TextureRegion = readTextureRegion(rect, "TextureRegion.from")
+
+/** The region [rect] describes, for [call], which an error for any other length names. */
+internal fun readTextureRegion(rect: List<UInt>, call: String): TextureRegion {
     val (origin, size) = when (rect.size) {
         2 -> listOf(0u, 0u, 0u) to listOf(rect[0], rect[1], 1u)
         4 -> listOf(rect[0], rect[1], 0u) to listOf(rect[2], rect[3], 1u)
         6 -> rect.subList(0, 3) to rect.subList(3, 6)
-        else -> throw FragmentColorException.Render("TextureRegion.from: rect must hold 2, 4 or 6 numbers")
+        else -> throw FragmentColorException.InvalidInput(
+            "$call: a region takes 2, 4 or 6 numbers, got ${rect.size}",
+        )
     }
     return TextureRegion(
         originX = origin[0], originY = origin[1], originZ = origin[2],
@@ -29,12 +31,24 @@ fun TextureRegion.Companion.from(rect: List<UInt>): TextureRegion {
 
 /**
  * The pixels a [ScreenRegion] covers, at depth 0.
- * Throws [FragmentColorException] for a region whose max isn't past its min, as Swift does.
+ * Throws [FragmentColorException] for a region whose max lies before its min, or with a side of 0, as Swift does.
  */
-fun TextureRegion.Companion.from(region: ScreenRegion): TextureRegion {
-    if (region.maxX <= region.minX || region.maxY <= region.minY) {
-        throw FragmentColorException.Render(
-            "TextureRegion.from: a region needs each max past its min, got x from ${region.minX} to ${region.maxX} and y from ${region.minY} to ${region.maxY}",
+fun TextureRegion.Companion.from(region: ScreenRegion): TextureRegion = readTextureRegion(region, "TextureRegion.from")
+
+/**
+ * The pixels [region] covers, at depth 0, for [call].
+ * A max before its min throws, and then a side of 0, each with an error that names [call],
+ * in the order Rust's `TextureRegion::try_from` checks them, so every binding reports the same one.
+ */
+internal fun readTextureRegion(region: ScreenRegion, call: String): TextureRegion {
+    if (region.maxX < region.minX || region.maxY < region.minY) {
+        throw FragmentColorException.InvalidInput(
+            "$call: a region needs each max past its min, got x from ${region.minX} to ${region.maxX} and y from ${region.minY} to ${region.maxY}",
+        )
+    }
+    if (region.maxX == region.minX || region.maxY == region.minY) {
+        throw FragmentColorException.InvalidInput(
+            "$call: a region needs a width and a height of at least 1, got ${region.maxX - region.minX} by ${region.maxY - region.minY}",
         )
     }
     return TextureRegion(

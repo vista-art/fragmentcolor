@@ -2,7 +2,8 @@
 
 #![cfg(wasm)]
 
-use crate::errors::WebError;
+use crate::bindings::name_class;
+use crate::errors::{ErrorClass, WebError};
 
 /// Install a panic hook and console logger when running in WASM so browser console shows
 /// readable errors instead of a generic "unreachable" trap.
@@ -123,6 +124,18 @@ pub(crate) fn read_flag(value: &wasm_bindgen::JsValue, label: &str) -> Result<bo
     })
 }
 
+/// Whether the value is a plain object, such as `{ smooth: false }`, as Python reads a dict.
+/// An array, a class instance or a function is no plain object, and neither is a primitive.
+pub(crate) fn is_plain(value: &wasm_bindgen::JsValue) -> bool {
+    use js_sys::Object;
+    if !value.is_object() {
+        return false;
+    }
+    let prototype = Object::get_prototype_of(value);
+    let plain = Object::get_prototype_of(&Object::new());
+    prototype.is_null() || *prototype == *plain
+}
+
 /// An optional argument, `None` for `undefined` or `null`.
 pub(crate) fn read_given(value: Option<wasm_bindgen::JsValue>) -> Option<wasm_bindgen::JsValue> {
     value.filter(|value| !value.is_undefined() && !value.is_null())
@@ -151,6 +164,68 @@ pub(crate) fn read_list(
         .map(|(index, item)| read_number(&item, format_args!("{label}: item {index}")))
         .collect::<Result<Vec<f64>, WebError>>()?;
     Ok(Some(items))
+}
+
+/// The whole numbers of a plain or typed array, such as a size, or `None` for a value that isn't one.
+/// Each item reads as [`read_unsigned`] reads it, named `{label}: item {index}`, as Python names it.
+pub(crate) fn read_counts(
+    value: &wasm_bindgen::JsValue,
+    label: &str,
+) -> Result<Option<Vec<u32>>, WebError> {
+    let Some(numbers) = read_list(value, label)? else {
+        return Ok(None);
+    };
+    // The label is written only for an item that fails, so a long list costs no strings.
+    let read = |(index, number): (usize, f64)| match super::numbers::read_dimension(number) {
+        Some(count) => Ok(count),
+        None => read_unsigned(number, &format!("{label}: item {index}")),
+    };
+    let counts = numbers.into_iter().enumerate().map(read);
+    Ok(Some(counts.collect::<Result<Vec<u32>, WebError>>()?))
+}
+
+/// A `TypeError` for a value the call can't take. Its message reads `{expected}, got {kind}`, as Python's does.
+pub(crate) fn refuse(value: &wasm_bindgen::JsValue, expected: &str) -> WebError {
+    let kind = describe(value);
+    WebError::type_error(&format!("{expected}, got {kind}"))
+}
+
+/// A `TypeError` for a value that is no `class`, such as `Pass.addShader: shader must be a Shader, got number`.
+pub(crate) fn refuse_class(value: &wasm_bindgen::JsValue, label: &str, class: &str) -> WebError {
+    refuse(value, &format!("{label} must be {}", name_class(class)))
+}
+
+/// An instance of the FragmentColor class `T`, read through its brand.
+///
+/// Any other value is a `TypeError` that names `label`, as Python raises one.
+/// An object that `free()` released is an `InvalidInputError` that names `label`.
+/// A `T` that can't lend its handle throws its own error, as a borrow conflict does in Python.
+pub(crate) fn read_object<T>(value: &wasm_bindgen::JsValue, label: &str) -> Result<T, WebError>
+where
+    T: crate::FcKind + for<'value> TryFrom<&'value wasm_bindgen::JsValue, Error: Into<WebError>>,
+{
+    let error = match T::try_from(value) {
+        Ok(object) => return Ok(object),
+        Err(error) => error,
+    };
+    if read_class(value).as_deref() == Some(T::KIND) {
+        return Err(error.into());
+    }
+    if is_freed(value) {
+        let message = format!("{label} was freed");
+        return Err(WebError::new(ErrorClass::InvalidInput, &message));
+    }
+    Err(refuse_class(value, label, T::KIND))
+}
+
+/// Whether the value is a class instance that `free()` released, whose handle reads 0.
+fn is_freed(value: &wasm_bindgen::JsValue) -> bool {
+    let handle = || {
+        js_sys::Reflect::get(value, &"__wbg_ptr".into())
+            .ok()?
+            .as_f64()
+    };
+    value.is_object() && handle() == Some(0.0)
 }
 
 /// The brand of a FragmentColor class instance, or `None` for any other value.

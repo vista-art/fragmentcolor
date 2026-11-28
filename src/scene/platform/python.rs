@@ -2,23 +2,30 @@
 
 use lsp_doc::lsp_doc;
 use pyo3::prelude::*;
-use pyo3::types::PyString;
+use pyo3::types::{PyBool, PyString};
 
 use crate::bindings::numbers::read_floats;
-use crate::bindings::python::{PyChannels, PyFloat, PyUnsigned, read_numbers, read_unsigned};
+use crate::bindings::python::{
+    PyCamera, PyChannels, PyFlag, PyFloat, PyLight, PyMesh, PyPass, PyPasses, PyText, PyUnsigned,
+    read_flag, read_items, read_numbers, read_unsigned, refuse,
+};
 use crate::errors::InvalidInputError;
+use crate::scene::material::platform::python::PyMaterial;
 use crate::scene::{
     Camera, CameraError, Light, LightError, LightKind, Model, ModelError, PassRef, Scene,
     SceneLoadError,
 };
-use crate::{Material, Mesh, Pass};
+use crate::{Mesh, Pass};
 
 #[pymethods]
 impl Model {
     #[new]
     #[lsp_doc("docs/api/scene/model/new.md")]
-    pub fn new_py(mesh: Mesh, material: Material) -> Self {
-        Model::new(mesh, material)
+    pub fn new_py(mesh: PyMesh<'_>, material: PyMaterial) -> PyResult<Self> {
+        Ok(Model::new(
+            mesh.read("Model: mesh")?,
+            material.read("Model")?,
+        ))
     }
 
     #[pyo3(name = "mesh")]
@@ -29,10 +36,10 @@ impl Model {
 
     #[pyo3(name = "material")]
     #[lsp_doc("docs/api/scene/model/material.md")]
-    pub fn material_py(&self) -> Material {
-        // Material::clone is a shallow Arc-share, so mutations through the
-        // returned handle reach the Model's Material.
-        self.material.clone()
+    pub fn material_py(&self) -> PyMaterial {
+        // A material clone is a shallow Arc-share, so mutations through the
+        // returned object reach the Model's material.
+        PyMaterial::from(&self.material)
     }
 
     #[pyo3(name = "transform")]
@@ -74,8 +81,9 @@ impl Model {
 
     #[pyo3(name = "set_visible")]
     #[lsp_doc("docs/api/scene/model/set_visible.md")]
-    pub fn set_visible_py(&self, visible: bool) {
-        self.set_visible(visible);
+    pub fn set_visible_py(&self, visible: PyFlag<'_>) -> PyResult<()> {
+        self.set_visible(visible.read("Model.set_visible: visible")?);
+        Ok(())
     }
 }
 
@@ -166,10 +174,10 @@ pub enum PyMatrix<'py> {
 impl PyMatrix<'_> {
     /// The matrix's columns. A list of another length, or a number that isn't finite or
     /// is past the `f32` range, raises `InvalidInputError` that names `label`, and an item
-    /// that isn't a number raises `TypeError`.
+    /// that isn't a number, or a value that is no list, raises `TypeError`.
     pub(crate) fn read(&self, label: &str) -> PyResult<[[f32; 4]; 4]> {
         let PyMatrix::Numbers(value) = self;
-        let items = value.extract::<Vec<Bound<'_, PyAny>>>()?;
+        let items = read_items(value, label)?;
         let columns = match items.first() {
             Some(first) if !first.is_instance_of::<PyString>() && first.len().is_ok() => items,
             _ => return read_flat(value, label),
@@ -199,14 +207,20 @@ impl PyMatrix<'_> {
 }
 
 /// The pass `Scene.add_to` names: its name, or its index.
+/// Any other value is a `TypeError` that names the call, as JavaScript throws one.
 fn read_pass_ref(target: &Bound<'_, PyAny>) -> PyResult<PassRef> {
-    match target.extract::<String>() {
-        Ok(name) => Ok(PassRef::Name(name)),
-        Err(_) => {
-            let index: u32 = read_unsigned(target, "Scene.add_to: target")?;
-            Ok(PassRef::Index(index as usize))
-        }
+    let label = "Scene.add_to: target";
+    if let Ok(name) = target.cast::<PyString>() {
+        return Ok(PassRef::Name(PyText::Value(name.clone()).read(label)?));
     }
+    if target.is_instance_of::<PyBool>() || !target.hasattr("__index__")? {
+        return Err(refuse(
+            target,
+            format_args!("{label} must be an index or a name"),
+        ));
+    }
+    let index: u32 = read_unsigned(target, label)?;
+    Ok(PassRef::Index(index as usize))
 }
 
 /// Adds the Model, Camera or Light that `object` holds to the pass `target` names.
@@ -218,7 +232,8 @@ fn add_object(scene: &Scene, target: PassRef, object: &Bound<'_, PyAny>) -> PyRe
     } else if let Ok(light) = object.cast::<Light>() {
         scene.add_to(target, &*light.borrow())?;
     } else {
-        return Err(pyo3::exceptions::PyTypeError::new_err(
+        return Err(refuse(
+            object,
             "Scene.add_to: expected a Model, Camera, or Light",
         ));
     }
@@ -281,6 +296,24 @@ pub enum PySceneSource<'py> {
     Bytes(Bound<'py, pyo3::types::PyBytes>),
     #[pyo3(annotation = "bytearray")]
     ByteArray(Bound<'py, pyo3::types::PyByteArray>),
+}
+
+/// The `source` of `Scene.load`. A value that is no path or bytes is a `TypeError` that names the call.
+/// pyo3 reads it before `cameras` and `lights`, so a wrong source raises first, as it does in JavaScript.
+fn read_source<'py>(value: &Bound<'py, PyAny>) -> PyResult<PySceneSource<'py>> {
+    let expected =
+        "Scene.load: expected a path, or the bytes of a .glb file as bytes or a bytearray";
+    value.extract().map_err(|_| refuse(value, expected))
+}
+
+/// The `cameras` flag of `Scene.load`, as [`read_flag`] reads it.
+fn read_cameras(value: &Bound<'_, PyAny>) -> PyResult<bool> {
+    read_flag(value, "Scene.load: cameras")
+}
+
+/// The `lights` flag of `Scene.load`, as [`read_flag`] reads it.
+fn read_lights(value: &Bound<'_, PyAny>) -> PyResult<bool> {
+    read_flag(value, "Scene.load: lights")
 }
 
 impl From<PySceneSource<'_>> for crate::scene::GltfSource {
@@ -433,9 +466,13 @@ impl Scene {
     /// pass `bytes` for an in-memory `.glb` payload. `cameras=False` and
     /// `lights=False` leave out the file's own cameras and lights.
     #[staticmethod]
-    #[pyo3(name = "load", signature = (source, cameras=true, lights=true))]
+    #[pyo3(name = "load", signature = (source, cameras = true, lights = true))]
     #[lsp_doc("docs/api/scene/scene/load.md")]
-    pub fn load_py(source: PySceneSource<'_>, cameras: bool, lights: bool) -> PyResult<Self> {
+    pub fn load_py(
+        #[pyo3(from_py_with = read_source)] source: PySceneSource<'_>,
+        #[pyo3(from_py_with = read_cameras)] cameras: bool,
+        #[pyo3(from_py_with = read_lights)] lights: bool,
+    ) -> PyResult<Self> {
         let source = crate::scene::GltfSource::from(source)
             .cameras(cameras)
             .lights(lights);
@@ -459,24 +496,29 @@ impl Scene {
         } else if let Ok(light) = object.cast::<Light>() {
             slf.add(&*light.borrow())?;
         } else {
-            return Err(pyo3::exceptions::PyTypeError::new_err(
+            return Err(refuse(
+                object,
                 "Scene.add: expected a Model, Camera, or Light",
             ));
         }
         Ok(slf)
     }
 
+    // `pass` is a Python keyword, so the parameter is `pass_`, as the stub names it.
     #[pyo3(name = "add_pass")]
     #[lsp_doc("docs/api/scene/scene/add_pass.md")]
-    pub fn add_pass_py<'py>(slf: PyRef<'py, Self>, pass: &Pass) -> PyRef<'py, Self> {
-        slf.add_pass(pass);
-        slf
+    pub fn add_pass_py<'py>(
+        slf: PyRef<'py, Self>,
+        pass_: PyPass<'_>,
+    ) -> PyResult<PyRef<'py, Self>> {
+        slf.add_pass(&pass_.read("Scene.add_pass: pass")?);
+        Ok(slf)
     }
 
     #[pyo3(name = "remove_pass")]
     #[lsp_doc("docs/api/scene/scene/remove_pass.md")]
-    pub fn remove_pass_py(&self, pass: &Pass) -> bool {
-        self.remove_pass(pass)
+    pub fn remove_pass_py(&self, pass_: PyPass<'_>) -> PyResult<bool> {
+        Ok(self.remove_pass(&pass_.read("Scene.remove_pass: pass")?))
     }
 
     #[pyo3(name = "get_pass")]
@@ -487,8 +529,8 @@ impl Scene {
 
     #[pyo3(name = "find_pass")]
     #[lsp_doc("docs/api/scene/scene/find_pass.md")]
-    pub fn find_pass_py(&self, name: &str) -> Option<Pass> {
-        self.find_pass(name)
+    pub fn find_pass_py(&self, name: PyText<'_>) -> PyResult<Option<Pass>> {
+        Ok(self.find_pass(&name.read("Scene.find_pass: name")?))
     }
 
     #[pyo3(name = "list_passes")]
@@ -513,8 +555,16 @@ impl Scene {
 
     #[pyo3(name = "set_passes")]
     #[lsp_doc("docs/api/scene/scene/set_passes.md")]
-    pub fn set_passes_py(&self, passes: Vec<Pass>) {
+    pub fn set_passes_py(&self, passes: PyPasses<'_>) -> PyResult<()> {
+        const CALL: &str = "Scene.set_passes";
+        let passes = passes
+            .items(&format!("{CALL}: passes"))?
+            .into_iter()
+            .enumerate()
+            .map(|(index, pass)| pass.read(&format!("{CALL}: item {index}")))
+            .collect::<PyResult<Vec<_>>>()?;
         self.set_passes(passes);
+        Ok(())
     }
 
     #[pyo3(name = "no_defaults")]
@@ -540,16 +590,22 @@ impl Scene {
 
     #[pyo3(name = "set_default_camera")]
     #[lsp_doc("docs/api/scene/scene/set_default_camera.md")]
-    pub fn set_default_camera_py<'py>(slf: PyRef<'py, Self>, camera: &Camera) -> PyRef<'py, Self> {
-        slf.set_default_camera(camera);
-        slf
+    pub fn set_default_camera_py<'py>(
+        slf: PyRef<'py, Self>,
+        camera: PyCamera<'_>,
+    ) -> PyResult<PyRef<'py, Self>> {
+        slf.set_default_camera(&camera.read("Scene.set_default_camera: camera")?);
+        Ok(slf)
     }
 
     #[pyo3(name = "set_default_light")]
     #[lsp_doc("docs/api/scene/scene/set_default_light.md")]
-    pub fn set_default_light_py<'py>(slf: PyRef<'py, Self>, light: &Light) -> PyRef<'py, Self> {
-        slf.set_default_light(light);
-        slf
+    pub fn set_default_light_py<'py>(
+        slf: PyRef<'py, Self>,
+        light: PyLight<'_>,
+    ) -> PyResult<PyRef<'py, Self>> {
+        slf.set_default_light(&light.read("Scene.set_default_light: light")?);
+        Ok(slf)
     }
 
     #[pyo3(name = "ambient")]

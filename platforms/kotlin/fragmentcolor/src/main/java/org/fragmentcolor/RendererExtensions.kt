@@ -36,7 +36,7 @@ fun Renderer.Companion.setLogLevel(level: LogLevel) {
 fun Renderer.createTarget(surface: Surface): WindowTarget {
     val window = SurfaceBridge.native_window_from_surface(surface)
     if (window == 0L) {
-        throw FragmentColorException.Init("createTarget: the Surface has no ANativeWindow")
+        throw FragmentColorException.Other("createTarget: the Surface has no ANativeWindow")
     }
     try {
         return createTarget(window.toULong())
@@ -49,11 +49,11 @@ fun Renderer.createTarget(surface: Surface): WindowTarget {
 
 /** Create a headless texture target from a `[width, height]` list. */
 suspend fun Renderer.createTextureTarget(size: List<UInt>): TextureTarget =
-    createTextureTarget(sizeRecord(size, "createTextureTarget"))
+    createTextureTarget(sizeRecord(size, "Renderer.createTextureTarget"))
 
 /** Create a depth texture from a `[width, height]` list. */
 suspend fun Renderer.createDepthTexture(size: List<UInt>): Texture =
-    createDepthTexture(sizeRecord(size, "createDepthTexture"))
+    createDepthTexture(sizeRecord(size, "Renderer.createDepthTexture"))
 
 // ── createStorageTexture ─────────────────────────────────────────────────────
 
@@ -74,16 +74,22 @@ suspend fun Renderer.createStorageTexture(
     format: TextureFormat,
     data: ByteArray? = null,
     usage: TextureUsage? = null,
-): Texture = createStorageTexture(sizeRecord(size, "createStorageTexture"), format, data, usage)
+): Texture = createStorageTexture(sizeRecord(size, "Renderer.createStorageTexture"), format, data, usage)
 
-/** Create a storage texture seeded with one [Int] per byte. */
+/**
+ * Create a storage texture seeded with one [Int] per byte.
+ * The size reads before the bytes, as every binding reads them.
+ */
 @JvmName("createStorageTextureInts")
 suspend fun Renderer.createStorageTexture(
     size: List<UInt>,
     format: TextureFormat,
     data: List<Int>,
     usage: TextureUsage? = null,
-): Texture = createStorageTexture(size, format, byteArray(data, "createStorageTexture"), usage)
+): Texture {
+    val record = sizeRecord(size, "Renderer.createStorageTexture")
+    return createStorageTexture(record, format, byteArray(data, "Renderer.createStorageTexture: data"), usage)
+}
 
 // ── createTexture ────────────────────────────────────────────────────────────
 
@@ -92,43 +98,43 @@ suspend fun Renderer.createStorageTexture(
  * [usage] adds to the `TEXTURE_BINDING | COPY_DST` every texture gets.
  */
 suspend fun Renderer.createTexture(bytes: ByteArray, usage: TextureUsage? = null): Texture =
-    createTexture(MobileTextureInput.Bytes(bytes), textureOptions(usage = usage))
+    createTexture(TextureData.Bytes(bytes), textureOptions(usage = usage))
 
 /** Create a texture from encoded image bytes, one [Int] per byte. */
 suspend fun Renderer.createTexture(bytes: List<Int>, usage: TextureUsage? = null): Texture =
-    createTexture(byteArray(bytes, "createTexture"), usage)
+    createTexture(byteArray(bytes, "Renderer.createTexture"), usage)
 
 /** Create a texture from encoded image bytes, decoded into [format]. */
 suspend fun Renderer.createTexture(bytes: ByteArray, format: TextureFormat, usage: TextureUsage? = null): Texture =
-    createTexture(MobileTextureInput.Bytes(bytes), textureOptions(format = format, usage = usage))
+    createTexture(TextureData.Bytes(bytes), textureOptions(format = format, usage = usage))
 
 /** Create a texture from encoded image bytes, one [Int] per byte, decoded into [format]. */
 suspend fun Renderer.createTexture(bytes: List<Int>, format: TextureFormat, usage: TextureUsage? = null): Texture =
-    createTexture(byteArray(bytes, "createTexture"), format, usage)
+    createTexture(byteArray(bytes, "Renderer.createTexture"), format, usage)
 
 /** Create a texture from raw RGBA pixels and their [Size], so the bytes are never decoded. */
 suspend fun Renderer.createTexture(bytes: ByteArray, size: Size, usage: TextureUsage? = null): Texture =
-    createTexture(MobileTextureInput.Bytes(bytes), textureOptions(size = size, usage = usage))
+    createTexture(TextureData.Bytes(bytes), textureOptions(size = size, usage = usage))
 
 /** Create a texture from raw RGBA pixels, one [Int] per byte, and their [Size]. */
 suspend fun Renderer.createTexture(bytes: List<Int>, size: Size, usage: TextureUsage? = null): Texture =
-    createTexture(byteArray(bytes, "createTexture"), size, usage)
+    createTexture(byteArray(bytes, "Renderer.createTexture"), size, usage)
 
 /** Create a texture from raw RGBA pixels and their `[width, height]`. */
 suspend fun Renderer.createTexture(bytes: ByteArray, size: List<UInt>, usage: TextureUsage? = null): Texture =
-    createTexture(bytes, sizeRecord(size, "createTexture"), usage)
+    createTexture(bytes, sizeRecord(size, "Renderer.createTexture"), usage)
 
 /** Create a texture from raw RGBA pixels, one [Int] per byte, and their `[width, height]`. */
 suspend fun Renderer.createTexture(bytes: List<Int>, size: List<UInt>, usage: TextureUsage? = null): Texture =
-    createTexture(byteArray(bytes, "createTexture"), size, usage)
+    createTexture(byteArray(bytes, "Renderer.createTexture"), size, usage)
 
 /** Create a texture from bytes with every option spelled out. */
 suspend fun Renderer.createTexture(bytes: ByteArray, options: TextureOptions): Texture =
-    createTexture(MobileTextureInput.Bytes(bytes), options)
+    createTexture(TextureData.Bytes(bytes), options)
 
 /** Create a texture from bytes, one [Int] per byte, with every option spelled out. */
 suspend fun Renderer.createTexture(bytes: List<Int>, options: TextureOptions): Texture =
-    createTexture(byteArray(bytes, "createTexture"), options)
+    createTexture(byteArray(bytes, "Renderer.createTexture"), options)
 
 /** Create a texture from an image file path or an `http(s)` URL. */
 suspend fun Renderer.createTexture(path: String): Texture = createTexture(pathInput(path), null)
@@ -143,14 +149,14 @@ suspend fun Renderer.createTexture(path: String, options: TextureOptions): Textu
 
 /** Create a texture from a [Mipmap] chain, which uploads without decoding. */
 suspend fun Renderer.createTexture(chain: Mipmap): Texture =
-    createTexture(MobileTextureInput.Prepared(chain), null)
+    createTexture(TextureData.Prepared(chain), null)
 
 /** Create a texture from a [Mipmap] chain, with a sampler and usage from [options]. */
 suspend fun Renderer.createTexture(chain: Mipmap, options: TextureOptions): Texture =
-    createTexture(MobileTextureInput.Prepared(chain), options)
+    createTexture(TextureData.Prepared(chain), options)
 
-/** Create a texture from any [MobileTextureInput] with the default options. */
-suspend fun Renderer.createTexture(input: MobileTextureInput): Texture = createTexture(input, null)
+/** Create a texture from any [TextureData] with the default options. */
+suspend fun Renderer.createTexture(input: TextureData): Texture = createTexture(input, null)
 
 // ── render / load ────────────────────────────────────────────────────────────
 
@@ -249,11 +255,11 @@ suspend fun Renderer.readTexture(textureId: TextureId): ByteArray {
 
 /**
  * A [Size] from `[width, height]` or `[width, height, depth]`.
- * Throws [FragmentColorException] for any other length.
+ * Throws [FragmentColorException] for any other length, with an error that names [call].
  */
-internal fun sizeRecord(size: List<UInt>, method: String): Size {
+internal fun sizeRecord(size: List<UInt>, call: String): Size {
     if (size.size != 2 && size.size != 3) {
-        throw FragmentColorException.Render("$method: a size holds 2 or 3 numbers, got ${size.size}")
+        throw FragmentColorException.InvalidInput("$call: a size takes 2 or 3 numbers, got ${size.size}")
     }
     return Size(width = size[0], height = size[1], depth = size.getOrNull(2))
 }
@@ -269,7 +275,7 @@ internal fun readFloats(values: List<Double>, label: String): List<Float> =
 internal fun readFinite(value: Double, label: String): Float {
     val float = value.toFloat()
     if (!float.isFinite()) {
-        throw FragmentColorException.Render(
+        throw FragmentColorException.InvalidInput(
             "$label must be a finite number that fits a 32-bit float, got ${showNumber(value)}",
         )
     }
@@ -293,7 +299,7 @@ internal fun readFloats(values: DoubleArray, label: String): List<Float> = readF
 internal fun readPosition(values: List<Double>, label: String): List<Float> {
     val floats = readFloats(values, label)
     if (floats.size !in 1..4) {
-        throw FragmentColorException.Render("$label takes 1 to 4 numbers, got ${floats.size}")
+        throw FragmentColorException.InvalidInput("$label takes 1 to 4 numbers, got ${floats.size}")
     }
     return floats
 }
@@ -302,7 +308,7 @@ internal fun readPosition(values: List<Double>, label: String): List<Float> {
 internal fun readVector(values: List<Double>, count: Int, label: String): List<Float> {
     val floats = readFloats(values, label)
     if (floats.size != count) {
-        throw FragmentColorException.Render("$label takes $count numbers, got ${floats.size}")
+        throw FragmentColorException.InvalidInput("$label takes $count numbers, got ${floats.size}")
     }
     return floats
 }
@@ -317,22 +323,27 @@ internal fun readVector(values: List<Float>, count: Int, label: String): List<Fl
 internal fun readPosition(values: List<Float>, label: String): List<Float> =
     readPosition(values.map { it.toDouble() }, label)
 
-/** Bytes from one [Int] per byte. Throws [FragmentColorException] for a value outside 0..255. */
-internal fun byteArray(bytes: List<Int>, method: String): ByteArray =
+/**
+ * Bytes from one [Int] per byte. Throws [FragmentColorException] for a value outside 0..255,
+ * with an error that names [label] and the item, as every binding does.
+ */
+internal fun byteArray(bytes: List<Int>, label: String): ByteArray =
     ByteArray(bytes.size) { index ->
         val value = bytes[index]
         if (value !in 0..255) {
-            throw FragmentColorException.Render("$method: $value is not a byte")
+            throw FragmentColorException.InvalidInput(
+                "$label: item $index must be a whole number from 0 to 255, got $value",
+            )
         }
         value.toByte()
     }
 
 /** A URL input for `http(s)`, otherwise a file path. */
-internal fun pathInput(path: String): MobileTextureInput =
+internal fun pathInput(path: String): TextureData =
     if (path.startsWith("http://") || path.startsWith("https://")) {
-        MobileTextureInput.Url(path)
+        TextureData.Url(path)
     } else {
-        MobileTextureInput.Path(path)
+        TextureData.Path(path)
     }
 
 /**

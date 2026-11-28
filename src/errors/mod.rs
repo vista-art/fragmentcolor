@@ -3,12 +3,20 @@
 
 use thiserror::Error;
 
+#[cfg(any(python, wasm, mobile, test))]
+use crate::core::Field;
+
 mod error_kind;
 pub use error_kind::*;
 
 pub(crate) mod platform;
 #[cfg(any(python, wasm))]
 pub use platform::*;
+
+// The Errors page has no Rust item to carry it, so this runs its example as a doctest.
+#[cfg(doctest)]
+#[doc = include_str!("../../docs/api/errors/errors.md")]
+struct ErrorsPage;
 
 // Top-level catch-all error
 
@@ -46,8 +54,9 @@ pub(crate) fn show_number(value: f64) -> String {
 }
 
 /// The class of error each binding raises, named after the Python exception class.
-/// Python raises that class, and JavaScript throws an `Error` with that `name`.
-#[cfg(any(python, wasm, test))]
+/// Python raises that class, JavaScript throws an `Error` with that `name`, and Swift
+/// and Kotlin throw the case of that name without its `Error` suffix, `Other` for the base.
+#[cfg(any(python, wasm, mobile, test))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ErrorClass {
     Base,
@@ -66,6 +75,7 @@ pub(crate) enum ErrorClass {
     Material,
 }
 
+/// Swift and Kotlin name each case in their own extension, `FragmentColorError.name`.
 #[cfg(any(python, wasm, test))]
 impl ErrorClass {
     /// The class name, the same in Python and JavaScript.
@@ -89,14 +99,40 @@ impl ErrorClass {
     }
 }
 
-/// An error that knows the class every binding raises it as.
-#[cfg(any(python, wasm, test))]
-pub(crate) trait Classify {
-    /// The class Python raises this error as, and the `name` of the JavaScript `Error`.
-    fn classify(&self) -> ErrorClass;
+/// What every binding raises for an error: its class, its full message,
+/// and the fields it carries, by the names each binding gives them.
+#[cfg(any(python, wasm, mobile, test))]
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ErrorShape {
+    pub(crate) class: ErrorClass,
+    pub(crate) message: String,
+    pub(crate) fields: Vec<(&'static str, Field)>,
 }
 
-#[cfg(any(python, wasm, test))]
+/// An error that knows the class every binding raises it as, and the fields it carries.
+#[cfg(any(python, wasm, mobile, test))]
+pub(crate) trait Classify: std::fmt::Display {
+    /// The class Python raises this error as, the `name` of the JavaScript `Error`,
+    /// and the case Swift and Kotlin throw.
+    fn classify(&self) -> ErrorClass;
+
+    /// The fields the error carries, by name. Most errors carry none.
+    fn list_fields(&self) -> Vec<(&'static str, Field)> {
+        Vec::new()
+    }
+
+    /// The error each binding raises: this error's class, its text and its fields.
+    /// An error that only passes another one on gives that one's shape.
+    fn shape(&self) -> ErrorShape {
+        ErrorShape {
+            class: self.classify(),
+            message: self.to_string(),
+            fields: self.list_fields(),
+        }
+    }
+}
+
+#[cfg(any(python, wasm, mobile, test))]
 impl Classify for FragmentColorError {
     fn classify(&self) -> ErrorClass {
         match self {
@@ -111,6 +147,24 @@ impl Classify for FragmentColorError {
             FragmentColorError::NetworkRequest(_) => ErrorClass::Base,
             #[cfg(wasm)]
             FragmentColorError::Error(_) => ErrorClass::Base,
+        }
+    }
+
+    /// Each wrapped error prints as itself, so it raises as itself, fields and all.
+    fn shape(&self) -> ErrorShape {
+        match self {
+            FragmentColorError::Shader(error) => error.shape(),
+            FragmentColorError::Color(error) => error.shape(),
+            FragmentColorError::Size(error) => error.shape(),
+            FragmentColorError::Pass(error) => error.shape(),
+            FragmentColorError::Renderer(error) => error.shape(),
+            FragmentColorError::Init(error) => error.shape(),
+            FragmentColorError::Display(error) => error.shape(),
+            other => ErrorShape {
+                class: other.classify(),
+                message: other.to_string(),
+                fields: Vec::new(),
+            },
         }
     }
 }
@@ -260,7 +314,13 @@ mod tests {
                 "InvalidInputError",
             ),
             (Box::new(ModelError::ZeroAxis), "InvalidInputError"),
-            (Box::new(MaterialError::UvSet(2)), "MaterialError"),
+            (
+                Box::new(MaterialError::UvSet {
+                    call: "PbrMaterial::normal_map().uv".into(),
+                    set: 2,
+                }),
+                "MaterialError",
+            ),
             (
                 Box::new(MaterialError::Texture(TextureError::InvalidInput(text(
                     "x",
@@ -273,5 +333,54 @@ mod tests {
         for (error, name) in cases {
             assert_eq!(error.classify().name(), name);
         }
+    }
+
+    // Story: an error that only passes another one on raises as that one, with its
+    // text and its fields, so a texture's device error reached through a renderer or a
+    // material carries its kind, label and detail in every binding.
+    #[test]
+    fn wrapped_errors_take_the_inner_shape() {
+        use crate::texture::TextureError;
+        use crate::{InitializationError, MaterialError, RendererError};
+        let device = || TextureError::DeviceError {
+            kind: ErrorKind::Validation,
+            label: "texture view".into(),
+            detail: "x".into(),
+        };
+        let expected = ErrorShape {
+            class: ErrorClass::Device,
+            message: device().to_string(),
+            fields: vec![
+                ("kind", Field::Kind(ErrorKind::Validation)),
+                ("label", Field::Text("texture view".into())),
+                ("detail", Field::Text("x".into())),
+            ],
+        };
+        let wrapped: Vec<Box<dyn Classify>> = vec![
+            Box::new(device()),
+            Box::new(RendererError::TextureError(device())),
+            Box::new(RendererError::InitializationError(
+                InitializationError::TextureError(device()),
+            )),
+            Box::new(MaterialError::Texture(device())),
+            Box::new(FragmentColorError::Renderer(RendererError::TextureError(
+                device(),
+            ))),
+        ];
+
+        for error in wrapped {
+            assert_eq!(error.shape(), expected);
+        }
+
+        let limit = RendererError::LimitError {
+            item: "group 9".into(),
+            limit: "max_bind_groups".into(),
+            value: 10,
+            max: 4,
+        };
+        let shape = limit.shape();
+        assert_eq!(shape.class, ErrorClass::Limit);
+        assert_eq!(shape.message, limit.to_string());
+        assert_eq!(shape.fields, limit.list_fields());
     }
 }

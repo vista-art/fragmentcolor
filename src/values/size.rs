@@ -1,16 +1,14 @@
 //! `Size`: a width, a height and an optional depth.
 
 #[cfg(wasm)]
-use crate::bindings::numbers::read_dimension;
-#[cfg(wasm)]
-use crate::bindings::web::{describe, read_class, read_given, read_list, read_number};
+use crate::bindings::web::{describe, read_class, read_count, read_counts, read_given};
 #[cfg(wasm)]
 use crate::errors::WebError;
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
 #[cfg(python)]
-use crate::bindings::python::{PyUnsigned, read_list};
+use crate::bindings::python::{PyUnsigned, read_list, refuse};
 #[cfg(python)]
 use pyo3::FromPyObject;
 #[cfg(python)]
@@ -45,22 +43,21 @@ impl Size {
         }
     }
 
+    /// The size as a binding's message prints it, such as `4x4`, or `4x4x2` past one layer.
+    #[cfg(any(wasm, python, test))]
+    pub(crate) fn show(self) -> String {
+        match self.depth.filter(|&depth| depth != 1) {
+            Some(depth) => format!("{}x{}x{depth}", self.width, self.height),
+            None => format!("{}x{}", self.width, self.height),
+        }
+    }
+
     /// The size a texture of `extent` and `dimension` reports. One layer of a 2D texture has
     /// no depth, and an array or a 3D texture keeps its layer count or depth, so every 2D path agrees.
     pub(crate) fn from_extent(extent: wgpu::Extent3d, dimension: wgpu::TextureDimension) -> Self {
         let layers = extent.depth_or_array_layers;
         let flat = layers == 1 && dimension != wgpu::TextureDimension::D3;
         Size::new(extent.width, extent.height, (!flat).then_some(layers))
-    }
-
-    /// A size from the 2 or 3 numbers JavaScript passed, each checked by [`read_dimension`].
-    #[cfg(wasm)]
-    pub(crate) fn from_numbers(numbers: &[f64]) -> Result<Size, SizeError> {
-        let dimensions = numbers
-            .iter()
-            .map(|&number| check_dimension(number))
-            .collect::<Result<Vec<u32>, SizeError>>()?;
-        Size::try_from(dimensions.as_slice())
     }
 
     /// A size from `[w, h]` or `[w, h, d]`.
@@ -82,16 +79,6 @@ impl TryFrom<&[u32]> for Size {
     fn try_from(dimensions: &[u32]) -> Result<Self, Self::Error> {
         Size::from_dimensions(dimensions)
     }
-}
-
-/// One size dimension from JavaScript, or the error that names the number.
-#[cfg(wasm)]
-fn check_dimension(number: f64) -> Result<u32, SizeError> {
-    read_dimension(number).ok_or_else(|| {
-        SizeError::Invalid(format!(
-            "a size takes whole numbers from 0 up, got {number}"
-        ))
-    })
 }
 
 impl Size {
@@ -133,20 +120,20 @@ crate::impl_from_into_with_refs!(
     |[width, height, depth]: [u32; 3]| Size::new(width, height, Some(depth))
 );
 
-/// Reads `[w, h]` or `[w, h, d]` from a plain or typed array, a `Size`, or a `{ width, height, depth? }`
-/// object. A value of another type, another FragmentColor class among them, or a number that isn't
-/// one, is a `TypeError`, as Python raises, and a fraction, a negative number, a wrong count or a
-/// missing side is an `InvalidInputError`.
 #[cfg(wasm)]
-impl TryFrom<&wasm_bindgen::JsValue> for Size {
-    type Error = WebError;
-
-    fn try_from(value: &wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
+impl Size {
+    /// Reads a size from a JavaScript value for `call`.
+    ///
+    /// It takes `[w, h]` or `[w, h, d]` in a plain or typed array, a `Size`, or a
+    /// `{ width, height, depth? }` object. A value of another type, another FragmentColor class
+    /// among them, or a number that isn't one, is a `TypeError` that names `call`, as Python raises,
+    /// and a fraction, a negative number, a wrong count or a missing side is an `InvalidInputError`.
+    pub(crate) fn read(value: &JsValue, call: &str) -> Result<Self, WebError> {
         use crate::FcKind;
         use js_sys::Reflect;
 
-        if let Some(numbers) = read_list(value, "a size")? {
-            return Ok(Size::from_numbers(&numbers)?);
+        if let Some(dimensions) = read_counts(value, &format!("{call}: size"))? {
+            return Ok(Size::try_from(dimensions.as_slice()).map_err(|error| error.name(call))?);
         }
 
         let class = read_class(value);
@@ -155,23 +142,19 @@ impl TryFrom<&wasm_bindgen::JsValue> for Size {
                 Reflect::get(value, &JsValue::from_str(name))
                     .ok()
                     .filter(|item| !item.is_undefined() && !item.is_null())
-                    .map(|item| read_number(&item, format_args!("a size's {name}")))
+                    .map(|item| read_count(&item, &format!("{call}: size: {name}")))
                     .transpose()
             };
             let (Some(width), Some(height)) = (field("width")?, field("height")?) else {
-                let missing = SizeError::Invalid("a size object needs a width and a height".into());
-                return Err(missing.into());
+                let missing = format!("{call}: a size object needs a width and a height");
+                return Err(SizeError::Invalid(missing).into());
             };
-            let numbers = match field("depth")? {
-                Some(depth) => vec![width, height, depth],
-                None => vec![width, height],
-            };
-            return Ok(Size::from_numbers(&numbers)?);
+            return Ok(Size::new(width, height, field("depth")?));
         }
 
         let kind = class.unwrap_or_else(|| describe(value));
         Err(WebError::type_error(&format!(
-            "a size is [w, h], [w, h, d], a Size or {{ width, height, depth? }}, got {kind}"
+            "{call}: a size is [w, h], [w, h, d], a Size or {{ width, height, depth? }}, got {kind}"
         )))
     }
 }
@@ -188,14 +171,12 @@ impl Size {
         #[wasm_bindgen(unchecked_param_type = "number")] height: &JsValue,
         #[wasm_bindgen(unchecked_optional_param_type = "number | null")] depth: Option<JsValue>,
     ) -> Result<Size, WebError> {
-        let mut numbers = vec![
-            read_number(width, "Size: width")?,
-            read_number(height, "Size: height")?,
-        ];
-        if let Some(depth) = read_given(depth) {
-            numbers.push(read_number(&depth, "Size: depth")?);
-        }
-        Ok(Size::from_numbers(&numbers)?)
+        let depth = read_given(depth).map(|depth| read_count(&depth, "Size: depth"));
+        Ok(Size::new(
+            read_count(width, "Size: width")?,
+            read_count(height, "Size: height")?,
+            depth.transpose()?,
+        ))
     }
 
     #[doc(hidden)]
@@ -211,7 +192,7 @@ impl Size {
         &mut self,
         #[wasm_bindgen(unchecked_param_type = "number")] value: JsValue,
     ) -> Result<(), WebError> {
-        self.width = check_dimension(read_number(&value, "Size.width")?)?;
+        self.width = read_count(&value, "Size.width")?;
         Ok(())
     }
 
@@ -227,7 +208,7 @@ impl Size {
         &mut self,
         #[wasm_bindgen(unchecked_param_type = "number")] value: JsValue,
     ) -> Result<(), WebError> {
-        self.height = check_dimension(read_number(&value, "Size.height")?)?;
+        self.height = read_count(&value, "Size.height")?;
         Ok(())
     }
 
@@ -245,15 +226,12 @@ impl Size {
         #[wasm_bindgen(unchecked_param_type = "number | null | undefined")] value: Option<JsValue>,
     ) -> Result<(), WebError> {
         self.depth = match read_given(value) {
-            Some(depth) => Some(check_dimension(read_number(&depth, "Size.depth")?)?),
+            Some(depth) => Some(read_count(&depth, "Size.depth")?),
             None => None,
         };
         Ok(())
     }
 }
-
-#[cfg(wasm)]
-crate::impl_tryfrom_owned_via_ref!(Size, wasm_bindgen::JsValue, WebError);
 
 // The brand lets a reader tell a Size from another class after a minifier renames the class.
 crate::impl_fc_kind!(Size, "Size");
@@ -323,45 +301,53 @@ impl Size {
 /// A size from Python: a `Size`, a mapping of its fields such as a dict,
 /// or `[w, h]` or `[w, h, d]` in any sequence, each number an int that [`PyUnsigned::read`] checks.
 /// pyo3 tries them in that order, so a mapping such as `UserDict` isn't read as a list of its keys.
+/// Any other value reads as `Other`, which raises a `TypeError` that lists the forms.
 #[cfg(python)]
 #[derive(FromPyObject)]
 pub enum PySize<'py> {
     Size(Size),
-    #[pyo3(annotation = "Mapping[str, int]")]
+    #[pyo3(annotation = "Mapping[str, int | None]")]
     Fields(Bound<'py, PyMapping>),
     Numbers(Vec<PyUnsigned<'py>>),
+    Other(Bound<'py, PyAny>),
 }
 
-/// Checks a size from Python with the same rule as every other binding.
 #[cfg(python)]
-impl TryFrom<PySize<'_>> for Size {
-    type Error = PyErr;
-
-    fn try_from(value: PySize<'_>) -> Result<Self, Self::Error> {
-        let dimensions = match value {
-            PySize::Size(size) => return Ok(size),
-            PySize::Numbers(items) => read_list(&items, "size")?,
+impl PySize<'_> {
+    /// The size, checked with the same rule as every other binding.
+    /// A value of another type raises a `TypeError` that names `call` and lists the forms.
+    pub(crate) fn read(self, call: &str) -> PyResult<Size> {
+        match self {
+            PySize::Size(size) => Ok(size),
+            PySize::Other(value) => {
+                let forms = "a size is [w, h], [w, h, d], a Size or a dict of width, height and an optional depth";
+                Err(refuse(&value, format_args!("{call}: {forms}")))
+            }
+            PySize::Numbers(items) => {
+                let dimensions = read_list(&items, &format!("{call}: size"))?;
+                Ok(Size::try_from(dimensions.as_slice()).map_err(|error| error.name(call))?)
+            }
             PySize::Fields(fields) => {
+                // A key set to `None` counts as missing, as JavaScript reads `null`.
                 let field = |name: &str| -> PyResult<Option<u32>> {
                     if !fields.contains(name)? {
                         return Ok(None);
                     }
-                    let value = PyUnsigned::Int(fields.get_item(name)?);
-                    value.read(&format!("size: {name}")).map(Some)
+                    let value = fields.get_item(name)?;
+                    if value.is_none() {
+                        return Ok(None);
+                    }
+                    PyUnsigned::Int(value)
+                        .read(&format!("{call}: size: {name}"))
+                        .map(Some)
                 };
                 let (Some(width), Some(height)) = (field("width")?, field("height")?) else {
-                    return Err(SizeError::Invalid(
-                        "a size dict needs a width and a height".into(),
-                    )
-                    .into());
+                    let missing = format!("{call}: a size dict needs a width and a height");
+                    return Err(SizeError::Invalid(missing).into());
                 };
-                match field("depth")? {
-                    Some(depth) => vec![width, height, depth],
-                    None => vec![width, height],
-                }
+                Ok(Size::new(width, height, field("depth")?))
             }
-        };
-        Ok(Size::try_from(dimensions.as_slice())?)
+        }
     }
 }
 

@@ -1,108 +1,285 @@
 # Material
 
-A `Material` bundles a `Shader` with the glTF 2.0 PBR-MR field set (base
-color, metallic, roughness, emissive, normal scale, occlusion strength,
-alpha cutoff, plus the matching set of optional textures) and exposes
-each as a builder-style setter.
+What a [Model](https://fragmentcolor.org/api/scene/model) draws its mesh
+with: one of the material types, or a [Shader](https://fragmentcolor.org/api/core/shader)
+of your own.
 
-The default `Material::pbr` constructs the bundle from FragmentColor's
-built-in physically-based shader (Cook-Torrance specular with GGX + Smith +
-Schlick, Lambertian diffuse with energy conservation, glTF-spec texture
-sampling on top of the factor uniforms), pre-populated with sensible
-defaults. The five glTF texture slots start unbound; the renderer resolves
-each one to a 1×1 default from its lazy texture cache the first time a Pass
-renders the Material, so the Material's shader has every binding it needs
-without any further setup. `Material::pbr` can't fail: the shader parts it
-composes are compiled into the library. You can also call
-`Material::custom(shader)` to wrap your own shader; the same setters apply
-best-effort, no-op-ing for uniform paths the shader doesn't declare.
+Each shading model has a type of its own, and each type offers only the
+settings its shader reads:
 
-Materials are typically combined with a [Mesh](https://fragmentcolor.org/api/geometry/mesh)
-into a [Model](https://fragmentcolor.org/api/scene/model), which is the
-object you actually add to a `Pass`. The Material itself doesn't render
-anything on its own.
+- [PbrMaterial](https://fragmentcolor.org/api/scene/pbrmaterial), glTF 2.0's
+  metallic-roughness model on FragmentColor's built-in physically-based shader.
+  The glTF loader builds one for each material in the file that isn't unlit.
+- [UnlitMaterial](https://fragmentcolor.org/api/scene/unlitmaterial), a base
+  color times its map with no lighting, as glTF's `KHR_materials_unlit`. The
+  glTF loader builds one for each material that carries the extension.
+- [ToonMaterial](https://fragmentcolor.org/api/scene/toonmaterial), cel
+  shading, with each light's diffuse term in bands or read from a ramp, a hard
+  highlight and a rim. It reads the same lights `PbrMaterial` reads.
+- A [Shader](https://fragmentcolor.org/api/core/shader) of your own, for any
+  other look. See [A Shader as a material](#a-shader-as-a-material) below.
 
-## Cloning is an Arc-share, not a deep copy
+`Model::new` takes any of the types above, and `Model::material` returns
+what the Model draws with:
 
-`Material` clones (and every setter's return value) point at the same
-inner shader. Mutating one handle changes the state every other handle
-reads:
+- **Rust:** `Model::new` takes `impl Into<Material>`, so a `PbrMaterial`, an
+  `UnlitMaterial`, a `ToonMaterial`, a `Shader` or a reference to any of them
+  works, and `Model::material` returns `&Material`, an enum with a variant per
+  type: `Material::Pbr(PbrMaterial)`, `Material::Unlit(UnlitMaterial)`,
+  `Material::Toon(ToonMaterial)` and `Material::Custom(Shader)`. It is `#[non_exhaustive]`, so a `match` on
+  it needs a `_` arm, and a later material type lands without breaking it.
+- **JavaScript, Python, Swift and Kotlin:** the Model takes the material
+  object itself, and `model.material()` returns that object, a `PbrMaterial`,
+  an `UnlitMaterial`, a `ToonMaterial` or a `Shader`. Narrow it as the
+  language narrows any value: `instanceof` in JavaScript, `isinstance` in
+  Python, `as?` in Swift and `is` or `as` in Kotlin, as in
+  `model.material() as? PbrMaterial`. Swift types it as `any Material`, a
+  protocol each of those four conforms to.
 
-```text
-let red = Material::pbr().base_color([1.0, 0.0, 0.0, 1.0])?;
-let same = red.clone();
-same.base_color([0.0, 1.0, 0.0, 1.0])?; // both `red` and `same` now read green
+A material is a handle. The Model holds the same material you passed it, so
+a setter on that material changes every Model that draws with it.
+
+## A Shader as a material
+
+A `Shader` of your own draws a Model's mesh as it is, with no setter in
+between: set its values with [`Shader::set`](https://fragmentcolor.org/api/core/shader#set).
+The renderer fills three things the shader declares, and leaves out what it
+doesn't:
+
+- A uniform named `camera`, from the
+  [Camera](https://fragmentcolor.org/api/scene/camera) the pass holds, as the
+  `PbrMaterial` shader reads it:
+  `struct Camera { view_proj: mat4x4<f32>, position: vec3<f32> }`.
+- The `lights` and `light_grid` roots, from every
+  [Light](https://fragmentcolor.org/api/scene/light) that reaches the shader.
+  See [Lights](#lights) below for their layout.
+- Four `vec4<f32>` vertex inputs named `model_0` to `model_3`, the columns of
+  the Model's transform. The renderer fills them at draw time from each
+  Model's `set_transform`, `translate`, `rotate` and `scale`. The PBR shader
+  reads them at locations 3 to 6. Any free locations work, since the renderer
+  matches these inputs by name. It fills them for each visible Model that a
+  pass draws through this shader. A Model's Mesh that no visible Model in the
+  pass draws through it, such as a hidden Model's, or one in another pass that
+  shares the shader, draws nothing. A shader that draws none of the pass's
+  Models and reads these columns for a Model's Mesh, such as the shader
+  rendered on its own, makes `Renderer::render` return
+  `MeshError::InvalidInstance`, which names the columns the shader reads.
+
+Without `model_0` to `model_3`, every Model draws at its Mesh's own
+coordinates, whatever its transform.
+
+A shader culls back faces, as a `PbrMaterial` does, with counter-clockwise
+winding as the front, and draws with no blending. Change either on the shader
+itself with
+[`Shader::double_sided`](https://fragmentcolor.org/api/core/shader#double_sided) and
+[`Shader::alpha_mode`](https://fragmentcolor.org/api/core/shader#alpha_mode).
+
+## Lights
+
+A render shader takes the [Lights](https://fragmentcolor.org/api/scene/light)
+that reach it by declaring a root named `lights`, and optionally one named
+`light_grid`, at any group and binding. The member names, types and offsets
+must match the ones below, and so must the struct's size, so no `@align` may
+raise its alignment. The struct names are free. The renderer fills
+both roots in render passes, so they don't appear in `list_uniforms` or
+`list_keys`, and `set` and `get` reach only `lights.ambient`.
+
+```wgsl
+struct Light {                   // 64 bytes
+  kind: u32,                     // 0 directional, 1 point, 2 spot
+  intensity: f32,
+  range: f32,                    // 0 reaches everywhere
+  inner_cone_cos: f32,
+  position: vec3<f32>,
+  outer_cone_cos: f32,
+  direction: vec3<f32>,
+  color: vec3<f32>,
+}
+struct LightGrid {               // 112 bytes
+  view_proj: mat4x4<f32>,
+  depth_plane: vec4<f32>,
+  size: vec3<u32>,
+  slicing: u32,                  // 0 no grid, 1 logarithmic, 2 linear
+  slice_scale: f32,
+  slice_bias: f32,
+  reach: f32,
+}
+struct Lights {
+  count: u32,
+  global_count: u32,
+  promoted_count: u32,
+  ambient: vec3<f32>,
+  grid: LightGrid,               // at byte 32
+  lights: array<Light>,          // at byte 144
+}
+@group(0) @binding(1) var<storage, read> lights: Lights;
+@group(0) @binding(2) var<storage, read> light_grid: array<u32>;
 ```
 
-Same goes for the chained-setter return: `Material::pbr().metallic(...)`
-gives you back a handle to the same shader, not a fresh copy. This is the
-mechanic that makes setters chain cheaply and lets one Material drive
-hundreds of Models without per-instance shader duplication.
+A storage `lights` with another layout, or a `light_grid` of another type,
+fails `Shader::new` with `ShaderError::TypeMismatch`, which spells out the
+layout above.
 
-When you genuinely need an independent material, build a fresh
-`Material::pbr()` (and re-set the factor / texture slots you care about).
-The "many handles to one shader" share semantics is the right default;
-the explicit-fresh-Material path is the escape hatch.
+`lights.lights` holds `lights.count` lights: first the `global_count` lights
+without a range, then the lights with one. A shader without `light_grid`
+loops over all of them. With it, a fragment reads only the lights that
+reach its cluster. `light_grid` starts with `promoted_count` light indices
+that every cluster reads, and cluster `c` follows at word
+`promoted_count + 2 * c`, as the word where its index list starts and the
+length of that list. Copy `light_cell` and `accumulate_lights` below and
+write a `shade_light` for your shading model:
 
-## What lives where
+```wgsl
+const GRID_MARGIN: f32 = 0.015625;
+const CELL_EVERY: u32 = 0xffffffffu;
+const CELL_GLOBAL: u32 = 0xfffffffeu;
 
-- **Factor uniforms** (base color, metallic, …) are stored on the shader as
-  `material.<name>` fields and read every frame. They're per-Material, so
-  many Models that share a Material share these values.
-- **Texture bindings** (base color texture, …) are stored under the
-  canonical glTF binding names (`base_color_map`, `metallic_roughness_map`,
-  `normal_map`, `occlusion_map`, `emissive_map`) and sampled by the default
-  shader. Unset slots resolve to the renderer's 1×1 defaults so the shader's
-  bind group is always complete.
-- **UV sources**: each texture slot samples its own UV set (`UV0` or `UV1`)
-  through its own `KHR_texture_transform`. The PBR shader keeps them in
-  `material.uv`, five entries in
-  [`TextureSlot`](https://fragmentcolor.org/api/scene/textureslot) order,
-  each with `uv_set`, `offset`, `scale` and `rotation`.
-  `Material::texture_uv`, `Material::texture_transform` and
-  `Material::uv_transform` set them.
-- **Per-Model transform** rides the **per-instance vertex attribute** stream
-  as `model_0` to `model_3` (four `vec4<f32>` columns of a `mat4x4<f32>`, at
-  locations 3 to 6 in the PBR shader). The renderer fills it from each
-  Model's transform at draw time. It's *not* a Material uniform, so Models
-  that share one Material each draw with their own transform.
+// The cluster that holds `world`, or CELL_GLOBAL past every light's reach,
+// or CELL_EVERY with no grid, behind the grid's eye, or outside the grid.
+fn light_cell(world: vec3<f32>) -> u32 {
+  let grid = lights.grid;
+  if (grid.slicing == 0u) {
+    return CELL_EVERY;
+  }
+  let point = vec4<f32>(world, 1.0);
+  let depth = dot(grid.depth_plane, point);
+  if (depth > grid.reach) {
+    return CELL_GLOBAL;
+  }
+  let clip = grid.view_proj * point;
+  if (clip.w <= 0.0) {
+    return CELL_EVERY;
+  }
+  let size = vec3<f32>(grid.size);
+  var slice = depth * grid.slice_scale + grid.slice_bias;
+  if (grid.slicing == 1u) {
+    slice = log2(max(depth, 1.0e-30)) * grid.slice_scale + grid.slice_bias;
+  }
+  let cell = vec3<f32>((clip.xy / clip.w * 0.5 + 0.5) * size.xy, slice);
+  if (any(cell < vec3<f32>(-GRID_MARGIN)) || any(cell > size + GRID_MARGIN)) {
+    return CELL_EVERY;
+  }
+  let index = min(vec3<u32>(max(cell, vec3<f32>(0.0))), grid.size - vec3<u32>(1u));
+  return index.x + grid.size.x * (index.y + grid.size.y * index.z);
+}
 
-## Pipeline state
+// Every light that reaches `world`, shaded by your `shade_light`.
+fn accumulate_lights(world: vec3<f32>, normal: vec3<f32>) -> vec3<f32> {
+  var total = vec3<f32>(0.0);
+  let cell = light_cell(world);
+  if (cell == CELL_EVERY) {
+    for (var i = 0u; i < lights.count; i++) {
+      total += shade_light(lights.lights[i], world, normal);
+    }
+    return total;
+  }
+  for (var i = 0u; i < lights.global_count; i++) {
+    total += shade_light(lights.lights[i], world, normal);
+  }
+  if (cell == CELL_GLOBAL) {
+    return total;
+  }
+  for (var k = 0u; k < lights.promoted_count; k++) {
+    total += shade_light(lights.lights[light_grid[k]], world, normal);
+  }
+  let entry = lights.promoted_count + 2u * cell;
+  let first = light_grid[entry];
+  for (var k = 0u; k < light_grid[entry + 1u]; k++) {
+    total += shade_light(lights.lights[light_grid[first + k]], world, normal);
+  }
+  return total;
+}
+```
 
-`alpha_mode` (`Opaque` / `Mask` / `Blend`) and `double_sided` are wired
-through to the pipeline. See `Material::alpha_mode` and
-`Material::double_sided`. Mask mode uses `material.alpha_cutoff` to discard
-transparent fragments; Blend uses standard `SrcAlpha/OneMinusSrcAlpha`
-over-blend with depth-write turned off.
+A light with a range adds nothing past it, and a spot light adds nothing
+outside its outer cone, so `shade_light` must honor both for the grid to
+stay exact. The `PbrMaterial` shader's `shade_light` uses the
+`KHR_lights_punctual` falloff, `(1 - (d / range)^4)` scaled by the inverse
+square distance.
 
-Tangent-space TBN normal mapping is supported via the default PBR shader:
-the sampled normal is decoded from the stored `[0, 1]` bytes, the XY
-components are scaled by `material.normal_scale`, and the result is rotated
-from tangent space into world space using the per-vertex tangent (with the
-glTF `tangent.w` handedness flag preserved). For custom TBN beyond the
-bundled implementation, use `Material::custom`.
+On every OpenGL backend, WebGL2 included, and on a device without compute
+shaders or storage buffers in fragment shaders, the same source runs with
+`lights` turned into a uniform block that holds as many lights as the device
+allows, and with no grid, so `light_cell` returns `CELL_EVERY`. A shader that
+calls `arrayLength` on either root can't run there, and `Renderer::render`
+refuses it with `RendererError::FeatureError` before it takes a frame. Loop to
+`lights.count` instead.
+
+### A fixed-size light array
+
+A uniform `LightArray` of a fixed length `N` fills on every device too,
+with up to `N` lights:
+
+```wgsl
+struct LightArray { count: u32, ambient: vec3<f32>, lights: array<Light, N> }
+@group(0) @binding(1) var<uniform> lights: LightArray;
+```
+
+A shader of this shape takes at most `N` lights, and the `add` past them
+fails with `PassError::LightCapReached { cap: N }`. `lights.lights[i]` holds
+the lights in the order they reached the shader. A uniform `lights` that
+matches neither shape stays an ordinary uniform, which `set` reaches, and
+logs a warning.
 
 ## Example
 
 ```rust
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Material, Mesh, Model, Vertex};
+use fragmentcolor::{Mesh, Model, PbrMaterial, Shader, Vertex};
 
-let mesh = Mesh::new();
-mesh.add_vertices([
-    Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]),
-    Vertex::pbr([-0.5, -0.5, 0.0]).set(Vertex::UV0, [0.0, 0.0]),
-    Vertex::pbr([0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]),
+let triangle = Mesh::new();
+triangle.add_vertices([
+    Vertex::pbr([0.0, 0.5, 0.0]),
+    Vertex::pbr([-0.5, -0.5, 0.0]),
+    Vertex::pbr([0.5, -0.5, 0.0]),
 ]);
 
-let material = Material::pbr()
-    .base_color([0.85, 0.2, 0.2, 1.0])?
-    .metallic(0.0)?
-    .roughness(0.4)?
-    .emissive([0.0, 0.0, 0.05])?;
+// One of the material types.
+let gold = PbrMaterial::new().base_color([1.0, 0.8, 0.3, 1.0])?.metallic(1.0)?;
+let shiny = Model::new(triangle, gold);
 
-let model = Model::new(mesh, material);
-# let _model = model;
+// A shader of your own, which the renderer fills with the camera, the lights
+// and each Model's transform.
+let flat = Shader::new(r#"
+    struct Camera { view_proj: mat4x4<f32>, position: vec3<f32> }
+    struct Light { kind: u32, intensity: f32, range: f32, inner_cone_cos: f32,
+        position: vec3<f32>, outer_cone_cos: f32, direction: vec3<f32>, color: vec3<f32> }
+    struct LightGrid { view_proj: mat4x4<f32>, depth_plane: vec4<f32>, size: vec3<u32>,
+        slicing: u32, slice_scale: f32, slice_bias: f32, reach: f32 }
+    struct Lights { count: u32, global_count: u32, promoted_count: u32,
+        ambient: vec3<f32>, grid: LightGrid, lights: array<Light> }
+    @group(0) @binding(0) var<uniform> camera: Camera;
+    @group(0) @binding(1) var<storage, read> lights: Lights;
+
+    @vertex
+    fn vs_main(
+        @location(0) p: vec3<f32>,
+        @location(3) model_0: vec4<f32>,
+        @location(4) model_1: vec4<f32>,
+        @location(5) model_2: vec4<f32>,
+        @location(6) model_3: vec4<f32>,
+    ) -> @builtin(position) vec4<f32> {
+        let model = mat4x4<f32>(model_0, model_1, model_2, model_3);
+        return camera.view_proj * model * vec4<f32>(p, 1.0);
+    }
+    @fragment fn fs_main() -> @location(0) vec4<f32> {
+        var glow = lights.ambient;
+        for (var i = 0u; i < lights.count; i++) {
+            glow += lights.lights[i].color * lights.lights[i].intensity * 0.1;
+        }
+        return vec4<f32>(glow, 1.0);
+    }
+"#)?;
+let plain = Mesh::new();
+plain.add_vertices([
+    Vertex::pbr([-0.5, -0.5, 0.0]),
+    Vertex::pbr([0.5, -0.5, 0.0]),
+    Vertex::pbr([0.5, 0.5, 0.0]),
+]);
+let glowing = Model::new(plain, &flat);
+# assert!(flat.list_uniforms().contains(&"camera".to_string()));
+# assert!(!flat.list_uniforms().contains(&"lights".to_string()));
+# let _ = (shiny, glowing);
 # Ok(())
 # }
 ```

@@ -63,7 +63,8 @@ final class Healthcheck: ExampleCase {
 
     // A pipeline the GPU refuses throws FragmentColorError.Device, with its kind, the
     // step's label and the device's own detail. An error scope catches it, so the
-    // GPU error log stays empty, and localizedDescription carries the full text.
+    // GPU error log stays empty. Its name is the class Python raises, and its message
+    // and localizedDescription carry the full text.
     func testRefusedPipelineThrowsDevice() async throws {
         let renderer = Renderer()
         let target = try await renderer.createTextureTarget([8, 8])
@@ -80,30 +81,32 @@ final class Healthcheck: ExampleCase {
             try renderer.render(unfed, target)
             throw HealthcheckError.assertion("render of a refused pipeline should throw")
         } catch let error as FragmentColorError {
-            guard case let .Device(kind, label, detail) = error else {
+            guard case let .Device(message, kind, label, detail) = error else {
                 throw HealthcheckError.assertion("render threw \(error), not Device")
             }
+            try assertEqual(error.name, "DeviceError", "Device name")
+            try assertEqual(error.message, message, "Device message")
             try assertEqual(kind, .validation, "Device kind")
             try assertEqual(label, "render pipeline", "Device label")
             guard !detail.isEmpty else {
                 throw HealthcheckError.assertion("Device detail is empty")
             }
             let text = error.localizedDescription
-            guard text == "Device error (validation) in 'render pipeline': \(detail)" else {
+            guard text == "Device error (validation) in 'render pipeline': \(detail)", text == message else {
                 throw HealthcheckError.assertion("localizedDescription is \(text)")
             }
         }
     }
 
-    // A hidden window's frame throws FragmentColorError.Occluded, whose text is the Rust error's.
-    // A simulator can't hide a texture target, so the case is built here.
+    // A hidden window's frame throws FragmentColorError.OccludedSurface, named after the
+    // class Python raises, whose description is its message. A simulator can't hide a
+    // texture target, so the case is built here.
     func testOccludedDescribesFrame() throws {
-        let occluded = FragmentColorError.Occluded
-        try assertEqual(
-            occluded.description,
-            "Surface error: failed to acquire frame: surface is occluded",
-            "Occluded description"
-        )
+        let text = "Surface error: failed to acquire frame: surface is occluded"
+        let occluded = FragmentColorError.OccludedSurface(message: text)
+        try assertEqual(occluded.name, "OccludedSurfaceError", "OccludedSurface name")
+        try assertEqual(occluded.message, text, "OccludedSurface message")
+        try assertEqual(occluded.description, text, "OccludedSurface description")
     }
 
     // render refuses a shader the device can't run before any GPU work, with a case
@@ -123,7 +126,7 @@ final class Healthcheck: ExampleCase {
             try renderer.render(far, target)
             throw HealthcheckError.assertion("a group past the device should throw")
         } catch let error as FragmentColorError {
-            guard case let .Limit(item, limit, value, max) = error else {
+            guard case let .Limit(_, item, limit, value, max) = error else {
                 throw HealthcheckError.assertion("render threw \(error), not Limit")
             }
             try assertEqual(limit, "max_bind_groups", "Limit limit")
@@ -140,7 +143,7 @@ final class Healthcheck: ExampleCase {
             try renderer.render(storage, target)
             throw HealthcheckError.assertion("a storage format the device lacks should throw")
         } catch let error as FragmentColorError {
-            guard case let .Feature(item, feature) = error else {
+            guard case let .Feature(_, item, feature) = error else {
                 throw HealthcheckError.assertion("render threw \(error), not Feature")
             }
             try assertEqual(item, "'img' at @group(0) @binding(0)", "Feature item")
@@ -161,7 +164,7 @@ final class Healthcheck: ExampleCase {
             try renderer.render(unset, target)
             throw HealthcheckError.assertion("an unset texture should throw")
         } catch let error as FragmentColorError {
-            guard case let .Binding(uniform, expected, found) = error else {
+            guard case let .Binding(_, uniform, expected, found) = error else {
                 throw HealthcheckError.assertion("render threw \(error), not Binding")
             }
             try assertEqual(uniform, "source", "Binding uniform")
@@ -173,7 +176,7 @@ final class Healthcheck: ExampleCase {
             try renderer.render(lone, target)
             throw HealthcheckError.assertion("a shader without a vertex stage should throw")
         } catch let error as FragmentColorError {
-            guard case let .Entry(stage) = error else {
+            guard case let .Entry(_, stage) = error else {
                 throw HealthcheckError.assertion("render threw \(error), not Entry")
             }
             try assertEqual(stage, "@vertex", "Entry stage")
@@ -208,7 +211,7 @@ final class Healthcheck: ExampleCase {
             try renderer.render(shader, target)
             throw HealthcheckError.assertion("an sRGB texture in an external slot should throw")
         } catch let error as FragmentColorError {
-            guard case let .Binding(uniform, expected, found) = error else {
+            guard case let .Binding(_, uniform, expected, found) = error else {
                 throw HealthcheckError.assertion("render threw \(error), not Binding")
             }
             try assertEqual(uniform, "video", "Binding uniform")
@@ -244,7 +247,7 @@ final class Healthcheck: ExampleCase {
             }
         """)
         try feedback.set("source", target.texture())
-        try assertRenderThrows("sampling the render target", "Texture conflict") {
+        try assertThrows("sampling the render target", "FragmentColorError", "Texture conflict") {
             try renderer.render(feedback, target)
         }
 
@@ -256,7 +259,7 @@ final class Healthcheck: ExampleCase {
             @fragment fn fs_main() -> @location(0) vec4<f32> { return vec4f(1., 0., 0., 1.); }
         """)
         let foreign = try await Renderer().createTextureTarget([8, 8])
-        try assertRenderThrows("a target from another Renderer", "another Renderer") {
+        try assertThrows("a target from another Renderer", "FragmentColorError", "another Renderer") {
             try renderer.render(solid, foreign)
         }
         try renderer.render(solid, target)
@@ -334,7 +337,7 @@ final class Healthcheck: ExampleCase {
         try second.render(shader, other)
 
         painted.setIndices([0, 1, 5])
-        try assertRenderThrows("an index past the last vertex", "points past the last of 3 vertices") {
+        try assertThrows("an index past the last vertex", "FragmentColorError", "points past the last of 3 vertices") {
             try renderer.render(shader, target)
         }
         painted.setIndices([0, 1, 2])
@@ -347,7 +350,7 @@ final class Healthcheck: ExampleCase {
         do {
             try Shader(source).addMesh(named)
             throw HealthcheckError.assertion("a position property should throw")
-        } catch FragmentColorError.Shader(let message) {
+        } catch FragmentColorError.Other(let message) {
             guard message.contains("property named 'position'") else {
                 throw HealthcheckError.assertion("a position property: unexpected message \(message)")
             }
@@ -373,7 +376,7 @@ final class Healthcheck: ExampleCase {
             try renderer.render(far, target)
             throw HealthcheckError.assertion("a vertex input past the attribute limit should throw")
         } catch let error as FragmentColorError {
-            guard case let .Limit(_, limit, value, _) = error else {
+            guard case let .Limit(_, _, limit, value, _) = error else {
                 throw HealthcheckError.assertion("render threw \(error), not Limit")
             }
             try assertEqual(limit, "max_vertex_attributes", "Limit limit")
@@ -381,13 +384,13 @@ final class Healthcheck: ExampleCase {
         }
     }
 
-    /// Checks that `run` throws `FragmentColorError.Render` with `words` in its text.
-    private func assertRenderThrows(_ label: String, _ words: String, _ run: () throws -> Void) throws {
+    /// Checks that `run` throws the `FragmentColorError` Python raises as `name`, with `words` in its message.
+    private func assertThrows(_ label: String, _ name: String, _ words: String, _ run: () throws -> Void) throws {
         do {
             try run()
         } catch let error as FragmentColorError {
-            guard case let .Render(message) = error, message.contains(words) else {
-                throw HealthcheckError.assertion("\(label) threw \(error)")
+            guard error.name == name, error.message.contains(words) else {
+                throw HealthcheckError.assertion("\(label) threw \(error.name): \(error)")
             }
             return
         }
@@ -436,8 +439,8 @@ final class Healthcheck: ExampleCase {
         try Pass("literals").setClearColor([0, 0, 0, 1])
         _ = try Light.point([0, 2, 0], [1, 1, 1]).setColor([1, 0, 0])
         _ = try Scene().ambient([0, 0, 0])
-        _ = try Material.pbr().baseColor([1, 1, 1, 1])
-        try Model(Mesh(), Material.pbr()).translate([0, 1, 0])
+        _ = try PbrMaterial().baseColor([1, 1, 1, 1])
+        try Model(Mesh(), PbrMaterial()).translate([0, 1, 0])
         _ = try Camera.perspective(1, 1, 0.1, 100).lookAt([0, 0, 5], [0, 0, 0], [0, 1, 0])
         try Mesh().addVertex([0, 0, 0])
     }
@@ -445,7 +448,7 @@ final class Healthcheck: ExampleCase {
     // A color or vector item that is NaN, an infinity or past the Float range
     // throws, and the message names the call, as in every binding.
     func testFloatVectorsRefuseNonFiniteNumbers() throws {
-        let material = Material.pbr()
+        let material = PbrMaterial()
         let cases: [(String, () throws -> Void)] = [
             ("Light.point: position", { _ = try Light.point([1e39, 0, 0] as [Double], [1, 1, 1]) }),
             ("Light.point: position", { _ = try Light.point([Float.nan, 0, 0], [1, 1, 1]) }),
@@ -456,13 +459,14 @@ final class Healthcheck: ExampleCase {
             ("Model.translate", { try Model(Mesh(), material).translate([0, Double.nan, 0]) }),
             ("Model.rotate: axis", { try Model(Mesh(), material).rotate([0, Float.infinity, 0], 1) }),
             ("Camera.lookAt: up", { _ = try Camera.perspective(1, 1, 0.1, 100).lookAt([0, 0, 5], [0, 0, 0], [0, 1e39, 0] as [Double]) }),
-            ("Material.baseColor", { _ = try material.baseColor([1, 1, Float.nan, 1]) }),
-            ("Material.uvTransform: offset", { _ = try material.uvTransform([1e39, 0] as [Double], [1, 1], 0) }),
-            ("Material.textureTransform: scale", { _ = try material.textureTransform(.normal, [0, 0], [Float.infinity, 1], 0) }),
-            ("Material.metallic: value", { _ = try material.metallic(Float.nan) }),
-            ("Material.alphaCutoff: value", { _ = try material.alphaCutoff(1e39 as Double) }),
-            ("Material.uvTransform: rotation", { _ = try material.uvTransform([0, 0] as [Double], [1, 1], Double.infinity) }),
-            ("Material.textureTransform: rotation", { _ = try material.textureTransform(.normal, [0, 0], [1, 1], Float.nan) }),
+            ("PbrMaterial.baseColor", { _ = try material.baseColor([1, 1, Float.nan, 1]) }),
+            ("PbrMaterial.uvTransform: offset", { _ = try material.uvTransform([1e39, 0] as [Double], [1, 1], 0) }),
+            ("MaterialMap.transform: scale", { _ = try material.normalMap().transform([0, 0], [Float.infinity, 1], 0) }),
+            ("MaterialMap.transform: scale", { _ = try material.normalMap().transform([0, 0] as [Double], [1e39, 1], 0) }),
+            ("PbrMaterial.metallic: value", { _ = try material.metallic(Float.nan) }),
+            ("PbrMaterial.alphaCutoff: value", { _ = try material.alphaCutoff(1e39 as Double) }),
+            ("PbrMaterial.uvTransform: rotation", { _ = try material.uvTransform([0, 0] as [Double], [1, 1], Double.infinity) }),
+            ("MaterialMap.transform: rotation", { _ = try material.normalMap().transform([0, 0], [1, 1], Float.nan) }),
             ("Light.setIntensity: value", { _ = try Light.point([0, 1, 0], [1, 1, 1]).setIntensity(Float.nan) }),
             ("Light.setIntensity: value", { _ = try Light.point([0, 1, 0], [1, 1, 1]).setIntensity(1e39 as Double) }),
             ("Light.setConeAngles: inner_radians", {
@@ -558,19 +562,20 @@ final class Healthcheck: ExampleCase {
         try Mesh().addVertex([0, 0, 0], [0, 1], [1, 1, 1, 1])
     }
 
-    // The Material texture setters take what createTexture takes, in every bytes form,
+    // MaterialMap.texture takes what createTexture takes, in every bytes form,
     // and raw pixels with their size, format or options reach the upload.
     func testMaterialTexturesTakeCreateTextureForms() async throws {
         let renderer = Renderer()
         // A black surface lit only by its emissive map, over the whole target.
-        func glow(_ setTexture: (Material) throws -> Material) async throws -> [UInt8] {
+        func glow(_ setTexture: (PbrMaterial) throws -> MaterialMap) async throws -> [UInt8] {
             let mesh = Mesh()
             for corner in [[-1, -1, 0], [3, -1, 0], [-1, 3, 0]] as [[Float]] {
                 mesh.addVertex(try Vertex.pbr(corner).set(Vertex.NORMAL, [0, 0, 1]))
             }
-            let material = try Material.pbr().baseColor([0, 0, 0, 1]).emissive([1, 1, 1])
+            let material = try PbrMaterial().baseColor([0, 0, 0, 1]).emissive([1, 1, 1])
+            _ = try setTexture(material)
             let pass = Pass("glow")
-            try pass.add(Model(mesh, try setTexture(material)))
+            try pass.add(Model(mesh, material))
             let target = try await renderer.createTextureTarget([4, 4])
             try renderer.render(pass, target)
             return Array(try await target.getImage().prefix(4))
@@ -579,113 +584,161 @@ final class Healthcheck: ExampleCase {
         let one = Size(width: 1, height: 1, depth: nil)
         let options = TextureOptions(size: one, format: .r8Unorm)
         let chain = try Mipmap.build(red, .rgba8UnormSrgb, [1, 1])
-        let forms: [(String, (Material) throws -> Material)] = [
-            ("[UInt8] and [w, h]", { try $0.emissiveTexture(red, [1, 1]) }),
-            ("[Int] and [w, h]", { try $0.emissiveTexture([255, 0, 0, 255] as [Int], [1, 1]) }),
-            ("Data and a Size", { try $0.emissiveTexture(Data(red), one) }),
-            ("[UInt8] and a Size", { try $0.emissiveTexture(red, one) }),
-            ("[Int] and a Size", { try $0.emissiveTexture([255, 0, 0, 255] as [Int], one) }),
-            ("[UInt8] with R8Unorm options", { try $0.emissiveTexture([255] as [UInt8], options) }),
-            ("[Int] with R8Unorm options", { try $0.emissiveTexture([255] as [Int], options) }),
-            ("a size and usage", { try $0.emissiveTexture(Data(red), [1, 1], usage: .COPY_SRC) }),
-            ("a Mipmap with options", { try $0.emissiveTexture(chain, TextureOptions(format: .rgba, usage: TextureUsage.COPY_SRC.bits)) }),
+        let forms: [(String, (PbrMaterial) throws -> MaterialMap)] = [
+            ("[UInt8] and [w, h]", { try $0.emissiveMap().texture(red, [1, 1]) }),
+            ("[Int] and [w, h]", { try $0.emissiveMap().texture([255, 0, 0, 255] as [Int], [1, 1]) }),
+            ("Data and a Size", { try $0.emissiveMap().texture(Data(red), one) }),
+            ("[UInt8] and a Size", { try $0.emissiveMap().texture(red, one) }),
+            ("[Int] and a Size", { try $0.emissiveMap().texture([255, 0, 0, 255] as [Int], one) }),
+            ("[UInt8] with R8Unorm options", { try $0.emissiveMap().texture([255] as [UInt8], options) }),
+            ("[Int] with R8Unorm options", { try $0.emissiveMap().texture([255] as [Int], options) }),
+            ("a size and usage", { try $0.emissiveMap().texture(Data(red), [1, 1], usage: .COPY_SRC) }),
+            ("a Mipmap with options", { try $0.emissiveMap().texture(chain, TextureOptions(format: .rgba, usage: TextureUsage.COPY_SRC.bits)) }),
         ]
         for (label, form) in forms {
             let pixel = try await glow(form)
             guard pixel[0] > 200 && pixel[1] < 40 && pixel[2] < 40 else {
-                throw HealthcheckError.assertion("emissiveTexture with \(label) drew \(pixel)")
+                throw HealthcheckError.assertion("MaterialMap.texture with \(label) drew \(pixel)")
             }
         }
-        let setters: [(String, (Material, [UInt8], [UInt32]) throws -> Material)] = [
-            ("baseColorTexture", { try $0.baseColorTexture($1, $2) }),
-            ("metallicRoughnessTexture", { try $0.metallicRoughnessTexture($1, $2) }),
-            ("normalTexture", { try $0.normalTexture($1, $2) }),
-            ("occlusionTexture", { try $0.occlusionTexture($1, $2) }),
-            ("emissiveTexture", { try $0.emissiveTexture($1, $2) }),
+        let maps: [(String, (PbrMaterial) -> MaterialMap)] = [
+            ("baseColorMap", { $0.baseColorMap() }),
+            ("metallicRoughnessMap", { $0.metallicRoughnessMap() }),
+            ("normalMap", { $0.normalMap() }),
+            ("occlusionMap", { $0.occlusionMap() }),
+            ("emissiveMap", { $0.emissiveMap() }),
         ]
-        for (name, setter) in setters {
-            _ = try setter(Material.pbr(), red, [1, 1])
+        for (name, map) in maps {
+            _ = try map(PbrMaterial()).texture(red, [1, 1])
             do {
-                _ = try setter(Material.pbr(), red, [1])
-                throw HealthcheckError.assertion("Material.\(name) with a size of 1 number should throw")
+                _ = try map(PbrMaterial()).texture(red, [1])
+                throw HealthcheckError.assertion("\(name)().texture with a size of 1 number should throw")
             } catch let error as FragmentColorError {
-                guard "\(error)".contains("Material.\(name)") else {
-                    throw HealthcheckError.assertion("Material.\(name) threw \(error)")
+                guard "\(error)".contains("MaterialMap.texture") else {
+                    throw HealthcheckError.assertion("\(name)().texture threw \(error)")
                 }
             }
         }
         // 32 is outside the five TextureUsage flags, so the upload at render refuses
         // options that reach it, from bytes and from a Mipmap.
         let outside = TextureOptions(size: one, format: .rgba, usage: 32)
-        let refused: [(String, (Material) throws -> Material)] = [
-            ("baseColorTexture", { try $0.baseColorTexture(red, outside) }),
-            ("metallicRoughnessTexture", { try $0.metallicRoughnessTexture([255, 0, 0, 255] as [Int], outside) }),
-            ("normalTexture", { try $0.normalTexture(Data(red), outside) }),
-            ("occlusionTexture", { try $0.occlusionTexture(red, outside) }),
-            ("emissiveTexture", { try $0.emissiveTexture(chain, TextureOptions(format: .rgba, usage: 32)) }),
+        let refused: [(String, (PbrMaterial) throws -> MaterialMap)] = [
+            ("baseColorMap", { try $0.baseColorMap().texture(red, outside) }),
+            ("metallicRoughnessMap", { try $0.metallicRoughnessMap().texture([255, 0, 0, 255] as [Int], outside) }),
+            ("normalMap", { try $0.normalMap().texture(Data(red), outside) }),
+            ("occlusionMap", { try $0.occlusionMap().texture(red, outside) }),
+            ("emissiveMap", { try $0.emissiveMap().texture(chain, TextureOptions(format: .rgba, usage: 32)) }),
         ]
         for (name, setter) in refused {
             do {
                 _ = try await glow(setter)
-                throw HealthcheckError.assertion("Material.\(name) with usage 32 should throw at render")
+                throw HealthcheckError.assertion("\(name)().texture with usage 32 should throw at render")
             } catch is FragmentColorError {}
         }
         let byte = try await renderer.createTexture([255] as [Int], options)
         try assertEqual(byte.size(), one, "createTexture([Int], options)")
         _ = try await renderer.createTexture(red, one)
         _ = try await renderer.createTexture(chain, TextureOptions(format: .rgba, usage: TextureUsage.COPY_SRC.bits))
-        try Material.pbr()
-            .normalTexture(Data(red), .rgba8Unorm)
-            .occlusionTexture(Data(red), options)
-            .metallicRoughnessTexture("examples/assets/logo.png", .rgba8Unorm)
+        let material = PbrMaterial()
+        try material.normalMap().texture(Data(red), .rgba8Unorm)
+        try material.occlusionMap().texture(Data(red), options)
+        try material.metallicRoughnessMap().texture("examples/assets/logo.png", .rgba8Unorm)
     }
 
-    // A slot a custom shader declares as a number refuses a Texture and a source and keeps
-    // its value, a slot the shader doesn't declare is skipped, and a Texture takes no options.
+    // An empty byte list holds no image, and a Texture takes no options, so the map refuses both.
     func testMaterialTexturesRefuseWhatTheyCannotUse() async throws {
         let renderer = Renderer()
         let red: [UInt8] = [255, 0, 0, 255]
         let texture = try await renderer.createTexture(red, Size(width: 1, height: 1, depth: nil))
-        let numbered = Material.custom(try Shader(source: """
-            @group(0) @binding(0) var<uniform> base_color_map: vec4<f32>;
-            @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
-              return vec4<f32>(f32(i), 0.0, 0.0, 1.0);
-            }
-            @fragment fn fs_main() -> @location(0) vec4<f32> { return base_color_map; }
-        """))
-        try numbered.shader().set("base_color_map", [0.25, 0.5, 0.75, 1.0])
-        let refusals: [(String, () throws -> Material)] = [
-            ("a Texture", { try numbered.baseColorTexture(texture) }),
-            ("bytes", { try numbered.baseColorTexture(red, [1, 1]) }),
-        ]
-        for (label, set) in refusals {
-            do {
-                _ = try set()
-                throw HealthcheckError.assertion("baseColorTexture with \(label) on a number should throw")
-            } catch let error as FragmentColorError {
-                guard "\(error)".contains("base_color_map") else {
-                    throw HealthcheckError.assertion("baseColorTexture with \(label) threw \(error)")
-                }
-            }
-        }
-        try assertEqual(numbered.shader().get("base_color_map"), .vec4([0.25, 0.5, 0.75, 1]), "a slot that refused a texture")
-        try numbered.normalTexture(texture)
-        try numbered.normalTexture(red, [1, 1])
-        // An empty byte list holds no image, so the setter refuses it at the call.
+        try PbrMaterial().normalMap().texture(texture)
         do {
-            _ = try Material.pbr().baseColorTexture(Data())
-            throw HealthcheckError.assertion("baseColorTexture with an empty byte list should throw")
-        } catch let error as FragmentColorError {
-            guard "\(error)".contains("it got an empty byte list") else {
-                throw HealthcheckError.assertion("an empty byte list threw \(error)")
+            _ = try PbrMaterial().baseColorMap().texture(Data())
+            throw HealthcheckError.assertion("MaterialMap.texture with an empty byte list should throw")
+        } catch let FragmentColorError.InvalidInput(message) {
+            guard message.hasSuffix("it got an empty byte list") else {
+                throw HealthcheckError.assertion("an empty byte list threw \(message)")
             }
         }
         do {
-            _ = try Material.pbr().baseColorSource(input: .cloneOf(texture), options: TextureOptions(format: .rgba8Unorm))
-            throw HealthcheckError.assertion("baseColorSource with options beside a Texture should throw")
-        } catch let FragmentColorError.Render(message) {
-            guard message.contains("Material::base_color_texture") else {
+            _ = try PbrMaterial().baseColorMap().source(input: .cloneOf(texture), options: TextureOptions(format: .rgba8Unorm))
+            throw HealthcheckError.assertion("MaterialMap.source with options beside a Texture should throw")
+        } catch let FragmentColorError.InvalidInput(message) {
+            guard message.contains("PbrMaterial::base_color_map().texture") else {
                 throw HealthcheckError.assertion("options beside a Texture threw \(message)")
+            }
+        }
+    }
+
+    // A triangle over the whole target, drawn with `model` and lit by `light`,
+    // read back at the pixel (1, 1) of a 4x4 target.
+    private func drawOver(_ model: Model, _ light: Light) async throws -> [UInt8] {
+        let renderer = Renderer()
+        let pass = Pass("material")
+        try pass.add(model)
+        try pass.add(light)
+        let target = try await renderer.createTextureTarget([4, 4])
+        try renderer.render(pass, target)
+        let image = Array(try await target.getImage())
+        return Array(image[20..<24])
+    }
+
+    private func fullTarget() throws -> Mesh {
+        let mesh = Mesh()
+        for corner in [[-1, -1, 0], [3, -1, 0], [-1, 3, 0]] as [[Float]] {
+            mesh.addVertex(try Vertex.pbr(corner))
+        }
+        return mesh
+    }
+
+    // An UnlitMaterial draws its base color times its map with no lighting. A Model hands
+    // the material back itself, and a Model built from what it handed back draws the same.
+    func testUnlitMaterialDrawsWithNoLighting() async throws {
+        let material = try UnlitMaterial().baseColor([1, 1, 0.5, 1]).doubleSided(true)
+        _ = try material.baseColorMap().texture([0, 255, 255, 255] as [UInt8], [1, 1])
+        let model = Model(try fullTarget(), material)
+        guard model.material() is UnlitMaterial else {
+            throw HealthcheckError.assertion("Model.material() returned \(type(of: model.material())), not UnlitMaterial")
+        }
+        let again = Model(try fullTarget(), model.material())
+        // A black light would darken a PbrMaterial, and leaves an unlit one as it is.
+        let pixel = try await drawOver(again, try Light.directional([0, 0, -1] as [Float], [0, 0, 0]))
+        // Linear 0.5 encodes as sRGB 188 on the 8-bit target.
+        guard pixel[0] == 0 && pixel[1] == 255 && abs(Int(pixel[2]) - 188) <= 1 else {
+            throw HealthcheckError.assertion("an UnlitMaterial drew \(pixel), not [0, 255, 188]")
+        }
+    }
+
+    // A ToonMaterial lights in bands from the lights a PbrMaterial reads, a Model
+    // hands it back itself, and it refuses 0 bands and a UV set on its ramp.
+    func testToonMaterialLightsInBands() async throws {
+        let material = try ToonMaterial().bands(3).doubleSided(true)
+        let shader = material.shader()
+        try shader.set("camera.position", [0, 0, 1] as [Float])
+        try shader.set("lights.ambient", [0, 0, 0] as [Float])
+        let model = Model(try fullTarget(), material)
+        guard let held = model.material() as? ToonMaterial else {
+            throw HealthcheckError.assertion("Model.material() returned \(type(of: model.material())), not ToonMaterial")
+        }
+        // Rays at the cosine 0.6 to the face's normal, with a color that cancels the shader's 1/pi.
+        let pi = Float.pi
+        let pixel = try await drawOver(model, try Light.directional([-0.8, 0, -0.6] as [Float], [pi, pi, pi]))
+        // Three bands light the face at 2/3, which encodes as sRGB 213 on the 8-bit target.
+        guard pixel.prefix(3).allSatisfy({ abs(Int($0) - 213) <= 2 }) else {
+            throw HealthcheckError.assertion("three bands drew \(pixel), not 213 in each channel")
+        }
+        // The refusals run on the ToonMaterial the Model handed back.
+        let refusals: [(String, () throws -> Void)] = [
+            ("ToonMaterial::bands", { _ = try held.bands(0) }),
+            ("ToonMaterial::ramp_map().uv", { _ = try held.rampMap().uv(0) }),
+        ]
+        for (label, call) in refusals {
+            do {
+                try call()
+                throw HealthcheckError.assertion("\(label) should throw")
+            } catch let FragmentColorError.Material(message) {
+                guard message.contains(label) else {
+                    throw HealthcheckError.assertion("\(label) threw '\(message)', which doesn't name the call")
+                }
             }
         }
     }
@@ -693,7 +746,7 @@ final class Healthcheck: ExampleCase {
     // A transform reads back as four columns of four, and a nested matrix
     // of any other shape throws and names the column.
     func testMatricesAreColumns() throws {
-        let model = Model(Mesh(), Material.pbr())
+        let model = Model(Mesh(), PbrMaterial())
         try model.setTransform([[2, 0, 0, 0], [0, 2, 0, 0], [0, 0, 2, 0], [3, 0, 0, 1]] as [[Float]])
         let columns = model.transform()
         try assertEqual(columns.count, 4, "Model.transform columns")
@@ -708,7 +761,7 @@ final class Healthcheck: ExampleCase {
             do {
                 try model.setTransform(shape)
                 throw HealthcheckError.assertion("Model.setTransform(\(shape)) should throw")
-            } catch let FragmentColorError.Render(message) {
+            } catch let FragmentColorError.InvalidInput(message) {
                 guard message.hasPrefix("Model.setTransform") else {
                     throw HealthcheckError.assertion("unexpected message: \(message)")
                 }
@@ -760,13 +813,13 @@ final class Healthcheck: ExampleCase {
         """)
 
         try shader.set("count", 3)
-        try assertEqual(shader.get("count"), .uInt(3), "u32 from an Int literal")
+        try assertEqual(shader.get("count") as? UInt32, 3, "u32 from an Int literal")
         try shader.set("cell", [2, -1])
-        try assertEqual(shader.get("cell"), .iVec2([2, -1]), "vec2<i32> from [Int]")
+        try assertEqual(shader.get("cell") as? [Int32], [2, -1], "vec2<i32> from [Int]")
         try shader.set("rot", [1.0, 2.0, 3.0, 4.0])
-        try assertEqual(shader.get("rot"), .mat2([1, 2, 3, 4]), "mat2x2 from four numbers")
+        try assertEqual(shader.get("rot") as? [Float], [1, 2, 3, 4], "mat2x2 from four numbers")
         try shader.set("offset", [Int32(5), Int32(6)])
-        try assertEqual(shader.get("offset"), .vec2([5, 6]), "vec2<f32> from [Int32]")
+        try assertEqual(shader.get("offset") as? [Float], [5, 6], "vec2<f32> from [Int32]")
 
         for (label, value) in [("three numbers", [1.0, 2.0, 3.0]), ("an empty list", [])] {
             do {
@@ -774,11 +827,11 @@ final class Healthcheck: ExampleCase {
                 throw HealthcheckError.assertion("set(\"offset\", \(label)) should throw")
             } catch is FragmentColorError {}
         }
-        try assertEqual(shader.get("offset"), .vec2([5, 6]), "vec2 kept after rejected sets")
+        try assertEqual(shader.get("offset") as? [Float], [5, 6], "vec2 kept after rejected sets")
 
         let blob = Data((0..<32).map { UInt8($0) })
         try shader.set("particles", blob)
-        try assertEqual(shader.get("particles"), .bytes(blob), "storage root from Data")
+        try assertEqual(shader.get("particles") as? Data, blob, "storage root from Data")
     }
 
     // f16 uniforms take plain numbers rounded to the nearest f16 and read back as floats,
@@ -799,24 +852,22 @@ final class Healthcheck: ExampleCase {
         """)
 
         try shader.set("gain", 0.1)
-        try assertEqual(shader.get("gain"), .float(0.0999755859375), "f16 from a Double")
-        try assertEqual(try shader.get("gain").float, Float(0.0999755859375), "the float accessor")
+        try assertEqual(shader.get("gain") as? Float, 0.0999755859375, "f16 from a Double")
         try shader.set("tint", [0.25, 0.5, 0.75, 1.0])
-        try assertEqual(shader.get("tint"), .vec4([0.25, 0.5, 0.75, 1]), "vec4<f16> reads back as a vec4")
+        try assertEqual(shader.get("tint") as? [Float], [0.25, 0.5, 0.75, 1], "vec4<f16> reads back as floats")
         for value in [70000.0, Double.nan, Double.infinity] {
             do {
                 try shader.set("gain", value)
                 throw HealthcheckError.assertion("set(\"gain\", \(value)) should throw")
             } catch is FragmentColorError {}
         }
-        try assertEqual(shader.get("gain"), .float(0.0999755859375), "gain kept after rejected sets")
-        try assertEqual(UniformData.halfVec2([1, 2]).floats, [1, 2], "the floats accessor")
+        try assertEqual(shader.get("gain") as? Float, 0.0999755859375, "gain kept after rejected sets")
 
         try shader.set("gain", 1)
         do {
             try renderer.render(shader, target)
         } catch let error as FragmentColorError {
-            guard case let .Feature(item, feature) = error else {
+            guard case let .Feature(_, item, feature) = error else {
                 throw HealthcheckError.assertion("render threw \(error), not Feature")
             }
             try assertEqual(item, "the shader", "Feature item")
@@ -865,7 +916,7 @@ final class Healthcheck: ExampleCase {
         do {
             try Shader(source).addMesh(negative)
             throw HealthcheckError.assertion("attaching id = -1 to a u32 input should throw")
-        } catch FragmentColorError.Shader(let message) {
+        } catch FragmentColorError.Other(let message) {
             guard message.contains("expected u32, got -1 at vertex 1") else {
                 throw HealthcheckError.assertion("-1 for a u32: unexpected message \(message)")
             }

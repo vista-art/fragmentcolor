@@ -15,6 +15,8 @@
 set -u -o pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=shell/process.sh
+. "$ROOT_DIR/tools/shell/process.sh"
 PORT="${PORT:-8765}"
 
 GREEN="\033[1;32m"
@@ -281,45 +283,57 @@ wait_for_http() {
   return 0
 }
 
+# Runs a command under `timeout` or `gtimeout`, or without a limit on a stock Mac, which has neither.
+with_timeout() {
+  local seconds="$1"
+  shift
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$seconds" "$@"
+  elif command -v gtimeout >/dev/null 2>&1; then
+    gtimeout "$seconds" "$@"
+  else
+    "$@"
+  fi
+}
+
 ensure_playwright() {
-  # Install Playwright in the healthcheck folder if not available (pnpm)
+  # Installs Playwright and its Chromium in the healthcheck folder.
   local dir="$ROOT_DIR/platforms/web/healthcheck"
   if ! command -v pnpm >/dev/null 2>&1; then
     if command -v corepack >/dev/null 2>&1; then
       corepack enable pnpm >/dev/null 2>&1 || true
     fi
   fi
-  # Print output so a hang here is visible in CI logs (was previously
-  # silenced into /dev/null which made the whole step look frozen).
-  # Cap each command at 5 min so a stalled network request fails the
-  # step instead of stalling the whole job for 6 hours.
+  # Each step prints its output and stops after a few minutes,
+  # so a stalled download fails the CI step where it would hang the job.
   echo "[ensure_playwright] pnpm i in $dir"
-  ( cd "$dir" && timeout 300 pnpm i --no-frozen-lockfile --no-optional --ignore-scripts ) || \
+  ( cd "$dir" && with_timeout 300 pnpm i --no-frozen-lockfile --no-optional --ignore-scripts ) || \
     echo "[ensure_playwright] pnpm i failed/timed out (continuing)"
-  # Manual download + extract — round 10's log made the failure mode
-  # finally legible. `pw:install` printed "extracting archive" and then
-  # went silent for 10 min before timing out, with only
-  # `chromium-1194/chrome-linux/icudtl.dat` on disk. That's a stuck
-  # Playwright extractor (known issue, e.g. microsoft/playwright#29262
-  # surfaces in headless GitHub-Actions environments). Avoid the
-  # built-in extractor entirely: pull the same zip from Playwright's
-  # CDN with curl, unzip with the system `unzip`, and let
-  # `chromium.launch()` find the binaries under the canonical
-  # `chromium-<build>/chrome-linux/` and
-  # `chromium_headless_shell-<build>/chrome-linux/` paths.
+
+  # Off Linux, Playwright's own installer fetches Chromium and its headless shell
+  # into the cache that system reads. The manual fallback below fetches Linux builds.
+  if [ "$(uname -s)" != "Linux" ]; then
+    echo "[ensure_playwright] pnpm exec playwright install chromium"
+    ( cd "$dir" && with_timeout 240 pnpm exec playwright install chromium ) || \
+      echo "[ensure_playwright] playwright install failed (continuing)"
+    return 0
+  fi
+
+  # Playwright's extractor can stall on GitHub's Linux runners.
   #
-  # The build version is pinned by the installed Playwright version
-  # (1.56.0 → build 1194 per round 10's log). Hard-coding it is safe
-  # because the lockfile pins playwright@1.56.0; bump both together.
+  # It stops after "extracting archive" with one file on disk. The fallback
+  # fetches the same zips from Playwright's CDN with curl, unpacks them with
+  # the system `unzip`, and puts them in the `chrome-linux/` folders under
+  # `chromium-<build>` and `chromium_headless_shell-<build>` that `chromium.launch()` reads.
+  #
+  # The lockfile pins playwright@1.56.0, which runs Chromium build 1194. Bump both together.
   local pw_build=1194
   local pw_cache="${PLAYWRIGHT_BROWSERS_PATH:-$HOME/.cache/ms-playwright}"
   mkdir -p "$pw_cache"
-  # Tier 1: try the Playwright installer once — if Microsoft fixed
-  # this in a future release it's still the simplest path.
+  # The installer goes first, and the fallback fetches what it left out.
   echo "[ensure_playwright] pnpm exec playwright install --no-shell chromium (best-effort)"
-  ( cd "$dir" && DEBUG=pw:install timeout 240 pnpm exec playwright install --no-shell chromium ) || \
+  ( cd "$dir" && DEBUG=pw:install with_timeout 240 pnpm exec playwright install --no-shell chromium ) || \
     echo "[ensure_playwright] official installer didn't finish; falling through to manual"
-  # Tier 2: any binary we still don't have, fetch + extract manually.
   if [ ! -x "$pw_cache/chromium-$pw_build/chrome-linux/chrome" ]; then
     local url="https://cdn.playwright.dev/dbazure/download/playwright/builds/chromium/$pw_build/chromium-linux.zip"
     local zip="$pw_cache/chromium-$pw_build.zip"
@@ -383,16 +397,16 @@ run_web() {
   mkdir -p "$hc_pkg"
   rsync -a --delete "$pkg_dir/" "$hc_pkg/" 2>/dev/null || cp -a "$pkg_dir/." "$hc_pkg/"
 
-  # Diagnostic markers — when CI hangs we lose all stderr otherwise; these
-  # let us see exactly which step stalled. Lightweight echo, no perf hit.
-  echo "[run_web] static server starting on port $PORT…"
+  # A CI run that hangs loses its stderr.
+  # These markers show the step that stalled.
+  echo "[run_web] static server starting on port ${PORT}…"
 
   # Start static server and run Playwright against it
   local pid
   pid=$(start_static_server "$ROOT_DIR/platforms/web" "$PORT")
   srv_status=$?
   # Always cleanup the server if we started one
-  cleanup() { if [ -n "${pid:-}" ] && ps -p "$pid" >/dev/null 2>&1; then kill "$pid" >/dev/null 2>&1 || true; fi; }
+  cleanup() { if [ -n "${pid:-}" ] && ps -p "$pid" >/dev/null 2>&1; then stop_tree "$pid"; fi; }
   trap cleanup EXIT
   if [ "$srv_status" -ne 0 ]; then
     echo "[run_web] static server failed to start" >&2
