@@ -7,7 +7,7 @@ use pyo3::types::PyString;
 use crate::bindings::numbers::read_floats;
 use crate::bindings::python::{
     PyCamera, PyChannels, PyFlag, PyFloat, PyLight, PyMesh, PyPass, PyPasses, PyUnsigned,
-    read_items, read_numbers, read_unsigned, refuse,
+    read_flag, read_items, read_numbers, read_unsigned, refuse,
 };
 use crate::errors::InvalidInputError;
 use crate::scene::material::platform::python::PyMaterial;
@@ -293,6 +293,16 @@ pub enum PySceneSource<'py> {
     Other(Bound<'py, PyAny>),
 }
 
+/// The `cameras` flag of `Scene.load`, as [`read_flag`] reads it.
+fn read_cameras(value: &Bound<'_, PyAny>) -> PyResult<bool> {
+    read_flag(value, "Scene.load: cameras")
+}
+
+/// The `lights` flag of `Scene.load`, as [`read_flag`] reads it.
+fn read_lights(value: &Bound<'_, PyAny>) -> PyResult<bool> {
+    read_flag(value, "Scene.load: lights")
+}
+
 /// Any other value raises a `TypeError` that names the call, as JavaScript throws one.
 impl TryFrom<PySceneSource<'_>> for crate::scene::GltfSource {
     type Error = PyErr;
@@ -450,19 +460,16 @@ impl Scene {
     /// pass `bytes` for an in-memory `.glb` payload. `cameras=False` and
     /// `lights=False` leave out the file's own cameras and lights.
     #[staticmethod]
-    #[pyo3(
-        name = "load",
-        signature = (source, cameras = PyFlag::Value(true), lights = PyFlag::Value(true))
-    )]
+    #[pyo3(name = "load", signature = (source, cameras = true, lights = true))]
     #[lsp_doc("docs/api/scene/scene/load.md")]
     pub fn load_py(
         source: PySceneSource<'_>,
-        cameras: PyFlag<'_>,
-        lights: PyFlag<'_>,
+        #[pyo3(from_py_with = read_cameras)] cameras: bool,
+        #[pyo3(from_py_with = read_lights)] lights: bool,
     ) -> PyResult<Self> {
         let source = crate::scene::GltfSource::try_from(source)?
-            .cameras(cameras.read("Scene.load: cameras")?)
-            .lights(lights.read("Scene.load: lights")?);
+            .cameras(cameras)
+            .lights(lights);
         Ok(Scene::load(source)?)
     }
 

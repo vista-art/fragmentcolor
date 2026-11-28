@@ -1,3 +1,4 @@
+import inspect
 import os
 import pickle
 import platform
@@ -909,6 +910,14 @@ def check_keyword_names():
     scene.add_pass(pass_=layer)
     assert scene.remove_pass(pass_=layer)
     print("Keyword parameters take the stub's names")
+
+
+def check_defaults():
+    """A keyword's default shows in help() and inspect.signature as the value it is."""
+    signature = inspect.signature(Scene.load)
+    for name in ("cameras", "lights"):
+        assert signature.parameters[name].default is True, f"Scene.load shows {signature}"
+    print("Scene.load shows its defaults")
 
 
 def check_labels(renderer):
@@ -1983,6 +1992,7 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
     check_scalars_and_pairs()
     check_viewport_dicts()
     check_keyword_names()
+    check_defaults()
     check_labels(renderer)
     check_type_messages(renderer)
     check_colors(renderer)

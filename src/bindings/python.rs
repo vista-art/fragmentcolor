@@ -239,9 +239,20 @@ impl PyFlag<'_> {
     pub(crate) fn read(&self, label: &str) -> PyResult<bool> {
         match self {
             PyFlag::Value(value) => Ok(*value),
-            PyFlag::Other(value) => Err(refuse(value, format_args!("{label} must be a bool"))),
+            PyFlag::Other(value) => Err(refuse_flag(value, label)),
         }
     }
+}
+
+/// A bool, as [`PyFlag::read`] reads one, for a `from_py_with` reader.
+/// Such a parameter keeps a literal default, such as `True`, that `help()` can print.
+pub(crate) fn read_flag(value: &Bound<'_, PyAny>, label: &str) -> PyResult<bool> {
+    value.extract().map_err(|_| refuse_flag(value, label))
+}
+
+/// A `TypeError` for a value that is no bool, such as `Model.set_visible: visible must be a bool, got str`.
+fn refuse_flag(value: &Bound<'_, PyAny>, label: &str) -> PyErr {
+    refuse(value, format_args!("{label} must be a bool"))
 }
 
 /// A color, a vector or another list of floats from Python: any sequence of numbers, NumPy arrays
