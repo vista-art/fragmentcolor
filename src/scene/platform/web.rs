@@ -629,21 +629,19 @@ fn read_flat_matrix(value: &JsValue, label: &str) -> Result<[[f32; 4]; 4], WebEr
 }
 
 /// Reads one boolean flag of the `Scene.load` options. A missing flag is `true`.
+/// An `options` that is no object, or a flag that is no boolean, is a `TypeError` that names the call.
 fn read_option(options: Option<&JsValue>, name: &str) -> Result<bool, WebError> {
     let Some(options) = options.filter(|options| !options.is_undefined() && !options.is_null())
     else {
         return Ok(true);
     };
     if !options.is_object() {
-        return Err(WebError::type_error(
-            "Scene.load: options must be an object",
-        ));
+        let expected = "Scene.load: options must be an object of cameras and lights";
+        return Err(refuse(options, expected));
     }
     match js_sys::Reflect::get(options, &name.into()) {
         Ok(value) if value.is_undefined() => Ok(true),
-        Ok(value) => value.as_bool().ok_or_else(|| {
-            WebError::type_error(&format!("Scene.load: options.{name} must be a boolean"))
-        }),
+        Ok(value) => read_flag(&value, &format!("Scene.load: {name}")),
         Err(_) => Ok(true),
     }
 }

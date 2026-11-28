@@ -1000,6 +1000,7 @@ def check_type_messages(renderer):
         "SamplerOptions: repeat_x must be a bool, got str": lambda: SamplerOptions(repeat_x="yes"),
         "Renderer.unregister_texture: texture_id must be a TextureId or an int, got NoneType":
             lambda: renderer.unregister_texture(None),
+        "Scene.load: cameras must be a bool, got str": lambda: Scene.load(b"", cameras="x"),
         "Model: expected a PbrMaterial, an UnlitMaterial, a ToonMaterial or a Shader, got int":
             lambda: Model(Mesh(), 42),
         "Model.set_transform takes a list or an ndarray of numbers, got str":

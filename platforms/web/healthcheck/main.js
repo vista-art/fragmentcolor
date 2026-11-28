@@ -829,6 +829,9 @@ await withModule('platforms.web.healthcheck.parity', async () => {
       [() => new fc.SamplerOptions('yes'), 'SamplerOptions: repeat_x must be a boolean, got string'],
       [() => renderer.unregisterTexture(null),
         'Renderer.unregisterTexture: texture_id must be a TextureId or a whole number, got null'],
+      [() => Scene.load(new Uint8Array(0), { cameras: 'x' }), 'Scene.load: cameras must be a boolean, got string'],
+      // Python takes cameras and lights as keywords, so only JavaScript has an options object.
+      [() => Scene.load(new Uint8Array(0), 5), 'Scene.load: options must be an object of cameras and lights, got number'],
     ]) {
       try { await run(); } catch (e) {
         if (!(e instanceof TypeError)) fail(`"${message}" came as ${e.name}`);
