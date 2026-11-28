@@ -249,7 +249,7 @@ impl PyFlag<'_> {
 /// so the reader raises a `TypeError` that names the parameter where pyo3's message wouldn't.
 #[derive(FromPyObject)]
 pub enum PyText<'py> {
-    Value(String),
+    Value(Bound<'py, PyString>),
     Other(Bound<'py, PyAny>),
 }
 
@@ -257,10 +257,22 @@ impl PyText<'_> {
     /// The text, or a `TypeError` that names `label` for a value of another type.
     pub(crate) fn read(self, label: &str) -> PyResult<String> {
         match self {
-            PyText::Value(text) => Ok(text),
+            PyText::Value(text) => read_text(&text),
             PyText::Other(value) => Err(refuse(&value, format_args!("{label} must be a str"))),
         }
     }
+}
+
+/// The text of a str, read as JavaScript reads the same string:
+/// each lone surrogate becomes U+FFFD, and a pair of surrogates the character it encodes.
+fn read_text(text: &Bound<'_, PyString>) -> PyResult<String> {
+    if let Ok(text) = text.to_cow() {
+        return Ok(text.into_owned());
+    }
+    let encoded = text.call_method1("encode", ("utf-16-le", "surrogatepass"))?;
+    let (units, _) = encoded.cast::<PyBytes>()?.as_bytes().as_chunks::<2>();
+    let units: Vec<u16> = units.iter().map(|unit| u16::from_le_bytes(*unit)).collect();
+    Ok(String::from_utf16_lossy(&units))
 }
 
 /// A bool, as [`PyFlag::read`] reads one, for a `from_py_with` reader.

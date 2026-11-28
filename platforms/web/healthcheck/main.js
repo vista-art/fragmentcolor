@@ -853,6 +853,9 @@ await withModule('platforms.web.healthcheck.parity', async () => {
       }
       fail(`"${message}" should throw`);
     }
+    // A string reads with U+FFFD for each lone surrogate, as Python reads a str.
+    if (new Pass('\ud800').name() !== '\ufffd') fail('Pass kept a lone surrogate in its name');
+    if (new Pass('\ud83d\ude00').name() !== '\u{1f600}') fail('Pass split a surrogate pair in its name');
     // A viewport takes an object of its box or its bounds, as Python takes a dict.
     for (const fields of [
       { x: 0, y: 0, width: 4, height: 4 },

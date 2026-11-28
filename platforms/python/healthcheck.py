@@ -1061,6 +1061,10 @@ def check_type_messages(renderer):
             assert str(e) == expected, f"expected {expected!r}, got {str(e)!r}"
             continue
         raise AssertionError(f"{expected!r} should raise TypeError")
+    # A str is never the wrong type. It reads as JavaScript reads the same string, with U+FFFD for each
+    # lone surrogate and a pair of surrogates as the character it encodes.
+    assert Pass("\ud800").name() == "\ufffd", "Pass read a lone surrogate unlike JavaScript"
+    assert Pass("\ud83d\ude00").name() == "\U0001f600", "Pass read a surrogate pair unlike JavaScript"
     print("Type errors name the call and what it takes")
 
 
