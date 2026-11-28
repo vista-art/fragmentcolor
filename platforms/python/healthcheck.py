@@ -135,6 +135,15 @@ def check_sampler_options(texture):
     opts.smooth = False
     opts.compare = None
     assert not opts.smooth and opts.compare is None
+    # A value of the wrong type raises and keeps the old one, as JavaScript's setters do.
+    for field, value in (("repeat_x", 1), ("smooth", "yes"), ("compare", "less")):
+        try:
+            setattr(opts, field, value)
+        except TypeError:
+            pass
+        else:
+            raise AssertionError(f"SamplerOptions.{field} = {value!r} should raise TypeError")
+    assert opts.repeat_x and not opts.smooth and opts.compare is None
     texture.set_sampler_options(opts)
     print("SamplerOptions and CompareFunction build from Python")
 
@@ -1056,6 +1065,10 @@ def check_type_messages(renderer):
         # The source raises before a wrong flag, as JavaScript reads the source first.
         "Scene.load: expected a path, or the bytes of a .glb file as bytes or a bytearray, got int":
             lambda: Scene.load(42, cameras="x"),
+        "SamplerOptions.compare must be a CompareFunction, got str":
+            lambda: setattr(SamplerOptions(), "compare", "less"),
+        "SamplerOptions.repeat_x must be a bool, got int": lambda: setattr(SamplerOptions(), "repeat_x", 1),
+        "ScreenRegion: origin takes two numbers, got int": lambda: ScreenRegion(5, (4, 4)),
     }
     for expected, call in cases.items():
         try:
@@ -1069,6 +1082,64 @@ def check_type_messages(renderer):
     assert Pass("\ud800").name() == "\ufffd", "Pass read a lone surrogate unlike JavaScript"
     assert Pass("\ud83d\ude00").name() == "\U0001f600", "Pass read a surrogate pair unlike JavaScript"
     print("Type errors name the call and what it takes")
+
+
+def check_value_messages(renderer):
+    """A size or region that holds the wrong numbers raises InvalidInputError that names the call, as JavaScript's does."""
+    rpass = Pass("values")
+    texture = renderer.create_texture(bytes(16), size=[2, 2])
+    # A key set to None counts as missing, as JavaScript reads null.
+    assert renderer.create_texture_target({"width": 4, "height": 4, "depth": None}).size() == Size(4, 4)
+    whole = "must be a whole number from 0 to 4294967295, got -1"
+    cases = {
+        "ScreenRegion: a region needs a width and a height of at least 1, got 0 by 4":
+            lambda: ScreenRegion((0, 0), (0, 4)),
+        "ScreenRegion: a region at 4294967295, 0 sized 5 by 5 reaches past 4294967295":
+            lambda: ScreenRegion((2**32 - 1, 0), (5, 5)),
+        # The far edge is checked before a side of 0, in every binding.
+        "ScreenRegion: a region at 4294967295, 0 sized 5 by 0 reaches past 4294967295":
+            lambda: ScreenRegion((2**32 - 1, 0), (5, 0)),
+        "ScreenRegion: origin takes two numbers, got 3": lambda: ScreenRegion((0, 0, 0), (4, 4)),
+        f"ScreenRegion: origin: item 0 {whole}": lambda: ScreenRegion((-1, 0), (4, 4)),
+        "Pass.set_viewport: a region needs a width and a height of at least 1, got 0 by 4":
+            lambda: rpass.set_viewport([0, 0, 0, 4]),
+        "Pass.set_viewport: a region takes [w, h] or [x, y, w, h], got 3 numbers": lambda: rpass.set_viewport([1, 2, 3]),
+        f"Pass.set_viewport: item 0 {whole}": lambda: rpass.set_viewport([-1, 4]),
+        "Pass.set_viewport: size takes two numbers, got 3": lambda: rpass.set_viewport([[0, 0], [4, 4, 4]]),
+        f"Pass.set_viewport: x {whole}": lambda: rpass.set_viewport({"x": -1, "y": 0, "width": 4, "height": 4}),
+        "Pass.set_viewport: a region needs each max past its min, got x from 8 to 2 and y from 0 to 4":
+            lambda: rpass.set_viewport({"min_x": 8, "min_y": 0, "max_x": 2, "max_y": 4}),
+        "Renderer.create_texture_target: a size takes 2 or 3 numbers, got 4":
+            lambda: renderer.create_texture_target([4, 4, 4, 4]),
+        f"Renderer.create_texture_target: size: item 0 {whole}": lambda: renderer.create_texture_target([-1, 4]),
+        "Renderer.create_texture_target: a size dict needs a width and a height":
+            lambda: renderer.create_texture_target({"width": 4}),
+        f"Size: width {whole}": lambda: Size(-1, 2),
+        f"Size.depth {whole}": lambda: setattr(Size(4, 2), "depth", -1),
+        # The region reads before the bytes, in every binding.
+        "Texture.write_region: a region takes 2, 4 or 6 numbers, got 3":
+            lambda: texture.write_region([300], [1, 2, 3]),
+        f"Texture.write_region: item 0 {whole}": lambda: texture.write_region(bytes(4), [-1, 0, 1, 1]),
+        "Texture.write_region: a region needs its width and height, or min and max bounds":
+            lambda: texture.write_region(bytes(4), {"x": 0, "y": 0, "width": 1}),
+        "Texture.write_region: max x (1) must be greater than min x (2)":
+            lambda: texture.write_region(bytes(4), {"min_x": 2, "max_x": 1, "max_y": 1}),
+        # A source reads before its size, and a chain's size before its bytes, in every binding.
+        "Renderer.create_texture: item 7 must be a whole number from 0 to 255, got 300":
+            lambda: renderer.create_texture([0] * 7 + [300], size=[1, 2, 3, 4]),
+        "Mipmap.build: a size takes 2 or 3 numbers, got 4":
+            lambda: Mipmap.build([300], TextureFormat.Rgba8Unorm, [1, 2, 3, 4]),
+        "Texture.write_region: data: item 0 must be a whole number from 0 to 255, got 300":
+            lambda: texture.write_region([300], None),
+    }
+    for expected, call in cases.items():
+        try:
+            call()
+        except InvalidInputError as e:
+            assert str(e) == expected, f"expected {expected!r}, got {str(e)!r}"
+            continue
+        raise AssertionError(f"{expected!r} should raise InvalidInputError")
+    print("Value errors name the call and the item or key")
 
 
 def raises_invalid(label, call):
@@ -2025,6 +2096,7 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
     check_defaults()
     check_labels(renderer)
     check_type_messages(renderer)
+    check_value_messages(renderer)
     check_colors(renderer)
     check_vectors()
     check_example_resize(renderer)

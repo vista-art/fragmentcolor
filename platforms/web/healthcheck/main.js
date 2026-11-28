@@ -735,7 +735,7 @@ await withModule('platforms.web.healthcheck.parity', async () => {
       ["Light.setIntensity('x')", () => Light.point([0, 1, 0], [1, 1, 1]).setIntensity('x'), 'TypeError'],
       ['Light.setIntensity(NaN)', () => Light.point([0, 1, 0], [1, 1, 1]).setIntensity(NaN), 'InvalidInputError'],
       ['Model.rotate([0, 0, 0], 1)', () => model.rotate([0, 0, 0], 1), 'InvalidInputError'],
-      ["SamplerOptions.repeat_x = 'yes'", () => { new fc.SamplerOptions().repeat_x = 'yes'; }, 'TypeError'],
+      ["SamplerOptions.repeatX = 'yes'", () => { new fc.SamplerOptions().repeatX = 'yes'; }, 'TypeError'],
       ["new SamplerOptions('yes')", () => new fc.SamplerOptions('yes'), 'TypeError'],
       ['Mesh.addVertex with 4 parts', () => new Mesh().addVertex([[0, 0, 0], [0, 0], [1, 1, 1, 1], [0]]), 'TypeError'],
       // Another class where a size or region goes is the wrong type, and an object without
@@ -853,6 +853,12 @@ await withModule('platforms.web.healthcheck.parity', async () => {
       [() => Shader.default().get(42), 'Shader.get: key must be a string, got number'],
       [() => new Vertex([0, 0]).set(42, 1), 'Vertex.set: key must be a string, got number'],
       [() => new Instance().set(42, 1), 'Instance.set: key must be a string, got number'],
+      // A compare function is the enum, which JavaScript holds as a number, and never its name.
+      [() => new fc.SamplerOptions(undefined, undefined, undefined, 'less'),
+        'SamplerOptions: compare must be a CompareFunction, got string'],
+      [() => { new fc.SamplerOptions().compare = 'less'; }, 'SamplerOptions.compare must be a CompareFunction, got string'],
+      [() => { new fc.SamplerOptions().repeatX = 1; }, 'SamplerOptions.repeatX must be a boolean, got number'],
+      [() => new fc.ScreenRegion(5, [4, 4]), 'ScreenRegion: origin takes two numbers, got number'],
     ]) {
       try { await run(); } catch (e) {
         if (!(e instanceof TypeError)) fail(`"${message}" came as ${e.name}`);
@@ -860,6 +866,58 @@ await withModule('platforms.web.healthcheck.parity', async () => {
         continue;
       }
       fail(`"${message}" should throw`);
+    }
+    // A size or region that holds the wrong numbers throws an InvalidInputError that names the call,
+    // and the item or the key, with the text Python raises in check_value_messages.
+    const whole = 'must be a whole number from 0 to 4294967295, got -1';
+    for (const [run, message] of [
+      [() => new fc.ScreenRegion([0, 0], [0, 4]), 'ScreenRegion: a region needs a width and a height of at least 1, got 0 by 4'],
+      [() => new fc.ScreenRegion([2 ** 32 - 1, 0], [5, 5]),
+        'ScreenRegion: a region at 4294967295, 0 sized 5 by 5 reaches past 4294967295'],
+      // The far edge is checked before a side of 0, in every binding.
+      [() => new fc.ScreenRegion([2 ** 32 - 1, 0], [5, 0]),
+        'ScreenRegion: a region at 4294967295, 0 sized 5 by 0 reaches past 4294967295'],
+      [() => new fc.ScreenRegion([0, 0, 0], [4, 4]), 'ScreenRegion: origin takes two numbers, got 3'],
+      [() => new fc.ScreenRegion([-1, 0], [4, 4]), `ScreenRegion: origin: item 0 ${whole}`],
+      [() => first.setViewport([0, 0, 0, 4]), 'Pass.setViewport: a region needs a width and a height of at least 1, got 0 by 4'],
+      [() => first.setViewport([1, 2, 3]), 'Pass.setViewport: a region takes [w, h] or [x, y, w, h], got 3 numbers'],
+      [() => first.setViewport([-1, 4]), `Pass.setViewport: item 0 ${whole}`],
+      [() => first.setViewport([[0, 0], [4, 4, 4]]), 'Pass.setViewport: size takes two numbers, got 3'],
+      [() => first.setViewport({ x: -1, y: 0, width: 4, height: 4 }), `Pass.setViewport: x ${whole}`],
+      [() => first.setViewport({ minX: 8, minY: 0, maxX: 2, maxY: 4 }),
+        'Pass.setViewport: a region needs each max past its min, got x from 8 to 2 and y from 0 to 4'],
+      [() => renderer.createTextureTarget([4, 4, 4, 4]), 'Renderer.createTextureTarget: a size takes 2 or 3 numbers, got 4'],
+      [() => renderer.createTextureTarget([-1, 4]), `Renderer.createTextureTarget: size: item 0 ${whole}`],
+      [() => renderer.createTextureTarget({ width: 4 }), 'Renderer.createTextureTarget: a size object needs a width and a height'],
+      [() => new fc.Size(-1, 2), `Size: width ${whole}`],
+      [() => { new fc.Size(4, 2).depth = -1; }, `Size.depth ${whole}`],
+      // The region reads before the bytes, in every binding.
+      [() => writable.writeRegion([300], [1, 2, 3]), 'Texture.writeRegion: a region takes 2, 4 or 6 numbers, got 3'],
+      [() => writable.writeRegion(new Uint8Array(4), [-1, 0, 1, 1]), `Texture.writeRegion: item 0 ${whole}`],
+      [() => writable.writeRegion(new Uint8Array(4), { x: 0, y: 0, width: 1 }),
+        'Texture.writeRegion: a region needs its width and height, or min and max bounds'],
+      [() => writable.writeRegion(new Uint8Array(4), { minX: 2, maxX: 1, maxY: 1 }),
+        'Texture.writeRegion: max x (1) must be greater than min x (2)'],
+      // A source reads before its size, and a chain's size before its bytes, in every binding.
+      [() => renderer.createTexture([0, 0, 0, 0, 0, 0, 0, 300], [1, 2, 3, 4]),
+        'Renderer.createTexture: item 7 must be a whole number from 0 to 255, got 300'],
+      [() => Mipmap.build([300], TextureFormat.Rgba8Unorm, [1, 2, 3, 4]), 'Mipmap.build: a size takes 2 or 3 numbers, got 4'],
+      [() => writable.writeRegion([300]), 'Texture.writeRegion: data: item 0 must be a whole number from 0 to 255, got 300'],
+      // JavaScript holds the enum as a number, so only a number past it can fail this way.
+      [() => new fc.SamplerOptions(undefined, undefined, undefined, 9), 'SamplerOptions: compare: 9 is not a CompareFunction'],
+    ]) {
+      try { await run(); } catch (e) {
+        if (e.name !== 'InvalidInputError') fail(`"${message}" came as ${e.name}`);
+        if (e.message !== message) fail(`threw "${e.message}", not "${message}"`);
+        continue;
+      }
+      fail(`"${message}" should throw`);
+    }
+    // SamplerOptions reads and writes its fields in camelCase, as JavaScript spells every property.
+    const sampling = new fc.SamplerOptions(true, false, false, fc.CompareFunction.LessEqual);
+    sampling.repeatY = true;
+    if (!sampling.repeatX || !sampling.repeatY || sampling.smooth || sampling.compare !== fc.CompareFunction.LessEqual) {
+      fail('SamplerOptions fields did not read back');
     }
     // A string reads with U+FFFD for each lone surrogate, as Python reads a str.
     if (new Pass('\ud800').name() !== '\ufffd') fail('Pass kept a lone surrogate in its name');
