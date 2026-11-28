@@ -495,6 +495,7 @@ Skinning splits across the layers, and every call is an addition. The host keeps
 - [ ] Skinning (3D) as a feature of the mesh and the model, which every material type draws through a `mesh/skin` registry snippet, so no type grows a skinned twin: a palette range per skinned `Model`, `model.set_joints(&matrices)`, and skinned bounds for `camera.sort`. The loader turns it on for a skinned primitive. Every instance of a model's mesh shares its pose unless a per-instance offset slot points elsewhere
 - [ ] Morph targets (3D, scene): deltas in a data texture read by `vertex_index`, applied before skinning
 - [ ] A glTF sample test matrix at fixed times: BoxAnimated, SimpleSkin, RiggedFigure, CesiumMan, Fox, SimpleMorph, MorphStressTest and InterpolationTest, with attribution where a license asks for it. BrainStem, under the Poser EULA, stays out
+- [ ] A swarm of the playground's glTF fish as the track's demo. The fish has no skeleton, so its vertex shader bends the body and tail along its length from a phase each instance carries, and a compute pass steers the instances as boids, writing their positions and headings into the mesh's instance slots
 
 ### The 2D layer
 
