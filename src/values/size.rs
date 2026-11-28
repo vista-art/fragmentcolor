@@ -133,19 +133,19 @@ crate::impl_from_into_with_refs!(
     |[width, height, depth]: [u32; 3]| Size::new(width, height, Some(depth))
 );
 
-/// Reads `[w, h]` or `[w, h, d]` from a plain or typed array, a `Size`, or a `{ width, height, depth? }`
-/// object. A value of another type, another FragmentColor class among them, or a number that isn't
-/// one, is a `TypeError`, as Python raises, and a fraction, a negative number, a wrong count or a
-/// missing side is an `InvalidInputError`.
 #[cfg(wasm)]
-impl TryFrom<&wasm_bindgen::JsValue> for Size {
-    type Error = WebError;
-
-    fn try_from(value: &wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
+impl Size {
+    /// Reads a size from a JavaScript value for `call`.
+    ///
+    /// It takes `[w, h]` or `[w, h, d]` in a plain or typed array, a `Size`, or a
+    /// `{ width, height, depth? }` object. A value of another type, another FragmentColor class
+    /// among them, or a number that isn't one, is a `TypeError` that names `call`, as Python raises,
+    /// and a fraction, a negative number, a wrong count or a missing side is an `InvalidInputError`.
+    pub(crate) fn read(value: &JsValue, call: &str) -> Result<Self, WebError> {
         use crate::FcKind;
         use js_sys::Reflect;
 
-        if let Some(numbers) = read_list(value, "a size")? {
+        if let Some(numbers) = read_list(value, &format!("{call}: size"))? {
             return Ok(Size::from_numbers(&numbers)?);
         }
 
@@ -155,7 +155,7 @@ impl TryFrom<&wasm_bindgen::JsValue> for Size {
                 Reflect::get(value, &JsValue::from_str(name))
                     .ok()
                     .filter(|item| !item.is_undefined() && !item.is_null())
-                    .map(|item| read_number(&item, format_args!("a size's {name}")))
+                    .map(|item| read_number(&item, format_args!("{call}: size: {name}")))
                     .transpose()
             };
             let (Some(width), Some(height)) = (field("width")?, field("height")?) else {
@@ -171,7 +171,7 @@ impl TryFrom<&wasm_bindgen::JsValue> for Size {
 
         let kind = class.unwrap_or_else(|| describe(value));
         Err(WebError::type_error(&format!(
-            "a size is [w, h], [w, h, d], a Size or {{ width, height, depth? }}, got {kind}"
+            "{call}: a size is [w, h], [w, h, d], a Size or {{ width, height, depth? }}, got {kind}"
         )))
     }
 }
@@ -252,9 +252,6 @@ impl Size {
     }
 }
 
-#[cfg(wasm)]
-crate::impl_tryfrom_owned_via_ref!(Size, wasm_bindgen::JsValue, WebError);
-
 // The brand lets a reader tell a Size from another class after a minifier renames the class.
 crate::impl_fc_kind!(Size, "Size");
 
@@ -334,26 +331,25 @@ pub enum PySize<'py> {
     Other(Bound<'py, PyAny>),
 }
 
-/// Checks a size from Python with the same rule as every other binding.
 #[cfg(python)]
-impl TryFrom<PySize<'_>> for Size {
-    type Error = PyErr;
-
-    fn try_from(value: PySize<'_>) -> Result<Self, Self::Error> {
-        let dimensions = match value {
+impl PySize<'_> {
+    /// The size, checked with the same rule as every other binding.
+    /// A value of another type raises a `TypeError` that names `call` and lists the forms.
+    pub(crate) fn read(self, call: &str) -> PyResult<Size> {
+        let dimensions = match self {
             PySize::Size(size) => return Ok(size),
             PySize::Other(value) => {
                 let forms = "a size is [w, h], [w, h, d], a Size or a dict of width, height and an optional depth";
-                return Err(refuse(&value, forms));
+                return Err(refuse(&value, format_args!("{call}: {forms}")));
             }
-            PySize::Numbers(items) => read_list(&items, "size")?,
+            PySize::Numbers(items) => read_list(&items, &format!("{call}: size"))?,
             PySize::Fields(fields) => {
                 let field = |name: &str| -> PyResult<Option<u32>> {
                     if !fields.contains(name)? {
                         return Ok(None);
                     }
                     let value = PyUnsigned::Int(fields.get_item(name)?);
-                    value.read(&format!("size: {name}")).map(Some)
+                    value.read(&format!("{call}: size: {name}")).map(Some)
                 };
                 let (Some(width), Some(height)) = (field("width")?, field("height")?) else {
                     return Err(SizeError::Invalid(

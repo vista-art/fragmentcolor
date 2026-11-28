@@ -47,7 +47,7 @@ impl UnlitMaterial {
         &self,
         #[wasm_bindgen(unchecked_param_type = "AlphaMode")] mode: &JsValue,
     ) -> Result<UnlitMaterial, WebError> {
-        Ok(self.alpha_mode(read_alpha_mode(mode)?))
+        Ok(self.alpha_mode(read_alpha_mode(mode, "UnlitMaterial.alphaMode: mode")?))
     }
 
     #[wasm_bindgen(js_name = "doubleSided")]

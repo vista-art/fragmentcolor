@@ -6,7 +6,8 @@ use pyo3::types::PyString;
 
 use crate::bindings::numbers::read_floats;
 use crate::bindings::python::{
-    PyChannels, PyFloat, PyUnsigned, read_items, read_numbers, read_unsigned, refuse,
+    PyCamera, PyChannels, PyFloat, PyLight, PyMesh, PyPass, PyPasses, PyUnsigned, read_items,
+    read_numbers, read_unsigned, refuse,
 };
 use crate::errors::InvalidInputError;
 use crate::scene::material::platform::python::PyMaterial;
@@ -20,8 +21,11 @@ use crate::{Mesh, Pass};
 impl Model {
     #[new]
     #[lsp_doc("docs/api/scene/model/new.md")]
-    pub fn new_py(mesh: Mesh, material: PyMaterial) -> PyResult<Self> {
-        Ok(Model::new(mesh, material.read("Model")?))
+    pub fn new_py(mesh: PyMesh<'_>, material: PyMaterial) -> PyResult<Self> {
+        Ok(Model::new(
+            mesh.read("Model: mesh")?,
+            material.read("Model")?,
+        ))
     }
 
     #[pyo3(name = "mesh")]
@@ -221,7 +225,8 @@ fn add_object(scene: &Scene, target: PassRef, object: &Bound<'_, PyAny>) -> PyRe
     } else if let Ok(light) = object.cast::<Light>() {
         scene.add_to(target, &*light.borrow())?;
     } else {
-        return Err(pyo3::exceptions::PyTypeError::new_err(
+        return Err(refuse(
+            object,
             "Scene.add_to: expected a Model, Camera, or Light",
         ));
     }
@@ -470,7 +475,8 @@ impl Scene {
         } else if let Ok(light) = object.cast::<Light>() {
             slf.add(&*light.borrow())?;
         } else {
-            return Err(pyo3::exceptions::PyTypeError::new_err(
+            return Err(refuse(
+                object,
                 "Scene.add: expected a Model, Camera, or Light",
             ));
         }
@@ -479,15 +485,15 @@ impl Scene {
 
     #[pyo3(name = "add_pass")]
     #[lsp_doc("docs/api/scene/scene/add_pass.md")]
-    pub fn add_pass_py<'py>(slf: PyRef<'py, Self>, pass: &Pass) -> PyRef<'py, Self> {
-        slf.add_pass(pass);
-        slf
+    pub fn add_pass_py<'py>(slf: PyRef<'py, Self>, pass: PyPass<'_>) -> PyResult<PyRef<'py, Self>> {
+        slf.add_pass(&pass.read("Scene.add_pass: pass")?);
+        Ok(slf)
     }
 
     #[pyo3(name = "remove_pass")]
     #[lsp_doc("docs/api/scene/scene/remove_pass.md")]
-    pub fn remove_pass_py(&self, pass: &Pass) -> bool {
-        self.remove_pass(pass)
+    pub fn remove_pass_py(&self, pass: PyPass<'_>) -> PyResult<bool> {
+        Ok(self.remove_pass(&pass.read("Scene.remove_pass: pass")?))
     }
 
     #[pyo3(name = "get_pass")]
@@ -524,8 +530,16 @@ impl Scene {
 
     #[pyo3(name = "set_passes")]
     #[lsp_doc("docs/api/scene/scene/set_passes.md")]
-    pub fn set_passes_py(&self, passes: Vec<Pass>) {
+    pub fn set_passes_py(&self, passes: PyPasses<'_>) -> PyResult<()> {
+        const CALL: &str = "Scene.set_passes";
+        let passes = passes
+            .items(&format!("{CALL}: passes"))?
+            .into_iter()
+            .enumerate()
+            .map(|(index, pass)| pass.read(&format!("{CALL}: item {index}")))
+            .collect::<PyResult<Vec<_>>>()?;
         self.set_passes(passes);
+        Ok(())
     }
 
     #[pyo3(name = "no_defaults")]
@@ -551,16 +565,22 @@ impl Scene {
 
     #[pyo3(name = "set_default_camera")]
     #[lsp_doc("docs/api/scene/scene/set_default_camera.md")]
-    pub fn set_default_camera_py<'py>(slf: PyRef<'py, Self>, camera: &Camera) -> PyRef<'py, Self> {
-        slf.set_default_camera(camera);
-        slf
+    pub fn set_default_camera_py<'py>(
+        slf: PyRef<'py, Self>,
+        camera: PyCamera<'_>,
+    ) -> PyResult<PyRef<'py, Self>> {
+        slf.set_default_camera(&camera.read("Scene.set_default_camera: camera")?);
+        Ok(slf)
     }
 
     #[pyo3(name = "set_default_light")]
     #[lsp_doc("docs/api/scene/scene/set_default_light.md")]
-    pub fn set_default_light_py<'py>(slf: PyRef<'py, Self>, light: &Light) -> PyRef<'py, Self> {
-        slf.set_default_light(light);
-        slf
+    pub fn set_default_light_py<'py>(
+        slf: PyRef<'py, Self>,
+        light: PyLight<'_>,
+    ) -> PyResult<PyRef<'py, Self>> {
+        slf.set_default_light(&light.read("Scene.set_default_light: light")?);
+        Ok(slf)
     }
 
     #[pyo3(name = "ambient")]

@@ -5,10 +5,10 @@ use pyo3::prelude::*;
 
 use super::refuse_options;
 use crate::MaterialMap;
-use crate::bindings::python::{PyChannels, PyFloat, PyUnsigned};
+use crate::PySize;
+use crate::bindings::python::{PyChannels, PyFloat, PyTextureFormat, PyUnsigned};
 use crate::core::{TextureKeywords, py_to_texture_spec};
 use crate::texture::{PySamplerOptions, PyTextureSource, PyTextureUsage, TEXTURE_INPUTS};
-use crate::{PySize, TextureFormat};
 
 /// What `MaterialMap.texture` takes from Python: another map, or any `create_texture` source.
 /// The source keeps any other value, so the call raises a `TypeError` that lists both.
@@ -30,7 +30,7 @@ impl MaterialMap {
         &self,
         input: PyMapInput<'py>,
         size: Option<PySize<'py>>,
-        format: Option<TextureFormat>,
+        format: Option<PyTextureFormat<'py>>,
         mipmaps: Option<bool>,
         sampler: Option<PySamplerOptions<'py>>,
         usage: Option<PyTextureUsage<'py>>,

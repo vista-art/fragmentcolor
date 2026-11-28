@@ -95,7 +95,7 @@ impl ToonMaterial {
         &self,
         #[wasm_bindgen(unchecked_param_type = "AlphaMode")] mode: &JsValue,
     ) -> Result<ToonMaterial, WebError> {
-        Ok(self.alpha_mode(read_alpha_mode(mode)?))
+        Ok(self.alpha_mode(read_alpha_mode(mode, "ToonMaterial.alphaMode: mode")?))
     }
 
     #[wasm_bindgen(js_name = "doubleSided")]

@@ -5,7 +5,6 @@ use crate::texture::TextureError;
 use crate::{RenderContext, ShaderError, Size, Target, TargetFrame, TextureTarget, WindowTarget};
 use lsp_doc::lsp_doc;
 use parking_lot::Mutex;
-use std::convert::TryInto;
 use std::sync::Arc;
 use wasm_bindgen::prelude::*;
 
@@ -47,8 +46,7 @@ impl CanvasTarget {
     #[wasm_bindgen(js_name = "resize")]
     #[lsp_doc("docs/api/targets/window_target/resize.md")]
     pub fn resize_js(&mut self, size: &JsValue) -> Result<(), WebError> {
-        let size = Size::try_from(size)?;
-        Target::resize(self, size)?;
+        Target::resize(self, Size::read(size, "WindowTarget.resize")?)?;
         Ok(())
     }
 
@@ -95,8 +93,7 @@ impl TextureTarget {
     #[wasm_bindgen(js_name = "resize")]
     #[lsp_doc("docs/api/targets/texture_target/resize.md")]
     pub fn resize_js(&mut self, size: &JsValue) -> Result<(), WebError> {
-        let size: Size = size.try_into()?;
-        self.resize(size)?;
+        self.resize(Size::read(size, "TextureTarget.resize")?)?;
         Ok(())
     }
 

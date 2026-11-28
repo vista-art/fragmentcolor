@@ -3,16 +3,16 @@
 use crate::errors::WebError;
 use js_sys::{Array, ArrayBuffer, DataView, Float32Array, Int32Array, Uint8Array, Uint32Array};
 use lsp_doc::lsp_doc;
-use std::convert::TryInto;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
 use crate::bindings::web::{
-    describe, read_bytes, read_class, read_flag, read_numbers, read_rows, read_text, read_unsigned,
+    describe, read_bytes, read_class, read_flag, read_numbers, read_object, read_rows, read_text,
+    read_unsigned, refuse, refuse_class,
 };
 use crate::core::shader::UniformInput;
 use crate::errors::ErrorClass;
-use crate::{AlphaMode, Shader, ShaderError, UniformData};
+use crate::{AlphaMode, Mesh, Shader, UniformData, Vertex};
 
 #[wasm_bindgen]
 impl Shader {
@@ -40,14 +40,20 @@ impl Shader {
     // Static helpers that mirror Rust API for the JS side
     #[wasm_bindgen(js_name = "fromVertex")]
     #[lsp_doc("docs/api/core/shader/from_vertex.md")]
-    pub fn from_vertex_js(vertex: &crate::Vertex) -> Result<Shader, ShaderError> {
-        Self::from_vertex(vertex)
+    pub fn from_vertex_js(
+        #[wasm_bindgen(unchecked_param_type = "Vertex")] vertex: &JsValue,
+    ) -> Result<Shader, WebError> {
+        let vertex: Vertex = read_object(vertex, "Shader.fromVertex: vertex")?;
+        Ok(Self::from_vertex(&vertex)?)
     }
 
     #[wasm_bindgen(js_name = "fromMesh")]
     #[lsp_doc("docs/api/core/shader/from_mesh.md")]
-    pub fn from_mesh_js(mesh: &crate::Mesh) -> Result<Shader, ShaderError> {
-        Self::from_mesh(mesh)
+    pub fn from_mesh_js(
+        #[wasm_bindgen(unchecked_param_type = "Mesh")] mesh: &JsValue,
+    ) -> Result<Shader, WebError> {
+        let mesh: Mesh = read_object(mesh, "Shader.fromMesh: mesh")?;
+        Ok(Self::from_mesh(&mesh)?)
     }
 
     #[wasm_bindgen(js_name = "set")]
@@ -85,31 +91,45 @@ impl Shader {
 
     #[wasm_bindgen(js_name = "addMesh")]
     #[lsp_doc("docs/api/core/shader/add_mesh.md")]
-    pub fn add_mesh_js(&self, mesh: &crate::Mesh) -> Result<(), ShaderError> {
-        self.add_mesh(mesh)
+    pub fn add_mesh_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "Mesh")] mesh: &JsValue,
+    ) -> Result<(), WebError> {
+        let mesh: Mesh = read_object(mesh, "Shader.addMesh: mesh")?;
+        Ok(self.add_mesh(&mesh)?)
     }
 
     #[wasm_bindgen(js_name = "removeMesh")]
     #[lsp_doc("docs/api/core/shader/remove_mesh.md")]
-    pub fn remove_mesh_js(&self, mesh: &crate::Mesh) {
-        self.remove_mesh(mesh)
+    pub fn remove_mesh_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "Mesh")] mesh: &JsValue,
+    ) -> Result<(), WebError> {
+        let mesh: Mesh = read_object(mesh, "Shader.removeMesh: mesh")?;
+        self.remove_mesh(&mesh);
+        Ok(())
     }
 
     #[wasm_bindgen(js_name = "removeMeshes")]
     #[lsp_doc("docs/api/core/shader/remove_meshes.md")]
     pub fn remove_meshes_js(&self, list: &JsValue) -> Result<(), WebError> {
-        let arr = js_sys::Array::is_array(list)
-            .then(|| js_sys::Array::from(list))
-            .ok_or_else(|| WebError::type_error("removeMeshes: expected an array of Mesh"))?;
-        let mut meshes: Vec<crate::Mesh> = Vec::with_capacity(arr.length() as usize);
-        for v in arr.iter() {
-            let m: crate::Mesh = (&v)
-                .try_into()
-                .map_err(|_| WebError::type_error("removeMeshes: item is not a Mesh"))?;
-            meshes.push(m);
-        }
-        for m in meshes.iter() {
-            self.remove_mesh(m);
+        const CALL: &str = "Shader.removeMeshes";
+        let Some(array) = list.dyn_ref::<Array>() else {
+            return Err(refuse(
+                list,
+                &format!("{CALL}: list must be an array of meshes"),
+            ));
+        };
+        let read = |(index, item): (usize, JsValue)| {
+            read_object::<Mesh>(&item, &format!("{CALL}: item {index}"))
+        };
+        let meshes = array
+            .iter()
+            .enumerate()
+            .map(read)
+            .collect::<Result<Vec<Mesh>, WebError>>()?;
+        for mesh in &meshes {
+            self.remove_mesh(mesh);
         }
         Ok(())
     }
@@ -123,8 +143,12 @@ impl Shader {
     // Instance helpers mirrored to JS
     #[wasm_bindgen(js_name = "validateMesh")]
     #[lsp_doc("docs/api/core/shader/validate_mesh.md")]
-    pub fn validate_mesh_js(&self, mesh: &crate::Mesh) -> Result<(), ShaderError> {
-        self.validate_mesh(mesh)
+    pub fn validate_mesh_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "Mesh")] mesh: &JsValue,
+    ) -> Result<(), WebError> {
+        let mesh: Mesh = read_object(mesh, "Shader.validateMesh: mesh")?;
+        Ok(self.validate_mesh(&mesh)?)
     }
 
     #[wasm_bindgen(js_name = "isCompute")]
@@ -139,7 +163,7 @@ impl Shader {
         &self,
         #[wasm_bindgen(unchecked_param_type = "AlphaMode")] mode: &JsValue,
     ) -> Result<Shader, WebError> {
-        Ok(self.alpha_mode(read_alpha_mode(mode)?))
+        Ok(self.alpha_mode(read_alpha_mode(mode, "Shader.alphaMode: mode")?))
     }
 
     #[wasm_bindgen(js_name = "doubleSided")]
@@ -232,21 +256,18 @@ fn uniform_value(data: UniformData) -> JsValue {
 }
 
 /// Maps an `AlphaMode` from JS, a number in variant order, to the mode.
-/// Anything else is an error, which wasm-bindgen would read as `Opaque`.
-pub(crate) fn read_alpha_mode(value: &JsValue) -> Result<AlphaMode, WebError> {
-    let code = value.as_f64().ok_or_else(|| {
-        WebError::type_error(&format!(
-            "mode must be an AlphaMode, got {}",
-            describe(value)
-        ))
-    })?;
-    match read_unsigned(code, "mode")? {
+/// Anything else is an error that names `label`, where wasm-bindgen would read `Opaque`.
+pub(crate) fn read_alpha_mode(value: &JsValue, label: &str) -> Result<AlphaMode, WebError> {
+    let code = value
+        .as_f64()
+        .ok_or_else(|| refuse_class(value, label, "AlphaMode"))?;
+    match read_unsigned(code, label)? {
         0 => Ok(AlphaMode::Opaque),
         1 => Ok(AlphaMode::Mask),
         2 => Ok(AlphaMode::Blend),
         _ => Err(WebError::new(
             ErrorClass::InvalidInput,
-            &format!("{code} is not an AlphaMode"),
+            &format!("{label}: {code} is not an AlphaMode"),
         )),
     }
 }

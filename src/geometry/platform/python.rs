@@ -6,7 +6,8 @@ use pyo3::types::{PyDict, PyString};
 
 use crate::bindings::numbers;
 use crate::bindings::python::{
-    PyChannels, PyUnsigned, is_list, read_list, read_number, read_numbers, refuse,
+    PyChannels, PyIndices, PyUnsigned, is_list, list_argument, read_list, read_number,
+    read_numbers, refuse,
 };
 use crate::{Instance, Mesh, MeshError, Vertex, VertexData};
 use lsp_doc::lsp_doc;
@@ -123,12 +124,16 @@ impl PyIntoVertex<'_> {
     }
 }
 
-/// Reads each vertex of a list, naming a failing one as `{label}: vertex {index}`.
-fn read_vertices(vertices: &[PyIntoVertex<'_>], label: &str) -> PyResult<Vec<Vertex>> {
+list_argument!(PyVertices, PyIntoVertex, "vertices");
+
+/// Reads each vertex of a list for `call`, naming a failing one as `{call}: vertex {index}`.
+/// A value that is no list raises a `TypeError` that names `call`.
+fn read_vertices(vertices: PyVertices<'_>, call: &str) -> PyResult<Vec<Vertex>> {
     vertices
+        .items(&format!("{call}: vertices"))?
         .iter()
         .enumerate()
-        .map(|(index, vertex)| vertex.read(&format!("{label}: vertex {index}")))
+        .map(|(index, vertex)| vertex.read(&format!("{call}: vertex {index}")))
         .collect()
 }
 
@@ -145,6 +150,8 @@ pub enum PyIntoInstance<'py> {
     Other(Bound<'py, PyAny>),
 }
 
+list_argument!(PyInstances, PyIntoInstance, "instances");
+
 impl PyIntoInstance<'_> {
     /// The instance, or an error that names `label`, and the key for an attribute it can't read.
     /// Dict entries are set in insertion order, so their locations follow it.
@@ -160,9 +167,12 @@ impl PyIntoInstance<'_> {
         };
         let mut instance = Instance::new();
         for (key, value) in dict.iter() {
-            let key: String = key
-                .extract()
-                .map_err(|_| PyTypeError::new_err("instance attribute names must be str"))?;
+            let key: String = key.extract().map_err(|_| {
+                refuse(
+                    &key,
+                    format_args!("{label}: an attribute name must be a str"),
+                )
+            })?;
             let value = value.extract::<PyAttributeValue>()?;
             instance = instance.set(&key, value.read(&format!("{label}: {key}"))?);
         }
@@ -273,9 +283,9 @@ impl Mesh {
     #[staticmethod]
     #[pyo3(name = "from_vertices")]
     #[lsp_doc("docs/api/geometry/mesh/from_vertices.md")]
-    pub fn from_vertices_py(vertices: Vec<PyIntoVertex<'_>>) -> PyResult<Self> {
+    pub fn from_vertices_py(vertices: PyVertices<'_>) -> PyResult<Self> {
         Ok(Mesh::from_vertices(read_vertices(
-            &vertices,
+            vertices,
             "Mesh.from_vertices",
         )?))
     }
@@ -289,8 +299,8 @@ impl Mesh {
 
     #[pyo3(name = "add_vertices")]
     #[lsp_doc("docs/api/geometry/mesh/add_vertices.md")]
-    pub fn add_vertices_py(&mut self, vertices: Vec<PyIntoVertex<'_>>) -> PyResult<()> {
-        self.add_vertices(read_vertices(&vertices, "Mesh.add_vertices")?);
+    pub fn add_vertices_py(&mut self, vertices: PyVertices<'_>) -> PyResult<()> {
+        self.add_vertices(read_vertices(vertices, "Mesh.add_vertices")?);
         Ok(())
     }
 
@@ -303,8 +313,9 @@ impl Mesh {
 
     #[pyo3(name = "add_instances")]
     #[lsp_doc("docs/api/geometry/mesh/add_instances.md")]
-    pub fn add_instances_py(&mut self, items: Vec<PyIntoInstance<'_>>) -> PyResult<()> {
+    pub fn add_instances_py(&mut self, items: PyInstances<'_>) -> PyResult<()> {
         let instances = items
+            .items("Mesh.add_instances: items")?
             .into_iter()
             .enumerate()
             .map(|(index, item)| item.read(&format!("Mesh.add_instances: instance {index}")))
@@ -328,7 +339,8 @@ impl Mesh {
 
     #[pyo3(name = "set_indices")]
     #[lsp_doc("docs/api/geometry/mesh/set_indices.md")]
-    pub fn set_indices_py(&mut self, indices: Vec<PyUnsigned<'_>>) -> PyResult<()> {
+    pub fn set_indices_py(&mut self, indices: PyIndices<'_>) -> PyResult<()> {
+        let indices = indices.items("Mesh.set_indices: indices")?;
         self.set_indices(read_list(&indices, "Mesh.set_indices")?);
         Ok(())
     }

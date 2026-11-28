@@ -3,8 +3,8 @@
 use lsp_doc::lsp_doc;
 use pyo3::prelude::*;
 
-use crate::bindings::python::{PyChannels, PyFloat};
-use crate::{AlphaMode, MaterialMap, PbrMaterial, Shader};
+use crate::bindings::python::{PyAlphaMode, PyChannels, PyFloat};
+use crate::{MaterialMap, PbrMaterial, Shader};
 
 #[pymethods]
 impl PbrMaterial {
@@ -81,8 +81,8 @@ impl PbrMaterial {
 
     #[pyo3(name = "alpha_mode")]
     #[lsp_doc("docs/api/scene/pbr_material/alpha_mode.md")]
-    pub fn alpha_mode_py(&self, mode: AlphaMode) -> Self {
-        self.alpha_mode(mode)
+    pub fn alpha_mode_py(&self, mode: PyAlphaMode<'_>) -> PyResult<Self> {
+        Ok(self.alpha_mode(mode.read("PbrMaterial.alpha_mode: mode")?))
     }
 
     #[pyo3(name = "double_sided")]

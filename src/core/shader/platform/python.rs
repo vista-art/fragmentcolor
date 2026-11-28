@@ -1,8 +1,8 @@
 #![cfg(python)]
 
-use crate::bindings::python::{is_list, refuse};
+use crate::bindings::python::{PyAlphaMode, PyMesh, PyMeshes, PyVertex, is_list, refuse};
 use crate::core::shader::{UniformInput, lsp_doc};
-use crate::{AlphaMode, Shader, ShaderError, ShaderInput, UniformData};
+use crate::{Shader, ShaderError, ShaderInput, UniformData};
 use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
 use pyo3::types::{PyAnyMethods, PyByteArray, PyBytes, PyMemoryView};
@@ -60,22 +60,31 @@ impl Shader {
 
     #[pyo3(name = "add_mesh")]
     #[lsp_doc("docs/api/core/shader/add_mesh.md")]
-    pub fn add_mesh_py(&self, mesh: &crate::Mesh) -> Result<(), PyErr> {
-        Ok(self.add_mesh(mesh)?)
+    pub fn add_mesh_py(&self, mesh: PyMesh<'_>) -> Result<(), PyErr> {
+        Ok(self.add_mesh(&mesh.read("Shader.add_mesh: mesh")?)?)
     }
 
     #[pyo3(name = "remove_mesh")]
     #[lsp_doc("docs/api/core/shader/remove_mesh.md")]
-    pub fn remove_mesh_py(&self, mesh: &crate::Mesh) {
-        self.remove_mesh(mesh)
+    pub fn remove_mesh_py(&self, mesh: PyMesh<'_>) -> PyResult<()> {
+        self.remove_mesh(&mesh.read("Shader.remove_mesh: mesh")?);
+        Ok(())
     }
 
     #[pyo3(name = "remove_meshes")]
     #[lsp_doc("docs/api/core/shader/remove_meshes.md")]
-    pub fn remove_meshes_py(&self, list: Vec<crate::Mesh>) {
-        for m in list.iter() {
-            self.remove_mesh(m);
+    pub fn remove_meshes_py(&self, list: PyMeshes<'_>) -> PyResult<()> {
+        const CALL: &str = "Shader.remove_meshes";
+        let meshes = list
+            .items(&format!("{CALL}: list"))?
+            .into_iter()
+            .enumerate()
+            .map(|(index, mesh)| mesh.read(&format!("{CALL}: item {index}")))
+            .collect::<PyResult<Vec<_>>>()?;
+        for mesh in &meshes {
+            self.remove_mesh(mesh);
         }
+        Ok(())
     }
 
     #[pyo3(name = "clear_meshes")]
@@ -86,8 +95,8 @@ impl Shader {
 
     #[pyo3(name = "validate_mesh")]
     #[lsp_doc("docs/api/core/shader/validate_mesh.md")]
-    pub fn validate_mesh_py(&self, mesh: &crate::Mesh) -> Result<(), PyErr> {
-        Ok(self.validate_mesh(mesh)?)
+    pub fn validate_mesh_py(&self, mesh: PyMesh<'_>) -> Result<(), PyErr> {
+        Ok(self.validate_mesh(&mesh.read("Shader.validate_mesh: mesh")?)?)
     }
 
     #[pyo3(name = "is_compute")]
@@ -98,8 +107,8 @@ impl Shader {
 
     #[pyo3(name = "alpha_mode")]
     #[lsp_doc("docs/api/core/shader/alpha_mode.md")]
-    pub fn alpha_mode_py(&self, mode: AlphaMode) -> Self {
-        self.alpha_mode(mode)
+    pub fn alpha_mode_py(&self, mode: PyAlphaMode<'_>) -> PyResult<Self> {
+        Ok(self.alpha_mode(mode.read("Shader.alpha_mode: mode")?))
     }
 
     #[pyo3(name = "double_sided")]
@@ -131,15 +140,17 @@ impl Shader {
     #[staticmethod]
     #[pyo3(name = "from_vertex")]
     #[lsp_doc("docs/api/core/shader/from_vertex.md")]
-    pub fn from_vertex_py(vertex: &crate::Vertex) -> PyResult<Self> {
-        Ok(Shader::from_vertex(vertex)?)
+    pub fn from_vertex_py(vertex: PyVertex<'_>) -> PyResult<Self> {
+        Ok(Shader::from_vertex(
+            &vertex.read("Shader.from_vertex: vertex")?,
+        )?)
     }
 
     #[staticmethod]
     #[pyo3(name = "from_mesh")]
     #[lsp_doc("docs/api/core/shader/from_mesh.md")]
-    pub fn from_mesh_py(mesh: &crate::Mesh) -> PyResult<Self> {
-        Ok(Shader::from_mesh(mesh)?)
+    pub fn from_mesh_py(mesh: PyMesh<'_>) -> PyResult<Self> {
+        Ok(Shader::from_mesh(&mesh.read("Shader.from_mesh: mesh")?)?)
     }
 }
 

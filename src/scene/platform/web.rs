@@ -6,8 +6,8 @@ use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
 use crate::bindings::web::{
-    read_bytes, read_count, read_finite, read_flag, read_float, read_floats, read_text,
-    read_unsigned, read_vector,
+    read_bytes, read_count, read_finite, read_flag, read_float, read_floats, read_object,
+    read_text, read_unsigned, read_vector, refuse,
 };
 use crate::scene::material::platform::web::{read_material, write_material};
 use crate::scene::{Camera, GltfSource, Light, LightKind, Model, PassRef, Scene};
@@ -18,17 +18,18 @@ impl Model {
     #[wasm_bindgen(constructor)]
     #[lsp_doc("docs/api/scene/model/new.md")]
     pub fn new_js(
-        mesh: &Mesh,
+        #[wasm_bindgen(unchecked_param_type = "Mesh")] mesh: &JsValue,
         #[wasm_bindgen(
             unchecked_param_type = "PbrMaterial | UnlitMaterial | ToonMaterial | Shader"
         )]
         material: &JsValue,
     ) -> Result<Model, WebError> {
-        // Materials and Meshes are wrapped around Arc internally, so cloning
-        // here is an Arc::clone: cheap, with share semantics. The JS caller keeps
+        // Materials and Meshes are wrapped around Arc internally, so each read
+        // is an Arc::clone: cheap, with share semantics. The JS caller keeps
         // their original handle live.
+        let mesh: Mesh = read_object(mesh, "Model: mesh")?;
         let material = read_material(material, "Model")?;
-        Ok(Model::new(mesh.clone(), material))
+        Ok(Model::new(mesh, material))
     }
 
     #[wasm_bindgen(js_name = "mesh")]
@@ -384,7 +385,8 @@ impl Scene {
         } else if let Ok(light) = Light::try_from(object) {
             self.add(&light)?;
         } else {
-            return Err(WebError::type_error(
+            return Err(refuse(
+                object,
                 "Scene.add: expected a Model, Camera, or Light",
             ));
         }
@@ -393,14 +395,22 @@ impl Scene {
 
     #[wasm_bindgen(js_name = "addPass")]
     #[lsp_doc("docs/api/scene/scene/add_pass.md")]
-    pub fn add_pass_js(&self, pass: &Pass) -> Scene {
-        self.add_pass(pass).clone()
+    pub fn add_pass_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "Pass")] pass: &JsValue,
+    ) -> Result<Scene, WebError> {
+        let pass: Pass = read_object(pass, "Scene.addPass: pass")?;
+        Ok(self.add_pass(&pass).clone())
     }
 
     #[wasm_bindgen(js_name = "removePass")]
     #[lsp_doc("docs/api/scene/scene/remove_pass.md")]
-    pub fn remove_pass_js(&self, pass: &Pass) -> bool {
-        self.remove_pass(pass)
+    pub fn remove_pass_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "Pass")] pass: &JsValue,
+    ) -> Result<bool, WebError> {
+        let pass: Pass = read_object(pass, "Scene.removePass: pass")?;
+        Ok(self.remove_pass(&pass))
     }
 
     #[wasm_bindgen(js_name = "getPass")]
@@ -471,14 +481,22 @@ impl Scene {
 
     #[wasm_bindgen(js_name = "setDefaultCamera")]
     #[lsp_doc("docs/api/scene/scene/set_default_camera.md")]
-    pub fn set_default_camera_js(&self, camera: &Camera) -> Scene {
-        self.set_default_camera(camera).clone()
+    pub fn set_default_camera_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "Camera")] camera: &JsValue,
+    ) -> Result<Scene, WebError> {
+        let camera: Camera = read_object(camera, "Scene.setDefaultCamera: camera")?;
+        Ok(self.set_default_camera(&camera).clone())
     }
 
     #[wasm_bindgen(js_name = "setDefaultLight")]
     #[lsp_doc("docs/api/scene/scene/set_default_light.md")]
-    pub fn set_default_light_js(&self, light: &Light) -> Scene {
-        self.set_default_light(light).clone()
+    pub fn set_default_light_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "Light")] light: &JsValue,
+    ) -> Result<Scene, WebError> {
+        let light: Light = read_object(light, "Scene.setDefaultLight: light")?;
+        Ok(self.set_default_light(&light).clone())
     }
 
     #[wasm_bindgen(js_name = "ambient")]
@@ -540,7 +558,8 @@ fn add_object(scene: &Scene, target: PassRef, object: &JsValue) -> Result<(), We
     } else if let Ok(light) = Light::try_from(object) {
         scene.add_to(target, &light)?;
     } else {
-        return Err(WebError::type_error(
+        return Err(refuse(
+            object,
             "Scene.addTo: expected a Model, Camera, or Light",
         ));
     }
@@ -632,15 +651,14 @@ fn read_option(options: Option<&JsValue>, name: &str) -> Result<bool, WebError> 
 /// Reads an array of passes. Each item is cloned through its handle,
 /// so the caller's `Pass` objects stay usable afterwards.
 fn read_passes(value: &JsValue) -> Result<Vec<Pass>, WebError> {
+    const CALL: &str = "Scene.setPasses";
     let Some(array) = value.dyn_ref::<js_sys::Array>() else {
-        return Err(WebError::type_error(
-            "Scene.setPasses: expected an array of Pass",
+        return Err(refuse(
+            value,
+            &format!("{CALL}: passes must be an array of passes"),
         ));
     };
-    let read = |(index, item): (usize, JsValue)| {
-        Pass::try_from(&item).map_err(|_| {
-            WebError::type_error(&format!("Scene.setPasses: item {index} is not a Pass"))
-        })
-    };
+    let read =
+        |(index, item): (usize, JsValue)| read_object(&item, &format!("{CALL}: item {index}"));
     array.iter().enumerate().map(read).collect()
 }

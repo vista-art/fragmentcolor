@@ -8,11 +8,12 @@ use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyByteArray, PyBytes, PyMemoryView, PySequence, PyString};
 use pyo3::wrap_pyfunction;
 
-use crate::bindings::numbers;
+use crate::bindings::{name_class, numbers};
 use crate::errors::{InvalidInputError, PythonError};
 
 use crate::{
-    Color, Pass, Renderer, ScreenRegion, Shader, Size,
+    AlphaMode, Camera, Color, CompareFunction, Light, LogLevel, Mesh, Pass, Renderer, ScreenRegion,
+    Shader, Size, TextureFormat, Vertex,
     targets::{PyTextureTarget, RenderCanvasFrame, RenderCanvasTarget, rendercanvas_context_hook},
 };
 
@@ -372,6 +373,86 @@ fn show(value: &Bound<'_, PyAny>) -> String {
 pub(crate) fn refuse(value: &Bound<'_, PyAny>, expected: impl Display) -> PyErr {
     PyTypeError::new_err(format!("{expected}, got {}", name_type(value)))
 }
+
+/// A `TypeError` for a value that is no `class`, such as `Pass.add_shader: shader must be a Shader, got int`.
+pub(crate) fn refuse_class(value: &Bound<'_, PyAny>, label: &str, class: &str) -> PyErr {
+    refuse(value, format_args!("{label} must be {}", name_class(class)))
+}
+
+/// Declares the argument type of a parameter that takes one class.
+///
+/// Its `Other` variant keeps a value of any other type, which the stub leaves out,
+/// so `read` raises a `TypeError` that names the call where pyo3's message wouldn't.
+/// The class is read by type alone, so a borrow conflict raises its own error.
+macro_rules! class_argument {
+    ($name:ident, $class:ident) => {
+        /// An argument that takes one class, or any other value for `read` to refuse.
+        #[derive(pyo3::FromPyObject)]
+        pub enum $name<'py> {
+            Object(pyo3::Bound<'py, $class>),
+            Other(pyo3::Bound<'py, pyo3::PyAny>),
+        }
+
+        impl $name<'_> {
+            /// The object, or a `TypeError` that names `label` for a value of another type.
+            pub(crate) fn read(self, label: &str) -> pyo3::PyResult<$class> {
+                match self {
+                    Self::Object(object) => Ok(object.try_borrow()?.clone()),
+                    Self::Other(value) => Err($crate::bindings::python::refuse_class(
+                        &value,
+                        label,
+                        stringify!($class),
+                    )),
+                }
+            }
+        }
+    };
+}
+
+class_argument!(PyMesh, Mesh);
+class_argument!(PyShader, Shader);
+class_argument!(PyVertex, Vertex);
+class_argument!(PyPass, Pass);
+class_argument!(PyCamera, Camera);
+class_argument!(PyLight, Light);
+class_argument!(PyAlphaMode, AlphaMode);
+class_argument!(PyTextureFormat, TextureFormat);
+class_argument!(PyLogLevel, LogLevel);
+class_argument!(PyCompareFunction, CompareFunction);
+
+/// Declares the argument type of a list parameter.
+///
+/// Its `Other` variant keeps a value that is no list, which the stub leaves out,
+/// so `items` raises a `TypeError` that names the call where pyo3's message wouldn't.
+/// Each item reads as its own type, which names a failing item.
+macro_rules! list_argument {
+    ($name:ident, $item:ident, $things:literal) => {
+        /// A list argument, or any other value for `items` to refuse.
+        #[derive(pyo3::FromPyObject)]
+        pub enum $name<'py> {
+            Items(Vec<$item<'py>>),
+            Other(pyo3::Bound<'py, pyo3::PyAny>),
+        }
+
+        impl<'py> $name<'py> {
+            /// The items, or a `TypeError` that names `label` for a value that is no list.
+            pub(crate) fn items(self, label: &str) -> pyo3::PyResult<Vec<$item<'py>>> {
+                match self {
+                    Self::Items(items) => Ok(items),
+                    Self::Other(value) => Err($crate::bindings::python::refuse(
+                        &value,
+                        format_args!(concat!("{} must be a list of ", $things), label),
+                    )),
+                }
+            }
+        }
+    };
+}
+pub(crate) use list_argument;
+
+list_argument!(PyMeshes, PyMesh, "meshes");
+list_argument!(PyPasses, PyPass, "passes");
+list_argument!(PyIndices, PyUnsigned, "ints");
 
 /// Whether the value is a list of items: a sequence other than a `str` or a bytes form.
 pub(crate) fn is_list(value: &Bound<'_, PyAny>) -> bool {

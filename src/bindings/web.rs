@@ -2,6 +2,7 @@
 
 #![cfg(wasm)]
 
+use crate::bindings::name_class;
 use crate::errors::WebError;
 
 /// Install a panic hook and console logger when running in WASM so browser console shows
@@ -151,6 +152,26 @@ pub(crate) fn read_list(
         .map(|(index, item)| read_number(&item, format_args!("{label}: item {index}")))
         .collect::<Result<Vec<f64>, WebError>>()?;
     Ok(Some(items))
+}
+
+/// A `TypeError` for a value the call can't take. Its message reads `{expected}, got {kind}`, as Python's does.
+pub(crate) fn refuse(value: &wasm_bindgen::JsValue, expected: &str) -> WebError {
+    let kind = describe(value);
+    WebError::type_error(&format!("{expected}, got {kind}"))
+}
+
+/// A `TypeError` for a value that is no `class`, such as `Pass.addShader: shader must be a Shader, got number`.
+pub(crate) fn refuse_class(value: &wasm_bindgen::JsValue, label: &str, class: &str) -> WebError {
+    refuse(value, &format!("{label} must be {}", name_class(class)))
+}
+
+/// An instance of the FragmentColor class `T`, read through its brand.
+/// Any other value is a `TypeError` that names `label`, as Python raises one.
+pub(crate) fn read_object<T>(value: &wasm_bindgen::JsValue, label: &str) -> Result<T, WebError>
+where
+    T: crate::FcKind + for<'value> TryFrom<&'value wasm_bindgen::JsValue>,
+{
+    T::try_from(value).map_err(|_| refuse_class(value, label, T::KIND))
 }
 
 /// The brand of a FragmentColor class instance, or `None` for any other value.

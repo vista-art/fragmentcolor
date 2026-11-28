@@ -1,7 +1,9 @@
 #![cfg(python)]
 
-use crate::bindings::python::{PyChannels, PyUnsigned, read_list, read_pair, refuse};
-use crate::{Pass, PassObject, PassType, ScreenRegion, Shader};
+use crate::bindings::python::{
+    PyChannels, PyMesh, PyShader, PyUnsigned, read_list, read_pair, refuse,
+};
+use crate::{Pass, PassObject, PassType, ScreenRegion};
 use lsp_doc::lsp_doc;
 use pyo3::prelude::*;
 use pyo3::types::PyAny;
@@ -29,10 +31,11 @@ impl Pass {
     #[staticmethod]
     #[pyo3(name = "from_shader")]
     #[lsp_doc("docs/api/core/pass/from_shader.md")]
-    pub fn from_shader_py(name: &str, shader: &Shader) -> Self {
-        Self {
-            object: Arc::new(PassObject::from_shader(name, shader.object.clone())),
-        }
+    pub fn from_shader_py(name: &str, shader: PyShader<'_>) -> PyResult<Self> {
+        let shader = shader.read("Pass.from_shader: shader")?;
+        Ok(Self {
+            object: Arc::new(PassObject::from_shader(name, shader.object)),
+        })
     }
 
     // Internal duck-typed interface used by PyRenderable dispatch, not part of public docs.
@@ -56,14 +59,14 @@ impl Pass {
 
     #[pyo3(name = "add_shader")]
     #[lsp_doc("docs/api/core/pass/add_shader.md")]
-    pub fn add_shader_py(&self, shader: &Shader) -> Result<(), PyErr> {
-        Ok(self.add_shader(shader)?)
+    pub fn add_shader_py(&self, shader: PyShader<'_>) -> Result<(), PyErr> {
+        Ok(self.add_shader(&shader.read("Pass.add_shader: shader")?)?)
     }
 
     #[pyo3(name = "add_mesh")]
     #[lsp_doc("docs/api/core/pass/add_mesh.md")]
-    pub fn add_mesh_py(&self, mesh: &crate::Mesh) -> Result<(), PyErr> {
-        Ok(self.add_mesh(mesh)?)
+    pub fn add_mesh_py(&self, mesh: PyMesh<'_>) -> Result<(), PyErr> {
+        Ok(self.add_mesh(&mesh.read("Pass.add_mesh: mesh")?)?)
     }
 
     /// Unified `Pass.add`, which branches on the runtime Python type. Adding a
@@ -81,7 +84,8 @@ impl Pass {
         } else if let Ok(light) = object.cast::<crate::scene::Light>() {
             slf.add(&*light.borrow())?;
         } else {
-            return Err(pyo3::exceptions::PyTypeError::new_err(
+            return Err(refuse(
+                object,
                 "Pass.add: expected a Model, Camera, or Light",
             ));
         }
@@ -134,8 +138,9 @@ impl Pass {
                 let t = tex.borrow();
                 return Ok(self.set_target(&*t)?);
             }
-            Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
-                "Unsupported target type. Expected TextureTarget or Texture",
+            Err(refuse(
+                target.bind(py),
+                "Pass.set_target: target must be a Texture or a TextureTarget",
             ))
         })
     }
@@ -154,8 +159,9 @@ impl Pass {
                 let tt = bound.borrow();
                 return Ok(self.set_depth_target(&tt.inner)?);
             }
-            Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
-                "Unsupported depth target type. Expected Texture or TextureTarget",
+            Err(refuse(
+                target.bind(py),
+                "Pass.set_depth_target: target must be a Texture or a TextureTarget",
             ))
         })
     }
@@ -171,7 +177,7 @@ impl Pass {
     pub fn require_py(&self, deps: Py<PyAny>) -> Result<(), PyErr> {
         Python::attach(|py| -> Result<(), PyErr> {
             let any = deps.bind(py);
-            let r = crate::PyRenderable::from_any(any)?;
+            let r = crate::PyRenderable::from_any(any, "Pass.require")?;
             Ok(self.require(&r)?)
         })
     }
@@ -194,6 +200,10 @@ pub enum PyViewport<'py> {
     Other(Bound<'py, PyAny>),
 }
 
+/// The forms `Pass.set_viewport` reads a region from, as its `TypeError` lists them.
+const VIEWPORT_FORMS: &str =
+    "Pass.set_viewport: a region is [w, h], [x, y, w, h], [[x, y], [w, h]] or a ScreenRegion";
+
 /// Reads each number as an int that [`PyUnsigned::read`] checks.
 /// Any other value raises a `TypeError` that lists the forms.
 impl TryFrom<PyViewport<'_>> for ScreenRegion {
@@ -202,10 +212,7 @@ impl TryFrom<PyViewport<'_>> for ScreenRegion {
     fn try_from(viewport: PyViewport<'_>) -> Result<Self, Self::Error> {
         match viewport {
             PyViewport::Region(region) => Ok(region),
-            PyViewport::Other(value) => {
-                let forms = "Pass.set_viewport: a region is [w, h], [x, y, w, h], [[x, y], [w, h]] or a ScreenRegion";
-                Err(refuse(&value, forms))
-            }
+            PyViewport::Other(value) => Err(refuse(&value, VIEWPORT_FORMS)),
             PyViewport::Pairs([origin, size]) => {
                 let origin = read_pair(&origin, "Pass.set_viewport: origin")?;
                 let size = read_pair(&size, "Pass.set_viewport: size")?;

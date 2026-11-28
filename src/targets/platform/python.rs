@@ -73,7 +73,7 @@ impl RenderCanvasTarget {
 
     #[lsp_doc("docs/api/targets/window_target/resize.md")]
     pub fn resize(&mut self, size: crate::PySize<'_>) -> PyResult<()> {
-        <Self as Target>::resize(self, Size::try_from(size)?)?;
+        <Self as Target>::resize(self, size.read("WindowTarget.resize")?)?;
         Ok(())
     }
 
@@ -180,7 +180,7 @@ impl PyTextureTarget {
 
     #[lsp_doc("docs/api/targets/texture_target/resize.md")]
     pub fn resize(&mut self, size: crate::PySize<'_>) -> PyResult<()> {
-        <Self as Target>::resize(self, Size::try_from(size)?)?;
+        <Self as Target>::resize(self, size.read("TextureTarget.resize")?)?;
         Ok(())
     }
 

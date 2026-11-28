@@ -1,10 +1,12 @@
 #![cfg(python)]
 
-use crate::bindings::python::{PyUnsigned, read_bytes, read_list, read_unsigned, refuse};
+use crate::bindings::python::{
+    PyCompareFunction, PyTextureFormat, PyUnsigned, read_bytes, read_list, read_unsigned, refuse,
+};
 use crate::texture::loading::decode::array_pixels;
 use crate::texture::{Mipmap, Texture, TextureError, TextureId, TextureRegion};
 use crate::texture::{measure_texel, read_pixels};
-use crate::{CompareFunction, SamplerOptions, TextureFormat};
+use crate::{SamplerOptions, TextureFormat};
 use lsp_doc::lsp_doc;
 use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
@@ -155,11 +157,19 @@ pub enum PyTextureUsage<'py> {
 }
 
 impl PyTextureUsage<'_> {
-    /// The usage bits, or an error that names `label` for an int out of range.
+    /// The usage bits, or an error that names `label`: a `TypeError` for a value that is
+    /// no usage and no int, and an `InvalidInputError` for an int out of range.
     pub(crate) fn read(&self, label: &str) -> PyResult<u32> {
-        match self {
-            PyTextureUsage::Usage(usage) => Ok(usage.bits),
-            PyTextureUsage::Bits(bits) => bits.read(label),
+        let value = match self {
+            PyTextureUsage::Usage(usage) => return Ok(usage.bits),
+            PyTextureUsage::Bits(PyUnsigned::Int(value)) => value,
+        };
+        match read_unsigned(value, label) {
+            Err(error) if error.is_instance_of::<PyTypeError>(value.py()) => Err(refuse(
+                value,
+                format_args!("{label} must be a TextureUsage or an int"),
+            )),
+            bits => bits,
         }
     }
 }
@@ -230,37 +240,38 @@ pub enum PySamplerOptions<'py> {
     Other(Bound<'py, PyAny>),
 }
 
-impl TryFrom<PySamplerOptions<'_>> for SamplerOptions {
-    type Error = PyErr;
-
-    /// Missing keys keep the defaults, and unknown keys are ignored.
-    fn try_from(input: PySamplerOptions<'_>) -> Result<Self, Self::Error> {
-        let dict = match input {
+impl PySamplerOptions<'_> {
+    /// The options for `call`. Missing keys keep the defaults, and unknown keys are ignored.
+    /// A value of another type, or a key of the wrong type, raises a `TypeError` that names `call`.
+    pub(crate) fn read(self, call: &str) -> PyResult<SamplerOptions> {
+        let dict = match self {
             PySamplerOptions::Options(options) => return Ok(options),
             PySamplerOptions::Dict(dict) => dict,
             PySamplerOptions::Other(value) => {
                 let forms = "sampler options must be a SamplerOptions or a dict of repeat_x, repeat_y, smooth and compare";
-                return Err(refuse(&value, forms));
+                return Err(refuse(&value, format_args!("{call}: {forms}")));
             }
         };
-        let defaults = Self::default();
+        let defaults = SamplerOptions::default();
         let flag = |key: &str, default: bool| -> PyResult<bool> {
             match dict.get_item(key)? {
                 None => Ok(default),
                 Some(value) => value
                     .extract()
-                    .map_err(|_| PyTypeError::new_err(format!("'{key}' must be a bool"))),
+                    .map_err(|_| refuse(&value, format_args!("{call}: {key} must be a bool"))),
             }
         };
-        Ok(Self {
+        Ok(SamplerOptions {
             repeat_x: flag("repeat_x", defaults.repeat_x)?,
             repeat_y: flag("repeat_y", defaults.repeat_y)?,
             smooth: flag("smooth", defaults.smooth)?,
             compare: match dict.get_item("compare")? {
                 None => defaults.compare,
-                Some(value) => value.extract().map_err(|_| {
-                    PyTypeError::new_err("'compare' must be a CompareFunction or None")
-                })?,
+                Some(value) if value.is_none() => None,
+                Some(value) => {
+                    let label = format!("{call}: compare");
+                    Some(value.extract::<PyCompareFunction>()?.read(&label)?)
+                }
             },
         })
     }
@@ -276,20 +287,21 @@ impl SamplerOptions {
         repeat_x = SamplerOptions::default().repeat_x,
         repeat_y = SamplerOptions::default().repeat_y,
         smooth = SamplerOptions::default().smooth,
-        compare = SamplerOptions::default().compare,
+        compare = None,
     ))]
     pub fn new_py(
         repeat_x: bool,
         repeat_y: bool,
         smooth: bool,
-        compare: Option<CompareFunction>,
-    ) -> Self {
-        Self {
+        compare: Option<PyCompareFunction<'_>>,
+    ) -> PyResult<Self> {
+        let compare = compare.map(|compare| compare.read("SamplerOptions: compare"));
+        Ok(Self {
             repeat_x,
             repeat_y,
             smooth,
-            compare,
-        }
+            compare: compare.transpose()?.or(SamplerOptions::default().compare),
+        })
     }
 }
 
@@ -306,14 +318,14 @@ impl Mipmap {
     #[lsp_doc("docs/api/texture/mipmap/build.md")]
     pub fn build_py(
         bytes: PyTextureBytes<'_>,
-        format: TextureFormat,
+        format: PyTextureFormat<'_>,
         size: Option<crate::values::PySize<'_>>,
     ) -> pyo3::PyResult<Mipmap> {
         let input = crate::TextureInput {
             data: crate::TextureData::Bytes(bytes.read("Mipmap.build: bytes")?),
             options: crate::TextureOptions {
-                size: size.map(crate::Size::try_from).transpose()?,
-                format,
+                size: size.map(|size| size.read("Mipmap.build")).transpose()?,
+                format: format.read("Mipmap.build: format")?,
                 ..Default::default()
             },
         };
@@ -381,7 +393,7 @@ impl Texture {
     #[pyo3(name = "set_sampler_options")]
     #[lsp_doc("docs/api/texture/texture/set_sampler_options.md")]
     pub fn set_sampler_options_py(&self, options: PySamplerOptions<'_>) -> pyo3::PyResult<()> {
-        self.set_sampler_options(options.try_into()?);
+        self.set_sampler_options(options.read("Texture.set_sampler_options")?);
         Ok(())
     }
 
@@ -411,7 +423,7 @@ impl Texture {
     #[pyo3(name = "resize")]
     #[lsp_doc("docs/api/texture/texture/resize.md")]
     pub fn resize_py(&self, size: crate::PySize<'_>) -> pyo3::PyResult<()> {
-        self.resize(crate::Size::try_from(size)?)?;
+        self.resize(size.read("Texture.resize")?)?;
         Ok(())
     }
 

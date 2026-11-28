@@ -8,7 +8,7 @@ use wasm_bindgen::prelude::*;
 use crate::bindings::numbers;
 use crate::bindings::numbers::read_dimension;
 use crate::bindings::web::{
-    describe, read_count, read_floats, read_list, read_text, read_unsigned, read_vector,
+    describe, read_count, read_floats, read_list, read_text, read_unsigned, read_vector, refuse,
 };
 use crate::{Instance, Mesh, Quad, Vertex, VertexData};
 
@@ -68,7 +68,9 @@ fn read_vertex(value: &JsValue, label: &str) -> Result<Vertex, WebError> {
     }
 }
 
-fn js_to_instance_into(value: &JsValue) -> Result<Instance, WebError> {
+/// Reads an instance for the `Mesh` methods: an `Instance`, a `Vertex` whose attributes it copies,
+/// or an object of named attribute values. An error names `label`, and the key for an attribute.
+fn js_to_instance_into(value: &JsValue, label: &str) -> Result<Instance, WebError> {
     // 1. Already an Instance JS object?
     if let Ok(instance) = Instance::try_from(value) {
         return Ok(instance);
@@ -88,14 +90,24 @@ fn js_to_instance_into(value: &JsValue) -> Result<Instance, WebError> {
                 .get(0)
                 .as_string()
                 .ok_or_else(|| WebError::type_error("Instance attribute keys must be strings"))?;
-            let label = format!("Mesh.addInstance: {key}");
+            let label = format!("{label}: {key}");
             instance = instance.set(&key, read_attribute(&pair.get(1), &label)?);
         }
         return Ok(instance);
     }
-    Err(WebError::type_error(
-        "Expected an Instance, a Vertex, or an object of named attributes",
-    ))
+    let expected = "expected an Instance, a Vertex, or an object of named attributes";
+    Err(refuse(value, &format!("{label}: {expected}")))
+}
+
+/// The items of an array argument, or a `TypeError` that names `label` for a value that is no array.
+fn read_array(value: &JsValue, label: &str, things: &str) -> Result<js_sys::Array, WebError> {
+    match value.dyn_ref::<js_sys::Array>() {
+        Some(array) => Ok(array.clone()),
+        None => Err(refuse(
+            value,
+            &format!("{label} must be an array of {things}"),
+        )),
+    }
 }
 
 // -----------------------------
@@ -241,9 +253,7 @@ impl Mesh {
     #[wasm_bindgen(js_name = "fromVertices")]
     #[lsp_doc("docs/api/geometry/mesh/from_vertices.md")]
     pub fn from_vertices_js(list: &JsValue) -> Result<Mesh, WebError> {
-        let array = js_sys::Array::is_array(list)
-            .then(|| js_sys::Array::from(list))
-            .ok_or_else(|| WebError::type_error("Expected an array"))?;
+        let array = read_array(list, "Mesh.fromVertices: vertices", "vertices")?;
         let mut vertices = Vec::with_capacity(array.length() as usize);
         for (index, item) in array.iter().enumerate() {
             vertices.push(read_vertex(
@@ -265,9 +275,7 @@ impl Mesh {
     #[wasm_bindgen(js_name = "addVertices")]
     #[lsp_doc("docs/api/geometry/mesh/add_vertices.md")]
     pub fn add_vertices_js(&mut self, list: &JsValue) -> Result<(), WebError> {
-        let array = js_sys::Array::is_array(list)
-            .then(|| js_sys::Array::from(list))
-            .ok_or_else(|| WebError::type_error("Expected an array"))?;
+        let array = read_array(list, "Mesh.addVertices: vertices", "vertices")?;
         let mut vertices: Vec<Vertex> = Vec::with_capacity(array.length() as usize);
         for (index, item) in array.iter().enumerate() {
             let vertex = read_vertex(&item, &format!("Mesh.addVertices: vertex {index}"))?;
@@ -280,7 +288,7 @@ impl Mesh {
     #[wasm_bindgen(js_name = "addInstance")]
     #[lsp_doc("docs/api/geometry/mesh/add_instance.md")]
     pub fn add_instance_js(&mut self, item: &JsValue) -> Result<(), WebError> {
-        let instance = js_to_instance_into(item)?;
+        let instance = js_to_instance_into(item, "Mesh.addInstance")?;
         self.add_instance(instance);
         Ok(())
     }
@@ -288,13 +296,11 @@ impl Mesh {
     #[wasm_bindgen(js_name = "addInstances")]
     #[lsp_doc("docs/api/geometry/mesh/add_instances.md")]
     pub fn add_instances_js(&mut self, list: &JsValue) -> Result<(), WebError> {
-        let array = js_sys::Array::is_array(list)
-            .then(|| js_sys::Array::from(list))
-            .ok_or_else(|| WebError::type_error("Expected an array"))?;
+        let array = read_array(list, "Mesh.addInstances: items", "instances")?;
         let mut instances: Vec<Instance> = Vec::with_capacity(array.length() as usize);
-        for instance in array.iter() {
-            let instance = js_to_instance_into(&instance)?;
-            instances.push(instance);
+        for (index, item) in array.iter().enumerate() {
+            let label = format!("Mesh.addInstances: instance {index}");
+            instances.push(js_to_instance_into(&item, &label)?);
         }
         self.add_instances(instances);
         Ok(())
@@ -339,10 +345,8 @@ fn read_indices(indices: &JsValue) -> Result<Vec<u32>, WebError> {
         return Ok(array.to_vec());
     }
     let Some(numbers) = read_list(indices, "Mesh.setIndices")? else {
-        return Err(WebError::type_error(&format!(
-            "Mesh.setIndices takes an array or typed array of numbers, got {}",
-            describe(indices)
-        )));
+        let expected = "Mesh.setIndices: indices must be an array of numbers";
+        return Err(refuse(indices, expected));
     };
     let read = |(index, number): (usize, f64)| match read_dimension(number) {
         Some(whole) => Ok(whole),

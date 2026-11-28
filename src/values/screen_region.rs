@@ -256,70 +256,99 @@ impl ScreenRegion {
     }
 }
 
-/// Reads `[w, h]` or `[x, y, w, h]` from a plain or typed array, an `{ x, y, width, height }`
-/// object such as a `DOMRect`, or the `{ minX, minY, maxX, maxY }` fields of a `ScreenRegion`.
-/// An origin and a size as `[[x, y], [w, h]]` read as `ScreenRegion::new` reads them, as a Rust
-/// `((x, y), (w, h))` does. A value of another type, another FragmentColor class among them, or an
-/// item that isn't a number, is a `TypeError`, as Python raises, and a fraction, a negative number
-/// or a wrong count is an `InvalidInputError`.
-#[cfg(wasm)]
-impl TryFrom<&wasm_bindgen::JsValue> for ScreenRegion {
-    type Error = WebError;
+/// One key of a region object or dict: its camelCase and its snake_case spelling.
+#[cfg(any(wasm, test))]
+pub(crate) type Key = (&'static str, &'static str);
 
-    fn try_from(value: &wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
+/// The keys of a region's bounds, as a `ScreenRegion` holds them.
+#[cfg(any(wasm, test))]
+const BOUNDS: [Key; 4] = [
+    ("minX", "min_x"),
+    ("minY", "min_y"),
+    ("maxX", "max_x"),
+    ("maxY", "max_y"),
+];
+
+/// The keys of a region's origin and size, as a `DOMRect` holds them.
+#[cfg(any(wasm, test))]
+const RECT: [Key; 4] = [
+    ("x", "x"),
+    ("y", "y"),
+    ("width", "width"),
+    ("height", "height"),
+];
+
+impl ScreenRegion {
+    /// Reads a region from a JS object or a Python dict through `read`.
+    ///
+    /// `read` returns the number under either spelling of a key, or `None` for a missing key.
+    /// The bounds `{ minX, minY, maxX, maxY }` come first, since a `ScreenRegion` holds them
+    /// and its `width` and `height` are methods. Then comes `{ x, y, width, height }`.
+    /// The result is `None` when neither form is complete.
+    #[cfg(any(wasm, test))]
+    pub(crate) fn read_fields<E: From<ScreenRegionError>>(
+        read: impl Fn(Key) -> Result<Option<u32>, E>,
+    ) -> Result<Option<Self>, E> {
+        let [min_x, min_y, max_x, max_y] = BOUNDS;
+        let bounds = (read(min_x)?, read(min_y)?, read(max_x)?, read(max_y)?);
+        if let (Some(min_x), Some(min_y), Some(max_x), Some(max_y)) = bounds {
+            let region = Self {
+                min_x,
+                min_y,
+                max_x,
+                max_y,
+            };
+            return Ok(Some(region.check()?));
+        }
+        let [x, y, width, height] = RECT;
+        let rect = (read(x)?, read(y)?, read(width)?, read(height)?);
+        if let (Some(x), Some(y), Some(width), Some(height)) = rect {
+            return Ok(Some(Self::build(x, y, width, height)?));
+        }
+        Ok(None)
+    }
+
+    /// Reads a region from a JavaScript value for `call`.
+    ///
+    /// It takes `[w, h]` or `[x, y, w, h]` in a plain or typed array, an `{ x, y, width, height }`
+    /// object such as a `DOMRect`, or the `{ minX, minY, maxX, maxY }` fields of a `ScreenRegion`.
+    /// An origin and a size as `[[x, y], [w, h]]` read as `ScreenRegion::new` reads them, as a Rust
+    /// `((x, y), (w, h))` does. A value of another type, another FragmentColor class among them, or an
+    /// item that isn't a number, is a `TypeError` that names `call`, as Python raises, and a fraction,
+    /// a negative number or a wrong count is an `InvalidInputError`.
+    #[cfg(wasm)]
+    pub(crate) fn read(value: &JsValue, call: &str) -> Result<Self, WebError> {
         if let Some((origin, size)) = read_pairs(value) {
-            let origin = js_to_pair(&origin, "a region: origin")?;
-            let size = js_to_pair(&size, "a region: size")?;
+            let origin = js_to_pair(&origin, &format!("{call}: origin"))?;
+            let size = js_to_pair(&size, &format!("{call}: size"))?;
             return Ok(ScreenRegion::new(origin, size)?);
         }
 
-        if let Some(numbers) = read_list(value, "a region")? {
+        if let Some(numbers) = read_list(value, call)? {
             return Ok(ScreenRegion::from_numbers(&numbers)?);
         }
 
         let class = read_class(value);
         if value.is_object() && class.as_deref().is_none_or(|class| class == Self::KIND) {
-            let field = |names: &[&str]| -> Result<Option<u32>, WebError> {
-                for name in names {
+            let read = |(camel, snake): Key| -> Result<Option<u32>, WebError> {
+                for name in [camel, snake] {
                     let item = js_sys::Reflect::get(value, &JsValue::from_str(name))
                         .unwrap_or(JsValue::UNDEFINED);
                     if !item.is_undefined() && !item.is_null() {
-                        let number = read_number(&item, format_args!("a region's {name}"))?;
+                        let number = read_number(&item, format_args!("{call}: {name}"))?;
                         return Ok(Some(check_dimension(number)?));
                     }
                 }
                 Ok(None)
             };
-            // Bounds first: on a `ScreenRegion`, `width` and `height` are methods.
-            let bounds = (
-                field(&["minX", "min_x"])?,
-                field(&["minY", "min_y"])?,
-                field(&["maxX", "max_x"])?,
-                field(&["maxY", "max_y"])?,
-            );
-            if let (Some(min_x), Some(min_y), Some(max_x), Some(max_y)) = bounds {
-                let region = ScreenRegion {
-                    min_x,
-                    min_y,
-                    max_x,
-                    max_y,
-                };
-                return Ok(region.check()?);
-            }
-            let rect = (
-                field(&["x"])?,
-                field(&["y"])?,
-                field(&["width"])?,
-                field(&["height"])?,
-            );
-            if let (Some(x), Some(y), Some(width), Some(height)) = rect {
-                return Ok(ScreenRegion::build(x, y, width, height)?);
+            if let Some(region) = Self::read_fields(read)? {
+                return Ok(region);
             }
         }
 
         let kind = class.unwrap_or_else(|| describe(value));
         Err(WebError::type_error(&format!(
-            "a region is [w, h], [x, y, w, h], [[x, y], [w, h]], {{ x, y, width, height }} or a ScreenRegion, got {kind}"
+            "{call}: a region is [w, h], [x, y, w, h], [[x, y], [w, h]], {{ x, y, width, height }} or a ScreenRegion, got {kind}"
         )))
     }
 }
@@ -417,9 +446,6 @@ impl ScreenRegion {
         self.height()
     }
 }
-
-#[cfg(wasm)]
-crate::impl_tryfrom_owned_via_ref!(ScreenRegion, wasm_bindgen::JsValue, WebError);
 
 // The brand lets a reader tell a ScreenRegion from a plain object after a minifier renames the class.
 crate::impl_fc_kind!(ScreenRegion, "ScreenRegion");
@@ -788,5 +814,31 @@ mod tests {
         );
         assert_eq!((reversed.width(), reversed.height()), (0, 4));
         assert!(crate::Pass::new("p").set_viewport(reversed).is_err());
+    }
+
+    /// Reads a region from the pairs of a map, the way a JS object or a Python dict reads.
+    fn read(pairs: &[(&str, u32)]) -> Result<Option<ScreenRegion>, crate::ScreenRegionError> {
+        use std::collections::HashMap;
+        let map: HashMap<&str, u32> = pairs.iter().copied().collect();
+        ScreenRegion::read_fields(|(camel, snake): super::Key| {
+            Ok(map.get(camel).or_else(|| map.get(snake)).copied())
+        })
+    }
+
+    // Story: an object or a dict spells its region as bounds or as a box, in camelCase
+    // or snake_case, and one with neither form complete reads as no region.
+    #[test]
+    fn reads_bounds_or_a_box() {
+        let boxed = read(&[("x", 1), ("y", 2), ("width", 3), ("height", 4)]);
+        assert_eq!(boxed.ok().flatten(), Some(build_region(1, 2, 3, 4)));
+        let bounds = read(&[("minX", 8), ("min_y", 0), ("max_x", 12), ("maxY", 4)]);
+        assert_eq!(bounds.ok().flatten(), Some(build_region(8, 0, 4, 4)));
+        assert!(matches!(
+            read(&[("x", 0), ("y", 0), ("width", 4)]),
+            Ok(None)
+        ));
+        assert!(read(&[("x", 0), ("y", 0), ("width", 0), ("height", 4)]).is_err());
+        let reversed = [("minX", 8), ("minY", 0), ("maxX", 2), ("maxY", 4)];
+        assert!(read(&reversed).is_err());
     }
 }

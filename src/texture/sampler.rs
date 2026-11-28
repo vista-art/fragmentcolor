@@ -43,7 +43,7 @@ impl SamplerOptions {
         >,
     ) -> Result<SamplerOptions, WebError> {
         let compare = match compare {
-            Some(compare) => super::parse_compare(&compare)?,
+            Some(compare) => super::parse_compare(&compare, "SamplerOptions: compare")?,
             None => None,
         };
         let defaults = SamplerOptions::default();
@@ -124,7 +124,7 @@ impl SamplerOptions {
         &mut self,
         #[wasm_bindgen(unchecked_param_type = "CompareFunction | null | undefined")] value: JsValue,
     ) -> Result<(), WebError> {
-        self.compare = super::parse_compare(&value)?;
+        self.compare = super::parse_compare(&value, "SamplerOptions.compare")?;
         Ok(())
     }
 }

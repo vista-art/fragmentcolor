@@ -3,8 +3,8 @@
 use lsp_doc::lsp_doc;
 use pyo3::prelude::*;
 
-use crate::bindings::python::{PyChannels, PyFloat, PyUnsigned};
-use crate::{AlphaMode, MaterialMap, Shader, ToonMaterial};
+use crate::bindings::python::{PyAlphaMode, PyChannels, PyFloat, PyUnsigned};
+use crate::{MaterialMap, Shader, ToonMaterial};
 
 #[pymethods]
 impl ToonMaterial {
@@ -67,8 +67,8 @@ impl ToonMaterial {
 
     #[pyo3(name = "alpha_mode")]
     #[lsp_doc("docs/api/scene/toon_material/alpha_mode.md")]
-    pub fn alpha_mode_py(&self, mode: AlphaMode) -> Self {
-        self.alpha_mode(mode)
+    pub fn alpha_mode_py(&self, mode: PyAlphaMode<'_>) -> PyResult<Self> {
+        Ok(self.alpha_mode(mode.read("ToonMaterial.alpha_mode: mode")?))
     }
 
     #[pyo3(name = "double_sided")]
