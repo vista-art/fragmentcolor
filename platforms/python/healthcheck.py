@@ -883,6 +883,23 @@ def check_scalars_and_pairs():
     print("Floats refuse a bool, and origins and sizes take any sequence of two ints")
 
 
+def check_viewport_dicts():
+    """A viewport takes a dict of its box or its bounds, in either spelling, as JavaScript takes an object."""
+    for fields in (
+        {"x": 0, "y": 0, "width": 4, "height": 4},
+        {"min_x": 0, "min_y": 0, "max_x": 4, "max_y": 4},
+        {"minX": 2, "minY": 2, "maxX": 6, "maxY": 6},
+        {"x": np.uint32(1), "y": 1, "width": 2, "height": 2},
+    ):
+        Pass("dict").set_viewport(fields)
+    raises_invalid("Pass.set_viewport with a width of 0",
+                   lambda: Pass("p").set_viewport({"x": 0, "y": 0, "width": 0, "height": 4}))
+    raises_invalid("Pass.set_viewport with reversed bounds",
+                   lambda: Pass("p").set_viewport({"min_x": 8, "min_y": 0, "max_x": 2, "max_y": 4}))
+    raises_type("Pass.set_viewport with a missing height", lambda: Pass("p").set_viewport({"x": 0, "y": 0, "width": 4}))
+    print("A viewport takes a dict of its box or its bounds")
+
+
 def check_labels(renderer):
     """Number errors name the parameter, and the item for a list, as JavaScript's do."""
     def message(call):
@@ -909,6 +926,8 @@ def check_labels(renderer):
 def check_type_messages(renderer):
     """A value of the wrong type raises a TypeError that names the call and what it takes, as JavaScript's does."""
     texture = renderer.create_texture(bytes(16), size=[2, 2])
+    target = renderer.create_texture_target([4, 4])
+    light = Light.point([0.0, 1.0, 0.0], [1.0, 1.0, 1.0])
     sources = (
         "bytes (bytes, a bytearray, a memoryview or a list or tuple of ints), "
         "a uint8 ndarray, a path, a URL, a Texture or a Mipmap"
@@ -919,15 +938,48 @@ def check_type_messages(renderer):
         f"Renderer.create_texture takes {sources}, got int": lambda: renderer.create_texture(42),
         f"MaterialMap.texture takes a MaterialMap, {sources}, got int":
             lambda: PbrMaterial().base_color_map().texture(42),
-        "a size is [w, h], [w, h, d], a Size or a dict of width, height and an optional depth, got str":
-            lambda: renderer.create_texture_target("big"),
-        "sampler options must be a SamplerOptions or a dict of repeat_x, repeat_y, smooth and compare, got int":
-            lambda: texture.set_sampler_options(1),
+        "Renderer.create_texture_target: a size is [w, h], [w, h, d], a Size or a dict of width, height "
+        "and an optional depth, got str": lambda: renderer.create_texture_target("big"),
+        "Texture.resize: size: width must be an int, got str": lambda: texture.resize({"width": "a", "height": 2}),
+        "Texture.set_sampler_options: sampler options must be a SamplerOptions or a dict of repeat_x, "
+        "repeat_y, smooth and compare, got int": lambda: texture.set_sampler_options(1),
+        "Renderer.create_texture: sampler options must be a SamplerOptions or a dict of repeat_x, "
+        "repeat_y, smooth and compare, got str": lambda: renderer.create_texture(bytes(16), size=[2, 2], sampler="x"),
+        "Texture.set_sampler_options: repeat_x must be a bool, got str":
+            lambda: texture.set_sampler_options({"repeat_x": "yes"}),
+        "SamplerOptions: compare must be a CompareFunction, got str": lambda: SamplerOptions(compare="less"),
         "Texture.write_region: a region is [w, h], [x, y, w, h], [x, y, z, w, h, d], a ScreenRegion "
         "or a dict with keys such as x, y, width and height, got str":
             lambda: texture.write_region(bytes(16), "all"),
-        "Pass.set_viewport: a region is [w, h], [x, y, w, h], [[x, y], [w, h]] or a ScreenRegion, got str":
-            lambda: Pass("p").set_viewport("all"),
+        "Pass.set_viewport: a region is [w, h], [x, y, w, h], [[x, y], [w, h]], a dict of x, y, width and height "
+        "or a ScreenRegion, got str": lambda: Pass("p").set_viewport("all"),
+        "Pass.set_viewport: width must be an int, got str":
+            lambda: Pass("p").set_viewport({"x": 0, "y": 0, "width": "4", "height": 4}),
+        # A parameter that takes one class names the call and the parameter.
+        "Pass.add_shader: shader must be a Shader, got int": lambda: Pass("p").add_shader(42),
+        "Pass.from_shader: shader must be a Shader, got int": lambda: Pass.from_shader("p", 42),
+        "Model: mesh must be a Mesh, got int": lambda: Model(42, PbrMaterial()),
+        "Scene.add_pass: pass must be a Pass, got int": lambda: Scene().add_pass(42),
+        "Scene.set_default_camera: camera must be a Camera, got Light": lambda: Scene().set_default_camera(light),
+        "PbrMaterial.alpha_mode: mode must be an AlphaMode, got str": lambda: PbrMaterial().alpha_mode("blend"),
+        "Renderer.create_storage_texture: format must be a TextureFormat, got NoneType":
+            lambda: renderer.create_storage_texture([4, 4], None),
+        "Renderer.create_texture: format must be a TextureFormat, got str":
+            lambda: renderer.create_texture(bytes(16), size=[2, 2], format="rgba8"),
+        "Renderer.render: target must be a WindowTarget or a TextureTarget, got int":
+            lambda: renderer.render(Pass("p"), 42),
+        "Renderer.render: expected a Shader, Pass, Mesh, Scene, or a list of them, got int":
+            lambda: renderer.render(42, target),
+        "Renderer.render: item 1: expected a Shader, Pass, Mesh, or Scene, got str":
+            lambda: renderer.render([Pass("p"), "x"], target),
+        # A list parameter given a value that is no list names the call and the parameter.
+        "Mesh.add_instances: items must be a list of instances, got int": lambda: Mesh().add_instances(1),
+        "Mesh.from_vertices: vertices must be a list of vertices, got int": lambda: Mesh.from_vertices(1),
+        "Mesh.set_indices: indices must be a list of ints, got str": lambda: Mesh().set_indices("012"),
+        "Scene.set_passes: passes must be a list of passes, got int": lambda: Scene().set_passes(1),
+        "Scene.set_passes: item 1 must be a Pass, got int": lambda: Scene().set_passes([Pass("a"), 1]),
+        "Shader.remove_meshes: list must be a list of meshes, got str": lambda: Shader.default().remove_meshes("x"),
+        "Shader.remove_meshes: item 0 must be a Mesh, got int": lambda: Shader.default().remove_meshes([1]),
         "Model: expected a PbrMaterial, an UnlitMaterial, a ToonMaterial or a Shader, got int":
             lambda: Model(Mesh(), 42),
         "Model.set_transform takes a list or an ndarray of numbers, got str":
@@ -1908,6 +1960,7 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
     check_number_errors(renderer)
     check_empty_regions()
     check_scalars_and_pairs()
+    check_viewport_dicts()
     check_labels(renderer)
     check_type_messages(renderer)
     check_colors(renderer)

@@ -775,6 +775,62 @@ await withModule('platforms.web.healthcheck.parity', async () => {
       }
       fail(`${label} should throw`);
     }
+    // An argument of the wrong type throws a TypeError that names the call, and the parameter or
+    // the item, with the text Python raises in check_type_messages, in JavaScript's own spellings.
+    const typeTarget = await renderer.createTextureTarget([4, 4]);
+    const typeLight = Light.point([0, 1, 0], [1, 1, 1]);
+    const instance = 'expected an Instance, a Vertex, or an object of named attributes';
+    const sampler = 'sampler options must be a SamplerOptions or { repeatX?, repeatY?, smooth?, compare? }';
+    for (const [run, message] of [
+      [() => renderer.createTextureTarget('big'),
+        'Renderer.createTextureTarget: a size is [w, h], [w, h, d], a Size or { width, height, depth? }, got string'],
+      [() => writable.resize({ width: 'a', height: 2 }), 'Texture.resize: size: width must be a number, got string'],
+      [() => writable.setSamplerOptions(1), `Texture.setSamplerOptions: ${sampler}, got number`],
+      [() => renderer.createTexture(new Uint8Array(16), { size: [2, 2], sampler: 'x' }),
+        `Renderer.createTexture: ${sampler}, got string`],
+      [() => writable.setSamplerOptions({ repeatX: 'yes' }), 'Texture.setSamplerOptions: repeatX must be a boolean, got string'],
+      [() => new fc.SamplerOptions(undefined, undefined, undefined, true),
+        'SamplerOptions: compare must be a CompareFunction, got boolean'],
+      [() => first.setViewport('all'),
+        'Pass.setViewport: a region is [w, h], [x, y, w, h], [[x, y], [w, h]], { x, y, width, height } or a ScreenRegion, got string'],
+      [() => first.setViewport({ x: 0, y: 0, width: '4', height: 4 }), 'Pass.setViewport: width must be a number, got string'],
+      [() => new Pass('p').addShader(42), 'Pass.addShader: shader must be a Shader, got number'],
+      [() => Pass.fromShader('p', 42), 'Pass.fromShader: shader must be a Shader, got number'],
+      [() => new Model(42, new PbrMaterial()), 'Model: mesh must be a Mesh, got number'],
+      [() => new Scene().addPass(42), 'Scene.addPass: pass must be a Pass, got number'],
+      [() => new Scene().setDefaultCamera(typeLight), 'Scene.setDefaultCamera: camera must be a Camera, got Light'],
+      [() => new PbrMaterial().alphaMode('blend'), 'PbrMaterial.alphaMode: mode must be an AlphaMode, got string'],
+      [() => renderer.createStorageTexture([4, 4], null),
+        'Renderer.createStorageTexture: format must be a TextureFormat, got null'],
+      [() => renderer.createTexture(new Uint8Array(16), { size: [2, 2], format: 'rgba8' }),
+        'Renderer.createTexture: format must be a TextureFormat, got string'],
+      [() => renderer.render(new Pass('p'), 42),
+        'Renderer.render: target must be a WindowTarget or a TextureTarget, got number'],
+      [() => renderer.render(42, typeTarget),
+        'Renderer.render: expected a Shader, Pass, Mesh, Scene, or an array of them, got number'],
+      [() => renderer.render([new Pass('p'), 'x'], typeTarget),
+        'Renderer.render: item 1: expected a Shader, Pass, Mesh, or Scene, got string'],
+      [() => new Mesh().addInstances(1), 'Mesh.addInstances: items must be an array of instances, got number'],
+      [() => Mesh.fromVertices(1), 'Mesh.fromVertices: vertices must be an array of vertices, got number'],
+      [() => new Mesh().setIndices('012'), 'Mesh.setIndices: indices must be an array of numbers, got string'],
+      [() => new Scene().setPasses(1), 'Scene.setPasses: passes must be an array of passes, got number'],
+      [() => new Scene().setPasses([new Pass('a'), 1]), 'Scene.setPasses: item 1 must be a Pass, got number'],
+      [() => Shader.default().removeMeshes('x'), 'Shader.removeMeshes: list must be an array of meshes, got string'],
+      [() => Shader.default().removeMeshes([1]), 'Shader.removeMeshes: item 0 must be a Mesh, got number'],
+      [() => new Mesh().addInstance(3), `Mesh.addInstance: ${instance}, got number`],
+      [() => new Mesh().addInstances([new Instance(), 3]), `Mesh.addInstances: instance 1: ${instance}, got number`],
+    ]) {
+      try { await run(); } catch (e) {
+        if (!(e instanceof TypeError)) fail(`"${message}" came as ${e.name}`);
+        if (e.message !== message) fail(`threw "${e.message}", not "${message}"`);
+        continue;
+      }
+      fail(`"${message}" should throw`);
+    }
+    // A viewport takes an object of its box or its bounds, as Python takes a dict.
+    for (const fields of [{ x: 0, y: 0, width: 4, height: 4 }, { minX: 2, minY: 2, maxX: 6, maxY: 6 }, { min_x: 0, min_y: 0, max_x: 4, max_y: 4 }]) {
+      new Pass('object').setViewport(fields);
+    }
     // A viewport takes an origin and a size as two pairs, as Rust's ((x, y), (w, h)) does.
     first.setViewport([[8, 0], [2, 4]]);
     throws('Pass.setViewport([[0, 0], [0, 4]])', () => first.setViewport([[0, 0], [0, 4]]));
