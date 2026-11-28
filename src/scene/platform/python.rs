@@ -483,17 +483,21 @@ impl Scene {
         Ok(slf)
     }
 
+    // `pass` is a Python keyword, so the parameter is `pass_`, as the stub names it.
     #[pyo3(name = "add_pass")]
     #[lsp_doc("docs/api/scene/scene/add_pass.md")]
-    pub fn add_pass_py<'py>(slf: PyRef<'py, Self>, pass: PyPass<'_>) -> PyResult<PyRef<'py, Self>> {
-        slf.add_pass(&pass.read("Scene.add_pass: pass")?);
+    pub fn add_pass_py<'py>(
+        slf: PyRef<'py, Self>,
+        pass_: PyPass<'_>,
+    ) -> PyResult<PyRef<'py, Self>> {
+        slf.add_pass(&pass_.read("Scene.add_pass: pass")?);
         Ok(slf)
     }
 
     #[pyo3(name = "remove_pass")]
     #[lsp_doc("docs/api/scene/scene/remove_pass.md")]
-    pub fn remove_pass_py(&self, pass: PyPass<'_>) -> PyResult<bool> {
-        Ok(self.remove_pass(&pass.read("Scene.remove_pass: pass")?))
+    pub fn remove_pass_py(&self, pass_: PyPass<'_>) -> PyResult<bool> {
+        Ok(self.remove_pass(&pass_.read("Scene.remove_pass: pass")?))
     }
 
     #[pyo3(name = "get_pass")]

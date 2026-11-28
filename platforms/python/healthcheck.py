@@ -903,6 +903,14 @@ def check_viewport_dicts():
     print("A viewport takes a dict of its box or its bounds")
 
 
+def check_keyword_names():
+    """A parameter named after a Python keyword takes its keyword with the trailing underscore the stub names."""
+    scene, layer = Scene(), Pass("layer")
+    scene.add_pass(pass_=layer)
+    assert scene.remove_pass(pass_=layer)
+    print("Keyword parameters take the stub's names")
+
+
 def check_labels(renderer):
     """Number errors name the parameter, and the item for a list, as JavaScript's do."""
     def message(call):
@@ -1967,6 +1975,7 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
     check_empty_regions()
     check_scalars_and_pairs()
     check_viewport_dicts()
+    check_keyword_names()
     check_labels(renderer)
     check_type_messages(renderer)
     check_colors(renderer)
