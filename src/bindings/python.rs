@@ -225,8 +225,9 @@ pub(crate) fn read_unsigned<T: Unsigned>(value: &Bound<'_, PyAny>, label: &str) 
     }
 }
 
-/// A Python bool that a binding reads with [`PyFlag::read`], which names the parameter in its errors.
-/// Its `Other` variant keeps a value of any other type, which the stub leaves out.
+/// A Python bool, which a binding reads with [`PyFlag::read`].
+/// Its `Other` variant keeps a value of any other type, which the stub leaves out,
+/// so the reader raises a `TypeError` that names the parameter where pyo3's message wouldn't.
 #[derive(FromPyObject)]
 pub enum PyFlag<'py> {
     Value(bool),

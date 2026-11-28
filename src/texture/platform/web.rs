@@ -543,8 +543,8 @@ fn js_to_byte(value: &JsValue, label: &str, index: usize) -> Result<u8, WebError
 }
 
 /// A texture id from JS, named `label`: a `TextureId`, a whole number or a bigint.
-/// A value of another type is a `TypeError`, and a negative, fractional or out-of-range
-/// number an `InvalidInputError`, each naming `label` with the text Python raises.
+/// A value of another type is a `TypeError`, and a negative, fractional or too large number
+/// is an `InvalidInputError`. Each names `label` and reads as Python's error for the same value.
 pub(crate) fn js_to_texture_id(value: &JsValue, label: &str) -> Result<TextureId, WebError> {
     let invalid = |shown: String| {
         let message = format!(
