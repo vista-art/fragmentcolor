@@ -2,7 +2,8 @@
 
 use crate::bindings::Key;
 use crate::bindings::python::{
-    PyCompareFunction, PyTextureFormat, PyUnsigned, read_bytes, read_list, read_unsigned, refuse,
+    PyCompareFunction, PyFlag, PyTextureFormat, PyUnsigned, read_bytes, read_list, read_unsigned,
+    refuse,
 };
 use crate::texture::loading::decode::array_pixels;
 use crate::texture::{Mipmap, Texture, TextureError, TextureId, TextureRegion};
@@ -294,22 +295,22 @@ impl SamplerOptions {
     #[doc(hidden)]
     #[new]
     #[pyo3(signature = (
-        repeat_x = SamplerOptions::default().repeat_x,
-        repeat_y = SamplerOptions::default().repeat_y,
-        smooth = SamplerOptions::default().smooth,
+        repeat_x = PyFlag::Value(SamplerOptions::default().repeat_x),
+        repeat_y = PyFlag::Value(SamplerOptions::default().repeat_y),
+        smooth = PyFlag::Value(SamplerOptions::default().smooth),
         compare = None,
     ))]
     pub fn new_py(
-        repeat_x: bool,
-        repeat_y: bool,
-        smooth: bool,
+        repeat_x: PyFlag<'_>,
+        repeat_y: PyFlag<'_>,
+        smooth: PyFlag<'_>,
         compare: Option<PyCompareFunction<'_>>,
     ) -> PyResult<Self> {
         let compare = compare.map(|compare| compare.read("SamplerOptions: compare"));
         Ok(Self {
-            repeat_x,
-            repeat_y,
-            smooth,
+            repeat_x: repeat_x.read("SamplerOptions: repeat_x")?,
+            repeat_y: repeat_y.read("SamplerOptions: repeat_y")?,
+            smooth: smooth.read("SamplerOptions: smooth")?,
             compare: compare.transpose()?,
         })
     }

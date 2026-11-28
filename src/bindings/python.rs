@@ -225,6 +225,24 @@ pub(crate) fn read_unsigned<T: Unsigned>(value: &Bound<'_, PyAny>, label: &str) 
     }
 }
 
+/// A Python bool that a binding reads with [`PyFlag::read`], which names the parameter in its errors.
+/// Its `Other` variant keeps a value of any other type, which the stub leaves out.
+#[derive(FromPyObject)]
+pub enum PyFlag<'py> {
+    Value(bool),
+    Other(Bound<'py, PyAny>),
+}
+
+impl PyFlag<'_> {
+    /// The bool, or a `TypeError` that names `label` for a value of another type.
+    pub(crate) fn read(&self, label: &str) -> PyResult<bool> {
+        match self {
+            PyFlag::Value(value) => Ok(*value),
+            PyFlag::Other(value) => Err(refuse(value, format_args!("{label} must be a bool"))),
+        }
+    }
+}
+
 /// A color, a vector or another list of floats from Python: any sequence of numbers, NumPy arrays
 /// included, except the bytes forms. Its readers name the parameter in their errors.
 /// The hint's ndarray leaves out the uint8 and bool arrays the readers refuse.

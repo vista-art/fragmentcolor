@@ -1,6 +1,6 @@
 #![cfg(python)]
 
-use crate::bindings::python::{PyAlphaMode, PyMesh, PyMeshes, PyVertex, is_list, refuse};
+use crate::bindings::python::{PyAlphaMode, PyFlag, PyMesh, PyMeshes, PyVertex, is_list, refuse};
 use crate::core::shader::{UniformInput, lsp_doc};
 use crate::{Shader, ShaderError, ShaderInput, UniformData};
 use pyo3::exceptions::PyTypeError;
@@ -113,8 +113,8 @@ impl Shader {
 
     #[pyo3(name = "double_sided")]
     #[lsp_doc("docs/api/core/shader/double_sided.md")]
-    pub fn double_sided_py(&self, value: bool) -> Self {
-        self.double_sided(value)
+    pub fn double_sided_py(&self, value: PyFlag<'_>) -> PyResult<Self> {
+        Ok(self.double_sided(value.read("Shader.double_sided: value")?))
     }
 
     // Internal duck-typed interface used by PyRenderable dispatch, not part of public docs.

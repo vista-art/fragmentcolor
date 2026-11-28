@@ -822,6 +822,11 @@ await withModule('platforms.web.healthcheck.parity', async () => {
       [() => new Mesh().addInstance(3), `Mesh.addInstance: ${instance}, got number`],
       [() => new Mesh().addInstances([new Instance(), 3]), `Mesh.addInstances: instance 1: ${instance}, got number`],
       [() => renderer.readTexture('x'), 'Renderer.readTexture: texture_id must be a TextureId or a whole number, got string'],
+      [() => renderer.createTexture(new Uint8Array(16), { size: [2, 2], mipmaps: 'x' }),
+        'Renderer.createTexture: mipmaps must be a boolean, got string'],
+      [() => new PbrMaterial().doubleSided('x'), 'PbrMaterial.doubleSided: value must be a boolean, got string'],
+      [() => new Model(new Mesh(), new PbrMaterial()).setVisible('yes'), 'Model.setVisible: visible must be a boolean, got string'],
+      [() => new fc.SamplerOptions('yes'), 'SamplerOptions: repeat_x must be a boolean, got string'],
       [() => renderer.unregisterTexture(null),
         'Renderer.unregisterTexture: texture_id must be a TextureId or a whole number, got null'],
     ]) {

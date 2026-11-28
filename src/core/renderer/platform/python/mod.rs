@@ -1,6 +1,6 @@
 //! The `Renderer` methods Python calls.
 
-use crate::bindings::python::{PyLogLevel, PyShader, PyTextureFormat, refuse};
+use crate::bindings::python::{PyFlag, PyLogLevel, PyShader, PyTextureFormat, refuse};
 use crate::{
     PySize, Renderer,
     targets::{PyTextureTarget, RenderCanvasTarget},
@@ -176,7 +176,7 @@ impl Renderer {
         input: PyTextureSource<'py>,
         size: Option<PySize<'py>>,
         format: Option<PyTextureFormat<'py>>,
-        mipmaps: Option<bool>,
+        mipmaps: Option<PyFlag<'py>>,
         sampler: Option<crate::texture::PySamplerOptions<'py>>,
         usage: Option<crate::texture::PyTextureUsage<'py>>,
     ) -> Result<crate::texture::Texture, PyErr> {
@@ -333,7 +333,7 @@ pub(crate) fn py_to_texture_spec(
         spec.options.format = format;
     }
     if let Some(mipmaps) = options.mipmaps {
-        spec.options.mipmaps = mipmaps;
+        spec.options.mipmaps = mipmaps.read(&format!("{call}: mipmaps"))?;
     }
     if let Some(sampler) = options.sampler {
         spec.options.sampler = sampler.read(call)?;
@@ -348,7 +348,7 @@ pub(crate) fn py_to_texture_spec(
 pub(crate) struct TextureKeywords<'py> {
     size: Option<PySize<'py>>,
     format: Option<PyTextureFormat<'py>>,
-    mipmaps: Option<bool>,
+    mipmaps: Option<PyFlag<'py>>,
     sampler: Option<crate::texture::PySamplerOptions<'py>>,
     usage: Option<crate::texture::PyTextureUsage<'py>>,
 }
@@ -357,7 +357,7 @@ impl<'py> TextureKeywords<'py> {
     pub(crate) fn new(
         size: Option<PySize<'py>>,
         format: Option<PyTextureFormat<'py>>,
-        mipmaps: Option<bool>,
+        mipmaps: Option<PyFlag<'py>>,
         sampler: Option<crate::texture::PySamplerOptions<'py>>,
         usage: Option<crate::texture::PyTextureUsage<'py>>,
     ) -> Self {

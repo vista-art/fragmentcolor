@@ -6,8 +6,8 @@ use pyo3::types::PyString;
 
 use crate::bindings::numbers::read_floats;
 use crate::bindings::python::{
-    PyCamera, PyChannels, PyFloat, PyLight, PyMesh, PyPass, PyPasses, PyUnsigned, read_items,
-    read_numbers, read_unsigned, refuse,
+    PyCamera, PyChannels, PyFlag, PyFloat, PyLight, PyMesh, PyPass, PyPasses, PyUnsigned,
+    read_items, read_numbers, read_unsigned, refuse,
 };
 use crate::errors::InvalidInputError;
 use crate::scene::material::platform::python::PyMaterial;
@@ -81,8 +81,9 @@ impl Model {
 
     #[pyo3(name = "set_visible")]
     #[lsp_doc("docs/api/scene/model/set_visible.md")]
-    pub fn set_visible_py(&self, visible: bool) {
-        self.set_visible(visible);
+    pub fn set_visible_py(&self, visible: PyFlag<'_>) -> PyResult<()> {
+        self.set_visible(visible.read("Model.set_visible: visible")?);
+        Ok(())
     }
 }
 
@@ -449,12 +450,19 @@ impl Scene {
     /// pass `bytes` for an in-memory `.glb` payload. `cameras=False` and
     /// `lights=False` leave out the file's own cameras and lights.
     #[staticmethod]
-    #[pyo3(name = "load", signature = (source, cameras=true, lights=true))]
+    #[pyo3(
+        name = "load",
+        signature = (source, cameras = PyFlag::Value(true), lights = PyFlag::Value(true))
+    )]
     #[lsp_doc("docs/api/scene/scene/load.md")]
-    pub fn load_py(source: PySceneSource<'_>, cameras: bool, lights: bool) -> PyResult<Self> {
+    pub fn load_py(
+        source: PySceneSource<'_>,
+        cameras: PyFlag<'_>,
+        lights: PyFlag<'_>,
+    ) -> PyResult<Self> {
         let source = crate::scene::GltfSource::try_from(source)?
-            .cameras(cameras)
-            .lights(lights);
+            .cameras(cameras.read("Scene.load: cameras")?)
+            .lights(lights.read("Scene.load: lights")?);
         Ok(Scene::load(source)?)
     }
 

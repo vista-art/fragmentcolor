@@ -3,7 +3,7 @@
 use lsp_doc::lsp_doc;
 use pyo3::prelude::*;
 
-use crate::bindings::python::{PyAlphaMode, PyChannels, PyFloat, PyUnsigned};
+use crate::bindings::python::{PyAlphaMode, PyChannels, PyFlag, PyFloat, PyUnsigned};
 use crate::{MaterialMap, Shader, ToonMaterial};
 
 #[pymethods]
@@ -73,8 +73,8 @@ impl ToonMaterial {
 
     #[pyo3(name = "double_sided")]
     #[lsp_doc("docs/api/scene/toon_material/double_sided.md")]
-    pub fn double_sided_py(&self, value: bool) -> Self {
-        self.double_sided(value)
+    pub fn double_sided_py(&self, value: PyFlag<'_>) -> PyResult<Self> {
+        Ok(self.double_sided(value.read("ToonMaterial.double_sided: value")?))
     }
 
     #[pyo3(name = "base_color_map")]

@@ -3,7 +3,7 @@
 use lsp_doc::lsp_doc;
 use pyo3::prelude::*;
 
-use crate::bindings::python::{PyAlphaMode, PyChannels, PyFloat};
+use crate::bindings::python::{PyAlphaMode, PyChannels, PyFlag, PyFloat};
 use crate::{MaterialMap, Shader, UnlitMaterial};
 
 #[pymethods]
@@ -42,8 +42,8 @@ impl UnlitMaterial {
 
     #[pyo3(name = "double_sided")]
     #[lsp_doc("docs/api/scene/unlit_material/double_sided.md")]
-    pub fn double_sided_py(&self, value: bool) -> Self {
-        self.double_sided(value)
+    pub fn double_sided_py(&self, value: PyFlag<'_>) -> PyResult<Self> {
+        Ok(self.double_sided(value.read("UnlitMaterial.double_sided: value")?))
     }
 
     #[pyo3(name = "base_color_map")]

@@ -992,6 +992,12 @@ def check_type_messages(renderer):
         "Shader.remove_meshes: list must be a list of meshes, got str": lambda: Shader.default().remove_meshes("x"),
         "Shader.remove_meshes: item 0 must be a Mesh, got int": lambda: Shader.default().remove_meshes([1]),
         "Renderer.read_texture: texture_id must be a TextureId or an int, got str": lambda: renderer.read_texture("x"),
+        # A bool parameter names the call and the parameter.
+        "Renderer.create_texture: mipmaps must be a bool, got str":
+            lambda: renderer.create_texture(bytes(16), size=[2, 2], mipmaps="x"),
+        "PbrMaterial.double_sided: value must be a bool, got str": lambda: PbrMaterial().double_sided("x"),
+        "Model.set_visible: visible must be a bool, got str": lambda: Model(Mesh(), PbrMaterial()).set_visible("yes"),
+        "SamplerOptions: repeat_x must be a bool, got str": lambda: SamplerOptions(repeat_x="yes"),
         "Renderer.unregister_texture: texture_id must be a TextureId or an int, got NoneType":
             lambda: renderer.unregister_texture(None),
         "Model: expected a PbrMaterial, an UnlitMaterial, a ToonMaterial or a Shader, got int":

@@ -6,7 +6,7 @@ use pyo3::prelude::*;
 use super::refuse_options;
 use crate::MaterialMap;
 use crate::PySize;
-use crate::bindings::python::{PyChannels, PyFloat, PyTextureFormat, PyUnsigned};
+use crate::bindings::python::{PyChannels, PyFlag, PyFloat, PyTextureFormat, PyUnsigned};
 use crate::core::{TextureKeywords, py_to_texture_spec};
 use crate::texture::{PySamplerOptions, PyTextureSource, PyTextureUsage, TEXTURE_INPUTS};
 
@@ -31,7 +31,7 @@ impl MaterialMap {
         input: PyMapInput<'py>,
         size: Option<PySize<'py>>,
         format: Option<PyTextureFormat<'py>>,
-        mipmaps: Option<bool>,
+        mipmaps: Option<PyFlag<'py>>,
         sampler: Option<PySamplerOptions<'py>>,
         usage: Option<PyTextureUsage<'py>>,
     ) -> PyResult<Self> {
