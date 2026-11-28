@@ -60,11 +60,18 @@ A patch release that gives each shading model a type of its own: `PbrMaterial`, 
 - `shader.get(key)` on a sampler key returns a `SamplerInfo` in every language, with a read-only `comparison` that says whether the slot is a `sampler_comparison`. Rust reads it as `let info: SamplerInfo = shader.get("shadow")?`. Python imports `SamplerInfo` from `fragmentcolor`, and it compares and hashes by value.
 - A `Shader` that declares `override DOUBLE_SIDED: bool` gets its `double_sided` setting as the value, as `ENCODE_SRGB` gets the target's encoding.
 
+### Bindings
+
+- Python's `Pass.set_viewport` takes a dict, `{"x": 0, "y": 0, "width": 4, "height": 4}` or `{"min_x": 0, "min_y": 0, "max_x": 4, "max_y": 4}`, each key also in its camelCase form, as JavaScript's `setViewport` takes an object. A key set to `None` counts as missing, as JavaScript reads `null`.
+- Python's `Scene.add_pass` and `Scene.remove_pass` take the keyword `pass_`, the name the stub gives it, and `help(Scene.load)` shows its `True` defaults.
+- JavaScript's `Mesh.fromVertices`, `Mesh.addVertices` and `Mesh.addInstances` name their parameters `vertices` and `items` in the TypeScript types, as Python names them.
+
 ### Errors
 
 - One Errors page at /api/errors lists every error class, when it's raised and its fields, with `kind` among `DeviceError`'s. `DeviceError` and `ErrorKind` leave the API menu, the Errors link ends it, and /api/errors/deviceerror and /api/errors/errorkind redirect to its `DeviceError` section.
 - Python's errors pickle by their class, and one raised in a `multiprocessing` worker reaches the parent as the same class with its fields. That includes a `DeviceError`'s `kind`, which pickles as the `ErrorKind` variant it names.
-- A Python argument of the wrong type raises a `TypeError` that names the call and what it takes, as JavaScript's does, such as `MaterialMap.texture takes a MaterialMap, bytes (...), a uint8 ndarray, a path, a URL, a Texture or a Mipmap, got int`. It named a binding class such as `PyMapInput` or `PyTextureSource`.
+- An argument of the wrong type raises a `TypeError` that names the call and what it takes, with the same text in JavaScript and Python apart from each language's spellings, such as `Pass.add_shader: shader must be a Shader, got int` in Python and `Pass.addShader: shader must be a Shader, got number` in JavaScript. That holds for a class, a list, a string, a boolean, a size, a region, sampler options and a texture id. Python's message named a binding class, such as `PyMapInput`, or gave pyo3's `'int' object is not an instance of 'Shader'`, and JavaScript's gave `expected instance of Shader` or left out the call.
+- A viewport dict or object that holds neither a whole `x`, `y`, `width` and `height` nor a whole set of bounds raises `InvalidInputError`, naming the keys it needs. JavaScript threw a `TypeError`, which both bindings keep for a value of the wrong type.
 
 ### Website and examples
 
