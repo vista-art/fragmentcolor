@@ -900,7 +900,15 @@ def check_viewport_dicts():
                    lambda: Pass("p").set_viewport({"x": 0, "y": 0, "width": 0, "height": 4}))
     raises_invalid("Pass.set_viewport with reversed bounds",
                    lambda: Pass("p").set_viewport({"min_x": 8, "min_y": 0, "max_x": 2, "max_y": 4}))
-    raises_type("Pass.set_viewport with a missing height", lambda: Pass("p").set_viewport({"x": 0, "y": 0, "width": 4}))
+    # A dict is a form the call takes, so one that holds neither form whole is a value error.
+    keys = "Pass.set_viewport: a region dict needs x, y, width and height, or min_x, min_y, max_x and max_y"
+    for fields in ({"x": 0, "y": 0, "width": 4}, {}, {"min_x": 0, "min_y": 0, "max_x": 4}):
+        try:
+            Pass("p").set_viewport(fields)
+        except InvalidInputError as e:
+            assert str(e) == keys, f"expected {keys!r}, got {str(e)!r}"
+            continue
+        raise AssertionError(f"Pass.set_viewport({fields}) should raise InvalidInputError")
     print("A viewport takes a dict of its box or its bounds")
 
 

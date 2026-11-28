@@ -312,8 +312,8 @@ impl ScreenRegion {
     /// object such as a `DOMRect`, or the `{ minX, minY, maxX, maxY }` fields of a `ScreenRegion`.
     /// An origin and a size as `[[x, y], [w, h]]` read as `ScreenRegion::new` reads them, as a Rust
     /// `((x, y), (w, h))` does. A value of another type, another FragmentColor class among them, or an
-    /// item that isn't a number, is a `TypeError` that names `call`, as Python raises, and a fraction,
-    /// a negative number or a wrong count is an `InvalidInputError`.
+    /// item that isn't a number, is a `TypeError` that names `call`, as Python raises. A fraction,
+    /// a negative number, a wrong count or an object that holds neither form whole is an `InvalidInputError`.
     #[cfg(wasm)]
     pub(crate) fn read(value: &JsValue, call: &str) -> Result<Self, WebError> {
         if let Some((origin, size)) = read_pairs(value) {
@@ -342,6 +342,8 @@ impl ScreenRegion {
             if let Some(region) = Self::read_fields(read)? {
                 return Ok(region);
             }
+            let keys = "a region object needs x, y, width and height, or minX, minY, maxX and maxY";
+            return Err(ScreenRegionError::Invalid(format!("{call}: {keys}")).into());
         }
 
         let kind = class.unwrap_or_else(|| describe(value));

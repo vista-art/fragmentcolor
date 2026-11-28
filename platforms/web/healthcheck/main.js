@@ -864,6 +864,16 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     ]) {
       new Pass('object').setViewport(fields);
     }
+    // An object is a form the call takes, so one that holds neither form whole is a value error.
+    const keys = 'Pass.setViewport: a region object needs x, y, width and height, or minX, minY, maxX and maxY';
+    for (const fields of [{ x: 0, y: 0, width: 4 }, {}, { minX: 0, minY: 0, maxX: 4 }]) {
+      try { first.setViewport(fields); } catch (e) {
+        if (e.name !== 'InvalidInputError') fail(`setViewport(${JSON.stringify(fields)}) threw ${e.name}`);
+        if (e.message !== keys) fail(`threw "${e.message}", not "${keys}"`);
+        continue;
+      }
+      fail(`setViewport(${JSON.stringify(fields)}) should throw`);
+    }
     // A viewport takes an origin and a size as two pairs, as Rust's ((x, y), (w, h)) does.
     first.setViewport([[8, 0], [2, 4]]);
     throws('Pass.setViewport([[0, 0], [0, 4]])', () => first.setViewport([[0, 0], [0, 4]]));

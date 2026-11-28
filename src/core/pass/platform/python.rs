@@ -4,7 +4,7 @@ use crate::bindings::Key;
 use crate::bindings::python::{
     PyChannels, PyMesh, PyShader, PyText, PyUnsigned, read_list, read_pair, read_unsigned, refuse,
 };
-use crate::{Pass, PassObject, PassType, ScreenRegion};
+use crate::{Pass, PassObject, PassType, ScreenRegion, ScreenRegionError};
 use lsp_doc::lsp_doc;
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyDict};
@@ -210,8 +210,12 @@ pub enum PyViewport<'py> {
 /// The forms `Pass.set_viewport` reads a region from, as its `TypeError` lists them.
 const VIEWPORT_FORMS: &str = "Pass.set_viewport: a region is [w, h], [x, y, w, h], [[x, y], [w, h]], a dict of x, y, width and height or a ScreenRegion";
 
+/// The keys a viewport dict needs, as its `InvalidInputError` lists them.
+const VIEWPORT_KEYS: &str = "Pass.set_viewport: a region dict needs x, y, width and height, or min_x, min_y, max_x and max_y";
+
 /// Reads each number as an int that [`PyUnsigned::read`] checks.
-/// Any other value raises a `TypeError` that lists the forms.
+/// Any value of another type raises a `TypeError` that lists the forms.
+/// A dict that holds neither form whole is the right type, so it raises `InvalidInputError`.
 impl TryFrom<PyViewport<'_>> for ScreenRegion {
     type Error = PyErr;
 
@@ -220,7 +224,7 @@ impl TryFrom<PyViewport<'_>> for ScreenRegion {
             PyViewport::Region(region) => Ok(region),
             PyViewport::Fields(fields) => match read_fields(&fields)? {
                 Some(region) => Ok(region),
-                None => Err(refuse(&fields, VIEWPORT_FORMS)),
+                None => Err(ScreenRegionError::Invalid(VIEWPORT_KEYS.into()).into()),
             },
             PyViewport::Other(value) => Err(refuse(&value, VIEWPORT_FORMS)),
             PyViewport::Pairs([origin, size]) => {
