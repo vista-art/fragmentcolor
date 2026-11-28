@@ -361,9 +361,8 @@ impl Scene {
         } else if let Some(path) = source.as_string() {
             GltfSource::from(path)
         } else {
-            return Err(WebError::type_error(
-                "Scene.load: expected the bytes of a .glb file, as an ArrayBuffer or a typed array",
-            ));
+            let expected = "Scene.load: expected a path, or the bytes of a .glb file as an ArrayBuffer or a typed array";
+            return Err(refuse(source, expected));
         };
         let cameras = read_option(options.as_ref(), "cameras")?;
         let lights = read_option(options.as_ref(), "lights")?;
@@ -535,15 +534,17 @@ crate::impl_js_bridge!(Model, crate::PassError);
 crate::impl_js_bridge!(Camera, crate::PassError);
 
 /// The pass `Scene.addTo` names: its index, or its name.
+/// Any other value is a `TypeError` that names the call, as Python raises one.
 fn read_pass_ref(target: &JsValue) -> Result<PassRef, WebError> {
     if let Some(index) = target.as_f64() {
         Ok(PassRef::Index(
-            read_unsigned(index, "Scene.addTo: index")? as usize
+            read_unsigned(index, "Scene.addTo: target")? as usize
         ))
     } else if let Some(name) = target.as_string() {
         Ok(PassRef::Name(name))
     } else {
-        Err(WebError::type_error(
+        Err(refuse(
+            target,
             "Scene.addTo: target must be an index or a name",
         ))
     }
@@ -630,7 +631,7 @@ fn read_flat_matrix(value: &JsValue, label: &str) -> Result<[[f32; 4]; 4], WebEr
 
 /// Reads one boolean flag of the `Scene.load` options. A missing flag is `true`.
 /// A flag that is no boolean is a `TypeError` that names the call, and so is an `options`
-/// that is no plain object, such as a number, an array or another class such as a `Mesh`.
+/// that is no plain object: a number, an array, or another class, like a `Mesh`.
 fn read_option(options: Option<&JsValue>, name: &str) -> Result<bool, WebError> {
     let Some(options) = options.filter(|options| !options.is_undefined() && !options.is_null())
     else {

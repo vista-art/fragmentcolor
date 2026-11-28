@@ -1044,8 +1044,11 @@ def check_type_messages(renderer):
         f"Mesh.add_instance: {instance}, got float": lambda: Mesh().add_instance(3.0),
         f"Mesh.add_instance: offset {attribute}, got str": lambda: Mesh().add_instance({"offset": "x"}),
         f"Mesh.add_instances: instance 1: {instance}, got float": lambda: Mesh().add_instances([Instance(), 3.0]),
-        "Shader input must be a string or a list of strings, got int": lambda: Shader(42),
-        "Shader input list contains a non-string element": lambda: Shader(["a", 1]),
+        "Shader: input must be a string or a list of strings, got int": lambda: Shader(42),
+        "Shader: input list contains a non-string element": lambda: Shader(["a", 1]),
+        "Shader.fetch: input must be a string or a list of strings, got int": lambda: Shader.fetch(42),
+        "Scene.add_to: target must be an index or a name, got list":
+            lambda: Scene().add_to([], Light.point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0])),
         "Shader.set: offset: expected a number, a list, an ndarray, bytes, or a Texture, got str":
             lambda: Shader(SET_VALUES_SHADER).set("offset", "x"),
         "Shader.set: offset: expected a list of numbers, or a list of number lists":

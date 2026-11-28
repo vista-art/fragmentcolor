@@ -2,7 +2,7 @@
 
 use lsp_doc::lsp_doc;
 use pyo3::prelude::*;
-use pyo3::types::PyString;
+use pyo3::types::{PyBool, PyString};
 
 use crate::bindings::numbers::read_floats;
 use crate::bindings::python::{
@@ -207,14 +207,20 @@ impl PyMatrix<'_> {
 }
 
 /// The pass `Scene.add_to` names: its name, or its index.
+/// Any other value is a `TypeError` that names the call, as JavaScript throws one.
 fn read_pass_ref(target: &Bound<'_, PyAny>) -> PyResult<PassRef> {
-    match target.extract::<String>() {
-        Ok(name) => Ok(PassRef::Name(name)),
-        Err(_) => {
-            let index: u32 = read_unsigned(target, "Scene.add_to: target")?;
-            Ok(PassRef::Index(index as usize))
-        }
+    let label = "Scene.add_to: target";
+    if let Ok(name) = target.cast::<PyString>() {
+        return Ok(PassRef::Name(PyText::Value(name.clone()).read(label)?));
     }
+    if target.is_instance_of::<PyBool>() || !target.hasattr("__index__")? {
+        return Err(refuse(
+            target,
+            format_args!("{label} must be an index or a name"),
+        ));
+    }
+    let index: u32 = read_unsigned(target, label)?;
+    Ok(PassRef::Index(index as usize))
 }
 
 /// Adds the Model, Camera or Light that `object` holds to the pass `target` names.

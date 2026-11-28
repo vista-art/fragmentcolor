@@ -19,7 +19,7 @@ impl Shader {
     #[wasm_bindgen(constructor)]
     #[lsp_doc("docs/api/core/shader/new.md")]
     pub fn new_js(input: &JsValue) -> Result<Shader, WebError> {
-        Ok(Shader::new(source_parts(input)?)?)
+        Ok(Shader::new(source_parts(input, "Shader")?)?)
     }
 
     #[wasm_bindgen(js_name = "setRegistry")]
@@ -34,7 +34,7 @@ impl Shader {
     #[wasm_bindgen(js_name = "fetch")]
     #[lsp_doc("docs/api/core/shader/fetch.md")]
     pub async fn fetch_js(input: &JsValue) -> Result<Shader, WebError> {
-        Ok(Shader::fetch(source_parts(input)?).await?)
+        Ok(Shader::fetch(source_parts(input, "Shader.fetch")?).await?)
     }
 
     // Static helpers that mirror Rust API for the JS side
@@ -273,14 +273,14 @@ pub(crate) fn read_alpha_mode(value: &JsValue, label: &str) -> Result<AlphaMode,
 }
 
 /// Reads a shader source: one string, or an array of strings to compose.
-/// Any other value is a `TypeError`, as Python raises.
-fn source_parts(input: &JsValue) -> Result<Vec<String>, WebError> {
+/// Any other value is a `TypeError` that names `call`, as Python raises.
+fn source_parts(input: &JsValue, call: &str) -> Result<Vec<String>, WebError> {
     if let Some(source) = input.as_string() {
         return Ok(vec![source]);
     }
     let Some(array) = input.dyn_ref::<Array>() else {
         return Err(WebError::type_error(&format!(
-            "Shader input must be a string or an array of strings, got {}",
+            "{call}: input must be a string or an array of strings, got {}",
             describe(input)
         )));
     };
@@ -288,7 +288,11 @@ fn source_parts(input: &JsValue) -> Result<Vec<String>, WebError> {
         .iter()
         .map(|item| item.as_string())
         .collect::<Option<Vec<String>>>()
-        .ok_or_else(|| WebError::type_error("Shader input array contains a non-string element"))
+        .ok_or_else(|| {
+            WebError::type_error(&format!(
+                "{call}: input array contains a non-string element"
+            ))
+        })
 }
 
 #[cfg(test)]

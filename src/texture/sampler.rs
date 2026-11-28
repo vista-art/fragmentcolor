@@ -26,6 +26,8 @@ pub struct SamplerOptions {
     pub compare: Option<CompareFunction>,
 }
 
+crate::impl_fc_kind!(SamplerOptions, "SamplerOptions");
+
 // SamplerOptions is a value type. The parity audit tracks the methods that take
 // it, so its constructor has no doc page.
 #[cfg(wasm)]

@@ -14,7 +14,7 @@ impl Shader {
     #[new]
     #[lsp_doc("docs/api/core/shader/new.md")]
     pub fn new_py(input: PyShaderInput<'_>) -> PyResult<Self> {
-        Ok(Shader::new(ShaderInput::try_from(input)?)?)
+        Ok(Shader::new(input.read("Shader")?)?)
     }
 
     /// Async-shaped constructor: fetches each part of `input` from the network
@@ -25,7 +25,7 @@ impl Shader {
     #[pyo3(name = "fetch")]
     #[lsp_doc("docs/api/core/shader/fetch.md")]
     pub fn fetch_py(input: PyShaderInput<'_>) -> PyResult<Self> {
-        let input = ShaderInput::try_from(input)?;
+        let input = input.read("Shader.fetch")?;
         Ok(pollster::block_on(Shader::fetch(input))?)
     }
 
@@ -170,19 +170,18 @@ pub enum PyShaderInput<'py> {
     Other(Bound<'py, PyAny>),
 }
 
-impl TryFrom<PyShaderInput<'_>> for crate::ShaderInput {
-    type Error = PyErr;
-
-    fn try_from(input: PyShaderInput<'_>) -> PyResult<Self> {
-        match input {
+impl PyShaderInput<'_> {
+    /// The source or parts, or a `TypeError` that names `call` for a value of another type.
+    pub(crate) fn read(self, call: &str) -> PyResult<ShaderInput> {
+        match self {
             PyShaderInput::Source(source) => Ok(source.into()),
             PyShaderInput::Parts(parts) => Ok(parts.into()),
-            PyShaderInput::Other(value) if is_list(&value) => Err(PyTypeError::new_err(
-                "Shader input list contains a non-string element",
-            )),
+            PyShaderInput::Other(value) if is_list(&value) => Err(PyTypeError::new_err(format!(
+                "{call}: input list contains a non-string element"
+            ))),
             PyShaderInput::Other(value) => Err(refuse(
                 &value,
-                "Shader input must be a string or a list of strings",
+                format_args!("{call}: input must be a string or a list of strings"),
             )),
         }
     }
