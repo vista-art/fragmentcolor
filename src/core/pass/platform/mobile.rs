@@ -152,7 +152,10 @@ impl Pass {
     #[uniffi::method(name = "setViewport")]
     #[lsp_doc("docs/api/core/pass/set_viewport.md")]
     pub fn set_viewport_mobile(&self, region: ScreenRegion) -> Result<(), FragmentColorError> {
-        Ok(self.set_viewport(region)?)
+        let region = region
+            .check()
+            .map_err(|error| error.name("Pass.setViewport"));
+        Ok(self.set_viewport(region?)?)
     }
 
     /// Set the compute dispatch dimensions for this pass.

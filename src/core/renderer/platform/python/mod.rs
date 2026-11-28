@@ -1,5 +1,6 @@
 //! The `Renderer` methods Python calls.
 
+use crate::bindings::InputError;
 use crate::bindings::python::{PyFlag, PyLogLevel, PyShader, PyText, PyTextureFormat, refuse};
 use crate::{
     PySize, Renderer,
@@ -319,19 +320,22 @@ pub(crate) fn py_to_texture_spec(
     inputs: &str,
 ) -> Result<crate::texture::TextureInput, PyErr> {
     if matches!(input, PyTextureSource::Texture(_)) && !options.is_empty() {
-        return Err(crate::texture::TextureError::InvalidInput(format!(
-            "{call}: a Texture keeps the options it was created with, so it takes no size, format, mipmaps, sampler or usage"
-        ))
-        .into());
+        let message =
+            format!("{call}: a Texture keeps the options it was created with, so it takes none");
+        return Err(InputError(message).into());
     }
+    let source = match input {
+        PyTextureSource::Array(array) => Source::Array(array),
+        source => Source::Read(source.read(call, inputs)?),
+    };
     let size = options.size.map(|size| size.read(call)).transpose()?;
     let format = options
         .format
         .map(|format| format.read(&format!("{call}: format")))
         .transpose()?;
-    let mut spec = match input {
-        PyTextureSource::Array(array) => crate::texture::read_ndarray(&array, size, format)?,
-        source => source.read(call, inputs)?,
+    let mut spec = match source {
+        Source::Read(spec) => spec,
+        Source::Array(array) => crate::texture::read_ndarray(&array, size, format, call)?,
     };
     spec.options.size = spec.options.size.or(size);
     if let Some(format) = format {
@@ -347,6 +351,13 @@ pub(crate) fn py_to_texture_spec(
         spec.options.usage = Some(usage.read(&format!("{call}: usage"))?);
     }
     Ok(spec)
+}
+
+/// A texture source, read before its keywords as JavaScript reads it before its options,
+/// or an ndarray, which reads after them since the size and format it brings must match theirs.
+enum Source<'py> {
+    Read(crate::texture::TextureInput),
+    Array(numpy::PyReadonlyArrayDyn<'py, u8>),
 }
 
 /// The keyword arguments of `create_texture` and the Material texture setters, each optional.

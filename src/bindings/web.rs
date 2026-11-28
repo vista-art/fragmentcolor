@@ -166,6 +166,24 @@ pub(crate) fn read_list(
     Ok(Some(items))
 }
 
+/// The whole numbers of a plain or typed array, such as a size, or `None` for a value that isn't one.
+/// Each item reads as [`read_unsigned`] reads it, named `{label}: item {index}`, as Python names it.
+pub(crate) fn read_counts(
+    value: &wasm_bindgen::JsValue,
+    label: &str,
+) -> Result<Option<Vec<u32>>, WebError> {
+    let Some(numbers) = read_list(value, label)? else {
+        return Ok(None);
+    };
+    // The label is written only for an item that fails, so a long list costs no strings.
+    let read = |(index, number): (usize, f64)| match super::numbers::read_dimension(number) {
+        Some(count) => Ok(count),
+        None => read_unsigned(number, &format!("{label}: item {index}")),
+    };
+    let counts = numbers.into_iter().enumerate().map(read);
+    Ok(Some(counts.collect::<Result<Vec<u32>, WebError>>()?))
+}
+
 /// A `TypeError` for a value the call can't take. Its message reads `{expected}, got {kind}`, as Python's does.
 pub(crate) fn refuse(value: &wasm_bindgen::JsValue, expected: &str) -> WebError {
     let kind = describe(value);

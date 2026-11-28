@@ -6,9 +6,8 @@ use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
 use crate::bindings::numbers;
-use crate::bindings::numbers::read_dimension;
 use crate::bindings::web::{
-    describe, read_count, read_floats, read_list, read_text, read_unsigned, read_vector, refuse,
+    describe, read_count, read_counts, read_floats, read_list, read_text, read_vector, refuse,
 };
 use crate::{Instance, Mesh, Quad, Vertex, VertexData};
 
@@ -344,15 +343,8 @@ fn read_indices(indices: &JsValue) -> Result<Vec<u32>, WebError> {
     if let Some(array) = indices.dyn_ref::<js_sys::Uint32Array>() {
         return Ok(array.to_vec());
     }
-    let Some(numbers) = read_list(indices, "Mesh.setIndices")? else {
-        let expected = "Mesh.setIndices: indices must be an array of numbers";
-        return Err(refuse(indices, expected));
-    };
-    let read = |(index, number): (usize, f64)| match read_dimension(number) {
-        Some(whole) => Ok(whole),
-        None => read_unsigned(number, &format!("Mesh.setIndices: item {index}")),
-    };
-    numbers.into_iter().enumerate().map(read).collect()
+    let expected = "Mesh.setIndices: indices must be an array of numbers";
+    read_counts(indices, "Mesh.setIndices")?.ok_or_else(|| refuse(indices, expected))
 }
 
 // -----------------------------

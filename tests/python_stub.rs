@@ -133,7 +133,7 @@ fn float_vector_hints_name_their_ndarray() {
 }
 
 // Story: a list of ints takes an integer ndarray and nothing wider, and a size's fields
-// come in any mapping, which the runtime reads as it reads a dict.
+// come in any mapping, which the runtime reads as it reads a dict, with `None` as a missing key.
 #[test]
 fn integer_hints_take_integer_arrays_and_mappings() {
     let hints = read_hints();
@@ -143,7 +143,10 @@ fn integer_hints_take_integer_arrays_and_mappings() {
         "Sequence[SupportsIndex] | npt.NDArray[numpy.integer[Any]]"
     );
     let size = hint(&hints, "TextureTarget.resize", "size");
-    assert!(size.contains("Mapping[str, SupportsIndex]"), "{size}");
+    assert!(
+        size.contains("Mapping[str, SupportsIndex | None]"),
+        "{size}"
+    );
     assert!(size.contains("npt.NDArray[numpy.integer[Any]]"), "{size}");
     assert!(!size.contains("NDArray[Any]"), "{size}");
 }

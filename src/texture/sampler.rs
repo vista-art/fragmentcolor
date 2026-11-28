@@ -6,12 +6,12 @@ use crate::errors::WebError;
 use wasm_bindgen::prelude::*;
 
 #[cfg_attr(wasm, wasm_bindgen)]
-#[cfg_attr(python, pyo3::pyclass(from_py_object, get_all, set_all, eq))]
+#[cfg_attr(python, pyo3::pyclass(from_py_object, eq))]
 #[cfg_attr(mobile, derive(uniffi::Record))]
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct SamplerOptions {
-    // wasm-bindgen gives each pub field an unchecked setter.
-    // JavaScript uses the checked `repeat_x`, `repeat_y`, `smooth` and `compare` accessors instead.
+    // wasm-bindgen gives each pub field an unchecked setter, so JavaScript
+    // uses the checked `repeatX`, `repeatY`, `smooth` and `compare` accessors instead.
     #[cfg_attr(wasm, wasm_bindgen(skip))]
     #[cfg_attr(mobile, uniffi(default = false))]
     pub repeat_x: bool,
@@ -45,7 +45,7 @@ impl SamplerOptions {
         >,
     ) -> Result<SamplerOptions, WebError> {
         let compare = match compare {
-            Some(compare) => super::parse_compare(&compare, "SamplerOptions: compare")?,
+            Some(compare) => super::read_compare(&compare, "SamplerOptions: compare")?,
             None => None,
         };
         let defaults = SamplerOptions::default();
@@ -62,36 +62,36 @@ impl SamplerOptions {
     }
 
     #[doc(hidden)]
-    #[wasm_bindgen(getter = repeat_x)]
+    #[wasm_bindgen(getter = repeatX)]
     pub fn repeat_x_js(&self) -> bool {
         self.repeat_x
     }
 
     /// A value that isn't a boolean throws a `TypeError` and keeps the old one.
     #[doc(hidden)]
-    #[wasm_bindgen(setter = repeat_x)]
+    #[wasm_bindgen(setter = repeatX)]
     pub fn set_repeat_x_js(
         &mut self,
         #[wasm_bindgen(unchecked_param_type = "boolean")] value: JsValue,
     ) -> Result<(), WebError> {
-        self.repeat_x = read_flag(&value, "SamplerOptions.repeat_x")?;
+        self.repeat_x = read_flag(&value, "SamplerOptions.repeatX")?;
         Ok(())
     }
 
     #[doc(hidden)]
-    #[wasm_bindgen(getter = repeat_y)]
+    #[wasm_bindgen(getter = repeatY)]
     pub fn repeat_y_js(&self) -> bool {
         self.repeat_y
     }
 
     /// A value that isn't a boolean throws a `TypeError` and keeps the old one.
     #[doc(hidden)]
-    #[wasm_bindgen(setter = repeat_y)]
+    #[wasm_bindgen(setter = repeatY)]
     pub fn set_repeat_y_js(
         &mut self,
         #[wasm_bindgen(unchecked_param_type = "boolean")] value: JsValue,
     ) -> Result<(), WebError> {
-        self.repeat_y = read_flag(&value, "SamplerOptions.repeat_y")?;
+        self.repeat_y = read_flag(&value, "SamplerOptions.repeatY")?;
         Ok(())
     }
 
@@ -126,7 +126,7 @@ impl SamplerOptions {
         &mut self,
         #[wasm_bindgen(unchecked_param_type = "CompareFunction | null | undefined")] value: JsValue,
     ) -> Result<(), WebError> {
-        self.compare = super::parse_compare(&value, "SamplerOptions.compare")?;
+        self.compare = super::read_compare(&value, "SamplerOptions.compare")?;
         Ok(())
     }
 }

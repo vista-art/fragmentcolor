@@ -57,7 +57,7 @@ __all__ = [
     "rendercanvas_context_hook",
 ]
 
-_PySize: TypeAlias = Size | Sequence[SupportsIndex] | Mapping[str, SupportsIndex] | npt.NDArray[numpy.integer[Any]]
+_PySize: TypeAlias = Size | Sequence[SupportsIndex] | Mapping[str, SupportsIndex | None] | npt.NDArray[numpy.integer[Any]]
 _PyTextureBytes: TypeAlias = bytes | npt.NDArray[numpy.uint8] | Sequence[SupportsIndex]
 _PyVertexPosition: TypeAlias = float | numpy.floating[Any] | numpy.integer[Any] | Vertex | npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat]
 _Renderable: TypeAlias = Mesh | Pass | Scene | Shader | Sequence[Mesh | Pass | Scene | Shader]
@@ -6707,11 +6707,23 @@ class Mipmap:
 
 @final
 class SamplerOptions:
-    repeat_x: bool
-    repeat_y: bool
-    smooth: bool
-    compare: CompareFunction | None
     def __new__(cls, repeat_x: bool = ..., repeat_y: bool = ..., smooth: bool = ..., compare: CompareFunction | None = ...) -> SamplerOptions: ...
+    @property
+    def repeat_x(self) -> bool: ...
+    @repeat_x.setter
+    def repeat_x(self, value: bool) -> None: ...
+    @property
+    def repeat_y(self) -> bool: ...
+    @repeat_y.setter
+    def repeat_y(self, value: bool) -> None: ...
+    @property
+    def smooth(self) -> bool: ...
+    @smooth.setter
+    def smooth(self, value: bool) -> None: ...
+    @property
+    def compare(self) -> CompareFunction | None: ...
+    @compare.setter
+    def compare(self, value: CompareFunction | None) -> None: ...
 
 @final
 class SamplerInfo:

@@ -13,6 +13,14 @@ pub enum SizeError {
     Invalid(String),
 }
 
+#[cfg(any(python, wasm))]
+impl SizeError {
+    /// This error as a binding raises it for `call`, with the call's name first.
+    pub(crate) fn name(self, call: &str) -> Self {
+        Self::Invalid(format!("{call}: {self}"))
+    }
+}
+
 #[cfg(any(python, wasm, mobile, test))]
 impl Classify for SizeError {
     fn classify(&self) -> ErrorClass {
@@ -56,6 +64,14 @@ pub enum ScreenRegionError {
         width: u32,
         height: u32,
     },
+}
+
+#[cfg(any(python, wasm, mobile, test))]
+impl ScreenRegionError {
+    /// This error as a binding raises it for `call`, with the call's name first.
+    pub(crate) fn name(self, call: &str) -> Self {
+        Self::Invalid(format!("{call}: {self}"))
+    }
 }
 
 #[cfg(any(python, wasm, mobile, test))]

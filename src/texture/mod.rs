@@ -31,7 +31,7 @@ pub(crate) use platform::{
 };
 #[cfg(wasm)]
 pub(crate) use platform::{
-    TEXTURE_INPUTS, js_to_texture_bytes, js_to_texture_id, parse_compare, read_format,
+    TEXTURE_INPUTS, js_to_texture_bytes, js_to_texture_id, read_compare, read_format,
     read_texture_input, read_usage,
 };
 

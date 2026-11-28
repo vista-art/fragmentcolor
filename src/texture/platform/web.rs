@@ -1,5 +1,6 @@
 #![cfg(wasm)]
 
+use crate::bindings::InputError;
 use crate::errors::{ErrorClass, WebError};
 use js_sys::{Array, ArrayBuffer, Reflect, Uint8Array, Uint8ClampedArray};
 use lsp_doc::lsp_doc;
@@ -113,22 +114,14 @@ impl Texture {
     #[wasm_bindgen(js_name = "write")]
     #[lsp_doc("docs/api/texture/texture/write.md")]
     pub fn write_js(&self, data: &JsValue) -> Result<(), WebError> {
-        let object = self.object();
-        let (bytes, _) = js_to_texture_bytes(
-            data,
-            Some(object.size()),
-            object.format,
-            "Texture.write: data",
-        )?;
-        self.write(&bytes)?;
-        Ok(())
+        write_whole(self, data, "Texture.write: data")
     }
 
     #[wasm_bindgen(js_name = "writeRegion")]
     #[lsp_doc("docs/api/texture/texture/write_region.md")]
     pub fn write_region_js(&self, data: &JsValue, region: &JsValue) -> Result<(), WebError> {
         if region.is_undefined() || region.is_null() {
-            return self.write_js(data);
+            return write_whole(self, data, "Texture.writeRegion: data");
         }
         let region: crate::TextureRegion = region.try_into()?;
         let [width, height, depth] = region.size;
@@ -164,56 +157,36 @@ impl Texture {
     }
 }
 
-/// A `CompareFunction` from JS: its number, or its name in any case, such as `"less"` or `"<="`.
+/// A `CompareFunction` from JS, which wasm-bindgen exports as a number, such as `CompareFunction.Less`.
 /// `None` for `undefined` or `null`, and a `TypeError` that names `label` for a value of another type.
-pub(crate) fn parse_compare(
+/// A number that is no `CompareFunction` is an `InvalidInputError`, as [`read_format`] refuses a format.
+pub(crate) fn read_compare(
     value: &JsValue,
     label: &str,
 ) -> Result<Option<CompareFunction>, WebError> {
     if value.is_undefined() || value.is_null() {
         return Ok(None);
     }
-    if let Some(text) = value.as_string() {
-        let name = text.to_ascii_lowercase();
-        let compare = match name.as_str() {
-            "!" | "never" => CompareFunction::Never,
-            "<" | "less" => CompareFunction::Less,
-            "=" | "equal" => CompareFunction::Equal,
-            "<=" | "le" | "lessequal" | "less_equal" => CompareFunction::LessEqual,
-            ">" | "greater" => CompareFunction::Greater,
-            "!=" | "ne" | "notequal" | "not_equal" | "different" => CompareFunction::NotEqual,
-            ">=" | "ge" | "greaterequal" | "greater_equal" => CompareFunction::GreaterEqual,
-            "*" | "always" => CompareFunction::Always,
-            _ => {
-                return Err(WebError::new(
-                    ErrorClass::InvalidInput,
-                    "Invalid compare string; expected one of Never, Less, Equal, LessEqual, Greater, NotEqual, GreaterEqual, Always",
-                ));
-            }
-        };
-        return Ok(Some(compare));
-    }
-    if let Some(number) = value.as_f64() {
-        let compare = match read_unsigned(number, label)? {
-            1 => CompareFunction::Never,
-            2 => CompareFunction::Less,
-            3 => CompareFunction::Equal,
-            4 => CompareFunction::LessEqual,
-            5 => CompareFunction::Greater,
-            6 => CompareFunction::NotEqual,
-            7 => CompareFunction::GreaterEqual,
-            8 => CompareFunction::Always,
-            _ => {
-                return Err(WebError::new(
-                    ErrorClass::InvalidInput,
-                    "Invalid numeric compare code; expected 1..=8",
-                ));
-            }
-        };
-        return Ok(Some(compare));
-    }
-    // wasm-bindgen exports an enum as numbers, so a CompareFunction reads above.
-    Err(refuse_class(value, label, "CompareFunction"))
+    let code = value
+        .as_f64()
+        .ok_or_else(|| refuse_class(value, label, "CompareFunction"))?;
+    let compare = match read_unsigned(code, label)? {
+        1 => CompareFunction::Never,
+        2 => CompareFunction::Less,
+        3 => CompareFunction::Equal,
+        4 => CompareFunction::LessEqual,
+        5 => CompareFunction::Greater,
+        6 => CompareFunction::NotEqual,
+        7 => CompareFunction::GreaterEqual,
+        8 => CompareFunction::Always,
+        _ => {
+            return Err(WebError::new(
+                ErrorClass::InvalidInput,
+                &format!("{label}: {code} is not a CompareFunction"),
+            ));
+        }
+    };
+    Ok(Some(compare))
 }
 
 /// Sampler options from JS: a `SamplerOptions`, or a plain object of its fields.
@@ -230,15 +203,16 @@ pub(crate) fn js_to_sampler_options(
         );
         return Err(refuse(value, &expected));
     }
-    // Each flag reads its camelCase key, then its snake_case key, which wins.
+    // Each flag reads its camelCase key, or its snake_case key when that one is missing,
+    // as a region reads its keys. A SamplerOptions reads through its getters, so a stale
+    // snake_case property a script set on one never reaches the sampler.
     let flag = |names: &[&str], default: bool| -> Result<bool, WebError> {
-        let mut flag = default;
         for name in names {
             if let Some(field) = read_field(value, name) {
-                flag = read_flag(&field, &format!("{call}: {name}"))?;
+                return read_flag(&field, &format!("{call}: {name}"));
             }
         }
-        Ok(flag)
+        Ok(default)
     };
     let defaults = SamplerOptions::default();
     let compare = read_field(value, "compare").unwrap_or(JsValue::UNDEFINED);
@@ -246,7 +220,7 @@ pub(crate) fn js_to_sampler_options(
         repeat_x: flag(&["repeatX", "repeat_x"], defaults.repeat_x)?,
         repeat_y: flag(&["repeatY", "repeat_y"], defaults.repeat_y)?,
         smooth: flag(&["smooth"], defaults.smooth)?,
-        compare: parse_compare(&compare, &format!("{call}: compare"))?,
+        compare: read_compare(&compare, &format!("{call}: compare"))?,
     })
 }
 
@@ -303,7 +277,7 @@ pub(crate) fn read_texture_input(
         input.options = read_texture_options(options, call)?;
         if let (Some(own), TextureData::Bytes(pixels)) = (source_size, &mut input.data) {
             let format = input.options.format.to_wgpu();
-            check_pixels(own, input.options.size, format)?;
+            check_pixels(own, input.options.size, format, call)?;
             crate::texture::swap_bgra(pixels, format);
         }
         input.options.size = input.options.size.or(source_size);
@@ -374,6 +348,14 @@ pub(crate) fn read_usage(value: &JsValue, label: &str) -> Result<u32, WebError> 
             })?,
     };
     read_unsigned(bits, label)
+}
+
+/// Uploads `data` over the whole texture, naming it `label` in an error, as the call names it.
+fn write_whole(texture: &Texture, data: &JsValue, label: &str) -> Result<(), WebError> {
+    let object = texture.object();
+    let (bytes, _) = js_to_texture_bytes(data, Some(object.size()), object.format, label)?;
+    texture.write(&bytes)?;
+    Ok(())
 }
 
 /// A property of a JS object, or `None` when it is missing, `undefined` or `null`.
@@ -539,7 +521,7 @@ fn js_to_byte(value: &JsValue, label: &str, index: usize) -> Result<u8, WebError
     if number.fract() == 0.0 && (0.0..=255.0).contains(&number) {
         return Ok(number as u8);
     }
-    Err(TextureError::InvalidInput(format!(
+    Err(InputError(format!(
         "{label}: item {index} must be a whole number from 0 to 255, got {number}"
     ))
     .into())
@@ -597,7 +579,7 @@ pub(crate) fn js_to_texture_bytes(
         )));
     };
     if let Some(own) = options.size {
-        check_pixels(own, size, format)?;
+        check_pixels(own, size, format, label)?;
         swap_bgra(&mut bytes, format);
     }
     Ok((bytes, options.size))

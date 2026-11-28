@@ -207,6 +207,9 @@ pub enum PyViewport<'py> {
     Other(Bound<'py, PyAny>),
 }
 
+/// The call that reads a viewport, which its errors name.
+const CALL: &str = "Pass.set_viewport";
+
 /// The forms `Pass.set_viewport` reads a region from, as its `TypeError` lists them.
 const VIEWPORT_FORMS: &str = "Pass.set_viewport: a region is [w, h], [x, y, w, h], [[x, y], [w, h]], a dict of x, y, width and height or a ScreenRegion";
 
@@ -228,13 +231,15 @@ impl TryFrom<PyViewport<'_>> for ScreenRegion {
             },
             PyViewport::Other(value) => Err(refuse(&value, VIEWPORT_FORMS)),
             PyViewport::Pairs([origin, size]) => {
-                let origin = read_pair(&origin, "Pass.set_viewport: origin")?;
-                let size = read_pair(&size, "Pass.set_viewport: size")?;
-                Ok(ScreenRegion::new(origin, size)?)
+                let origin = read_pair(&origin, &format!("{CALL}: origin"))?;
+                let size = read_pair(&size, &format!("{CALL}: size"))?;
+                let region = ScreenRegion::new(origin, size);
+                Ok(region.map_err(|error| error.name(CALL))?)
             }
             PyViewport::Numbers(items) => {
-                let dimensions = read_list(&items, "Pass.set_viewport")?;
-                Ok(ScreenRegion::try_from(dimensions.as_slice())?)
+                let dimensions = read_list(&items, CALL)?;
+                let region = ScreenRegion::try_from(dimensions.as_slice());
+                Ok(region.map_err(|error| error.name(CALL))?)
             }
         }
     }
@@ -246,11 +251,11 @@ fn read_fields(fields: &Bound<'_, PyDict>) -> PyResult<Option<ScreenRegion>> {
     let read = |(camel, snake): Key| -> PyResult<Option<u32>> {
         for name in [camel, snake] {
             if let Some(value) = fields.get_item(name)?.filter(|value| !value.is_none()) {
-                let label = format!("Pass.set_viewport: {name}");
+                let label = format!("{CALL}: {name}");
                 return read_unsigned(&value, &label).map(Some);
             }
         }
         Ok(None)
     };
-    ScreenRegion::read_fields(read)
+    ScreenRegion::read_fields(read, CALL)
 }

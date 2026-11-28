@@ -12,6 +12,34 @@ pub(crate) mod numbers;
 
 pub(crate) mod brand;
 
+/// A value a binding reads that its call can't take, raised as `InvalidInputError`.
+/// Its message names the call first, as in `Texture.writeRegion: a region takes 2, 4 or 6 numbers, got 3`.
+#[cfg(any(wasm, python, test))]
+#[derive(Debug, thiserror::Error)]
+#[error("{0}")]
+pub(crate) struct InputError(pub(crate) String);
+
+#[cfg(any(wasm, python, test))]
+impl crate::errors::Classify for InputError {
+    fn classify(&self) -> crate::errors::ErrorClass {
+        crate::errors::ErrorClass::InvalidInput
+    }
+}
+
+#[cfg(wasm)]
+impl From<InputError> for crate::errors::WebError {
+    fn from(error: InputError) -> Self {
+        crate::errors::WebError::from_error(&error)
+    }
+}
+
+#[cfg(python)]
+impl From<InputError> for pyo3::PyErr {
+    fn from(error: InputError) -> Self {
+        crate::errors::raise_error(&error)
+    }
+}
+
 /// One key of a JS object or a Python dict, in its camelCase and its snake_case spelling.
 #[cfg(any(wasm, python, test))]
 pub(crate) type Key = (&'static str, &'static str);

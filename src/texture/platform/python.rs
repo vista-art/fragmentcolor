@@ -1,14 +1,15 @@
 #![cfg(python)]
 
+use crate::bindings::InputError;
 use crate::bindings::Key;
 use crate::bindings::python::{
     PyCompareFunction, PyFlag, PyTextureFormat, PyUnsigned, read_bytes, read_list, read_unsigned,
     refuse,
 };
 use crate::texture::loading::decode::array_pixels;
-use crate::texture::{Mipmap, Texture, TextureError, TextureId, TextureRegion};
+use crate::texture::{Mipmap, Texture, TextureId, TextureRegion};
 use crate::texture::{measure_texel, read_pixels};
-use crate::{SamplerOptions, TextureFormat};
+use crate::{CompareFunction, SamplerOptions, TextureFormat};
 use lsp_doc::lsp_doc;
 use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
@@ -123,7 +124,7 @@ impl PyTextureSource<'_> {
             PyTextureSource::Tuple(tuple) => TextureData::Bytes(read_bytes(tuple.as_any(), label)?),
             PyTextureSource::Source(source) => TextureData::from(source.as_str()),
             PyTextureSource::Path(path) => TextureData::Path(path),
-            PyTextureSource::Array(array) => return Ok(read_ndarray(&array, None, None)?),
+            PyTextureSource::Array(array) => return read_ndarray(&array, None, None, label),
             PyTextureSource::Mipmap(chain) => TextureData::Prepared(chain),
             PyTextureSource::Other(value) => {
                 return Err(refuse(&value, format_args!("{label} takes {inputs}")));
@@ -134,12 +135,14 @@ impl PyTextureSource<'_> {
 }
 
 /// The texture input for a `uint8` array, which brings its own size.
-/// A `size` keyword must match it, and its channels must fit the `format`, `Rgba` when unset.
+/// A `size` keyword must match it, or the error names `call`,
+/// and its channels must fit the `format`, which is `Rgba` when unset.
 pub(crate) fn read_ndarray(
     array: &numpy::PyReadonlyArrayDyn<'_, u8>,
     size: Option<crate::Size>,
     format: Option<TextureFormat>,
-) -> Result<crate::TextureInput, crate::texture::TextureError> {
+    call: &str,
+) -> PyResult<crate::TextureInput> {
     use numpy::PyUntypedArrayMethods;
 
     let format = format.unwrap_or_default();
@@ -149,10 +152,12 @@ pub(crate) fn read_ndarray(
         (size.width, size.height, size.depth.unwrap_or(1)) == (own.width, own.height, 1)
     };
     if let Some(size) = size.filter(|size| !fits(size)) {
-        return Err(crate::texture::TextureError::InvalidInput(format!(
-            "size {size:?} differs from the ndarray's {}x{}",
-            own.width, own.height
-        )));
+        let message = format!(
+            "{call}: size {} differs from the ndarray's {}",
+            size.show(),
+            own.show()
+        );
+        return Err(InputError(message).into());
     }
     Ok((pixels, format, own).into())
 }
@@ -207,19 +212,22 @@ impl TryFrom<PyTextureRegion<'_>> for TextureRegion {
             PyTextureRegion::Layout(layout) => return layout_region(&layout),
             PyTextureRegion::Other(value) => return Err(refuse(&value, REGION_FORMS)),
         };
-        let numbers = read_list(&items, "Texture.write_region")?;
+        let numbers = read_list(&items, CALL)?;
         match *numbers {
             [w, h] => Ok([w, h].into()),
             [x, y, w, h] => Ok([x, y, w, h].into()),
             [x, y, z, w, h, d] => Ok([x, y, z, w, h, d].into()),
-            _ => Err(TextureError::InvalidInput(format!(
-                "a region takes 2, 4 or 6 numbers, got {}",
+            _ => Err(InputError(format!(
+                "{CALL}: a region takes 2, 4 or 6 numbers, got {}",
                 numbers.len()
             ))
             .into()),
         }
     }
 }
+
+/// The call that reads a write region, which its errors name.
+const CALL: &str = "Texture.write_region";
 
 /// The forms `Texture.write_region` reads a region from, as its `TypeError` lists them.
 const REGION_FORMS: &str = "Texture.write_region: a region is [w, h], [x, y, w, h], [x, y, z, w, h, d], a ScreenRegion or a dict with keys such as x, y, width and height";
@@ -233,12 +241,12 @@ fn layout_region(layout: &Bound<'_, PyDict>) -> PyResult<TextureRegion> {
                 if value.is_none() {
                     return Ok(None);
                 }
-                return read_unsigned(&value, &format!("Texture.write_region: {snake}")).map(Some);
+                return read_unsigned(&value, &format!("{CALL}: {name}")).map(Some);
             }
         }
         Ok(None)
     };
-    crate::texture::region::read_region(read)
+    crate::texture::region::read_region(read, CALL)
 }
 
 /// `SamplerOptions` from Python: the class itself, or a dict of its fields.
@@ -314,6 +322,62 @@ impl SamplerOptions {
             compare: compare.transpose()?,
         })
     }
+
+    #[doc(hidden)]
+    #[getter(repeat_x)]
+    pub fn repeat_x_py(&self) -> bool {
+        self.repeat_x
+    }
+
+    /// A value that isn't a bool raises a `TypeError` and keeps the old one.
+    #[doc(hidden)]
+    #[setter(repeat_x)]
+    pub fn set_repeat_x_py(&mut self, value: PyFlag<'_>) -> PyResult<()> {
+        self.repeat_x = value.read("SamplerOptions.repeat_x")?;
+        Ok(())
+    }
+
+    #[doc(hidden)]
+    #[getter(repeat_y)]
+    pub fn repeat_y_py(&self) -> bool {
+        self.repeat_y
+    }
+
+    #[doc(hidden)]
+    #[setter(repeat_y)]
+    pub fn set_repeat_y_py(&mut self, value: PyFlag<'_>) -> PyResult<()> {
+        self.repeat_y = value.read("SamplerOptions.repeat_y")?;
+        Ok(())
+    }
+
+    #[doc(hidden)]
+    #[getter(smooth)]
+    pub fn smooth_py(&self) -> bool {
+        self.smooth
+    }
+
+    #[doc(hidden)]
+    #[setter(smooth)]
+    pub fn set_smooth_py(&mut self, value: PyFlag<'_>) -> PyResult<()> {
+        self.smooth = value.read("SamplerOptions.smooth")?;
+        Ok(())
+    }
+
+    #[doc(hidden)]
+    #[getter(compare)]
+    pub fn compare_py(&self) -> Option<CompareFunction> {
+        self.compare
+    }
+
+    /// `None` clears the compare function.
+    /// Any other value that isn't one raises a `TypeError` and keeps the old one.
+    #[doc(hidden)]
+    #[setter(compare)]
+    pub fn set_compare_py(&mut self, value: Option<PyCompareFunction<'_>>) -> PyResult<()> {
+        let compare = value.map(|compare| compare.read("SamplerOptions.compare"));
+        self.compare = compare.transpose()?;
+        Ok(())
+    }
 }
 
 #[pymethods]
@@ -332,15 +396,14 @@ impl Mipmap {
         format: PyTextureFormat<'_>,
         size: Option<crate::values::PySize<'_>>,
     ) -> pyo3::PyResult<Mipmap> {
-        let input = crate::TextureInput {
-            data: crate::TextureData::Bytes(bytes.read("Mipmap.build: bytes")?),
-            options: crate::TextureOptions {
-                size: size.map(|size| size.read("Mipmap.build")).transpose()?,
-                format: format.read("Mipmap.build: format")?,
-                ..Default::default()
-            },
+        // The bytes read last, as JavaScript reads them against the size.
+        let options = crate::TextureOptions {
+            format: format.read("Mipmap.build: format")?,
+            size: size.map(|size| size.read("Mipmap.build")).transpose()?,
+            ..Default::default()
         };
-        Ok(Self::build(input)?)
+        let data = crate::TextureData::Bytes(bytes.read("Mipmap.build: bytes")?);
+        Ok(Self::build(crate::TextureInput { data, options })?)
     }
 
     #[pyo3(name = "format")]
@@ -423,9 +486,11 @@ impl Texture {
         data: PyTextureBytes<'_>,
         region: Option<PyTextureRegion<'_>>,
     ) -> pyo3::PyResult<()> {
+        // The region reads before the bytes, as JavaScript reads it to size them.
+        let region = region.map(TextureRegion::try_from).transpose()?;
         let bytes = data.read("Texture.write_region: data")?;
         match region {
-            Some(region) => self.write_region(&bytes, TextureRegion::try_from(region)?)?,
+            Some(region) => self.write_region(&bytes, region)?,
             None => self.write(&bytes)?,
         }
         Ok(())
