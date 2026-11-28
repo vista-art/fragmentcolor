@@ -95,6 +95,7 @@ Items found while reviewing 0.12.6, and the checks and error model that 0.13.0 b
 - [x] The glTF loader checks `primitive.mode()`: `Scene.load` fails on a primitive drawn as points or lines, where it read them as triangles, and expands triangle strips and fans into lists (0.12.7)
 - [x] `Scene.load` refuses a glTF position, normal, tangent, UV or color that holds NaN or an infinity with a `SceneLoadError::Invalid` that names the mesh, primitive, accessor and item (0.12.7)
 - [x] Turn on the `gltf` crate's `extras` feature, so `Scene::load` reads files that carry application attributes such as `_ID` (0.12.6). The loader ignores the extras until 0.13.0
+- [ ] The value errors core raises for a binding name its call first, as the binding readers' errors do since 0.12.8: a write region with a side of 0, a size past the device's limit in `create_texture_target` and `resize`, and the decoder refusals that keep the `Invalid texture input:` prefix, such as Python's ndarray of a shape no format fits. Each reads the same in every binding today but names no call
 - [x] PBR normals follow the cofactor of the model matrix's upper 3x3, `cross(m1, m2)`, `cross(m2, m0)` and `cross(m0, m1)`, so `Model::scale` with unequal factors lights the way the surfaces face (0.12.7)
 
 ### Binding parity
