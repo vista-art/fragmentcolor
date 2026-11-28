@@ -124,6 +124,18 @@ pub(crate) fn read_flag(value: &wasm_bindgen::JsValue, label: &str) -> Result<bo
     })
 }
 
+/// Whether the value is a plain object, such as `{ smooth: false }`, as Python reads a dict.
+/// An array, a class instance or a function is no plain object, and neither is a primitive.
+pub(crate) fn is_plain(value: &wasm_bindgen::JsValue) -> bool {
+    use js_sys::Object;
+    if !value.is_object() {
+        return false;
+    }
+    let prototype = Object::get_prototype_of(value);
+    let plain = Object::get_prototype_of(&Object::new());
+    prototype.is_null() || *prototype == *plain
+}
+
 /// An optional argument, `None` for `undefined` or `null`.
 pub(crate) fn read_given(value: Option<wasm_bindgen::JsValue>) -> Option<wasm_bindgen::JsValue> {
     value.filter(|value| !value.is_undefined() && !value.is_null())

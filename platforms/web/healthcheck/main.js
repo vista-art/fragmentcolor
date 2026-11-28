@@ -788,6 +788,8 @@ await withModule('platforms.web.healthcheck.parity', async () => {
         'Renderer.createTextureTarget: a size is [w, h], [w, h, d], a Size or { width, height, depth? }, got string'],
       [() => writable.resize({ width: 'a', height: 2 }), 'Texture.resize: size: width must be a number, got string'],
       [() => writable.setSamplerOptions(1), `Texture.setSamplerOptions: ${sampler}, got number`],
+      [() => writable.setSamplerOptions([true]), `Texture.setSamplerOptions: ${sampler}, got array`],
+      [() => writable.setSamplerOptions(new Mesh()), `Texture.setSamplerOptions: ${sampler}, got Mesh`],
       [() => renderer.createTexture(new Uint8Array(16), { size: [2, 2], sampler: 'x' }),
         `Renderer.createTexture: ${sampler}, got string`],
       [() => writable.setSamplerOptions({ repeatX: 'yes' }), 'Texture.setSamplerOptions: repeatX must be a boolean, got string'],

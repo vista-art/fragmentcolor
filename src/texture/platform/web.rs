@@ -7,7 +7,7 @@ use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
 use crate::bindings::web::{
-    describe, read_count, read_flag, read_number, read_unsigned, refuse, refuse_class,
+    describe, is_plain, read_count, read_flag, read_number, read_unsigned, refuse, refuse_class,
 };
 use crate::texture::loading::decode::check_pixels;
 use crate::texture::{FORMATS, TextureError, swap_bgra};
@@ -215,17 +215,18 @@ pub(crate) fn parse_compare(
     Err(refuse_class(value, label, "CompareFunction"))
 }
 
-/// Sampler options from JS for `call`: a `SamplerOptions`, or an object of its fields.
-/// A value that is no object, or a field of the wrong type, is a `TypeError` that names `call`.
+/// Sampler options from JS: a `SamplerOptions`, or a plain object of its fields.
+/// Any other value, such as an array or another class, or a field of the wrong type,
+/// is a `TypeError` that names `call`, as Python raises for a value that is no `SamplerOptions` or dict.
 pub(crate) fn js_to_sampler_options(
     value: &JsValue,
     call: &str,
 ) -> Result<SamplerOptions, WebError> {
-    if !value.is_object() {
-        return Err(WebError::type_error(&format!(
-            "{call}: sampler options must be a SamplerOptions or {{ repeatX?, repeatY?, smooth?, compare? }}, got {}",
-            describe(value)
-        )));
+    if !is_plain(value) && !is_sampler(value) {
+        let expected = format!(
+            "{call}: sampler options must be a SamplerOptions or {{ repeatX?, repeatY?, smooth?, compare? }}"
+        );
+        return Err(refuse(value, &expected));
     }
     // Each flag reads its camelCase key, then its snake_case key, which wins.
     let flag = |names: &[&str], default: bool| -> Result<bool, WebError> {
@@ -245,6 +246,17 @@ pub(crate) fn js_to_sampler_options(
         smooth: flag(&["smooth"], defaults.smooth)?,
         compare: parse_compare(&compare, &format!("{call}: compare"))?,
     })
+}
+
+thread_local! {
+    /// The prototype every JavaScript `SamplerOptions` shares.
+    /// The class carries no brand, so [`is_sampler`] knows one by this.
+    static SAMPLER: js_sys::Object = js_sys::Object::get_prototype_of(&SamplerOptions::default().into());
+}
+
+/// Whether the value is a JavaScript `SamplerOptions`.
+fn is_sampler(value: &JsValue) -> bool {
+    SAMPLER.with(|prototype| prototype.is_prototype_of(value))
 }
 
 /// The input `Mipmap.build` chains: the bytes, their format, and the size they give or bring.

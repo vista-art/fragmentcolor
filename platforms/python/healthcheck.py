@@ -954,6 +954,7 @@ def check_type_messages(renderer):
     )
     attribute = "is a number or a list of 1 to 4 numbers"
     instance = "expected an Instance, a Vertex, or a dict of named attributes"
+    sampler = "sampler options must be a SamplerOptions or a dict of repeat_x, repeat_y, smooth and compare"
     cases = {
         f"Renderer.create_texture takes {sources}, got int": lambda: renderer.create_texture(42),
         f"MaterialMap.texture takes a MaterialMap, {sources}, got int":
@@ -961,10 +962,11 @@ def check_type_messages(renderer):
         "Renderer.create_texture_target: a size is [w, h], [w, h, d], a Size or a dict of width, height "
         "and an optional depth, got str": lambda: renderer.create_texture_target("big"),
         "Texture.resize: size: width must be an int, got str": lambda: texture.resize({"width": "a", "height": 2}),
-        "Texture.set_sampler_options: sampler options must be a SamplerOptions or a dict of repeat_x, "
-        "repeat_y, smooth and compare, got int": lambda: texture.set_sampler_options(1),
-        "Renderer.create_texture: sampler options must be a SamplerOptions or a dict of repeat_x, "
-        "repeat_y, smooth and compare, got str": lambda: renderer.create_texture(bytes(16), size=[2, 2], sampler="x"),
+        f"Texture.set_sampler_options: {sampler}, got int": lambda: texture.set_sampler_options(1),
+        f"Texture.set_sampler_options: {sampler}, got list": lambda: texture.set_sampler_options([True]),
+        f"Texture.set_sampler_options: {sampler}, got Mesh": lambda: texture.set_sampler_options(Mesh()),
+        f"Renderer.create_texture: {sampler}, got str":
+            lambda: renderer.create_texture(bytes(16), size=[2, 2], sampler="x"),
         "Texture.set_sampler_options: repeat_x must be a bool, got str":
             lambda: texture.set_sampler_options({"repeat_x": "yes"}),
         "SamplerOptions: compare must be a CompareFunction, got str": lambda: SamplerOptions(compare="less"),
