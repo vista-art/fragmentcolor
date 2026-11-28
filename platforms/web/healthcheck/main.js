@@ -831,7 +831,14 @@ await withModule('platforms.web.healthcheck.parity', async () => {
       fail(`"${message}" should throw`);
     }
     // A viewport takes an object of its box or its bounds, as Python takes a dict.
-    for (const fields of [{ x: 0, y: 0, width: 4, height: 4 }, { minX: 2, minY: 2, maxX: 6, maxY: 6 }, { min_x: 0, min_y: 0, max_x: 4, max_y: 4 }]) {
+    for (const fields of [
+      { x: 0, y: 0, width: 4, height: 4 },
+      { minX: 2, minY: 2, maxX: 6, maxY: 6 },
+      { min_x: 0, min_y: 0, max_x: 4, max_y: 4 },
+      // A key set to null counts as missing, as None does in Python.
+      { minX: null, min_x: 0, min_y: 0, max_x: 4, max_y: 4 },
+      { x: 0, y: 0, width: 4, height: 4, min_x: null },
+    ]) {
       new Pass('object').setViewport(fields);
     }
     // A viewport takes an origin and a size as two pairs, as Rust's ((x, y), (w, h)) does.

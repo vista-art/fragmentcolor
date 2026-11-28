@@ -890,6 +890,9 @@ def check_viewport_dicts():
         {"min_x": 0, "min_y": 0, "max_x": 4, "max_y": 4},
         {"minX": 2, "minY": 2, "maxX": 6, "maxY": 6},
         {"x": np.uint32(1), "y": 1, "width": 2, "height": 2},
+        # A key set to None counts as missing, as null does in JavaScript.
+        {"minX": None, "min_x": 0, "min_y": 0, "max_x": 4, "max_y": 4},
+        {"x": 0, "y": 0, "width": 4, "height": 4, "min_x": None},
     ):
         Pass("dict").set_viewport(fields)
     raises_invalid("Pass.set_viewport with a width of 0",

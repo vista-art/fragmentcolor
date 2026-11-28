@@ -232,12 +232,12 @@ impl TryFrom<PyViewport<'_>> for ScreenRegion {
     }
 }
 
-/// Reads the dict form through the reader the bindings share, each key in either
-/// spelling, `minX` before `min_x`, as JavaScript reads them. `None` when neither form is complete.
+/// Reads the dict form as JavaScript reads it, each key in either spelling, `minX` first.
+/// A key set to `None` counts as missing, and the result is `None` when neither form is complete.
 fn read_fields(fields: &Bound<'_, PyDict>) -> PyResult<Option<ScreenRegion>> {
     let read = |(camel, snake): crate::values::Key| -> PyResult<Option<u32>> {
         for name in [camel, snake] {
-            if let Some(value) = fields.get_item(name)? {
+            if let Some(value) = fields.get_item(name)?.filter(|value| !value.is_none()) {
                 let label = format!("Pass.set_viewport: {name}");
                 return read_unsigned(&value, &label).map(Some);
             }
