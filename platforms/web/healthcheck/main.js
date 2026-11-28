@@ -834,6 +834,9 @@ await withModule('platforms.web.healthcheck.parity', async () => {
       [() => Scene.load(new Uint8Array(0), { cameras: 'x' }), 'Scene.load: cameras must be a boolean, got string'],
       // Python takes cameras and lights as keywords, so only JavaScript has an options object.
       [() => Scene.load(new Uint8Array(0), 5), 'Scene.load: options must be an object of cameras and lights, got number'],
+      [() => Scene.load(new Uint8Array(0), [false, false]),
+        'Scene.load: options must be an object of cameras and lights, got array'],
+      [() => Scene.load(new Uint8Array(0), new Mesh()), 'Scene.load: options must be an object of cameras and lights, got Mesh'],
       // A string parameter names the call and the parameter.
       [() => new Pass(42), 'Pass: name must be a string, got number'],
       [() => Pass.compute(42), 'Pass.compute: name must be a string, got number'],

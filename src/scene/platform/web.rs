@@ -6,7 +6,7 @@ use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
 use crate::bindings::web::{
-    read_bytes, read_count, read_finite, read_flag, read_float, read_floats, read_object,
+    is_plain, read_bytes, read_count, read_finite, read_flag, read_float, read_floats, read_object,
     read_text, read_unsigned, read_vector, refuse,
 };
 use crate::scene::material::platform::web::{read_material, write_material};
@@ -629,13 +629,14 @@ fn read_flat_matrix(value: &JsValue, label: &str) -> Result<[[f32; 4]; 4], WebEr
 }
 
 /// Reads one boolean flag of the `Scene.load` options. A missing flag is `true`.
-/// An `options` that is no object, or a flag that is no boolean, is a `TypeError` that names the call.
+/// A flag that is no boolean is a `TypeError` that names the call, and so is an `options`
+/// that is no plain object, such as a number, an array or another class such as a `Mesh`.
 fn read_option(options: Option<&JsValue>, name: &str) -> Result<bool, WebError> {
     let Some(options) = options.filter(|options| !options.is_undefined() && !options.is_null())
     else {
         return Ok(true);
     };
-    if !options.is_object() {
+    if !is_plain(options) {
         let expected = "Scene.load: options must be an object of cameras and lights";
         return Err(refuse(options, expected));
     }
