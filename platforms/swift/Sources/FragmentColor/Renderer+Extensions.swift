@@ -38,7 +38,7 @@ extension Renderer {
 
     /// Create a headless texture target from a `[width, height]` array.
     public func createTextureTarget(_ size: [UInt32]) async throws -> TextureTarget {
-        try await createTextureTarget(try sizeRecord(size, "createTextureTarget"))
+        try await createTextureTarget(try sizeRecord(size, "Renderer.createTextureTarget"))
     }
 
     /// Create a headless texture target from a `Size`.
@@ -50,7 +50,7 @@ extension Renderer {
 
     /// Create a depth texture from a `[width, height]` array.
     public func createDepthTexture(_ size: [UInt32]) async throws -> Texture {
-        try await createDepthTexture(try sizeRecord(size, "createDepthTexture"))
+        try await createDepthTexture(try sizeRecord(size, "Renderer.createDepthTexture"))
     }
 
     /// Create a depth texture from a `Size`.
@@ -78,7 +78,7 @@ extension Renderer {
         _ data: Data? = nil,
         _ usage: TextureUsage? = nil
     ) async throws -> Texture {
-        let size = try sizeRecord(size, "createStorageTexture")
+        let size = try sizeRecord(size, "Renderer.createStorageTexture")
         return try await createStorageTexture(size, format, data, usage)
     }
 
@@ -99,7 +99,9 @@ extension Renderer {
         _ data: [Int],
         _ usage: TextureUsage? = nil
     ) async throws -> Texture {
-        try await createStorageTexture(size, format, try byteData(data, "createStorageTexture"), usage)
+        // The size reads before the bytes, as every binding reads them.
+        let size = try sizeRecord(size, "Renderer.createStorageTexture")
+        return try await createStorageTexture(size, format, try byteData(data, "Renderer.createStorageTexture: data"), usage)
     }
 
     // MARK: - createTexture
@@ -117,7 +119,7 @@ extension Renderer {
 
     /// Create a texture from encoded image bytes, one `Int` per byte.
     public func createTexture(_ bytes: [Int], usage: TextureUsage? = nil) async throws -> Texture {
-        try await createTexture(try byteData(bytes, "createTexture"), usage: usage)
+        try await createTexture(try byteData(bytes, "Renderer.createTexture"), usage: usage)
     }
 
     /// Create a texture from encoded image bytes, decoded into `format`.
@@ -132,7 +134,7 @@ extension Renderer {
 
     /// Create a texture from encoded image bytes, one `Int` per byte, decoded into `format`.
     public func createTexture(_ bytes: [Int], _ format: TextureFormat, usage: TextureUsage? = nil) async throws -> Texture {
-        try await createTexture(try byteData(bytes, "createTexture"), format, usage: usage)
+        try await createTexture(try byteData(bytes, "Renderer.createTexture"), format, usage: usage)
     }
 
     /// Create a texture from raw RGBA pixels and their `Size`, so the bytes are never decoded.
@@ -147,12 +149,12 @@ extension Renderer {
 
     /// Create a texture from raw RGBA pixels, one `Int` per byte, and their `Size`.
     public func createTexture(_ bytes: [Int], _ size: Size, usage: TextureUsage? = nil) async throws -> Texture {
-        try await createTexture(try byteData(bytes, "createTexture"), size, usage: usage)
+        try await createTexture(try byteData(bytes, "Renderer.createTexture"), size, usage: usage)
     }
 
     /// Create a texture from raw RGBA pixels and their `[width, height]`.
     public func createTexture(_ bytes: Data, _ size: [UInt32], usage: TextureUsage? = nil) async throws -> Texture {
-        try await createTexture(bytes, try sizeRecord(size, "createTexture"), usage: usage)
+        try await createTexture(bytes, try sizeRecord(size, "Renderer.createTexture"), usage: usage)
     }
 
     /// Create a texture from raw RGBA pixels given as `[UInt8]`, and their `[width, height]`.
@@ -162,7 +164,7 @@ extension Renderer {
 
     /// Create a texture from raw RGBA pixels, one `Int` per byte, and their `[width, height]`.
     public func createTexture(_ bytes: [Int], _ size: [UInt32], usage: TextureUsage? = nil) async throws -> Texture {
-        try await createTexture(try byteData(bytes, "createTexture"), size, usage: usage)
+        try await createTexture(try byteData(bytes, "Renderer.createTexture"), size, usage: usage)
     }
 
     /// Create a texture from bytes with every option spelled out.
@@ -177,7 +179,7 @@ extension Renderer {
 
     /// Create a texture from bytes, one `Int` per byte, with every option spelled out.
     public func createTexture(_ bytes: [Int], _ options: TextureOptions) async throws -> Texture {
-        try await createTexture(try byteData(bytes, "createTexture"), options)
+        try await createTexture(try byteData(bytes, "Renderer.createTexture"), options)
     }
 
     /// Create a texture from an image file path or an `http(s)` URL.
@@ -312,19 +314,22 @@ extension Renderer {
 }
 
 /// A `Size` from `[width, height]` or `[width, height, depth]`.
-/// Throws for any other length.
-func sizeRecord(_ size: [UInt32], _ method: String) throws -> Size {
+/// Throws for any other length, with an error that names `call`.
+func sizeRecord(_ size: [UInt32], _ call: String) throws -> Size {
     guard size.count == 2 || size.count == 3 else {
-        throw FragmentColorError.InvalidInput(message: "\(method): a size holds 2 or 3 numbers, got \(size.count)")
+        throw FragmentColorError.InvalidInput(message: "\(call): a size takes 2 or 3 numbers, got \(size.count)")
     }
     return Size(width: size[0], height: size[1], depth: size.count == 3 ? size[2] : nil)
 }
 
-/// Bytes from one `Int` per byte. Throws for a value outside 0...255.
-func byteData(_ bytes: [Int], _ method: String) throws -> Data {
-    Data(try bytes.map { value -> UInt8 in
+/// Bytes from one `Int` per byte. Throws for a value outside 0...255,
+/// with an error that names `label` and the item, as every binding does.
+func byteData(_ bytes: [Int], _ label: String) throws -> Data {
+    Data(try bytes.enumerated().map { index, value -> UInt8 in
         guard let byte = UInt8(exactly: value) else {
-            throw FragmentColorError.InvalidInput(message: "\(method): \(value) is not a byte")
+            throw FragmentColorError.InvalidInput(
+                message: "\(label): item \(index) must be a whole number from 0 to 255, got \(value)"
+            )
         }
         return byte
     })

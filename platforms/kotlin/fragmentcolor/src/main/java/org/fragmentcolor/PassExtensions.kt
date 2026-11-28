@@ -97,11 +97,12 @@ fun Pass.setClearColor(color: DoubleArray) = setClearColor(readFloats(color, "Pa
  * Throws [FragmentColorException] for any other length, and for a width or height of 0.
  */
 fun Pass.setViewport(rect: List<UInt>) {
+    val call = "Pass.setViewport"
     val region = when (rect.size) {
-        2 -> ScreenRegion(listOf(0u, 0u), rect)
-        4 -> ScreenRegion(rect.subList(0, 2), rect.subList(2, 4))
+        2 -> readRegion(listOf(0u, 0u), rect, call)
+        4 -> readRegion(rect.subList(0, 2), rect.subList(2, 4), call)
         else -> throw FragmentColorException.InvalidInput(
-            "setViewport: expected [width, height] or [x, y, width, height], got ${rect.size} numbers",
+            "$call: a region takes [w, h] or [x, y, w, h], got ${rect.size} numbers",
         )
     }
     setViewport(region)
@@ -116,10 +117,10 @@ fun Pass.setViewport(rect: List<UInt>) {
 fun Pass.setViewport(originAndSize: List<List<UInt>>) {
     if (originAndSize.size != 2) {
         throw FragmentColorException.InvalidInput(
-            "setViewport: expected [[x, y], [width, height]], got ${originAndSize.size} pairs",
+            "Pass.setViewport: a region takes two pairs, an origin and a size, got ${originAndSize.size}",
         )
     }
-    setViewport(ScreenRegion(originAndSize[0], originAndSize[1]))
+    setViewport(readRegion(originAndSize[0], originAndSize[1], "Pass.setViewport"))
 }
 
 /**
@@ -128,20 +129,30 @@ fun Pass.setViewport(originAndSize: List<List<UInt>>) {
  * Throws [FragmentColorException] unless each holds two numbers, for a side of 0,
  * and for a far edge past [UInt.MAX_VALUE].
  */
-operator fun ScreenRegion.Companion.invoke(origin: List<UInt>, size: List<UInt>): ScreenRegion {
-    if (origin.size != 2 || size.size != 2) {
-        throw FragmentColorException.InvalidInput("ScreenRegion: origin and size hold 2 numbers each")
+operator fun ScreenRegion.Companion.invoke(origin: List<UInt>, size: List<UInt>): ScreenRegion =
+    readRegion(origin, size, "ScreenRegion")
+
+/**
+ * A region at [origin] that is [size] large, for [call], which each error names.
+ * A far edge past [UInt.MAX_VALUE] throws, and then a side of 0, in the order Rust checks them.
+ */
+internal fun readRegion(origin: List<UInt>, size: List<UInt>, call: String): ScreenRegion {
+    if (origin.size != 2) {
+        throw FragmentColorException.InvalidInput("$call: origin takes two numbers, got ${origin.size}")
+    }
+    if (size.size != 2) {
+        throw FragmentColorException.InvalidInput("$call: size takes two numbers, got ${size.size}")
     }
     val (x, y) = origin
     val (width, height) = size
-    if (width == 0u || height == 0u) {
-        throw FragmentColorException.InvalidInput(
-            "ScreenRegion: a region needs a width and a height of at least 1, got $width by $height",
-        )
-    }
     if (x > UInt.MAX_VALUE - width || y > UInt.MAX_VALUE - height) {
         throw FragmentColorException.InvalidInput(
-            "ScreenRegion: a region at $x, $y sized $width by $height reaches past ${UInt.MAX_VALUE}",
+            "$call: a region at $x, $y sized $width by $height reaches past ${UInt.MAX_VALUE}",
+        )
+    }
+    if (width == 0u || height == 0u) {
+        throw FragmentColorException.InvalidInput(
+            "$call: a region needs a width and a height of at least 1, got $width by $height",
         )
     }
     return ScreenRegion(minX = x, minY = y, maxX = x + width, maxY = y + height)

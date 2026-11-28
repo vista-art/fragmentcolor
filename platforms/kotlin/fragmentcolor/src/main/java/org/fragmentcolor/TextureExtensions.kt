@@ -7,7 +7,7 @@ package org.fragmentcolor
 
 /** Upload pixels, one [Int] per byte, into the whole texture. */
 fun Texture.write(bytes: List<Int>) {
-    write(byteArray(bytes, "write"))
+    write(byteArray(bytes, "Texture.write: data"))
 }
 
 /**
@@ -15,45 +15,53 @@ fun Texture.write(bytes: List<Int>) {
  * `[x, y, width, height]` or `[x, y, z, width, height, depth]`.
  */
 fun Texture.writeRegion(bytes: ByteArray, rect: List<UInt>) {
-    writeRegion(bytes, TextureRegion.from(rect))
+    writeRegion(bytes, readTextureRegion(rect, "Texture.writeRegion"))
 }
 
-/** Upload pixels, one [Int] per byte, into part of the texture given as a list of numbers. */
+/**
+ * Upload pixels, one [Int] per byte, into part of the texture given as a list of numbers.
+ * The region reads before the bytes, as every binding reads them.
+ */
 @JvmName("writeRegionInts")
 fun Texture.writeRegion(bytes: List<Int>, rect: List<UInt>) {
-    writeRegion(byteArray(bytes, "writeRegion"), rect)
+    val region = readTextureRegion(rect, "Texture.writeRegion")
+    writeRegion(byteArray(bytes, "Texture.writeRegion: data"), region)
 }
 
 /** Upload pixels, one [Int] per byte, into a [TextureRegion]. */
 fun Texture.writeRegion(bytes: List<Int>, region: TextureRegion) {
-    writeRegion(byteArray(bytes, "writeRegion"), region)
+    writeRegion(byteArray(bytes, "Texture.writeRegion: data"), region)
 }
 
 /** Upload pixels into the pixels a [ScreenRegion] covers. */
 fun Texture.writeRegion(bytes: ByteArray, region: ScreenRegion) {
-    writeRegion(bytes, TextureRegion.from(region))
+    writeRegion(bytes, readTextureRegion(region, "Texture.writeRegion"))
 }
 
-/** Upload pixels, one [Int] per byte, into the pixels a [ScreenRegion] covers. */
+/**
+ * Upload pixels, one [Int] per byte, into the pixels a [ScreenRegion] covers.
+ * The region reads before the bytes, as every binding reads them.
+ */
 fun Texture.writeRegion(bytes: List<Int>, region: ScreenRegion) {
-    writeRegion(byteArray(bytes, "writeRegion"), region)
+    val pixels = readTextureRegion(region, "Texture.writeRegion")
+    writeRegion(byteArray(bytes, "Texture.writeRegion: data"), pixels)
 }
 
 /** Resize the texture from a `[width, height]` list. */
 fun Texture.resize(size: List<UInt>) {
-    resize(sizeRecord(size, "resize"))
+    resize(sizeRecord(size, "Texture.resize"))
 }
 
 // ── Targets ──────────────────────────────────────────────────────────────────
 
 /** Resize the target from a `[width, height]` list. */
 fun TextureTarget.resize(size: List<UInt>) {
-    resize(sizeRecord(size, "resize"))
+    resize(sizeRecord(size, "TextureTarget.resize"))
 }
 
 /** Resize the target from a `[width, height]` list. */
 fun WindowTarget.resize(size: List<UInt>) {
-    resize(sizeRecord(size, "resize"))
+    resize(sizeRecord(size, "WindowTarget.resize"))
 }
 
 // ── Mipmap ───────────────────────────────────────────────────────────────────

@@ -24,7 +24,7 @@ extension Texture {
 
     /// Upload one `Int` per byte into the whole texture. Throws for a value outside 0...255.
     public func write(_ bytes: [Int]) throws {
-        try write(try byteData(bytes, "write"))
+        try write(try byteData(bytes, "Texture.write: data"))
     }
 
     // MARK: - writeRegion convenience
@@ -32,18 +32,17 @@ extension Texture {
     /// Upload pixel data into a region given as `[w, h]`, `[x, y, w, h]` or `[x, y, z, w, h, d]`.
     /// Throws for any other length.
     public func writeRegion(_ bytes: Data, _ rect: [UInt32]) throws {
-        guard let region = textureRegion(rect) else {
-            throw FragmentColorError.InvalidInput(message: "writeRegion: expected 2, 4 or 6 numbers, got \(rect.count)")
-        }
-        try writeRegion(bytes: bytes, region: region)
+        try writeRegion(bytes: bytes, region: try readTextureRegion(rect, "Texture.writeRegion"))
     }
 
     public func writeRegion(_ bytes: [UInt8], _ rect: [UInt32]) throws {
         try writeRegion(Data(bytes), rect)
     }
 
+    /// Reads the region before the bytes, as every binding does.
     public func writeRegion(_ bytes: [Int], _ rect: [UInt32]) throws {
-        try writeRegion(try byteData(bytes, "writeRegion"), rect)
+        let region = try readTextureRegion(rect, "Texture.writeRegion")
+        try writeRegion(bytes: try byteData(bytes, "Texture.writeRegion: data"), region: region)
     }
 
     // `TextureRegion` overloads, for a region built with
@@ -58,20 +57,22 @@ extension Texture {
     }
 
     public func writeRegion(_ bytes: [Int], _ region: TextureRegion) throws {
-        try writeRegion(try byteData(bytes, "writeRegion"), region)
+        try writeRegion(try byteData(bytes, "Texture.writeRegion: data"), region)
     }
 
     /// Upload pixel data into the pixels a `ScreenRegion` covers.
     public func writeRegion(_ bytes: Data, _ region: ScreenRegion) throws {
-        try writeRegion(bytes, TextureRegion.from(region))
+        try writeRegion(bytes, try readTextureRegion(region, "Texture.writeRegion"))
     }
 
     public func writeRegion(_ bytes: [UInt8], _ region: ScreenRegion) throws {
         try writeRegion(Data(bytes), region)
     }
 
+    /// Reads the region before the bytes, as every binding does.
     public func writeRegion(_ bytes: [Int], _ region: ScreenRegion) throws {
-        try writeRegion(try byteData(bytes, "writeRegion"), region)
+        let region = try readTextureRegion(region, "Texture.writeRegion")
+        try writeRegion(bytes: try byteData(bytes, "Texture.writeRegion: data"), region: region)
     }
 
     // MARK: - setSamplerOptions convenience
@@ -84,7 +85,7 @@ extension Texture {
 
     /// Resize the texture from a `[width, height]` array. Throws for any other length.
     public func resize(_ size: [UInt32]) throws {
-        try resize(size: try sizeRecord(size, "resize"))
+        try resize(size: try sizeRecord(size, "Texture.resize"))
     }
 
     /// Resize the texture to `size`, such as a target's `size()`.
@@ -106,7 +107,7 @@ extension TextureTarget {
     /// Resize the target from a `[width, height]` array.
     /// Throws for any other length, or when the target can't take the size.
     public func resize(_ size: [UInt32]) throws {
-        try resize(try sizeRecord(size, "resize"))
+        try resize(try sizeRecord(size, "TextureTarget.resize"))
     }
 
     /// Resize the target to `size`, such as another target's `size()`.
@@ -122,7 +123,7 @@ extension WindowTarget {
     /// Resize the target from a `[width, height]` array.
     /// Throws for any other length, or when the target can't take the size.
     public func resize(_ size: [UInt32]) throws {
-        try resize(try sizeRecord(size, "resize"))
+        try resize(try sizeRecord(size, "WindowTarget.resize"))
     }
 
     /// Resize the target to `size`, such as another target's `size()`.

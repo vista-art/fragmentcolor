@@ -154,18 +154,19 @@ extension Pass {
     /// as `ScreenRegion(origin, size)` reads them. A width or height of 0 throws.
     public func setViewport(_ originAndSize: [(UInt32, UInt32)]) throws {
         guard originAndSize.count == 2 else {
-            throw FragmentColorError.InvalidInput(message: "setViewport: expected [(x, y), (width, height)], got \(originAndSize.count) pairs")
+            throw FragmentColorError.InvalidInput(message: "Pass.setViewport: a region takes two pairs, an origin and a size, got \(originAndSize.count)")
         }
-        try setViewport(region: ScreenRegion(originAndSize[0], originAndSize[1]))
+        try setViewport(region: readRegion(originAndSize[0], originAndSize[1], "Pass.setViewport"))
     }
 
     /// Set the viewport from `[x, y, width, height]`, or `[width, height]` at the origin.
     /// A width or height of 0, or any other count of numbers, throws.
     public func setViewport(_ rect: [UInt32]) throws {
+        let call = "Pass.setViewport"
         switch rect.count {
-        case 2: try setViewport(region: ScreenRegion([0, 0], rect))
-        case 4: try setViewport(region: ScreenRegion(Array(rect[0..<2]), Array(rect[2..<4])))
-        default: throw FragmentColorError.InvalidInput(message: "setViewport: expected [width, height] or [x, y, width, height], got \(rect.count) numbers")
+        case 2: try setViewport(region: readRegion((0, 0), (rect[0], rect[1]), call))
+        case 4: try setViewport(region: readRegion((rect[0], rect[1]), (rect[2], rect[3]), call))
+        default: throw FragmentColorError.InvalidInput(message: "\(call): a region takes [w, h] or [x, y, w, h], got \(rect.count) numbers")
         }
     }
 
@@ -182,22 +183,32 @@ extension ScreenRegion {
     /// `ScreenRegion::new(origin, size)` reads them. A side of 0 throws, and so does
     /// a far edge past `UInt32.max`.
     public init(_ origin: (UInt32, UInt32), _ size: (UInt32, UInt32)) throws {
-        guard size.0 > 0 && size.1 > 0 else {
-            throw FragmentColorError.InvalidInput(message: "ScreenRegion: a region needs a width and a height of at least 1, got \(size.0) by \(size.1)")
-        }
-        let (maxX, xOverflow) = origin.0.addingReportingOverflow(size.0)
-        let (maxY, yOverflow) = origin.1.addingReportingOverflow(size.1)
-        guard !xOverflow && !yOverflow else {
-            throw FragmentColorError.InvalidInput(message: "ScreenRegion: a region at \(origin.0), \(origin.1) sized \(size.0) by \(size.1) reaches past \(UInt32.max)")
-        }
-        self.init(minX: origin.0, minY: origin.1, maxX: maxX, maxY: maxY)
+        self = try readRegion(origin, size, "ScreenRegion")
     }
 
     /// A region at `origin` `[x, y]` that is `size` `[width, height]` large.
+    /// Each must hold two numbers.
     public init(_ origin: [UInt32], _ size: [UInt32]) throws {
-        guard origin.count == 2 && size.count == 2 else {
-            throw FragmentColorError.InvalidInput(message: "ScreenRegion: origin and size hold 2 numbers each")
+        guard origin.count == 2 else {
+            throw FragmentColorError.InvalidInput(message: "ScreenRegion: origin takes two numbers, got \(origin.count)")
+        }
+        guard size.count == 2 else {
+            throw FragmentColorError.InvalidInput(message: "ScreenRegion: size takes two numbers, got \(size.count)")
         }
         try self.init((origin[0], origin[1]), (size[0], size[1]))
     }
+}
+
+/// A region at `origin` that is `size` large, for `call`, which each error names.
+/// A far edge past `UInt32.max` throws, and then a side of 0, in the order Rust checks them.
+func readRegion(_ origin: (UInt32, UInt32), _ size: (UInt32, UInt32), _ call: String) throws -> ScreenRegion {
+    let (maxX, xOverflow) = origin.0.addingReportingOverflow(size.0)
+    let (maxY, yOverflow) = origin.1.addingReportingOverflow(size.1)
+    guard !xOverflow && !yOverflow else {
+        throw FragmentColorError.InvalidInput(message: "\(call): a region at \(origin.0), \(origin.1) sized \(size.0) by \(size.1) reaches past \(UInt32.max)")
+    }
+    guard size.0 > 0 && size.1 > 0 else {
+        throw FragmentColorError.InvalidInput(message: "\(call): a region needs a width and a height of at least 1, got \(size.0) by \(size.1)")
+    }
+    return ScreenRegion(minX: origin.0, minY: origin.1, maxX: maxX, maxY: maxY)
 }
