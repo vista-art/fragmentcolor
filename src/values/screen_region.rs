@@ -269,7 +269,7 @@ const BOUNDS: [Key; 4] = [
 
 /// The keys of a region's origin and size, as a `DOMRect` holds them.
 #[cfg(any(wasm, python, test))]
-const RECT: [Key; 4] = [
+const BOX: [Key; 4] = [
     ("x", "x"),
     ("y", "y"),
     ("width", "width"),
@@ -298,9 +298,9 @@ impl ScreenRegion {
             };
             return Ok(Some(region.check()?));
         }
-        let [x, y, width, height] = RECT;
-        let rect = (read(x)?, read(y)?, read(width)?, read(height)?);
-        if let (Some(x), Some(y), Some(width), Some(height)) = rect {
+        let [x, y, width, height] = BOX;
+        let boxed = (read(x)?, read(y)?, read(width)?, read(height)?);
+        if let (Some(x), Some(y), Some(width), Some(height)) = boxed {
             return Ok(Some(Self::build(x, y, width, height)?));
         }
         Ok(None)
